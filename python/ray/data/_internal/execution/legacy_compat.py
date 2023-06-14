@@ -91,7 +91,6 @@ def execute_to_legacy_block_list(
     allow_clear_input_blocks: bool,
     dataset_uuid: str,
     preserve_order: bool,
-    skip_optimizer_pipeline: bool = False,
 ) -> BlockList:
     """Execute a plan with the new executor and translate it into a legacy block list.
 
@@ -110,7 +109,6 @@ def execute_to_legacy_block_list(
         plan,
         allow_clear_input_blocks,
         preserve_order,
-        skip_optimizer_pipeline,
     )
     bundles = executor.execute(dag, initial_stats=stats)
     block_list = _bundles_to_block_list(bundles)
@@ -124,7 +122,6 @@ def _get_execution_dag(
     plan: ExecutionPlan,
     allow_clear_input_blocks: bool,
     preserve_order: bool,
-    skip_optimizer_pipeline: bool = False,
 ) -> Tuple[PhysicalOperator, DatasetStats]:
     """Get the physical operators DAG from a plan."""
     # Record usage of logical operators if available.
@@ -132,7 +129,10 @@ def _get_execution_dag(
         record_operators_usage(plan._logical_plan.dag)
 
     # Get DAG of physical operators and input statistics.
-    if DataContext.get_current().optimizer_enabled and not skip_optimizer_pipeline:
+    if (
+        DataContext.get_current().optimizer_enabled
+        and not plan._skip_optimizer_pipeline
+    ):
         dag = get_execution_plan(plan._logical_plan).dag
         stats = _get_initial_stats_from_plan(plan)
     else:

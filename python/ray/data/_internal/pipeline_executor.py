@@ -19,7 +19,9 @@ def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     # Force eager evaluation of all blocks in the pipeline stage. This
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
-    return fn().materialize(skip_optimizer_pipeline=True)
+    ds = fn()
+    ds._plan._skip_optimizer_pipeline = True
+    return ds.materialize()
 
 
 class PipelineExecutor:

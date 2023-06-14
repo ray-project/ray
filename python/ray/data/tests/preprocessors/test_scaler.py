@@ -121,7 +121,6 @@ def test_max_abs_scaler():
 
 def test_robust_scaler():
     """Tests basic RobustScaler functionality."""
-    # TODO(scott_optimizer): needs split https://github.com/ray-project/ray/pull/36363
     col_a = [-2, -1, 0, 1, 2]
     col_b = [-2, -1, 0, 1, 2]
     col_c = [-10, 1, 2, 3, 10]

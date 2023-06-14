@@ -99,7 +99,6 @@ def test_tune_tensorflow_mnist_gpu(ray_start_4_cpus_2_gpus):
 
 
 def test_train_linear_dataset_gpu(ray_start_4_cpus_2_gpus):
-    # TODO(scott_optimizer): needs split https://github.com/ray-project/ray/pull/36363
     from ray.train.examples.pytorch.torch_regression_example import train_regression
 
     assert train_regression(num_workers=2, use_gpu=True)

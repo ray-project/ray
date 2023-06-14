@@ -136,6 +136,8 @@ class ExecutionPlan:
         # determined by the config at the time it was created.
         self._context = copy.deepcopy(DataContext.get_current())
 
+        self._skip_optimizer_pipeline = not self._context.optimizer_enabled
+
     def __repr__(self) -> str:
         return (
             f"ExecutionPlan("
@@ -306,6 +308,7 @@ class ExecutionPlan:
         plan_copy = ExecutionPlan(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
+        plan_copy._skip_optimizer_pipeline = self._skip_optimizer_pipeline
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -337,6 +340,7 @@ class ExecutionPlan:
             dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
+        plan_copy._skip_optimizer_pipeline = self._skip_optimizer_pipeline
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
@@ -526,7 +530,6 @@ class ExecutionPlan:
         allow_clear_input_blocks: bool = True,
         force_read: bool = False,
         preserve_order: bool = False,
-        skip_optimizer_pipeline: bool = False,
     ) -> BlockList:
         """Execute this plan.
 
@@ -575,7 +578,6 @@ class ExecutionPlan:
                     allow_clear_input_blocks=allow_clear_input_blocks,
                     dataset_uuid=self._dataset_uuid,
                     preserve_order=preserve_order,
-                    skip_optimizer_pipeline=skip_optimizer_pipeline,
                 )
                 # TODO(ekl) we shouldn't need to set this in the future once we move
                 # to a fully lazy execution model, unless .materialize() is used. Th

@@ -3992,9 +3992,7 @@ class Dataset:
         return self._plan.has_computed_output()
 
     @ConsumptionAPI(pattern="store memory.", insert_after=True)
-    def materialize(
-        self, skip_optimizer_pipeline: bool = False
-    ) -> "MaterializedDataset":
+    def materialize(self) -> "MaterializedDataset":
         """Execute and materialize this dataset into object store memory.
 
         This can be used to read all blocks into memory. By default, Dataset
@@ -4007,9 +4005,7 @@ class Dataset:
             A MaterializedDataset holding the materialized data blocks.
         """
         copy = Dataset.copy(self, _deep_copy=True, _as=MaterializedDataset)
-        copy._plan.execute(
-            force_read=True, skip_optimizer_pipeline=skip_optimizer_pipeline
-        )
+        copy._plan.execute(force_read=True)
 
         blocks = copy._plan._snapshot_blocks
         blocks_with_metadata = blocks.get_blocks_with_metadata() if blocks else []

@@ -1310,6 +1310,7 @@ class DatasetPipeline:
             0,
             True,
         )
+        dummy_ds._plan._skip_optimizer_pipeline = True
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)
