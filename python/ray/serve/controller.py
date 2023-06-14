@@ -839,6 +839,12 @@ def deploy_serve_application(
             app = call_app_builder_with_args_if_necessary(
                 import_attr(import_path), args
             )
+            import sys
+
+            raise Exception(
+                f"import succeeded, import_path: {import_path}, pwd: {os. getcwd()}, "
+                f"\nmodules: {sys.modules}"
+            )
         except Exception as e:
             import sys
 
