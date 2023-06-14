@@ -51,9 +51,10 @@ def test_streaming_split_stats(ray_start_regular_shared):
 * Extra metrics: {'obj_store_mem_alloc': N, 'obj_store_mem_freed': N, \
 'obj_store_mem_peak': N}
 
-Stage N split(N, equal=False):
-* Extra metrics: {'num_output_N': N}
-"""
+Stage N split(N, equal=False): \n"""
+        # Workaround to preserve trailing whitespace in the above line without
+        # causing linter failures.
+        "* Extra metrics: {'num_output_N': N}\n"
     )
 
 
@@ -574,7 +575,7 @@ Stage N Split: N/N blocks executed in T
 * Output size bytes: N min, N max, N mean, N total
 * Tasks per node: N min, N max, N mean; N nodes used
 
-Stage N Map: N/N blocks executed in T
+Stage N Map(<lambda>): N/N blocks executed in T
 * Remote wall time: T min, T max, T mean, T total
 * Remote cpu time: T min, T max, T mean, T total
 * Peak heap memory usage (MiB): N min, N max, N mean
