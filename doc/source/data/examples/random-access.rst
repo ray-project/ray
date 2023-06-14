@@ -78,7 +78,6 @@ It is important to note that the client (Ray worker process) can also be a bottl
     # Fetch from the RandomAccessDataset in parallel using 10 remote tasks.
     print(ray.get([fetch.remote(rmap, p) for p in pieces]))
 
-
 Fault Tolerance
 ---------------
 
