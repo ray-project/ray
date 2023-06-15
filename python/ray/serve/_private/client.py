@@ -334,7 +334,7 @@ class ServeControllerClient:
 
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
-            self._wait_for_application_running(name, timeout_s=15)
+            self._wait_for_application_running(name)
             for deployment in deployments:
                 deployment_name = deployment["name"]
                 tag = f"component=serve deployment={deployment_name}"
