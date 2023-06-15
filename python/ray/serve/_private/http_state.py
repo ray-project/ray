@@ -191,6 +191,7 @@ class HTTPProxyState:
                     f"{self._node_id} after {DEFAULT_HEALTH_CHECK_TIMEOUT_S}s"
                 )
                 self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+            return
 
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check.

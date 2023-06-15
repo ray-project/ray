@@ -418,9 +418,54 @@ def test_http_proxy_state_update_healthy_check_health_always_fails():
 
 @patch("ray.serve._private.http_state.DEFAULT_HEALTH_CHECK_TIMEOUT_S", 0.1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_update_healthy_check_health_always_timeout():
+def test_http_proxy_state_check_health_always_timeout_timtout_eq_period():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
-    when the ready call always timed out.
+    when the ready call always timed out and health check timeout and period equals.
+
+    The proxy state started with STARTING. After update is called and ready call
+    succeeded, the status will change to HEALTHY. After the next few check_health calls
+    takes very long time to finished, the status will eventually change to UNHEALTHY
+    after all retries have exhausted.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            await asyncio.sleep(100)
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Continuously trigger update. The status should change from STARTING to HEALTHY
+    # when ready.
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+    first_check_time = proxy_state._last_health_check_time
+
+    # Continuously trigger update and status should change to UNHEALTHY.
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=proxy_state,
+        status=HTTPProxyStatus.UNHEALTHY,
+    )
+
+    # Ensure the check time have changed since the last update
+    assert first_check_time != proxy_state._last_health_check_time
+
+    # Ensure _consecutive_health_check_failures is correct
+    assert proxy_state._consecutive_health_check_failures == 3
+
+
+@patch("ray.serve._private.http_state.DEFAULT_HEALTH_CHECK_TIMEOUT_S", 1)
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_http_proxy_state_check_health_always_timeout_timtout_greater_than_period():
+    """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
+    when the ready call always timed out and health check timeout greater than period.
 
     The proxy state started with STARTING. After update is called and ready call
     succeeded, the status will change to HEALTHY. After the next few check_health calls
