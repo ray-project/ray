@@ -58,14 +58,6 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
-
-            [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
         .. button-ref:: /ray-air/examples/gptj_deepspeed_fine_tuning
 
             [Example] GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
@@ -93,6 +85,14 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
         .. button-ref:: /ray-air/examples/gptj_serving
 
             [Example] GPT-J-6B Serving with Ray AIR
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://github.com/ray-project/aviary/
+
+            [Intermediate Example] Aviary toolkit serving live traffic for LLMs
 
 
 .. _ref-use-cases-batch-infer:
