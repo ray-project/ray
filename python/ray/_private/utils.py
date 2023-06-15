@@ -1189,13 +1189,11 @@ def import_attr(full_path: str):
 
     old_paths = sys.path
     try:
-        # Some ray modules could take the import precedence over user's working
-        # directory. Dropping them from sys.path to avoid the import collisions and
-        # allowing working_dir_files to take the import precedence.
-        for idx, path in enumerate(old_paths):
-            if "working_dir_files" in path:
-                sys.path = old_paths[idx:]
-                break
+        # `ray/dashboard` took the import precedence and can collide user's modules.
+        # Dropping `ray/dashboard` from sys.path to avoid the import collision.
+        for path in old_paths:
+            if path.endswith("ray/dashboard"):
+                sys.path.remove(path)
 
         module = importlib.import_module(module_name)
     finally:
