@@ -110,14 +110,14 @@ class TestImportAttr(unittest.TestCase):
 
         # Test valid import does not change sys.path.
         old_path = sys.path.copy()
-        bar = import_attr(full_path="resources.foo.bar")
+        import_attr(full_path="resources.foo.bar")
         assert old_path == sys.path
 
         # Test invalid import does not change sys.path.
         sys.path.append("/ray/dashboard")
         old_path = sys.path.copy()
         with self.assertRaises(ModuleNotFoundError):
-            bar = import_attr(full_path="resources.fooo.bar")
+            import_attr(full_path="resources.fooo.bar")
         assert old_path == sys.path
 
     def test_valid_one_colons_full_path(self):
