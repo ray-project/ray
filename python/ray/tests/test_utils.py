@@ -101,46 +101,44 @@ class TestImportAttr(unittest.TestCase):
     def test_valid_no_colons_full_path(self):
         """Test when full_path is valid and has no colons.
 
-        When `full_path` is valid and as no colons, import_attr should succeed.
-        `sys.path` should stay the same before and after the import. When importing from
-        a non-existent module, import_attr should raise a ModuleNotFoundError and should
-        not change `sys.path`.
+        When `full_path` is valid and as no colons, import_attr should succeed. Also
+        when `skip_dashboard` is true, dashboard will not exist in sys.path.
         """
         from ray._private.utils import import_attr
 
-        # Test valid import does not change sys.path.
+        full_path = "resources.foo.bar"
+        dashboard_path = "/ray/dashboard"
+        sys.path.append(dashboard_path)
         old_path = sys.path.copy()
-        import_attr(full_path="resources.foo.bar")
+
+        # Test valid import does not change sys.path.
+        import_attr(full_path=full_path)
         assert old_path == sys.path
 
         # Test invalid import does not change sys.path.
-        sys.path.append("/ray/dashboard")
-        old_path = sys.path.copy()
-        with self.assertRaises(ModuleNotFoundError):
-            import_attr(full_path="resources.fooo.bar")
-        assert old_path == sys.path
+        import_attr(full_path=full_path, skip_dashboard=True)
+        assert dashboard_path not in sys.path
 
     def test_valid_one_colons_full_path(self):
         """Test when full_path is valid and has one colon.
 
-        When `full_path` is valid and as one colon, import_attr should succeed.
-        `sys.path` should stay the same before and after the import. When importing from
-        a non-existent module, import_attr should raise a ModuleNotFoundError and should
-        not change `sys.path`.
+        When `full_path` is valid and as one colon, import_attr should succeed. Also
+        when `skip_dashboard` is true, dashboard will not exist in sys.path.
         """
         from ray._private.utils import import_attr
 
-        # Test valid import does not change sys.path.
+        full_path = "resources.foo:bar"
+        dashboard_path = "/ray/dashboard"
+        sys.path.append(dashboard_path)
         old_path = sys.path.copy()
-        import_attr(full_path="resources.foo:bar")
+
+        # Test valid import does not change sys.path.
+        import_attr(full_path=full_path)
         assert old_path == sys.path
 
         # Test invalid import does not change sys.path.
-        sys.path.append("/ray/dashboard")
-        old_path = sys.path.copy()
-        with self.assertRaises(ModuleNotFoundError):
-            import_attr(full_path="resources.fooo:bar")
-        assert old_path == sys.path
+        import_attr(full_path=full_path, skip_dashboard=True)
+        assert dashboard_path not in sys.path
 
 
 if __name__ == "__main__":

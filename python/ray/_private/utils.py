@@ -1161,7 +1161,7 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str):
+def import_attr(full_path: str, skip_dashboard: bool = False):
     """Given a full import path to a module attr, return the imported attr.
 
     For example, the following are equivalent:
@@ -1187,15 +1187,12 @@ def import_attr(full_path: str):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
-    dashboard_paths = []
-    # `ray/dashboard` took the import precedence and can collide user's modules.
-    # Reorder `ray/dashboard` to the back of sys.path to avoid the import collision.
-    for path in sys.path:
-        if path.endswith("ray/dashboard"):
-            dashboard_paths.append(path)
-            sys.path.remove(path)
-
-    sys.path.extend(dashboard_paths)
+    if skip_dashboard:
+        # `ray/dashboard` took the import precedence and can collide user's modules.
+        # Reorder `ray/dashboard` to the back of sys.path to avoid the import collision.
+        for path in sys.path:
+            if path.endswith("ray/dashboard"):
+                sys.path.remove(path)
 
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
