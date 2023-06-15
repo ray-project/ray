@@ -94,7 +94,6 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
     DataBatch,
-    StrictModeError,
     T,
     U,
     UserDefinedFunction,
@@ -2660,7 +2659,7 @@ class Dataset:
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
         if column is None:
-            raise StrictModeError(
+            raise ValueError(
                 "In Ray 2.5, the column must be specified "
                 "(e.g., `write_numpy(column='data')`)."
             )
@@ -4198,11 +4197,11 @@ class Dataset:
 
     @Deprecated(message="The batch format is no longer exposed as a public API.")
     def default_batch_format(self) -> Type:
-        raise StrictModeError("default_batch_format() is not allowed in Ray 2.5")
+        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
 
     @Deprecated(message="The dataset format is no longer exposed as a public API.")
     def dataset_format(self) -> BlockFormat:
-        raise StrictModeError("dataset_format() is not allowed in Ray 2.5")
+        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs

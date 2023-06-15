@@ -4,7 +4,6 @@ import numpy as np
 import pytest
 
 import ray
-from ray.data.block import StrictModeError
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -47,22 +46,22 @@ def test_strict_read_schemas(ray_start_regular_shared):
 def test_strict_map_output(ray_start_regular_shared):
     ds = ray.data.range(1)
 
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ds.map(lambda x: 0, max_retries=0).materialize()
     ds.map(lambda x: {"id": 0}).materialize()
     ds.map(lambda x: UserDict({"id": 0})).materialize()
 
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ds.map_batches(lambda x: np.array([0]), max_retries=0).materialize()
     ds.map_batches(lambda x: {"id": [0]}).materialize()
     ds.map_batches(lambda x: UserDict({"id": [0]})).materialize()
 
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ds.map(lambda x: np.ones(10), max_retries=0).materialize()
     ds.map(lambda x: {"x": np.ones(10)}).materialize()
     ds.map(lambda x: UserDict({"x": np.ones(10)})).materialize()
 
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ds.map_batches(lambda x: np.ones(10), max_retries=0).materialize()
     ds.map_batches(lambda x: {"x": np.ones(10)}).materialize()
     ds.map_batches(lambda x: UserDict({"x": np.ones(10)})).materialize()
@@ -75,7 +74,7 @@ def test_strict_map_output(ray_start_regular_shared):
     ds.map_batches(lambda x: {"x": [object()]}).materialize()
     ds.map_batches(lambda x: UserDict({"x": [object()]})).materialize()
 
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ds.map(lambda x: object(), max_retries=0).materialize()
     ds.map(lambda x: {"x": object()}).materialize()
     ds.map(lambda x: UserDict({"x": object()})).materialize()
@@ -173,13 +172,13 @@ def test_strict_object_support(ray_start_regular_shared):
 
 
 def test_strict_compute(ray_start_regular_shared):
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="actors").show()
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ray.data.range(10).map(
             lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
         ).show()
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ray.data.range(10).map(lambda x: x, compute="tasks").show()
 
 
@@ -237,7 +236,7 @@ def test_strict_require_batch_size_for_gpu():
     ray.shutdown()
     ray.init(num_cpus=4, num_gpus=1)
     ds = ray.data.range(1)
-    with pytest.raises(StrictModeError):
+    with pytest.raises(ValueError):
         ds.map_batches(lambda x: x, num_gpus=1)
 
 

@@ -59,12 +59,6 @@ STRICT_MODE_EXPLANATION = (
 )
 
 
-@PublicAPI
-class StrictModeError(ValueError):
-    def __init__(self, message: str):
-        super().__init__(message + "\n\n" + STRICT_MODE_EXPLANATION)
-
-
 def _validate_key_fn(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     key: Optional[str],
@@ -86,7 +80,7 @@ def _validate_key_fn(
                 "schema '{}'.".format(key, schema)
             )
     else:
-        raise StrictModeError(f"In Ray 2.5, the key must be a string, was: {key}")
+        raise ValueError(f"In Ray 2.5, the key must be a string, was: {key}")
 
 
 # Represents a batch of records to be stored in the Ray object store.
@@ -137,7 +131,7 @@ def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
     if given_batch_format == "default":
         given_batch_format = "numpy"
     if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
-        raise StrictModeError(
+        raise ValueError(
             f"The given batch format {given_batch_format} is not allowed "
             f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
         )
@@ -148,7 +142,7 @@ def _apply_strict_mode_batch_size(
     given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
 ) -> Optional[int]:
     if use_gpu and (not given_batch_size or given_batch_size == "default"):
-        raise StrictModeError(
+        raise ValueError(
             "`batch_size` must be provided to `map_batches` when requesting GPUs. "
             "The optimal batch size depends on the model, data, and GPU used. "
             "It is recommended to use the largest batch size that doesn't result "
@@ -387,7 +381,7 @@ class BlockAccessor:
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
-            raise StrictModeError(
+            raise ValueError(
                 f"Error validating {_truncated_repr(batch)}: "
                 "Standalone numpy arrays are not "
                 "allowed in Ray 2.5. Return a dict of field -> array, "
@@ -429,7 +423,7 @@ class BlockAccessor:
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            raise StrictModeError(
+            raise ValueError(
                 f"Error validating {_truncated_repr(block)}: "
                 "Standalone Python objects are not "
                 "allowed in Ray 2.5. To use Python objects in a dataset, "

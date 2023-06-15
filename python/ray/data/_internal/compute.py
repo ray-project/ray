@@ -16,7 +16,6 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    StrictModeError,
     UserDefinedFunction,
 )
 from ray.data.context import DataContext
@@ -485,7 +484,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
     if not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
-        raise StrictModeError(
+        raise ValueError(
             "In Ray 2.5, the compute spec must be either "
             f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
         )
