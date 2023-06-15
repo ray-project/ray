@@ -127,7 +127,7 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
         )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        new_replica_ids = set(r.replica_tag for r in running_replicas)
+        new_replica_ids = {r.replica_tag for r in running_replicas}
         if new_replica_ids != self._replica_id_set:
             self._replica_id_set = new_replica_ids
             logger.info(
