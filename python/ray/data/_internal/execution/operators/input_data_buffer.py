@@ -19,13 +19,15 @@ class InputDataBuffer(PhysicalOperator):
         self,
         input_data: Optional[List[RefBundle]] = None,
         input_data_factory: Callable[[], List[RefBundle]] = None,
-        override_num_blocks: Optional[int] = None,
+        num_output_blocks: Optional[int] = None,
     ):
         """Create an InputDataBuffer.
 
         Args:
             input_data: The list of bundles to output from this operator.
             input_data_factory: The factory to get input data, if input_data is None.
+            num_output_blocks: The number of output blocks. If not specified, progress
+                bars total will be set based on num output bundles instead.
         """
         if input_data is not None:
             assert input_data_factory is None
@@ -38,7 +40,7 @@ class InputDataBuffer(PhysicalOperator):
             assert input_data_factory is not None
             self._input_data_factory = input_data_factory
             self._is_input_initialized = False
-        self._override_num_blocks = override_num_blocks
+        self._num_output_blocks = num_output_blocks
         super().__init__("Input", [])
 
     def start(self, options: ExecutionOptions) -> None:
@@ -54,8 +56,8 @@ class InputDataBuffer(PhysicalOperator):
     def get_next(self) -> RefBundle:
         return self._input_data.pop(0)
 
-    def num_outputs_total(self) -> Optional[int]:
-        return self._override_num_blocks or self._num_outputs
+    def num_output_total(self) -> Optional[int]:
+        return self._num_output_blocks or self._num_output_bundles
 
     def get_stats(self) -> StatsDict:
         return {}
@@ -66,7 +68,7 @@ class InputDataBuffer(PhysicalOperator):
     def _initialize_metadata(self):
         assert self._input_data is not None and self._is_input_initialized
 
-        self._num_outputs = len(self._input_data)
+        self._num_output_bundles = len(self._input_data)
         block_metadata = []
         for bundle in self._input_data:
             block_metadata.extend([m for (_, m) in bundle.blocks])
