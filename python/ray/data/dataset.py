@@ -917,6 +917,18 @@ class Dataset:
         After repartitioning, all blocks in the returned dataset will have
         approximately the same number of rows.
 
+        Repartition has two modes:
+
+        * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
+        * ``shuffle=True`` - performs a full distributed shuffle
+
+        .. image:: images/dataset-shuffle.svg
+            :align: center
+
+        ..
+            https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)

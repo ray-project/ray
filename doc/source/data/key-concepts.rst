@@ -6,31 +6,58 @@ Key Concepts
 
 .. _dataset_concept:
 
-----------
-Dataset
-----------
+Datasets and blocks
+===================
 
-A :term:`Dataset <Dataset (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
-Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
-`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
-Having multiple blocks in a dataset allows for parallel transformation and ingest.
+A :class:`Dataset <ray.data.Dataset>` operates over a sequence of Ray object references
+to :term:`blocks <Block>`. Each block contains a disjoint subset of rows, and Ray Data
+loads and transforms these blocks in parallel.
 
-For ML use cases, Dataset natively supports mixing tensors with tabular data. To
-learn more, read :ref:`Working with tensor data <working_with_tensors>`.
+.. tip::
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows. Note that certain blocks
-may not be computed yet. Normally, callers iterate over dataset blocks in a streaming fashion, so that not all
-blocks need to be materialized in the cluster memory at once.
+    To change the number of blocks in a :class:`~ray.data.Dataset`, call
+    :meth:`~ray.data.Dataset.repartition`.
+
+The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+Note that Ray Data is lazy, so some blocks might be unmaterialized.
 
 .. image:: images/dataset-arch.svg
 
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
 
-Reading Data
+Execution model
+===============
+
+Ray Data is lazy and streaming:
+
+- **Lazy**: This means that transformations on a :class:`~ray.data.Dataset` aren't
+  executed until you call am method like :meth:`Dataset.iter_batches() <ray.data.Dataset.iter_batches>`
+  or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>`.
+- **Streaming**: This means that transformations are executed
+  incrementally (instead of on all of the data at once) and with steps overlapped.
+
+For more information, see :ref:`Streaming Execution <streaming_execution>`.
+
+Loading data
 ============
 
-Dataset uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
+Ray Data lets you load data from local disk and cloud storage.
+
+.. testcode::
+
+    import ray
+
+    ds = ray.data.read_parquet("...")
+
+    print(ds.schema())
+
+.. testsetup::
+
+    ...
+
+Ray Data uses :ref:`Ray tasks <task-key-concept>` to read files in parallel. Each read
+task reads one or more files and produces an output block:
 
 .. image:: images/dataset-read.svg
    :align: center
@@ -38,70 +65,62 @@ Dataset uses Ray tasks to read data from remote storage in parallel. Each read t
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying dataset.
+For more information on loading data, see :ref:`Loading data <loading-data>`.
 
-For an in-depth guide on creating datasets, read :ref:`Loading Data <loading_data>`.
-
-Transforming Data
+Transforming data
 =================
 
-Dataset uses either Ray tasks or Ray actors to transform data blocks. By default, it uses tasks.
+Transformations let you process and modify your dataset. You can compose transformations
+to express a chain of computations.
 
-To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
-:meth:`~ray.data.Dataset.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
-pool of Ray actors. This allows you to cache expensive state initialization
-(e.g., model loading for GPU-based tasks).
+.. testcode::
+
+    # TODO
+
+Ray Data uses either :ref:`Ray tasks <task-key-concept>` or
+:ref:`Ray actors <actor-key-concept>`to transform blocks. By default, it uses tasks.
+
+Tasks are stateless. So, if you want to cache expensive initialization like downloading
+model weights, use actors.
 
 .. image:: images/dataset-map.svg
    :align: center
 ..
   https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
 
-For an in-depth guide on transforming datasets, read :ref:`Transforming Data <transforming_data>`.
+For more information on transforming data, see
+:ref:`Transforming data <transforming_data>`.
 
-Shuffling Data
+Shuffling data
 ==============
 
-Operations like :meth:`~ray.data.Dataset.sort` and :meth:`~ray.data.Dataset.groupby`
-require blocks to be partitioned by value or *shuffled*. Dataset uses tasks to shuffle blocks in a map-reduce
-style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
-blocks.
+Ray Data can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling.
 
-Call :meth:`~ray.data.Dataset.repartition` to change the number of blocks in a :class:`~ray.data.Dataset`.
-Repartition has two modes:
+.. testcode::
 
-* ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
-* ``shuffle=True`` - performs a full distributed shuffle
+    import ray
 
-.. image:: images/dataset-shuffle.svg
-   :align: center
+    ds.range(10000).shuffle()
 
-..
-  https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+Dataset uses tasks to shuffle blocks in a map-reduce style: map tasks partition blocks
+by value and then reduce tasks merge co-partitioned blocks.
 
-Dataset can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
-Note that operations like shuffle materialize the entire Dataset prior to their execution (shuffle execution is not streamed through memory).
+.. note::
 
-Iteration and materialization
-=============================
+    In addition to shuffle, methods like :meth:`~ray.data.Dataset.sort` and :meth:`~ray.data.Dataset.groupby`
+    also shuffle blocks. These methods materialize the entire
+    :class:`~ray.data.Dataset`. In other words, shuffle execution isn't streamed through
+    memory.
 
-Most transformations on a dataset are lazy. They don't execute until you iterate over the dataset or call
-:meth:`Dataset.materialize() <ray.data.Dataset.materialize>`. When a Dataset is materialized, its
-type becomes a `MaterializedDataset`, which indicates that all its blocks are materialized in Ray
-object store memory.
-
-Dataset transformations are executed in a streaming way, incrementally on the data and
-with operators processed in parallel, see :ref:`Streaming Execution <streaming_execution>`.
-
-Datasets and MaterializedDatasets can be freely passed between Ray tasks, actors, and libraries without
-incurring copies of the underlying block data (pass by reference semantics).
+For an in-depth guide on shuffle performance, see :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
 
 Fault tolerance
 ===============
 
-Dataset performs *lineage reconstruction* to recover data. If an application error or
-system failure occurs, Dataset recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-restarts the actor used for computing the block prior to re-executing the task.
+Ray Data performs *lineage reconstruction* to recover data. If an application error or
+system failure occurs, Ray Data recreates blocks by re-executing tasks.
 
-Fault tolerance is not supported if the original worker process that created the Dataset dies.
-This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
+.. note::
+
+    Fault tolerance isn't supported if the process that created the
+    :class:`~ray.data.Dataset` dies.
