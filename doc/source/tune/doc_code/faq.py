@@ -38,7 +38,7 @@ config = {"a": {"x": tune.uniform(0, 10)}, "b": tune.choice([1, 2, 3])}
 # __conditional_spaces_start__
 config = {
     "a": tune.randint(5, 10),
-    "b": tune.sample_from(lambda spec: np.random.randint(0, spec.config.a)),
+    "b": tune.sample_from(lambda config: np.random.randint(0, config["a"])),
 }
 # __conditional_spaces_end__
 
