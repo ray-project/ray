@@ -1,6 +1,6 @@
 (serve-migration)=
 
-# 1.x to 2.x API Migration Guide
+# Migrate from 1.x to 2.x
 
 This section covers what to consider or change in your application when migrating from Ray versions 1.x to 2.x.
 
@@ -13,14 +13,14 @@ In Ray Serve 2.0, we released a [new deployment API](converting-to-ray-serve-app
 
 ### Migrating handle pass between deployments
 In the 1.x deployment, we usually pass handle of deployment to chain the deployments.
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __raw_handle_graph_start__
 :end-before: __raw_handle_graph_end__
 :language: python
 ```
 
 With the 2.0 deployment API, you can use the following code to update the above one.
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __graph_with_new_api_start__
 :end-before: __graph_with_new_api_end__
 :language: python
@@ -34,14 +34,14 @@ With the 2.0 deployment API, you can use the following code to update the above 
 ### Migrating a single deployment to the new deployment API 
 
 In the 1.x deployment API, we usually have the following code for deployment.
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __single_deployment_old_api_start__
 :end-before: __single_deployment_old_api_end__
 :language: python
 ```
 
 With the 2.0 deployment API, you can use the following code to update the above one.
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __single_deployment_new_api_start__
 :end-before: __single_deployment_new_api_end__
 :language: python
@@ -52,7 +52,7 @@ With the 2.0 deployment API, you can use the following code to update the above 
 
 When you have multiple deployments, here is the normal code for 1.x API
 
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __multi_deployments_old_api_start__
 :end-before: __multi_deployments_old_api_end__
 :language: python
@@ -60,7 +60,7 @@ When you have multiple deployments, here is the normal code for 1.x API
 
 With the 2.0 deployment API, you can use the following code to update the above one.
 
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __multi_deployments_new_api_start__
 :end-before: __multi_deployments_new_api_end__
 :language: python
@@ -81,7 +81,7 @@ With the 2.0 deployment API, you can use the following code to update the above 
 
 Sometimes, you have a customized route prefix for each deployment:
 
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __customized_route_old_api_start__
 :end-before: __customized_route_old_api_end__
 :language: python
@@ -89,7 +89,7 @@ Sometimes, you have a customized route prefix for each deployment:
 
 With the 2.0 deployment API, you can use the following code to update the above one.
 
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __customized_route_old_api_1_start__
 :end-before: __customized_route_old_api_1_end__
 :language: python
@@ -97,7 +97,7 @@ With the 2.0 deployment API, you can use the following code to update the above 
 
 Or if you have multiple deployments and want to customize the HTTP route prefix for each model, you can use the following code:
 
-```{literalinclude} ../serve/doc_code/migration_example.py
+```{literalinclude} ../doc_code/migration_example.py
 :start-after: __customized_route_old_api_2_start__
 :end-before: __customized_route_old_api_2_end__
 :language: python
