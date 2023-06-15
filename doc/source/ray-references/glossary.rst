@@ -537,15 +537,15 @@ documentation, sorted alphabetically.
           and Train session at the Data Parallel training layer
           if running data-parallel distributed training with Ray Train.
 
-          The session allows access to metadata such as which trial is being run,
-          information about the total number of workers as well as the rank of the
+          The session allows access to metadata, such as which trial is being run,
+          information about the total number of workers, as well as the rank of the
           current worker. The session is also the interface through which an individual
           Trainable can interact with the Tune experiment as a whole. This includes uses
           such as reporting an individual trial’s metrics, saving/loading checkpoints,
           and retrieving the corresponding dataset shards for each Train worker.
 
         - A Ray cluster: in some cases the session also means a :term:`Ray Cluster`.
-          For example logs of a Ray cluster are stored under ``session_xxx/logs/``.
+          For example, logs of a Ray cluster are stored under ``session_xxx/logs/``.
 
     Spillback
         A task caller schedules a task by first sending a resource request to the
