@@ -4,8 +4,6 @@ import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import numpy as np
-from typing import Union
-import pandas as pd
 import gymnasium as gym
 import torch
 import seaborn as sns 
@@ -13,18 +11,11 @@ from pathlib import Path
 import json
 
 
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
 from ray.rllib.models.catalog import MODEL_DEFAULTS
-from ray.rllib.core.learner.learner import FrameworkHyperparameters, LearnerHyperparameters
-from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-from ray.rllib.core.testing.utils import get_module_spec
-from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
-from ray.rllib.utils.test_utils import check
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
@@ -35,11 +26,11 @@ sns.set_style("darkgrid")
 def _parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-size", "-bs", type=int, default=1, help="Batch size")
-    parser.add_argument("--num-iters", "-n", type=int, default=600, help="Number of iterations")
+    parser.add_argument("--num-iters", "-n", type=int, default=5000, help="Number of iterations")
     parser.add_argument("--backend", type=str, default="cudagraphs", help="torch dynamo backend")
     parser.add_argument("--mode", type=str, default=None, help="torch dynamo mode")
     parser.add_argument("--output", type=str, default="./outputs", help="output directory")
-    parser.add_argument("--burn-in", type=int, default=100, help="burn-in iterations")
+    parser.add_argument("--burn-in", type=int, default=500, help="burn-in iterations")
 
     return parser.parse_args()
 
