@@ -24,4 +24,10 @@ class Read(AbstractMap):
         self._read_tasks = read_tasks
 
     def fusable(self) -> bool:
+        """Whether this should be fused with downstream operators.
+
+        When we are outputting multiple blocks per read task, we should disable fusion,
+        as fusion would prevent the blocks from being dispatched to multiple processes
+        for parallel processing in downstream operators.
+        """
         return self._estimated_num_blocks == len(self._read_tasks)

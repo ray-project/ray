@@ -30,6 +30,10 @@ logger = logging.getLogger(__name__)
 PIECES_PER_META_FETCH = 6
 PARALLELIZE_META_FETCH_THRESHOLD = 24
 
+# Max size in bytes of batches to read from parquet. Setting this too large will
+# interfere with block splitting.
+MAX_PARQUET_READER_ROW_BATCH_SIZE = 32 * 1024 * 1024
+
 # The number of rows to read per batch. This is sized to generate 10MiB batches
 # for rows about 1KiB in size.
 PARQUET_READER_ROW_BATCH_SIZE = 100000
@@ -290,9 +294,15 @@ class _ParquetDatasourceReader(Reader):
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
 
             if meta.num_rows is not None and meta.size_bytes is not None:
+                # Make sure the batches read are small enough to enable yielding of
+                # output blocks incrementally during the read.
                 row_size = meta.size_bytes / meta.num_rows
-                default_read_batch_size = min(
-                    PARQUET_READER_ROW_BATCH_SIZE, 64e6 / row_size
+                default_read_batch_size = max(
+                    1,
+                    min(
+                        PARQUET_READER_ROW_BATCH_SIZE,
+                        MAX_PARQUET_READER_ROW_BATCH_SIZE // row_size,
+                    ),
                 )
             else:
                 default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
