@@ -2621,7 +2621,7 @@ class Dataset:
         self,
         path: str,
         *,
-        column: str,
+        column: Optional[str] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
@@ -2659,6 +2659,12 @@ class Dataset:
                 write each dataset block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
+        if column is None:
+            raise StrictModeError(
+                "In Ray 2.5, the column must be specified "
+                "(e.g., `write_numpy(column='data')`)."
+            )
+
         self.write_datasource(
             NumpyDatasource(),
             ray_remote_args=ray_remote_args,
