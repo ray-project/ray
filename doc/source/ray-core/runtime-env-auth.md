@@ -1,5 +1,4 @@
-.. _runtime-env-auth:
-
+(runtime-env-auth)=
 # Authenticating Remote URIs in runtime_env
 
 This section helps you:
