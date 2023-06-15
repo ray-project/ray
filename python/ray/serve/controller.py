@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import pickle
+import sys
 import time
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
@@ -840,7 +841,19 @@ def deploy_serve_application(
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
+        old_paths = sys.path.copy()
+
+        # `ray/dashboard` took the import precedence and can collide user's modules.
+        # Dropping `ray/dashboard` from sys.path to avoid the import collision.
+        for path in old_paths:
+            if path.endswith("ray/dashboard"):
+                sys.path.remove(path)
+
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
+
+        # Restore sys.path with old paths.
+        sys.path = old_paths
+
         app = build(app, name)
 
         # Override options for each deployment listed in the config.
