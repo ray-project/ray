@@ -172,21 +172,15 @@ class ApplicationState:
 
     def apply_deployment_info(
         self, deployment_name: str, deployment_info: DeploymentInfo
-    ) -> bool:
-        """
-        Deploys a deployment in the application.
-
-        Returns: Whether the deployment is being updated.
-        """
+    ) -> None:
+        """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
         if route_prefix is not None and not route_prefix.startswith("/"):
             raise RayServeException(
                 f'Invalid route prefix "{route_prefix}", it must start with "/"'
             )
 
-        updating = self._deployment_state_manager.deploy(
-            deployment_name, deployment_info
-        )
+        self._deployment_state_manager.deploy(deployment_name, deployment_info)
 
         if deployment_info.route_prefix is not None:
             self._endpoint_state.update_endpoint(
@@ -195,8 +189,6 @@ class ApplicationState:
             )
         else:
             self._endpoint_state.delete_endpoint(deployment_name)
-
-        return updating
 
     def apply_deployment_args(self, deployment_params: List[Dict]) -> None:
         """Set the list of deployment infos in application target state.

@@ -246,6 +246,12 @@ class ServeControllerClient:
         while time.time() - start < timeout_s or timeout_s < 0:
 
             status_bytes = ray.get(self._controller.get_serve_status.remote(name))
+            if status_bytes is None:
+                raise RuntimeError(
+                    f"Waiting for application {name} to be RUNNING, "
+                    "but application doesn't exist."
+                )
+
             status = StatusOverview.from_proto(
                 StatusOverviewProto.FromString(status_bytes)
             )
@@ -329,8 +335,6 @@ class ServeControllerClient:
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
             self._wait_for_application_running(name, timeout_s=15)
-
-        if _blocking:
             for deployment in deployments:
                 deployment_name = deployment["name"]
                 tag = f"component=serve deployment={deployment_name}"
