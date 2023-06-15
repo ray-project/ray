@@ -567,10 +567,54 @@ class Quantized(Sampler):
 
 @PublicAPI
 def sample_from(func: Callable[[Dict], Any]):
-    """Specify that tune should sample configuration values from this function.
+    """Specify a custom function that determines what to sample.
+    This can be used to generate a sample conditioned on the resolved value of
+    another hyperparameter.
+
+    Example 1:
+        Define a custom sample function.
+
+        >>> from ray import tune
+        >>> import numpy as np
+        >>> param_space = {
+        ...     "a": tune.sample_from(lambda config: np.random.uniform(0, 1)),
+        ... }
+
+        In this example, ``a`` will resolve to a randomly sampled value between 0 and 1.
+
+    Example 2:
+        Pin one hyperparameter's value to another's sampled value.
+
+        >>> from ray import tune
+        >>> param_space = {
+        ...     "a": tune.grid_search([1, 2, 3]),
+        ...     "b": tune.sample_from(lambda config: config["a"]),
+        ... }
+
+        In this example, if ``TuneConfig(num_samples=1)``, then 3 total hyperparameter
+        configurations will be run (due to the grid search), and ``b`` will resolve to
+        the same value as ``a`` in each configuration:
+        ``{"a": 1, "b": 1}``, ``{"a": 2, "b": 2}``, etc.
+
+    Example 3:
+        Define a more advanced conditional hyperparameter.
+
+        >>> from ray import tune
+        >>> import numpy as np
+        >>> param_space = {
+        ...     "low": tune.grid_search([0, 0.1, 0.2]),
+        ...     "high": tune.choice([0.8, 0.9, 1.0]),
+        ...     "a": tune.sample_from(
+        ...         lambda config: np.random.uniform(config["low"], config["high"])
+        ...     ),
+        ... }
+
+        Similar to the previous example, this search space will produce 3 samples,
+        where ``a`` is generated based on the sampled ``low`` and ``high`` values.
 
     Arguments:
-        func: An callable function to draw a sample from.
+        func: An callable function that accepts a config dictionary and
+            returns the sampled value.
     """
     return Function(func)
 
