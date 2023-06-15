@@ -9,6 +9,7 @@ import torch
 import seaborn as sns 
 from pathlib import Path
 import json
+import tqdm
 
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
@@ -22,6 +23,9 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, timed
 
 sns.set_style("darkgrid")
+
+# This is needed for performance reasons under inductor backend
+torch.set_float32_matmul_precision('high')
 
 def _parse_args():
     parser = argparse.ArgumentParser()
@@ -100,7 +104,7 @@ def main(pargs):
     
     # Burn-in
     print("Burn-in...")
-    for _ in range(pargs.burn_in):
+    for _ in tqdm.tqdm(range(pargs.burn_in)):
         with torch.no_grad():
             eager_module.forward_exploration(batch)
             compiled_module.forward_exploration(batch)
@@ -109,7 +113,7 @@ def main(pargs):
     # Eager
     print("Eager...")
     eager_times = []
-    for _ in range(pargs.num_iters):
+    for _ in tqdm.tqdm(range(pargs.num_iters)):
         fn = lambda: eager_module.forward_exploration(batch)
         _, t = timed(fn)
         eager_times.append(t)
@@ -119,7 +123,7 @@ def main(pargs):
     # Compiled
     print("Compiled...")
     compiled_times = []
-    for _ in range(pargs.num_iters):
+    for _ in tqdm.tqdm(range(pargs.num_iters)):
         fn = lambda: compiled_module.forward_exploration(batch)
         _, t = timed(fn)
         compiled_times.append(t)  
