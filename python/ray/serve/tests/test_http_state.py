@@ -463,7 +463,7 @@ def test_http_proxy_state_check_health_always_timeout_timtout_eq_period():
 
 @patch("ray.serve._private.http_state.DEFAULT_HEALTH_CHECK_TIMEOUT_S", 1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_check_health_always_timeout_timtout_greater_than_period():
+def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_period():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
     when the ready call always timed out and health check timeout greater than period.
 
