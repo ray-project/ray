@@ -67,6 +67,7 @@ def main(pargs):
     exp_name_pargs = {
         "bs": pargs.batch_size,
         "backend": pargs.backend,
+        "mode": pargs.mode
     }
     suffix_list = [f"{k}-{v}" for k, v in exp_name_pargs.items()]
     suffix = "-".join(suffix_list)

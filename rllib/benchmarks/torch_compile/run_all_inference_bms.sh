@@ -2,6 +2,7 @@
 
 # Set the default backend
 backend="cudagraphs"
+mode="default"
 
 # Check if the --backend and --mode options are provided
 while [[ $# -gt 0 ]]
