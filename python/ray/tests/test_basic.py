@@ -1116,7 +1116,7 @@ def test_import_ray_does_not_import_grpc():
 
 # https://github.com/ray-project/ray/issues/36431
 def test_temp_dir_must_be_absolute(shutdown_only):
-    # This test fails with the flag set to false.
+    # This test fails with a relative path _temp_dir.
     with pytest.raises(ValueError):
         ray.init(_temp_dir='relative_path')
 
