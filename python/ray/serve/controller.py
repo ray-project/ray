@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import pickle
-import sys
 import time
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
@@ -842,7 +841,7 @@ def deploy_serve_application(
 
         # Import and build the application.
         app = call_app_builder_with_args_if_necessary(
-            import_attr(full_path=import_path, skip_dashboard=True),
+            import_attr(full_path=import_path),
             args,
         )
         app = build(app, name)

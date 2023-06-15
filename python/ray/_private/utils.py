@@ -1161,13 +1161,16 @@ def deprecated(
     return deprecated_wrapper
 
 
-def import_attr(full_path: str, skip_dashboard: bool = False):
+def import_attr(full_path: str):
     """Given a full import path to a module attr, return the imported attr.
 
     For example, the following are equivalent:
         MyClass = import_attr("module.submodule:MyClass")
         MyClass = import_attr("module.submodule.MyClass")
         from module.submodule import MyClass
+
+    Another side effect on this is it will drop the `ray/dashboard` from `sys.path` so
+    the import won't collide with user's modules.
 
     Returns:
         Imported attr
@@ -1187,12 +1190,11 @@ def import_attr(full_path: str, skip_dashboard: bool = False):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
-    if skip_dashboard:
-        # `ray/dashboard` took the import precedence and can collide user's modules.
-        # Reorder `ray/dashboard` to the back of sys.path to avoid the import collision.
-        for path in sys.path:
-            if path.endswith("ray/dashboard"):
-                sys.path.remove(path)
+    # `ray/dashboard` took the import precedence and can collide user's modules.
+    # Drop `ray/dashboard` in sys.path to avoid the import collision.
+    for path in sys.path:
+        if path.endswith("ray/dashboard"):
+            sys.path.remove(path)
 
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
