@@ -17,7 +17,7 @@ from supersuit.generic_wrappers import resize_v1
 import tensorflow as tf
 import tree  # pip install dm_tree
 
-from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
@@ -34,7 +34,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
     def __init__(
         self,
-        config: DreamerV3Config,
+        config: AlgorithmConfig,
         **kwargs,
     ):
         """Initializes a DreamerV3EnvRunner instance.
