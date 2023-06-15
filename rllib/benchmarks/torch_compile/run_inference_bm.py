@@ -89,6 +89,7 @@ def main(pargs):
     eager_module = spec.build().cuda()
     compiled_module = spec.build().cuda()
     compile_config = TorchCompileConfig(
+        compile_forward_exploration=True,
         torch_dynamo_backend=pargs.backend,
         torch_dynamo_mode=pargs.mode
     )
@@ -122,6 +123,7 @@ def main(pargs):
         fn = lambda: compiled_module.forward_exploration(batch)
         _, t = timed(fn)
         compiled_times.append(t)  
+        pass
     compiled_throughputs = 1 / np.array(compiled_times)  
     print("Compiled done.")
 
