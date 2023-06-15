@@ -176,7 +176,9 @@ class TorchPolicyV2(Policy):
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(tree.flatten(self._state_inputs)) > 0
         if self.config.get("_enable_rl_module_api", False):
-            self.view_requirements = self.model.get_view_requirements()
+            self.view_requirements = self.model.update_default_view_requirements(
+                self.view_requirements
+            )
         else:
             # Auto-update model's inference view requirements, if recurrent.
             self._update_model_view_requirements_from_init_state()

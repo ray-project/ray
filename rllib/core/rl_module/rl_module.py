@@ -20,6 +20,7 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.typing import ViewRequirementsDict
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
@@ -411,19 +412,32 @@ class RLModule(abc.ABC):
         else:
             return True
 
-    def get_view_requirements(self) -> Mapping[str, ViewRequirement]:
-        """Returns the view requirements of the module."""
-        vr = self.__get_default_view_requirements()
+    def update_default_view_requirements(
+        self, defaults: ViewRequirementsDict
+    ) -> Mapping[str, ViewRequirement]:
+        """Updates default view requirements with the view requirements of this module.
 
+        This method should be called with view requirements that already contain
+        information such as the given observation space, action space, etc.
+        This method may then add additional shifts or state columns to the view
+        requirements.
+
+        Args:
+            defaults: The default view requirements to update.
+
+        Returns:
+            The updated view requirements.
+        """
         # get the initial state in numpy format, infer the state from it, and create
-        # an apporpriate view requirement.
+        # appropriate view requirements.
         init_state = convert_to_numpy(self.get_initial_state())
+
         if init_state:
             init_state = tree.map_structure(lambda x: x[None], init_state)
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
             max_seq_len = self.config.model_config_dict["max_seq_len"]
             assert max_seq_len is not None
-            vr[STATE_IN] = ViewRequirement(
+            defaults[STATE_IN] = ViewRequirement(
                 data_col=STATE_OUT,
                 shift=-1,
                 used_for_compute_actions=True,
@@ -433,7 +447,7 @@ class RLModule(abc.ABC):
             )
 
             if self.config.model_config_dict["lstm_use_prev_action"]:
-                vr[SampleBatch.ACTIONS] = ViewRequirement(
+                defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
                     data_col=SampleBatch.ACTIONS,
                     shift=-1,
                     used_for_compute_actions=True,
@@ -441,20 +455,20 @@ class RLModule(abc.ABC):
                 )
 
             if self.config.model_config_dict["lstm_use_prev_reward"]:
-                vr[SampleBatch.PREV_REWARDS] = ViewRequirement(
+                defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
                     data_col=SampleBatch.REWARDS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
                 )
 
-            vr[STATE_OUT] = ViewRequirement(
+            defaults[STATE_OUT] = ViewRequirement(
                 used_for_compute_actions=True,
                 used_for_training=True,
                 space=space,
             )
 
-        return vr
+        return defaults
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:
@@ -743,27 +757,3 @@ class RLModule(abc.ABC):
             The underlying module.
         """
         return self
-
-    def __get_default_view_requirements(self):
-        obs_space = self.config.observation_space
-        act_space = self.config.action_space
-        return {
-            SampleBatch.OBS: ViewRequirement(space=obs_space),
-            SampleBatch.NEXT_OBS: ViewRequirement(
-                data_col=SampleBatch.OBS,
-                shift=1,
-                space=obs_space,
-                used_for_compute_actions=False,
-            ),
-            SampleBatch.ACTIONS: ViewRequirement(
-                space=act_space, used_for_compute_actions=False
-            ),
-            SampleBatch.REWARDS: ViewRequirement(),
-            SampleBatch.TERMINATEDS: ViewRequirement(),
-            SampleBatch.TRUNCATEDS: ViewRequirement(),
-            SampleBatch.INFOS: ViewRequirement(used_for_compute_actions=False),
-            SampleBatch.T: ViewRequirement(),
-            SampleBatch.EPS_ID: ViewRequirement(),
-            SampleBatch.UNROLL_ID: ViewRequirement(),
-            SampleBatch.AGENT_INDEX: ViewRequirement(),
-        }

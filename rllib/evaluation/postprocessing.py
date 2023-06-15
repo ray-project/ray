@@ -203,7 +203,7 @@ def compute_gae_for_sample_batch(
         # Create an input dict according to the Model's requirements.
         if policy.config.get("_enable_rl_module_api"):
             input_dict = sample_batch.get_single_step_input_dict(
-                policy.model.get_view_requirements(), index="last"
+                policy.view_requirements, index="last"
             )
             # Note: RLModules don't need seq_lens but get_single_step_input_dict adds
             # them.
