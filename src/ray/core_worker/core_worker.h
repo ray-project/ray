@@ -1517,12 +1517,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// Request the spillage of an object that we own from the primary that hosts
-  /// the primary copy to spill.
-  void SpillOwnedObject(const ObjectID &object_id,
-                        const std::shared_ptr<RayObject> &obj,
-                        std::function<void()> callback);
-
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
