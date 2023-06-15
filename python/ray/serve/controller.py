@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import pickle
-import sys
 import time
 from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union

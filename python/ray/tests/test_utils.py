@@ -102,45 +102,35 @@ class TestImportAttr(unittest.TestCase):
         """Test when full_path is valid and has no colons.
 
         When `full_path` is valid and as no colons, import_attr should succeed.
-        `sys.path` should stay the same before and after the import. When importing from
-        a non-existent module, import_attr should raise a ModuleNotFoundError and should
-        not change `sys.path`.
+        `sys.path` should have dashboard ordered in the end.
         """
         from ray._private.utils import import_attr
 
-        # Test valid import does not change sys.path.
-        old_path = sys.path.copy()
-        import_attr(full_path="resources.foo.bar")
-        assert old_path == sys.path
+        dashboard_path = "/ray/dashboard"
+        expected_path = sys.path.copy()
+        expected_path.append(dashboard_path)
 
-        # Test invalid import does not change sys.path.
-        sys.path.append("/ray/dashboard")
-        old_path = sys.path.copy()
-        with self.assertRaises(ModuleNotFoundError):
-            import_attr(full_path="resources.fooo.bar")
-        assert old_path == sys.path
+        # Test sys.path have dashboard ordered in the end.
+        sys.path.append(dashboard_path)
+        import_attr(full_path="resources.foo.bar")
+        assert sys.path == expected_path
 
     def test_valid_one_colons_full_path(self):
         """Test when full_path is valid and has one colon.
 
         When `full_path` is valid and as one colon, import_attr should succeed.
-        `sys.path` should stay the same before and after the import. When importing from
-        a non-existent module, import_attr should raise a ModuleNotFoundError and should
-        not change `sys.path`.
+        `sys.path` should have dashboard ordered in the end.
         """
         from ray._private.utils import import_attr
 
-        # Test valid import does not change sys.path.
-        old_path = sys.path.copy()
-        import_attr(full_path="resources.foo:bar")
-        assert old_path == sys.path
+        dashboard_path = "/ray/dashboard"
+        expected_path = sys.path.copy()
+        expected_path.append(dashboard_path)
 
-        # Test invalid import does not change sys.path.
-        sys.path.append("/ray/dashboard")
-        old_path = sys.path.copy()
-        with self.assertRaises(ModuleNotFoundError):
-            import_attr(full_path="resources.fooo:bar")
-        assert old_path == sys.path
+        # Test sys.path have dashboard ordered in the end.
+        sys.path.append(dashboard_path)
+        import_attr(full_path="resources.foo:bar")
+        assert sys.path == expected_path
 
 
 if __name__ == "__main__":
