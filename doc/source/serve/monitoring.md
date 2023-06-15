@@ -1,6 +1,6 @@
 (serve-monitoring)=
 
-# Monitoring Ray Serve
+# Monitor Your Application
 
 This section helps you debug and monitor your Serve applications by:
 
@@ -9,7 +9,7 @@ This section helps you debug and monitor your Serve applications by:
 * inspecting built-in Ray Serve metrics
 * exporting metrics into Arize platform
 
-## Ray dashboard
+## Ray Dashboard
 
 You can use the Ray dashboard to get a high-level overview of your Ray cluster and Ray Serve application's states.
 This includes details such as:
@@ -60,7 +60,7 @@ For example, let's run a basic Serve application and view the logs that it emits
 
 First, let's create a simple deployment that logs a custom log message when it's queried:
 
-```{literalinclude} ../doc_code/monitoring/monitoring.py
+```{literalinclude} doc_code/monitoring/monitoring.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -185,7 +185,7 @@ Once again, you may need to replace `./promtail-darwin-amd64` with your Promtail
 
 Run the following Python script to deploy a basic Serve deployment with a Serve deployment logger and to make some requests:
 
-```{literalinclude} ../doc_code/monitoring/deployment_logger.py
+```{literalinclude} doc_code/monitoring/deployment_logger.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -350,7 +350,7 @@ ray start --head --metrics-export-port=8080
 
 Then run the following script:
 
-```{literalinclude} ../doc_code/monitoring/metrics_snippet.py
+```{literalinclude} doc_code/monitoring/metrics_snippet.py
 :start-after: __start__
 :end-before: __end__
 :language: python
@@ -374,7 +374,7 @@ which indicates that the average processing latency is just over one second, as 
 You can even define a [custom metric](application-level-metrics) for your deployment and tag it with deployment or replica metadata.
 Here's an example:
 
-```{literalinclude} ../doc_code/monitoring/custom_metric_snippet.py
+```{literalinclude} doc_code/monitoring/custom_metric_snippet.py
 :start-after: __start__
 :end-before: __end__
 ```

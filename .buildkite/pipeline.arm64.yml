@@ -56,7 +56,7 @@
 #    - if [ "$BUILDKITE_BRANCH" == "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
 
 
-- label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] - cpu/cu112"
+- label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] - cpu/cu115/cu116"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -64,14 +64,14 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cpu -T cu112 --build-type BUILDKITE --build-base --suffix aarch64
+    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cpu -T cu115 -T cu116 --build-type BUILDKITE --build-base --suffix aarch64
   matrix:
     - py37
     - py38
     - py39
     - py310
 
-- label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] cu113/cu116/cu118"
+- label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] cu117/cu118"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
   instance_size: arm64-medium
   commands:
@@ -79,7 +79,7 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     - if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then python .buildkite/copy_files.py --destination docker_login; fi
-    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu113 -T cu116 -T cu118 --build-type BUILDKITE --build-base --suffix aarch64
+    - python ./ci/build/build-docker-images.py --py-versions {{matrix}} -T cu117 -T cu118 --build-type BUILDKITE --build-base --suffix aarch64
   matrix:
     - py37
     - py38
