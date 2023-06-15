@@ -459,7 +459,9 @@ class DreamerV3(Algorithm):
         # To avoid possibly expensive weight synching step.
         if self.config.share_module_between_env_runner_and_learner:
             assert self.workers.local_worker().module is None
-            self.workers.local_worker().module = self.learner_group._learner.module
+            self.workers.local_worker().module = (
+                self.learner_group._learner.module[DEFAULT_POLICY_ID]
+            )
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
