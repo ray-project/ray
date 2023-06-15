@@ -2102,9 +2102,6 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
-        # Only start import thread after job_config is initialized
-        ray._private.worker.start_import_thread()
-
         job_config_initialized = True
 
 
@@ -2569,46 +2566,6 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
             "actor_name": log_batch.actor_name().decode(),
             "task_name": log_batch.task_name().decode(),
         }
-
-
-cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
-    """Subscriber to function（and actor class) dependency keys. Thread safe.
-
-    Usage example:
-        subscriber = GcsFunctionKeySubscriber()
-        # Subscribe to the function key channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            key = subscriber.poll()
-            ......
-        # Unsubscribe from the function key channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address, worker_id=None):
-        self._construct(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
-
-    def poll(self, timeout=None):
-        """Polls for new function key messages.
-
-        Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
-        """
-        cdef:
-            CPythonFunction python_function
-            c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-
-        with nogil:
-            check_status(self.inner.get().PollFunctionKey(
-                &key_id, timeout_ms, &python_function))
-
-        if python_function.key() == b"":
-            return None
-        else:
-            return python_function.key()
 
 
 # This class should only be used for tests
