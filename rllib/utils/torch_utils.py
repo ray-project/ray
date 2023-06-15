@@ -14,6 +14,7 @@ import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -305,12 +306,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
-    if y_var == 0.0:
-        # Model case in which y does not vary with explained variance of -1
-        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var))[0]
+    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
 
 
 @PublicAPI
@@ -641,11 +639,13 @@ def get_fold_unfold_batch_and_time(b_dim: int, t_dim: int):
         if item is None:
             return item
         item = torch.as_tensor(item)
-        other_dims = list(item.size()[1:])
-        assert other_dims[0] % (b_dim * t_dim) == 0, (
-            "The first dimension of the tensor must be a multiple of the "
-            "batch and time dimensions. Got {} and {}.".format(
-                other_dims[0], (b_dim, t_dim)
+        size = list(item.size())
+        current_b_dim = size[0]
+        other_dims = size[1:]
+        assert current_b_dim == b_dim * t_dim, (
+            "The first dimension of the tensor must be equal to the product of "
+            "the desired batch and time dimensions. Got {} and {}.".format(
+                current_b_dim, b_dim * t_dim
             )
         )
         return item.reshape([b_dim, t_dim] + other_dims)

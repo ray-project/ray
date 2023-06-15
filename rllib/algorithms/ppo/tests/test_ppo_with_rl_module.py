@@ -35,7 +35,7 @@ def get_model_config(framework, lstm=False):
             max_seq_len=20,
         )
         if lstm
-        else {}
+        else {"use_lstm": False}
     )
 
 
@@ -106,8 +106,7 @@ class TestPPO(unittest.TestCase):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
-                # TODO (Kourosh, Avnishn): for now just do lstm=False
-                for lstm in [True, False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 

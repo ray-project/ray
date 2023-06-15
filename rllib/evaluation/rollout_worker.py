@@ -1,13 +1,10 @@
-from collections import defaultdict
 import copy
-from gymnasium.spaces import Discrete, MultiDiscrete, Space
 import importlib.util
 import logging
-import numpy as np
 import os
 import platform
 import threading
-import tree  # pip install dm_tree
+from collections import defaultdict
 from types import FunctionType
 from typing import (
     TYPE_CHECKING,
@@ -22,6 +19,10 @@ from typing import (
     Type,
     Union,
 )
+
+import numpy as np
+import tree  # pip install dm_tree
+from gymnasium.spaces import Discrete, MultiDiscrete, Space
 
 import ray
 from ray import ObjectRef
@@ -56,14 +57,12 @@ from ray.rllib.offline import (
 )
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.policy_map import PolicyMap
-from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
-from ray.rllib.utils.filter import NoFilter
-from ray.rllib.utils.from_config import from_config
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     MultiAgentBatch,
     concat_samples,
 )
+from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 from ray.rllib.policy.sample_batch_v2 import concat_samples as concat_samples_v2
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
@@ -77,7 +76,9 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
+from ray.rllib.utils.filter import NoFilter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework, validate_policy_id
 from ray.rllib.utils.sgd import do_minibatch_sgd
 from ray.rllib.utils.tf_run_builder import _TFRunBuilder
@@ -98,11 +99,10 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
     T,
 )
+from ray.tune.registry import registry_contains_input, registry_get_input
 from ray.util.annotations import PublicAPI
 from ray.util.debug import disable_log_once_globally, enable_periodic_logging, log_once
 from ray.util.iter import ParallelIteratorWorker
-from ray.tune.registry import registry_contains_input, registry_get_input
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -748,6 +748,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.config.fake_sampler:
             self.last_batch = batch
+
         return batch
 
     @ray.method(num_returns=2)

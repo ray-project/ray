@@ -9,6 +9,7 @@ from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
 from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
 from ray.rllib.evaluation.collectors.simple_list_collector import _PolicyCollectorGroup
+from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models.preprocessors import Preprocessor
@@ -173,7 +174,27 @@ def _build_multi_agent_batch(
                 )
             )
 
-        ma_batch[pid] = collector.build()
+        batch = collector.build()
+
+        policy = collector.policy
+
+        if policy.config.get("_enable_rl_module_api", False):
+            # Before we send the collected batch back for training, we may need
+            # to add a time dimension for the RLModule.
+            seq_lens = batch.get(SampleBatch.SEQ_LENS)
+            pad_batch_to_sequences_of_same_size(
+                batch=batch,
+                max_seq_len=policy.max_seq_len,
+                shuffle=False,
+                batch_divisibility_req=policy.batch_divisibility_req,
+                view_requirements=policy.view_requirements,
+                _enable_rl_module_api=True,
+            )
+            batch = policy.maybe_add_time_dimension(
+                batch, seq_lens=seq_lens, framework="np"
+            )
+
+        ma_batch[pid] = batch
 
     # Create the multi agent batch.
     return MultiAgentBatch(policy_batches=ma_batch, env_steps=batch_builder.env_steps)

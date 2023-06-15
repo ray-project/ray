@@ -1190,6 +1190,10 @@ class TorchPolicyV2(Policy):
             input_dict = self.maybe_add_time_dimension(input_dict, seq_lens=seq_lens)
             input_dict = convert_to_torch_tensor(input_dict, device=self.device)
 
+            # Batches going into the RL Module should not have seq_lens.
+            if SampleBatch.SEQ_LENS in input_dict:
+                del input_dict[SampleBatch.SEQ_LENS]
+
             if explore:
                 action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)

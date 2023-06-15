@@ -254,7 +254,7 @@ class SampleBatch(dict):
             # TODO: Drop support for lists and Numbers as values.
             # Convert lists of int|float into numpy arrays make sure all data
             # has same length.
-            if isinstance(v, (Number, list)):
+            if isinstance(v, (Number, list)) and not k == SampleBatch.INFOS:
                 self[k] = np.array(v)
 
         self.count = attempt_count_timesteps(self)

@@ -257,7 +257,7 @@ class SampleBatchV2(SampleBatch):
             # TODO: Drop support for lists and Numbers as values.
             # Convert lists of int|float into numpy arrays make sure all data
             # has same length.
-            if isinstance(v, (Number, list)):
+            if isinstance(v, (Number, list)) and not k == SampleBatch.INFOS:
                 self[k] = np.array(v)
 
         self.count = attempt_count_timesteps(self)
@@ -1209,6 +1209,32 @@ class SampleBatchV2(SampleBatch):
         return SampleBatchV2(input_dict, seq_lens=np.array([1], dtype=np.int32))
 
 
+def _concat_values(*values, time_major=None) -> TensorType:
+    """Concatenates a list of values.
+
+    Args:
+        values: The values to concatenate.
+        time_major: Whether to concatenate along the first axis
+            (time_major=False) or the second axis (time_major=True).
+    """
+    if torch and torch.is_tensor(values[0]):
+        return torch.cat(values, dim=1 if time_major else 0)
+    elif isinstance(values[0], np.ndarray):
+        return np.concatenate(values, axis=1 if time_major else 0)
+    elif tf and tf.is_tensor(values[0]):
+        return tf.concat(values, axis=1 if time_major else 0)
+    elif isinstance(values[0], list):
+        concatenated_list = []
+        for sublist in values:
+            concatenated_list.extend(sublist)
+        return concatenated_list
+    else:
+        raise ValueError(
+            f"Unsupported type for concatenation: {type(values[0])} "
+            f"first element: {values[0]}"
+        )
+
+
 @PublicAPI
 def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     """Concatenates a list of  SampleBatches or MultiAgentBatches.
@@ -1303,8 +1329,9 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
     for k in concated_samples[0].keys():
         try:
             if k == "infos":
-                concatd_data[k] = concat_aligned(
-                    [s[k] for s in concated_samples], time_major=time_major
+                concatd_data[k] = _concat_values(
+                    *[s[k] for s in concated_samples],
+                    time_major=time_major,
                 )
             else:
                 concatd_data[k] = tree.map_structure(

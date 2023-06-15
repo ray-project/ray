@@ -1513,7 +1513,7 @@ class Policy(metaclass=ABCMeta):
                 self.stats_fn(train_batch)
         else:
             # This is not needed to run a training with the Learner API, but useful if
-            # we want to create a batche of data for training from view requirements.
+            # we want to create a batch of data for training from view requirements.
             for key in set(postprocessed_batch.keys()).difference(
                 set(new_batch.keys())
             ):
@@ -1611,13 +1611,18 @@ class Policy(metaclass=ABCMeta):
 
     @ExperimentalAPI
     def maybe_add_time_dimension(
-        self, input_dict: Dict[str, TensorType], seq_lens: TensorType
+        self,
+        input_dict: Dict[str, TensorType],
+        seq_lens: TensorType,
+        framework: str = None,
     ):
         """Adds a time dimension if use_lstm is True in the model config.
 
         Args:
             input_dict: The input dict.
             seq_lens: The sequence lengths.
+            framework: The framework to use for adding the time dimensions.
+                If None, will default to the framework of the policy.
 
         Returns:
             The prepared input dict.
@@ -1631,13 +1636,15 @@ class Policy(metaclass=ABCMeta):
                 inputs = add_time_dimension(
                     inputs,
                     seq_lens=seq_lens,
-                    framework=self.model.framework,
+                    framework=framework or self.model.framework,
                     time_major=self.config.get("model", {}).get("_time_major", False),
                 )
                 return inputs
 
             for k, v in input_dict.items():
-                if k not in (STATE_IN, STATE_OUT):
+                if k == SampleBatch.INFOS:
+                    ret[k] = _add_time_dimension(v)
+                elif k not in (STATE_IN, STATE_OUT, SampleBatch.SEQ_LENS):
                     ret[k] = tree.map_structure(_add_time_dimension, v)
                 else:
                     # state in already has time dimension.

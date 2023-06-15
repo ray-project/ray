@@ -148,7 +148,7 @@ def pad_batch_to_sequences_of_same_size(
         elif (
             not feature_keys
             and not k.startswith("state_out")
-            and k not in [SampleBatch.INFOS, SampleBatch.SEQ_LENS]
+            and k not in [SampleBatch.SEQ_LENS]
         ):
             feature_keys_.append(k)
     feature_sequences, initial_states, seq_lens = chop_into_sequences(
@@ -231,8 +231,7 @@ def add_time_dimension(
             axis=0,
         )
         return tf.reshape(padded_inputs, new_shape)
-    else:
-        assert framework == "torch", "`framework` must be either tf or torch!"
+    elif framework == "torch":
         padded_inputs = torch.as_tensor(padded_inputs)
         padded_batch_size = padded_inputs.shape[0]
 
@@ -241,6 +240,21 @@ def add_time_dimension(
         time_size = padded_batch_size // new_batch_size
         batch_major_shape = (new_batch_size, time_size) + padded_inputs.shape[1:]
         padded_outputs = padded_inputs.view(batch_major_shape)
+
+        if time_major:
+            # Swap the batch and time dimensions
+            padded_outputs = padded_outputs.transpose(0, 1)
+        return padded_outputs
+    else:
+        assert framework == "np", "Unknown framework: {}".format(framework)
+        padded_inputs = np.asarray(padded_inputs)
+        padded_batch_size = padded_inputs.shape[0]
+
+        # Dynamically reshape the padded batch to introduce a time dimension.
+        new_batch_size = seq_lens.shape[0]
+        time_size = padded_batch_size // new_batch_size
+        batch_major_shape = (new_batch_size, time_size) + padded_inputs.shape[1:]
+        padded_outputs = padded_inputs.reshape(batch_major_shape)
 
         if time_major:
             # Swap the batch and time dimensions
@@ -351,7 +365,8 @@ def chop_into_sequences(
 
             length = len(seq_lens) * max_seq_len
             if f.dtype == object or f.dtype.type is np.str_:
-                f_pad = [None] * length
+                # This is the usual case for INFOS
+                f_pad = [{}] * length
             else:
                 # Make sure type doesn't change.
                 f_pad = np.zeros((length,) + np.shape(f)[1:], dtype=f.dtype)
