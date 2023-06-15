@@ -45,7 +45,8 @@ class DreamerV3EnvRunner(EnvRunner):
         super().__init__(config=config)
 
         # Create the gym.vector.Env object.
-        if self.config.env.startswith("ALE"):
+        # Atari env.
+        if self.config.is_atari:
             # [2]: "We down-scale the 84 × 84 grayscale images to 64 × 64 pixels so that
             # we can apply the convolutional architecture of DreamerV1."
             # ...
@@ -76,8 +77,8 @@ class DreamerV3EnvRunner(EnvRunner):
                     self.config.env_config, **{"render_mode": "rgb_array"}
                 ),
             )
-
-        elif self.config.env.startswith("DMC"):
+        # DeepMind Control.
+        elif self.config.env.startswith("DMC/"):
             parts = self.config.env.split("/")
             assert len(parts) == 3, (
                 "ERROR: DMC env must be formatted as 'DMC/[task]/[domain]', e.g. "
@@ -96,6 +97,7 @@ class DreamerV3EnvRunner(EnvRunner):
                 asynchronous=self.config.remote_worker_envs,
                 **dict(self.config.env_config),
             )
+        # All other (gym) envs.
         else:
             wrappers = [] if self.config.env != "FrozenLake-v1" else [OneHot]
             self.env = gym.vector.make(
