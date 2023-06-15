@@ -178,6 +178,12 @@ class HTTPProxy:
         self.self_actor_handle = ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
 
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+            logger.info(
+                "Experimental streaming feature flag enabled.",
+                extra={"log_to_stderr": False},
+            )
+
         def get_handle(name):
             return serve.context.get_global_client().get_handle(
                 name,
