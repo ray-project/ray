@@ -480,7 +480,7 @@ class DreamerV3EnvRunner(EnvRunner):
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
         if self.module is None:
-            assert not self.config.share_module_between_env_runner_and_learner
+            assert self.config.share_module_between_env_runner_and_learner
         else:
             self.module.set_state(weights[DEFAULT_POLICY_ID])
 
