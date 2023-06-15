@@ -1,23 +1,23 @@
 from ray.data.aggregate._aggregate import (
+    AbsMax,
     AggregateFn,
     Count,
-    Sum,
-    Min,
     Max,
     Mean,
-    Std,
-    AbsMax,
+    Min,
     Quantile,
+    Std,
+    Sum,
 )
 
 __all__ = [
+    "AbsMax",
     "AggregateFn",
     "Count",
-    "Sum",
-    "Min",
     "Max",
     "Mean",
-    "Std",
-    "AbsMax",
+    "Min",
     "Quantile",
+    "Std",
+    "Sum",
 ]
