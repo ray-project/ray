@@ -25,6 +25,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     Topology,
     TopologyResourceUsage,
     build_streaming_topology,
+    postprocess_completed_tasks,
     process_completed_tasks,
     select_operator_to_run,
 )
@@ -256,6 +257,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
+
+        postprocess_completed_tasks(topology)
 
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():

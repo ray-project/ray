@@ -122,6 +122,8 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
+        # Tracks whether each input op will no longer have input added to it.
+        self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
@@ -334,17 +336,22 @@ def process_completed_tasks(topology: Topology) -> None:
         while op.has_next():
             op_state.add_output(op.get_next())
 
+
+def postprocess_completed_tasks(topology: Topology) -> None:
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
         if op_state.inputs_done_called:
             continue
-        inputs_done = all(
-            [
-                dep.completed() and not topology[dep].outqueue
-                for dep in op.input_dependencies
-            ]
-        )
-        if inputs_done:
+        all_inputs_done = True
+        for idx, dep in enumerate(op.input_dependencies):
+            if dep.completed() and not topology[dep].outqueue:
+                if not op_state.input_done_called[idx]:
+                    op.input_done(idx)
+                    op_state.input_done_called[idx] = True
+            else:
+                all_inputs_done = False
+
+        if all_inputs_done:
             op.inputs_done()
             op_state.inputs_done_called = True
 

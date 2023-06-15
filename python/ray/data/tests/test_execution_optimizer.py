@@ -390,7 +390,6 @@ def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_ord
         read_parquet_op,
         read_range_op,
         read_json_op,
-        preserve_order=preserve_order,
     )
     plan = LogicalPlan(union_op)
     physical_op = planner.plan(plan).dag

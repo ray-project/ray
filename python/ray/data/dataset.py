@@ -1626,17 +1626,12 @@ class Dataset:
                 else:
                     assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
-                    ref_bundles = _block_list_to_bundles(bl, bl._owned_by_consumer)
                     op = datasets[idx]._plan._logical_plan.dag
-                    # op = InputData(ref_bundles)
                 blocks.extend(bs)
                 metadata.extend(ms)
                 ops_to_union.append(op)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
             logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
-            # correct output, but wrong plan
-            # ref_bundles = _block_list_to_bundles(blocklist, owned_by_consumer)
-            # logical_plan = LogicalPlan(InputData(ref_bundles))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []

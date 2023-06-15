@@ -55,38 +55,32 @@ class UnionOperator(NAryOperator):
         assert not self.completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
 
-        curr_input_op = self._input_dependencies[input_index]
         if not self._preserve_order:
             self._output_buffer.append(refs)
         else:
             if input_index == self._input_idx_to_output:
-                print(f"===> adding {input_index} to output")
                 self._output_buffer.append(refs)
-                if curr_input_op.completed():
-                    next_input_idx = input_index + 1
-                    print(f"===> input op {input_index} finished,")
-                    if next_input_idx < len(self._input_buffers):
-                        print(f"===>  moving into {next_input_idx}")
-                        self._output_buffer.extend(self._input_buffers[next_input_idx])
-                        self._input_buffers[next_input_idx].clear()
-                        self._input_idx_to_output += 1
             else:
-                print(f"===> adding at index {input_index}")
                 self._input_buffers[input_index].append(refs)
+
+    def input_done(self, input_index: int) -> None:
+        assert input_index == self._input_idx_to_output
+        next_input_idx = input_index + 1
+        if next_input_idx < len(self._input_buffers):
+            self._output_buffer.extend(self._input_buffers[next_input_idx])
+            self._input_buffers[next_input_idx].clear()
+            self._input_idx_to_output += 1
 
     def inputs_done(self) -> None:
         # Note that in the case where order is not preserved, all inputs
         # are directly added to the output buffer as soon as they are received,
-        # so there is no need to clear any intermediary buffers.
+        # so there is no need to check any intermediary buffers.
         if self._preserve_order:
-            # Add any remaining blocks from the final input dependency to the
-            # output buffer.
-            self._output_buffer.extend(self._input_buffers[self._input_idx_to_output])
-            self._input_buffers[self._input_idx_to_output].clear()
             for idx, input_buffer in enumerate(self._input_buffers):
-                assert (
-                    len(input_buffer) == 0
-                ), f"Input at index {idx} still has {len(input_buffer)} blocks remaining."
+                assert len(input_buffer) == 0, (
+                    f"Input at index {idx} still has "
+                    f"{len(input_buffer)} blocks remaining."
+                )
         super().inputs_done()
 
     def has_next(self) -> bool:

@@ -23,6 +23,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     TopologyResourceUsage,
     _execution_allowed,
     build_streaming_topology,
+    postprocess_completed_tasks,
     process_completed_tasks,
     select_operator_to_run,
 )
@@ -91,6 +92,7 @@ def test_process_completed_tasks():
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
     process_completed_tasks(topo)
+    postprocess_completed_tasks(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
@@ -101,6 +103,7 @@ def test_process_completed_tasks():
     o2.inputs_done = MagicMock()
     o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
+    postprocess_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
     o2.inputs_done.assert_not_called()
     o1.all_dependents_complete.assert_not_called()
@@ -113,6 +116,7 @@ def test_process_completed_tasks():
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo)
+    postprocess_completed_tasks(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
     o2.inputs_done.assert_called_once()
     o1.all_dependents_complete.assert_not_called()
@@ -121,6 +125,7 @@ def test_process_completed_tasks():
     o2.need_more_inputs = MagicMock(return_value=False)
     o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
+    postprocess_completed_tasks(topo)
     o1.all_dependents_complete.assert_called_once()
 
 
