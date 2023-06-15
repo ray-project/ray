@@ -53,13 +53,9 @@ AggType = TypeVar("AggType")
 
 STRICT_MODE_EXPLANATION = (
     colorama.Fore.YELLOW
-    + "Important: Ray Data requires schemas for all datasets in Ray 2.5. This means "
+    + "Important: Ray Data requires schemas for all datasets in Ray 2.5+. This means "
     "that standalone Python objects are no longer supported. In addition, the default "
-    "batch format is fixed to NumPy. To revert to legacy behavior temporarily, "
-    "set the "
-    "environment variable RAY_DATA_STRICT_MODE=0 on all cluster processes.\n\n"
-    "Learn more here: https://docs.ray.io/en/master/data/faq.html#"
-    "migrating-to-strict-mode" + colorama.Style.RESET_ALL
+    "batch format is fixed to NumPy."
 )
 
 
@@ -77,7 +73,6 @@ def _validate_key_fn(
     if schema is None:
         # Dataset is empty/cleared, validation not possible.
         return
-    ctx = ray.data.DataContext.get_current()
     is_simple_format = isinstance(schema, type)
     if isinstance(key, str):
         if is_simple_format:
@@ -90,22 +85,8 @@ def _validate_key_fn(
                 "The column '{}' does not exist in the "
                 "schema '{}'.".format(key, schema)
             )
-    elif ctx.strict_mode:
-        raise StrictModeError(f"In Ray 2.5, the key must be a string, was: {key}")
-    elif key is None:
-        if not is_simple_format:
-            raise ValueError(
-                "The `None` key '{}' requires dataset format to be "
-                "'simple'.".format(key)
-            )
-    elif callable(key):
-        if not is_simple_format:
-            raise ValueError(
-                "Callable key '{}' requires dataset format to be "
-                "'simple'".format(key)
-            )
     else:
-        raise TypeError("Invalid key type {} ({}).".format(key, type(key)))
+        raise StrictModeError(f"In Ray 2.5, the key must be a string, was: {key}")
 
 
 # Represents a batch of records to be stored in the Ray object store.
@@ -153,41 +134,31 @@ VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
 
 def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        if given_batch_format == "default":
-            given_batch_format = "numpy"
-        if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
-            raise StrictModeError(
-                f"The given batch format {given_batch_format} is not allowed "
-                f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
-            )
+    if given_batch_format == "default":
+        given_batch_format = "numpy"
+    if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
+        raise StrictModeError(
+            f"The given batch format {given_batch_format} is not allowed "
+            f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+        )
     return given_batch_format
 
 
 def _apply_strict_mode_batch_size(
     given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
 ) -> Optional[int]:
-    ctx = ray.data.DatasetContext.get_current()
-    if ctx.strict_mode:
-        if use_gpu and (not given_batch_size or given_batch_size == "default"):
-            raise StrictModeError(
-                "`batch_size` must be provided to `map_batches` when requesting GPUs. "
-                "The optimal batch size depends on the model, data, and GPU used. "
-                "It is recommended to use the largest batch size that doesn't result "
-                "in your GPU device running out of memory. You can view the GPU memory "
-                "usage via the Ray dashboard."
-            )
-        elif given_batch_size == "default":
-            return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
-        else:
-            return given_batch_size
-
+    if use_gpu and (not given_batch_size or given_batch_size == "default"):
+        raise StrictModeError(
+            "`batch_size` must be provided to `map_batches` when requesting GPUs. "
+            "The optimal batch size depends on the model, data, and GPU used. "
+            "It is recommended to use the largest batch size that doesn't result "
+            "in your GPU device running out of memory. You can view the GPU memory "
+            "usage via the Ray dashboard."
+        )
+    elif given_batch_size == "default":
+        return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
     else:
-        if given_batch_size == "default":
-            return ray.data.context.DEFAULT_BATCH_SIZE
-        else:
-            return given_batch_size
+        return given_batch_size
 
 
 @DeveloperAPI
@@ -416,18 +387,13 @@ class BlockAccessor:
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
+            raise StrictModeError(
+                f"Error validating {_truncated_repr(batch)}: "
+                "Standalone numpy arrays are not "
+                "allowed in Ray 2.5. Return a dict of field -> array, "
+                "e.g., `{'data': array}` instead of `array`."
+            )
 
-            ctx = ray.data.DataContext.get_current()
-            if ctx.strict_mode:
-                raise StrictModeError(
-                    f"Error validating {_truncated_repr(batch)}: "
-                    "Standalone numpy arrays are not "
-                    "allowed in Ray 2.5. Return a dict of field -> array, "
-                    "e.g., `{'data': array}` instead of `array`."
-                )
-
-            return ArrowBlockAccessor.numpy_to_block(batch)
         elif isinstance(batch, collections.abc.Mapping):
             import pyarrow as pa
 
@@ -463,18 +429,13 @@ class BlockAccessor:
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
-            from ray.data._internal.simple_block import SimpleBlockAccessor
-
-            ctx = ray.data.DataContext.get_current()
-            if ctx.strict_mode:
-                raise StrictModeError(
-                    f"Error validating {_truncated_repr(block)}: "
-                    "Standalone Python objects are not "
-                    "allowed in Ray 2.5. To use Python objects in a dataset, "
-                    "wrap them in a dict of numpy arrays, e.g., "
-                    "return `{'item': batch}` instead of just `batch`."
-                )
-            return SimpleBlockAccessor(block)
+            raise StrictModeError(
+                f"Error validating {_truncated_repr(block)}: "
+                "Standalone Python objects are not "
+                "allowed in Ray 2.5. To use Python objects in a dataset, "
+                "wrap them in a dict of numpy arrays, e.g., "
+                "return `{'item': batch}` instead of just `batch`."
+            )
         else:
             raise TypeError("Not a block type: {} ({})".format(block, type(block)))
 

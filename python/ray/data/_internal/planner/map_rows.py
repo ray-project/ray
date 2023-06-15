@@ -24,9 +24,7 @@ def generate_map_rows_fn() -> (
             block = BlockAccessor.for_block(block)
             for row in block.iter_rows(public_row_format=True):
                 item = row_fn(row)
-                if context.strict_mode and not isinstance(
-                    item, collections.abc.Mapping
-                ):
+                if not isinstance(item, collections.abc.Mapping):
                     raise StrictModeError(
                         f"Error validating {_truncated_repr(item)}: "
                         "Standalone Python objects are not "

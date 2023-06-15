@@ -51,7 +51,7 @@ def generate_map_batches_fn(
                     "`numpy.ndarray`, `list`, or `dict[str, numpy.ndarray]`."
                 )
 
-            if context.strict_mode and isinstance(batch, list):
+            if isinstance(batch, list):
                 raise StrictModeError(
                     f"Error validating {_truncated_repr(batch)}: "
                     "Returning a list of objects from `map_batches` is not "
