@@ -16,7 +16,6 @@ from typing import (
     Union,
 )
 
-import colorama
 import numpy as np
 
 import ray
@@ -52,8 +51,7 @@ KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
 STRICT_MODE_EXPLANATION = (
-    colorama.Fore.YELLOW
-    + "Important: Ray Data requires schemas for all datasets in Ray 2.5. This means "
+    "Important: Ray Data requires schemas for all datasets in Ray 2.5. This means "
     "that standalone Python objects are no longer supported. In addition, the default "
     "batch format is fixed to NumPy."
 )
