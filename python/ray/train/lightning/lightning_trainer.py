@@ -456,9 +456,10 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
-
-    # Change the working directory for all workers to the same directory
-    # This aligns with Lightning's settings and avoids inconsistency for checkpointing.
+    # Change the working directory for all workers to the same directory.
+    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+    # each worker will have a different log and checkpoint directory if they are
+    # using relative paths.
     working_dir = os.path.join(session.get_trial_dir(), "rank_all")
     os.makedirs(working_dir, exist_ok=True)
     os.chdir(working_dir)

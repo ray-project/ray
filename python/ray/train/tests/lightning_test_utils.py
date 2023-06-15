@@ -8,13 +8,13 @@ from ray.air import session
 
 
 class LinearModule(pl.LightningModule):
-    def __init__(self, input_dim, output_dim, strategy="ddp", restore_epoch=-1) -> None:
+    def __init__(self, input_dim, output_dim, strategy="ddp", fail_epoch=-1) -> None:
         super().__init__()
         self.linear = nn.Linear(input_dim, output_dim)
         self.loss = []
         self.strategy = strategy
         self.restored = session.get_checkpoint() is not None
-        self.restore_epoch = restore_epoch
+        self.fail_epoch = fail_epoch
 
     def forward(self, input):
         # Backwards compat for Ray data strict mode.
@@ -23,7 +23,7 @@ class LinearModule(pl.LightningModule):
         return self.linear(input)
 
     def training_step(self, batch):
-        if not self.restored and self.restore_epoch == self.current_epoch:
+        if not self.restored and self.fail_epoch == self.current_epoch:
             raise RuntimeError
 
         output = self.forward(batch)

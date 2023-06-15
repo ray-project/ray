@@ -470,9 +470,11 @@ class DataParallelTrainer(BaseTrainer):
                 )
                 # Multiple workers on the same node may delete this file at the
                 # same time. Return if the marker file has been deleted.
+                # TODO(ml-team): replace this try-except block with `missing_ok=True`
+                # after we completely drop py37 support.
                 try:
                     marker_file.unlink()
-                except Exception:
+                except FileNotFoundError:
                     return
 
         # Start the remote actors.

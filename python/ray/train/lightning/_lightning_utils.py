@@ -197,12 +197,15 @@ class RayModelCheckpoint(ModelCheckpoint):
         super().setup(trainer, pl_module, stage)
         self.is_checkpoint_step = False
 
-        # DDP, FSDP: Report full ckpt from world_rank_0 worker
-        # DeepSpeed: Report ckpt shards from local_rank_0 workers
         if isinstance(trainer.strategy, DeepSpeedStrategy):
+            # For DeepSpeed, each node has a unique set of param and optimizer states,
+            # so the local rank 0 workers report the checkpoint shards for all workers
+            # on their node.
             self.is_report_rank = session.get_local_rank() == 0
         else:
-            self.is_report_rank = trainer.global_rank == 0
+            # For DDP and FSDP, only the global rank 0 worker saves the full model.
+            # Therefore, it is the only one that needs to report checkpoints.
+            self.is_report_rank = session.get_world_rank() == 0
 
     def _session_report(self, trainer: "pl.Trainer", stage: str):
         """Report latest metrics dict and checkpoint to AIR training session.
@@ -228,13 +231,15 @@ class RayModelCheckpoint(ModelCheckpoint):
         # Create and report the latest checkpoint
         with tempfile.TemporaryDirectory() as tmpdir:
             src_model_path = os.path.expanduser(self.last_model_path)
-            dst_model_path = f"{tmpdir}/{MODEL_KEY}"
 
+            # Copy the lightning ckpt into a tmp directory
+            # - File ckpt:       last.ckpt   -> checkpoint_00000x/model
+            # - Directory ckpt:  last.ckpt/* -> checkpoint_00000x/*
             if self.is_report_rank:
                 if os.path.isdir(src_model_path):
-                    shutil.copytree(src_model_path, dst_model_path)
+                    shutil.copytree(src_model_path, tmpdir, dirs_exist_ok=True)
                 elif os.path.isfile(src_model_path):
-                    shutil.copy(src_model_path, dst_model_path)
+                    shutil.copy(src_model_path, os.path.join(tmpdir, MODEL_KEY))
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.

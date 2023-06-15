@@ -39,7 +39,7 @@ def test_deepspeed_stages(ray_start_6_cpus_4_gpus, tmpdir, stage, test_restore):
             input_dim=32,
             output_dim=4,
             strategy="deepspeed",
-            restore_epoch=3 if test_restore else -1,
+            fail_epoch=3 if test_restore else -1,
         )
         .trainer(max_epochs=num_epochs, accelerator="gpu")
         .strategy(name="deepspeed", stage=stage)
@@ -65,11 +65,8 @@ def test_deepspeed_stages(ray_start_6_cpus_4_gpus, tmpdir, stage, test_restore):
     )
 
     if test_restore:
-        # TODO(yunxuanx): Remove this after we determined the error behavior
-        try:
+        with pytest.raises(RuntimeError):
             trainer.fit()
-        except Exception:
-            pass
 
         # Check reloading deepspeed checkpoint and resume training
         trainer = LightningTrainer.restore(str(tmpdir / exp_name))
