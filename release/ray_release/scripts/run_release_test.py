@@ -167,6 +167,9 @@ def main(
             no_terminate=no_terminate,
         )
         return_code = result.return_code
+        from rich import print
+
+        print(result)
     except ReleaseTestError as e:
         logger.exception(e)
         return_code = e.exit_code.value
