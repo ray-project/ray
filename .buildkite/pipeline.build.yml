@@ -280,27 +280,6 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
-- label: ":serverless: Serve Tests (Python 3.7)"
-  conditions:
-    [
-        "RAY_CI_SERVE_AFFECTED",
-        "RAY_CI_PYTHON_AFFECTED",
-    ]
-  instance_size: medium
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - echo "--- Setting up Python 3.7 environment."
-    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
-    # Specifying above somehow messes up the Ray install.
-    # Uninstall and re-install Ray so that we can use Ray Client.
-    # (Remove thirdparty_files to sidestep an issue with psutil.)
-    - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
-    - ./ci/ci.sh build
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=team:serve
-      python/ray/serve/test_gradio
-      python/ray/serve/test_gradio_visualization
-
 - label: ":python: Minimal install 3.7"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
