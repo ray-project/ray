@@ -25,6 +25,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -51,6 +52,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._transform_fn = transform_fn
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_factory = None
+        self._remote_args_for_metrics = copy.deepcopy(self._ray_remote_args)
 
         # Bundles block references up to the min_rows_per_bundle target.
         self._block_ref_bundler = _BlockRefBundler(min_rows_per_bundle)
@@ -190,10 +192,32 @@ class MapOperator(OneToOneOperator, ABC):
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
 
-    def _get_runtime_ray_remote_args(self) -> Dict[str, Any]:
+    def _get_runtime_ray_remote_args(
+        self, input_bundle: Optional[RefBundle] = None
+    ) -> Dict[str, Any]:
+        ray_remote_args = copy.deepcopy(self._ray_remote_args)
+        # For tasks with small args, we will use SPREAD by default to optimize for
+        # compute load-balancing. For tasks with large args, we will use DEFAULT to
+        # allow the Ray locality scheduler a chance to optimize task placement.
+        if "scheduling_strategy" not in ray_remote_args:
+            ctx = DataContext.get_current()
+            if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
+                ray_remote_args[
+                    "scheduling_strategy"
+                ] = ctx.scheduling_strategy_large_args
+                # Takes precedence over small args case. This is to let users know
+                # when the large args case is being triggered.
+                self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+            else:
+                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+                # Only save to metrics if we haven't already done so.
+                if "scheduling_strategy" not in self._remote_args_for_metrics:
+                    self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        # This should take precedence over previously set scheduling strategy, as it
+        # implements actor-based locality overrides.
         if self._ray_remote_args_factory:
-            return self._ray_remote_args_factory(self._ray_remote_args)
-        return self._ray_remote_args
+            return self._ray_remote_args_factory(ray_remote_args)
+        return ray_remote_args
 
     @abstractmethod
     def _add_bundled_input(self, refs: RefBundle):
@@ -293,7 +317,11 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     def get_metrics(self) -> Dict[str, int]:
-        return self._metrics.to_metrics_dict()
+        sorted_ray_args = dict(sorted(self._remote_args_for_metrics.items()))
+        return dict(
+            self._metrics.to_metrics_dict(),
+            ray_remote_args=sorted_ray_args,
+        )
 
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}

@@ -9,7 +9,7 @@ prelude_commands: &prelude_commands |-
     if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then export BUILDKITE_GIT_REF=${BUILDKITE_COMMIT}; else export BUILDKITE_GIT_REF=refs/pull/${BUILDKITE_PULL_REQUEST}/head; fi
     git fetch -v --prune -- origin ${BUILDKITE_GIT_REF}
     git checkout -f ${BUILDKITE_COMMIT}
-    export PYTHON="3.7"
+    export PYTHON="3.8"
     export RAY_USE_RANDOM_PORTS="1"
     export RAY_DEFAULT_BUILD="1"
     export LC_ALL="en_US.UTF-8"
