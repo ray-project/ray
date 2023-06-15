@@ -108,7 +108,7 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                     f"{self._deployment_name} but none available.",
                     extra={"log_to_stderr": False},
                 )
-                # self._replicas_updated_event.clear()
+                self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
 
         if replica.is_cross_language:

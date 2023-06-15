@@ -208,6 +208,11 @@ def test_worker_replica_failure(serve_instance):
 
 
 def test_no_available_replicas_does_not_block_proxy(serve_instance):
+    """Test that handle blocking waiting for replicas doesn't block proxy.
+
+    This is essential so that other requests and health checks can pass while a
+    deployment is deploying/updating.
+    """
     signal_actor = SignalActor.remote()
 
     @serve.deployment
@@ -225,19 +230,15 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         print("MAKE BLOCKED")
         r = requests.get("http://localhost:8000/")
         r.raise_for_status()
-        print("BLOCKED DONE")
+        print("BLOCKED DONE:", r.text)
         return r.text
 
     blocked_ref = make_blocked_request.remote()
     with pytest.raises(TimeoutError):
         ray.get(blocked_ref, timeout=1)
 
-    r = requests.get("http://localhost:8000/-/routes")
-    r.raise_for_status()
-    print(r.text)
-    r = requests.get("http://localhost:8000/-/healthz")
-    r.raise_for_status()
-    print(r.text)
+    requests.get("http://localhost:8000/-/routes").raise_for_status()
+    requests.get("http://localhost:8000/-/healthz").raise_for_status()
 
     ray.get(signal_actor.send.remote())
     assert ray.get(blocked_ref) == "hi"
