@@ -54,10 +54,10 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
     # Test examples with newer version of `transformers`
-    # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
+    # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011
     # is resolved.
     - pip install -U transformers
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-py37,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=gpu,-timeseries_libs,-post_wheel_build,-doctest doc/...
 
 - label: ":book: Doctest (GPU)"
   commands:
@@ -66,6 +66,10 @@
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
+    # Test examples with newer version of `transformers`
+    # TODO(amogkam): Remove when https://github.com/ray-project/ray/issues/36011 
+    # is resolved.
+    - pip install -U transformers
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-cpu python/ray/... doc/...
 

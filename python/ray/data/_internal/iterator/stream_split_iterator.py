@@ -2,6 +2,7 @@ import copy
 import logging
 import threading
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -95,7 +96,7 @@ class StreamSplitDataIterator(DataIterator):
 
     def stats(self) -> str:
         """Implements DataIterator."""
-        return self._base_dataset.stats()
+        return ray.get(self._coord_actor.stats.remote())
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
@@ -131,6 +132,7 @@ class SplitCoordinator:
         self._equal = equal
         self._locality_hints = locality_hints
         self._lock = threading.RLock()
+        self._executor = None
 
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
@@ -142,6 +144,7 @@ class SplitCoordinator:
                 executor = StreamingExecutor(
                     copy.deepcopy(dataset.context.execution_options)
                 )
+                self._executor = executor
 
                 def add_split_op(dag):
                     return OutputSplitter(dag, n, equal, locality_hints)
@@ -157,6 +160,12 @@ class SplitCoordinator:
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None
+
+    def stats(self) -> str:
+        """Returns stats from the base dataset."""
+        if self._executor:
+            return self._executor.get_stats().to_summary().to_string()
+        return self._base_dataset.stats()
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
@@ -191,11 +200,12 @@ class SplitCoordinator:
                     next_bundle = None
 
             # Fetch next bundle if needed.
-            if next_bundle is None:
+            while next_bundle is None or not next_bundle.blocks:
                 # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
-            bundle = next_bundle.blocks.pop()
+            block = next_bundle.blocks[-1]
+            next_bundle = replace(next_bundle, blocks=next_bundle.blocks[:-1])
 
             # Accumulate any remaining blocks in next_bundle map as needed.
             with self._lock:
@@ -203,7 +213,7 @@ class SplitCoordinator:
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
 
-            return bundle
+            return block
         except StopIteration:
             return None
 

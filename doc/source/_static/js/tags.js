@@ -25,7 +25,7 @@ window.addEventListener('load', () => {
             "<div type=\"button\" id=\"rl\" class=\"tag btn btn-outline-primary\">Reinforcement Learning</div>\n" +
             "<h6>ML Workloads</h6>\n" +
             "<div type=\"button\" id=\"data-processing\" class=\"tag btn btn-outline-primary\">Data Processing</div>\n" +
-            "<div type=\"button\" id=\"training\" class=\"tag btn btn-outline-primary\">Model Training</div>\n" +
+            "<div type=\"button\" id=\"training\" class=\"tag btn btn-outline-primary\">Model Training & fine-tuning</div>\n" +
             "<div type=\"button\" id=\"tuning\" class=\"tag btn btn-outline-primary\">Hyperparameter Tuning</div>\n" +
             "<div type=\"button\" id=\"inference\" class=\"tag btn btn-outline-primary\">Batch Inference</div>\n" +
             "<div type=\"button\" id=\"serving\" class=\"tag btn btn-outline-primary\">Model Serving</div>\n" +
@@ -34,6 +34,7 @@ window.addEventListener('load', () => {
             "<div type=\"button\" id=\"monitoring\" class=\"tag btn btn-outline-primary\">Monitoring</div>\n" +
             "<h6>ML Frameworks</h6>\n" +
             "<div type=\"button\" id=\"pytorch\" class=\"tag btn btn-outline-primary\">PyTorch</div>\n" +
+            "<div type=\"button\" id=\"huggingface\" class=\"tag btn btn-outline-primary\">HuggingFace 🤗</div>\n" +
             "<div type=\"button\" id=\"tensorflow\" class=\"tag btn btn-outline-primary\">TensorFlow/Keras</div>\n" +
             "</div>";
 

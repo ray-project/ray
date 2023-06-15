@@ -627,6 +627,17 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
+    if (reply.streaming_generator_return_ids_size() > 0) {
+      RAY_CHECK(spec.IsStreamingGenerator());
+      spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
+      for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+        if (return_id_info.is_plasma_object()) {
+          it->second.reconstructable_return_ids.insert(
+              ObjectID::FromBinary(return_id_info.object_id()));
+        }
+      }
+    }
+
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
@@ -707,7 +718,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // known streaming generator returns.
     for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-      RAY_CHECK_EQ(reply.return_objects_size(), 1UL);
+      RAY_CHECK_EQ(reply.return_objects_size(), 1);
       const auto &return_object = reply.return_objects(0);
       HandleTaskReturn(generator_return_id,
                        return_object,

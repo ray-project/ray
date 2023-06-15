@@ -110,6 +110,7 @@ from ray.includes.common cimport (
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     kResourceUnitScaling,
     kWorkerSetupHookKeyName,
+    PythonCheckGcsHealth,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -2109,9 +2110,6 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
-        # Only start import thread after job_config is initialized
-        ray._private.worker.start_import_thread()
-
         job_config_initialized = True
 
 
@@ -2578,46 +2576,6 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         }
 
 
-cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
-    """Subscriber to function（and actor class) dependency keys. Thread safe.
-
-    Usage example:
-        subscriber = GcsFunctionKeySubscriber()
-        # Subscribe to the function key channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            key = subscriber.poll()
-            ......
-        # Unsubscribe from the function key channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address, worker_id=None):
-        self._construct(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
-
-    def poll(self, timeout=None):
-        """Polls for new function key messages.
-
-        Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
-        """
-        cdef:
-            CPythonFunction python_function
-            c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-
-        with nogil:
-            check_status(self.inner.get().PollFunctionKey(
-                &key_id, timeout_ms, &python_function))
-
-        if python_function.key() == b"":
-            return None
-        else:
-            return python_function.key()
-
-
 # This class should only be used for tests
 cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
     """Subscriber to actor updates. Thread safe.
@@ -2659,6 +2617,44 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
+
+
+def check_health(address: str, timeout=2, skip_version_check=False):
+    """Checks Ray cluster health, before / without actually connecting to the
+    cluster via ray.init().
+
+    Args:
+        address: Ray cluster / GCS address string, e.g. ip:port.
+        timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
+    Returns:
+        Returns True if the cluster is running and has matching Ray version.
+        Returns False if no service is running.
+        Raises an exception otherwise.
+    """
+
+    gcs_address, gcs_port = address.split(":")
+
+    cdef:
+        c_string c_gcs_address = gcs_address
+        int c_gcs_port = int(gcs_port)
+        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        c_string c_ray_version = ray.__version__
+        c_bool c_skip_version_check = skip_version_check
+        c_bool c_is_healthy = True
+
+    try:
+        with nogil:
+            check_status(PythonCheckGcsHealth(
+                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
+                c_skip_version_check, c_is_healthy))
+    except RpcError:
+        traceback.print_exc()
+    except RaySystemError as e:
+        raise RuntimeError(str(e))
+
+    return c_is_healthy
 
 
 cdef class CoreWorker:

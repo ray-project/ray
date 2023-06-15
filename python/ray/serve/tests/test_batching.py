@@ -375,6 +375,35 @@ async def test_batch_generator_exceptions(error_type):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("stop_token", [StopAsyncIteration, StopIteration])
+async def test_batch_generator_early_termination(stop_token):
+    NUM_CALLERS = 4
+
+    event = asyncio.Event()
+
+    @serve.batch(max_batch_size=NUM_CALLERS, batch_wait_timeout_s=1000)
+    async def sequential_terminator(ids: List[int]):
+        """Terminates callers one-after-another in order of call."""
+
+        for num_finished_callers in range(1, NUM_CALLERS + 1):
+            event.clear()
+            responses = [stop_token for _ in range(num_finished_callers)]
+            responses += [ids[idx] for idx in range(num_finished_callers, NUM_CALLERS)]
+            yield responses
+            await event.wait()
+
+    ids = list(range(NUM_CALLERS))
+    generators = [sequential_terminator(id) for id in ids]
+    for id, generator in zip(ids, generators):
+        async for result in generator:
+            assert result == id
+
+        # Each terminated caller frees the sequential_terminator to process
+        # another iteration.
+        event.set()
+
+
+@pytest.mark.asyncio
 async def test_batch_generator_streaming_response_integration_test(serve_instance):
     NUM_YIELDS = 10
 
@@ -383,12 +412,18 @@ async def test_batch_generator_streaming_response_integration_test(serve_instanc
         @serve.batch(max_batch_size=4, batch_wait_timeout_s=1000)
         async def batch_handler(self, prompts: List[str]):
             for _ in range(NUM_YIELDS):
-                prompt_responses = prompts
+                # Check that the batch handler can yield unhashable types
+                prompt_responses = [{"value": prompt} for prompt in prompts]
                 yield prompt_responses
+
+        async def value_extractor(self, prompt_responses):
+            async for prompt_response in prompt_responses:
+                yield prompt_response["value"]
 
         async def __call__(self, request):
             prompt = request.query_params["prompt"]
-            return StreamingResponse(self.batch_handler(prompt))
+            response_values = self.value_extractor(self.batch_handler(prompt))
+            return StreamingResponse(response_values)
 
     serve.run(Textgen.bind())
 

@@ -145,7 +145,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
   instance_size: large
   commands:
-    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    # skip on master because we are running these test under all RLlib suites anyw/ay
     - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -161,7 +161,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
   instance_size: large
   commands:
-    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    # skip on master because we are running these test under all RLlib suites anyw/ay
     - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -176,7 +176,7 @@
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
   instance_size: large
   commands:
-    # skip on master cause we are running these test under all RLlib suites anyw/ay
+    # skip on master because we are running these test under all RLlib suites anyw/ay
     - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
@@ -256,7 +256,7 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
       python/ray/tune/...
 
 - label: ":octopus: Tune tests and examples (medium)"
@@ -267,7 +267,7 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
       python/ray/tune/...
 
 - label: ":octopus: :spiral_note_pad: New output: Tune tests and examples (small)"
@@ -280,7 +280,7 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
       --test_env=AIR_VERBOSITY=1
       python/ray/tune/...
 
@@ -292,7 +292,7 @@
     - TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_tag_filters=medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode
       --test_env=AIR_VERBOSITY=1
       python/ray/tune/...
 
@@ -306,16 +306,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-gpu_only,rllib
       python/ray/tune/...
 
-- label: ":octopus: Tune tests and examples. Python 3.7"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=py37,-client python/ray/tune/...
-
-- label: ":octopus: ML library integrations tests and examples. Python 3.7"
+- label: ":octopus: ML library integrations tests and examples."
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
   instance_size: small
   commands:
@@ -326,7 +317,7 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) python/ray/tests/ray_lightning/...
 
-### OLD EXECUTION PATH COMPAT
+### OLD EXECUTION PATH COMPATIBILITY TESTS
 
 
 - label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (small)"
@@ -340,7 +331,7 @@
     - ./ci/run/run_bazel_test_with_sharding.sh
       --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_env=TUNE_NEW_EXECUTION=0
-      --test_tag_filters=-medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
+      --test_tag_filters=-medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
       python/ray/tune/...
 
 - label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples (medium)"
@@ -352,7 +343,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_env=TUNE_NEW_EXECUTION=0
-      --test_tag_filters=medium_instance,-py37,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
+      --test_tag_filters=medium_instance,-soft_imports,-gpu_only,-rllib,-multinode,-exclude_new_execution
       python/ray/tune/...
 
 - label: ":octopus: :brain: :last_quarter_moon_with_face: Old execution path: Tune tests and examples {using RLlib}"
@@ -365,17 +356,6 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
       --test_env=TUNE_NEW_EXECUTION=0
       --test_tag_filters=-gpu_only,rllib,-exclude_new_execution python/ray/tune/...
-
-- label: ":octopus: :last_quarter_moon_with_face: Old execution path: Tune tests and examples. Python 3.7"
-  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
-  instance_size: small
-  commands:
-    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - TUNE_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
-    - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only
-      --test_env=TUNE_NEW_EXECUTION=0
-      --test_tag_filters=py37,-client python/ray/tune/...
 
 - label: ":octopus: :last_quarter_moon_with_face: Old execution path: ML library integrations tests and examples. Python 3.7"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
@@ -407,18 +387,19 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client --test_env=RAY_CLIENT_MODE=1 python/ray/util/dask/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=client python/ray/tune/...
 
-- label: ":potable_water: Dataset library integrations tests and examples. Python 3.7"
+- label: ":potable_water: Dataset library integrations tests and examples"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DATA_PROCESSING_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
+    # Todo: enable again when we upgraded modin and pandas
+    # - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/modin/...
     # Dask tests and examples.
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-client python/ray/util/dask/...
 
-- label: ":potable_water: Dataset datasource integration tests (Python 3.7)"
+- label: ":potable_water: Dataset datasource integration tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DATA_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
@@ -495,7 +476,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-py37,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel doc/...
 
 - label: ":book: Doc tests and examples with time series libraries"
   conditions:
@@ -505,7 +486,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_TIMESERIES_LIBS=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=timeseries_libs,-external,-gpu,-py37,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=timeseries_libs,-external,-gpu,-post_wheel_build,-doctest doc/...
 
 - label: ":book: :airplane: Ray AIR examples"
   # Todo: check if this could be a medium test. Last time it failed because of dependency issues.
@@ -516,7 +497,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-needs_credentials,-gpu,-py37,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=ray_air,-external,-timeseries_libs,-needs_credentials,-gpu,-post_wheel_build,-doctest doc/...
 
 - label: ":book: Doc examples with authentication "
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_BRANCH_BUILD"]
@@ -527,16 +508,16 @@
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - python ./ci/env/setup_credentials.py wandb comet_ml
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials,-external,-timeseries_libs,-gpu,-py37,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=needs_credentials,-external,-timeseries_libs,-gpu,-post_wheel_build,-doctest doc/...
 
 - label: ":book: Doc examples for external code "
   conditions: ["RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED", "RAY_CI_SERVE_AFFECTED", "RAY_CI_ML_AFFECTED"]
-  instance_size: medium
+  instance_size: large
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=external,-timeseries_libs,-gpu,-py37,-post_wheel_build,-doctest doc/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=external,-timeseries_libs,-gpu,-post_wheel_build,-doctest doc/...
 
 
 - label: ":exploding_death_star: RLlib Contrib: A3C Tests"

@@ -8,7 +8,7 @@ import tree
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import Encoder
-from ray.rllib.core.models.base import ModelConfig
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
@@ -57,7 +57,6 @@ class Catalog:
                 self.my_model_config_dict = MLPHeadConfig(
                     hidden_layer_dims=[64, 32],
                     input_dims=[self.observation_space.shape[0]],
-                    output_dims=[1],
                 )
 
             def build_my_head(self, framework: str):
@@ -69,6 +68,10 @@ class Catalog:
         out = my_head(torch.Tensor([[1]]))
     """
 
+    # TODO (Sven): Add `framework` arg to c'tor and remove this arg from `build`
+    #  methods. This way, we can already know in the c'tor of Catalog, what the exact
+    #  action distibution objects are and thus what the output dims for e.g. a pi-head
+    #  will be.
     def __init__(
         self,
         observation_space: gym.Space,
@@ -88,7 +91,6 @@ class Catalog:
             view_requirements: The view requirements of Models to produce. This is
                 needed for a Model that encodes a complex temporal mix of
                 observations, actions or rewards.
-
         """
         self.observation_space = observation_space
         self.action_space = action_space
@@ -242,8 +244,6 @@ class Catalog:
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
-                output_dims=[model_config_dict["lstm_cell_size"]],
-                output_activation=output_activation,
                 view_requirements_dict=view_requirements,
                 get_tokenizer_config=cls.get_tokenizer_config,
             )
@@ -264,8 +264,8 @@ class Catalog:
                     input_dims=[observation_space.shape[0]],
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
-                    output_dims=[encoder_latent_dim],
-                    output_activation=output_activation,
+                    output_layer_dim=encoder_latent_dim,
+                    output_layer_activation=output_activation,
                 )
 
             # input_space is a 3D Box
@@ -284,14 +284,6 @@ class Catalog:
                     cnn_use_layernorm=model_config_dict.get(
                         "conv_use_layernorm", False
                     ),
-                    output_dims=[encoder_latent_dim],
-                    # TODO (sven): Setting this to None here helps with the existing
-                    #  APPO Pong benchmark (actually, leaving this at default=tanh does
-                    #  NOT learn at all!).
-                    #  We need to remove the last Dense layer from CNNEncoder in general
-                    #  AND establish proper ModelConfig objects (instead of hacking
-                    #  everything with the old default model config dict).
-                    output_activation=None,
                 )
             # input_space is a 2D Box
             elif (
