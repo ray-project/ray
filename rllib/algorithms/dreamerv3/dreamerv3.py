@@ -455,15 +455,15 @@ class DreamerV3(Algorithm):
     def setup(self, config: AlgorithmConfig):
         super().setup(config)
 
-        # Summarize (single-agent) RLModule (only once) here.
-        if self.config.framework_str == "tf2":
-            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
-
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.
         if self.config.share_module_between_env_runner_and_learner:
             assert self.workers.local_worker().module is None
             self.workers.local_worker().module = self.learner_group
+
+        # Summarize (single-agent) RLModule (only once) here.
+        if self.config.framework_str == "tf2":
+            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
