@@ -59,6 +59,8 @@ class EventSummarizer:
         with self.lock:
             out = []
             for template, quantity in self.events_by_key.items():
+                # Indicate explicitly this is a summarized message over time.
+                template = "[SUMMARY] " + template
                 out.append(template.format(quantity))
             out.extend(self.messages_to_send)
         return out

@@ -721,9 +721,9 @@ class AutoscalingTest(unittest.TestCase):
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert sorted(events) == [
-            "Adding 1 node(s) of type ray.worker.new.",
-            "Adding 1 node(s) of type ray.worker.old.",
-            "Removing 1 nodes of type ray.worker.old (not "
+            "[SUMMARY] Adding 1 node(s) of type ray.worker.new.",
+            "[SUMMARY] Adding 1 node(s) of type ray.worker.old.",
+            "[SUMMARY] Removing 1 nodes of type ray.worker.old (not "
             "in available_node_types: ['ray.head.new', 'ray.worker.new']).",
         ]
 
@@ -1145,7 +1145,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next two messages in the logs.
-        msg = "Failed to launch 2 node(s) of type worker."
+        msg = "[SUMMARY] Failed to launch 2 node(s) of type worker."
 
         def expected_message_logged():
             return msg in autoscaler.event_summarizer.summary()
@@ -1187,7 +1187,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
+        msg = "[SUMMARY] Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
@@ -1230,7 +1230,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
 
         # Expect the next message in the logs.
-        msg = "Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
+        msg = "[SUMMARY] Failed to launch 2 node(s) of type worker. " "(didn't work): never did."
 
         def expected_message_logged():
             print(autoscaler.event_summarizer.summary())
@@ -1419,7 +1419,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the outdated node removal event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 10 nodes of type " "worker (outdated)." in events, events
+        assert "[SUMMARY] Removing 10 nodes of type " "worker (outdated)." in events, events
         assert mock_metrics.stopped_nodes.inc.call_count == 10
         mock_metrics.started_nodes.inc.assert_called_with(5)
         assert mock_metrics.worker_create_node_time.observe.call_count == 5
@@ -1627,7 +1627,7 @@ class AutoscalingTest(unittest.TestCase):
 
         # Check the scale-down event is generated.
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 1 nodes of type worker " "(max_workers_per_type)." in events
+        assert "[SUMMARY] Removing 1 nodes of type worker " "(max_workers_per_type)." in events
         assert mock_metrics.stopped_nodes.inc.call_count == 1
 
         # Update the config to increase the cluster size
@@ -2308,7 +2308,7 @@ class AutoscalingTest(unittest.TestCase):
         # Check the launch failure event is generated.
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 2 nodes of type " "worker (launch failed)." in events, events
+        assert "[SUMMARY] Removing 2 nodes of type " "worker (launch failed)." in events, events
 
     def testConfiguresOutdatedNodes(self):
         from ray.autoscaler._private.cli_logger import cli_logger
@@ -2426,8 +2426,8 @@ class AutoscalingTest(unittest.TestCase):
         self.waitForNodes(8, tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert autoscaler.pending_launches.value == 0
         events = autoscaler.event_summarizer.summary()
-        assert "Removing 1 nodes of type m4.large (max_workers_per_type)." in events
-        assert "Removing 2 nodes of type p2.8xlarge (max_workers_per_type)." in events
+        assert "[SUMMARY] Removing 1 nodes of type m4.large (max_workers_per_type)." in events
+        assert "[SUMMARY] Removing 2 nodes of type p2.8xlarge (max_workers_per_type)." in events
 
         # We should not be starting/stopping empty_node at all.
         for event in events:
@@ -2499,7 +2499,7 @@ class AutoscalingTest(unittest.TestCase):
         autoscaler.update()
         events = autoscaler.event_summarizer.summary()
         assert (
-            "Restarting 1 nodes of type " "worker (lost contact with raylet)." in events
+            "[SUMMARY] Restarting 1 nodes of type " "worker (lost contact with raylet)." in events
         ), events
         assert mock_metrics.drain_node_exceptions.inc.call_count == 0
 
@@ -2609,7 +2609,7 @@ class AutoscalingTest(unittest.TestCase):
             autoscaler.update()
             events = autoscaler.event_summarizer.summary()
             assert (
-                "Removing 1 nodes of type "
+                "[SUMMARY] Removing 1 nodes of type "
                 "worker (lost contact with raylet)." in events
             ), events
 
@@ -3404,7 +3404,7 @@ class AutoscalingTest(unittest.TestCase):
         # Missed heartbeat triggered recovery for both nodes.
         events = autoscaler.event_summarizer.summary()
         assert (
-            "Restarting 2 nodes of type "
+            "[SUMMARY] Restarting 2 nodes of type "
             "ray.worker.default (lost contact with raylet)." in events
         ), events
         # Node 0 was terminated during the last update.
@@ -3434,11 +3434,11 @@ class AutoscalingTest(unittest.TestCase):
         # Just one node (node_id 1) terminated in the last update.
         # Validates that we didn't try to double-terminate node 0.
         assert (
-            "Removing 1 nodes of type ray.worker.default (launch failed)." in events
+            "[SUMMARY] Removing 1 nodes of type ray.worker.default (launch failed)." in events
         ), events
         # To be more explicit,
         assert (
-            "Removing 2 nodes of type "
+            "[SUMMARY] Removing 2 nodes of type "
             "ray.worker.default (launch failed)." not in events
         ), events
 
