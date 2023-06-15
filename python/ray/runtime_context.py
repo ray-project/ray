@@ -351,11 +351,13 @@ class RuntimeContext(object):
         Returns:
             The handle of current actor.
         """
-        if self.actor_id is None:
-            raise RuntimeError("This method is only available in an actor.")
         worker = self.worker
         worker.check_connected()
-        return worker.core_worker.get_actor_handle(self.actor_id)
+        actor_id = worker.actor_id
+        if actor_id.is_nil():
+            raise RuntimeError("This method is only available in an actor.")
+
+        return worker.core_worker.get_actor_handle(actor_id)
 
     @property
     def gcs_address(self):
@@ -401,8 +403,6 @@ def get_runtime_context() -> RuntimeContext:
             ray.get_runtime_context().get_actor_id()
             # Get the task id.
             ray.get_runtime_context().get_task_id()
-            # Get the worker id.
-            ray.get_runtime_context().get_worker_id()
 
     """
     global _runtime_context

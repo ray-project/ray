@@ -1,3 +1,5 @@
+import sys
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -111,6 +113,13 @@ def test_to_dask_tensor_column_cast_arrow(ray_start_regular_shared):
         ctx.enable_tensor_extension_casting = original
 
 
+# We are currently testing with modin 0.12.1, which uses stale Ray core
+# APIs. Upgrading to a later version will also update pandas, and that upgrade
+# will break other tests. We skip modin until we can resolve the issues of the
+# pandas upgrade.
+# Todo: upgrade modin + pandas
+@pytest.mark.skip("Needs modin + pandas upgrade")
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin(ray_start_regular_shared):
     import modin.pandas as mopd
 
@@ -123,6 +132,8 @@ def test_from_modin(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+@pytest.mark.skip("Needs modin + pandas upgrade")
+@pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_to_modin(ray_start_regular_shared):
     # create two modin dataframes
     # one directly from a pandas dataframe, and

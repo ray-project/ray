@@ -63,27 +63,62 @@
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
-# TODO(@bveeramani): Enable doctests.
-# doctest(
-#     files = glob(
-#         ["**/*.py"],
-#         exclude=[
-#             "**/examples/**",
-#             "**/tests/**",
-#             # Deprecations
-#             "utils/window_stat.py",
-#             "utils/timer.py",
-#             "utils/memory.py",
-#             "offline/off_policy_estimator.py",
-#             "offline/estimators/feature_importance.py",
-#             "env/wrappers/recsim_wrapper.py",
-#             "env/remote_vector_env.py",
-#             # Missing imports
-#             "algorithms/dreamerv3/**"
-#         ]
-#     ),
-#     tags = ["team:rllib"]
-# )
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            "**/test_*.py",
+            # Deprecated modules
+            "utils/window_stat.py",
+            "utils/timer.py",
+            "utils/memory.py",
+            "offline/off_policy_estimator.py",
+            "offline/estimators/feature_importance.py",
+            "env/wrappers/recsim_wrapper.py",
+            "env/remote_vector_env.py",
+            # Missing imports
+            "algorithms/dreamerv3/**",
+            # FIXME: These modules contain broken examples that weren't previously
+            # tested.
+            "algorithms/algorithm_config.py",
+            "algorithms/alpha_star/alpha_star.py",
+            "algorithms/r2d2/r2d2.py",
+            "algorithms/sac/rnnsac.py",
+            "algorithms/simple_q/simple_q.py",
+            "core/models/base.py",
+            "core/models/specs/checker.py",
+            "core/models/specs/specs_base.py",
+            "core/models/specs/specs_dict.py",
+            "env/wrappers/pettingzoo_env.py",
+            "evaluation/collectors/sample_collector.py",
+            "evaluation/episode.py",
+            "evaluation/metrics.py",
+            "evaluation/observation_function.py",
+            "evaluation/postprocessing.py",
+            "execution/buffers/mixin_replay_buffer.py",
+            "models/base_model.py",
+            "models/catalog.py",
+            "models/distributions.py",
+            "models/preprocessors.py",
+            "models/repeated_values.py",
+            "models/tf/tf_distributions.py",
+            "models/torch/model.py",
+            "models/torch/torch_distributions.py",
+            "policy/rnn_sequencing.py",
+            "utils/actor_manager.py",
+            "utils/filter.py",
+            "utils/from_config.py",
+            "utils/metrics/window_stat.py",
+            "utils/nested_dict.py",
+            "utils/pre_checks/env.py",
+            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
+            "utils/spaces/space_utils.py"
+        ]
+    ),
+    tags = ["team:rllib"]
+)
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -1658,7 +1693,7 @@ py_test(
 py_test(
     name = "env/tests/test_single_agent_gym_env_runner",
     tags = ["team:rllib", "env"],
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
 )
 
@@ -4245,6 +4280,14 @@ py_test(
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
+)
+
+py_test(
+    name = "examples/learner/train_w_bc_finetune_w_ppo",
+    main = "examples/learner/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
 )
 
 # --------------------------------------------------------------------
