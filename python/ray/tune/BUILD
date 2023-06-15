@@ -42,7 +42,6 @@ py_library(
 # "client": Test uses the ray client.
 # "example": Test runs a tune example script.
 # "exclusive": ???
-# "py37": Test requires py3.7 or later.
 # "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
 # "pytorch": Test uses PyTorch.
 # "tensorflow": Test uses TensorFlow.
@@ -92,7 +91,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "client", "py37", "exclusive"]
+    tags = ["team:ml", "client", "exclusive"]
 )
 
 py_test(
@@ -603,7 +602,7 @@ py_test(
     size = "small",
     srcs = ["examples/ax_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -754,7 +753,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mlflow_ptl.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "py37", "pytorch"],
+    tags = ["team:ml", "exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
 )
 

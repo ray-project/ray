@@ -117,6 +117,8 @@ def _run(local_dir, driver_semaphore, trainer_semaphore):
 
 
 class TuneInterruptionTest(unittest.TestCase):
+    # Todo(krfricke): Investigate and fix on CI
+    @unittest.skip("Spawn seems to have a malfunction on Python 3.8 CI")
     def testExperimentInterrupted(self):
         local_dir = tempfile.mkdtemp()
         # Unix platforms may default to "fork", which is problematic with

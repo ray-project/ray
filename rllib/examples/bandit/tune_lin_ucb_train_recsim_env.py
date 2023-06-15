@@ -70,7 +70,7 @@ if __name__ == "__main__":
     # Analyze cumulative regrets of the trials
     frame = pd.DataFrame()
     for result in results:
-        frame = frame.append(result.metrics_dataframe, ignore_index=True)
+        frame = pd.concat([frame, result.metrics_dataframe], ignore_index=True)
     x = frame.groupby("agent_timesteps_total")["episode_reward_mean"].aggregate(
         ["mean", "max", "min", "std"]
     )

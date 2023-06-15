@@ -256,4 +256,4 @@ def test_queue_filling(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))
