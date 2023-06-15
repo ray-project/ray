@@ -46,7 +46,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create the gym.vector.Env object.
         # Atari env.
-        if self.config.is_atari:
+        if self.config.env.startswith("ALE/"):
             # [2]: "We down-scale the 84 × 84 grayscale images to 64 × 64 pixels so that
             # we can apply the convolutional architecture of DreamerV1."
             # ...
