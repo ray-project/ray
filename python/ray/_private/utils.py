@@ -1187,18 +1187,16 @@ def import_attr(full_path: str):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
-    # old_paths = sys.path.copy()
-    # try:
-    #     # `ray/dashboard` took the import precedence and can collide user's modules.
-    #     # Dropping `ray/dashboard` from sys.path to avoid the import collision.
-    #     for path in old_paths:
-    #         if path.endswith("ray/dashboard"):
-    #             sys.path.remove(path)
-    #
-    #     module = importlib.import_module(module_name)
-    # finally:
-    #     # Restore sys.path with old paths.
-    #     sys.path = old_paths
+    dashboard_paths = []
+    # `ray/dashboard` took the import precedence and can collide user's modules.
+    # Reorder `ray/dashboard` to the back of sys.path to avoid the import collision.
+    for path in sys.path:
+        if path.endswith("ray/dashboard"):
+            dashboard_paths.append(path)
+            sys.path.remove(path)
+
+    sys.path.extend(dashboard_paths)
+
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
 

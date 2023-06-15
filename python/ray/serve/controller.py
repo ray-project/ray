@@ -840,12 +840,6 @@ def deploy_serve_application(
         from ray.serve.api import build
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
-        # `ray/dashboard` took the import precedence and can collide user's modules.
-        # Dropping `ray/dashboard` from sys.path to avoid the import collision.
-        for path in sys.path:
-            if path.endswith("ray/dashboard"):
-                sys.path.remove(path)
-
         # Import and build the application.
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
         app = build(app, name)
