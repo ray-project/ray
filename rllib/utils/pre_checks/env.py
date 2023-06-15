@@ -120,7 +120,7 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
         ValueError: Observation sampled from observation space must be
             contained in the observation space.
         ValueError: Action sampled from action space must be
-            contained in the observation space.
+            contained in the action space.
         ValueError: If env cannot be resetted.
         ValueError: If an observation collected from a call to env.reset().
             is not contained in the observation_space.
@@ -164,6 +164,44 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
 
     sampled_observation = env.observation_space.sample()
     sampled_action = env.action_space.sample()
+
+    if not env.observation_space.contains(sampled_observation):
+        # Find offending subspace in case we have a complex observation space.
+        key, space, space_type, value, value_type = _find_offending_sub_space(
+            env.observation_space, sampled_observation
+        )
+        raise ValueError(
+            "The observation collected from env.observation_space.sample() was not "
+            "contained within your env's observation space. It is possible "
+            "that there was a type mismatch, or that one of the "
+            "sub-observations was out of bounds:\n {}(sub-)obs: {} ({})"
+            "\n (sub-)observation space: {} ({})".format(
+                ("path: '" + key + "'\n ") if key else "",
+                value,
+                value_type,
+                space,
+                space_type,
+            )
+        )
+
+    if not env.action_space.contains(sampled_action):
+        # Find offending subspace in case we have a complex observation space.
+        key, space, space_type, value, value_type = _find_offending_sub_space(
+            env.action_space, sampled_action
+        )
+        raise ValueError(
+            "The observation collected from env.action_space.sample() was not "
+            "contained within your env's action space. It is possible "
+            "that there was a type mismatch, or that one of the "
+            "sub-actions was out of bounds:\n {}(sub-)obs: {} ({})"
+            "\n (sub-)action space: {} ({})".format(
+                ("path: '" + key + "'\n ") if key else "",
+                value,
+                value_type,
+                space,
+                space_type,
+            )
+        )
 
     # Check, whether resetting works as expected.
     try:
