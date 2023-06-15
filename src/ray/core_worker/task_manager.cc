@@ -758,7 +758,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         // known streaming generator returns.
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-          RAY_CHECK_EQ(reply.return_objects_size(), 1UL);
+          RAY_CHECK_EQ(reply.return_objects_size(), 1);
           const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
                            return_object,
@@ -1143,7 +1143,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
-    for (auto i = 0; i < num_streaming_generator_returns; i++) {
+    for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.count(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);

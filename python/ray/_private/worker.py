@@ -2716,8 +2716,9 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of object refs for objects that may
-            or may not be ready. Note that these IDs must be unique.
+        object_refs: List of :class:`~ObjectRefs` or
+            :class:`~StreamingObjectRefGenerators` for objects that may or may
+            not be ready. Note that these must be unique.
         num_returns: The number of object refs that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
@@ -2752,15 +2753,15 @@ def wait(
         object_refs, StreamingObjectRefGenerator
     ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef or StreamingObjectRefGenerator"
-            ", got a single ray.ObjectRef or StreamingObjectRefGenerator "
+            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
             f"{object_refs}"
         )
 
     if not isinstance(object_refs, list):
         raise TypeError(
             "wait() expected a list of ray.ObjectRef or "
-            "StreamingObjectRefGenerator, "
+            "ray.StreamingObjectRefGenerator, "
             f"got {type(object_refs)}"
         )
 
@@ -2768,6 +2769,17 @@ def wait(
         raise ValueError(
             "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
         )
+
+    for object_ref in object_refs:
+        if not isinstance(object_ref, ObjectRef) and not isinstance(
+            object_ref, StreamingObjectRefGenerator
+        ):
+            raise TypeError(
+                "wait() expected a list of ray.ObjectRef or "
+                "ray.StreamingObjectRefGenerator, "
+                f"got list containing {type(object_ref)}"
+            )
+    worker.check_connected()
 
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):

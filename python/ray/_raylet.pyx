@@ -3027,7 +3027,7 @@ cdef class CoreWorker:
 
         return c_object_id.Binary()
 
-    def wait(self, object_refs_or_generator, int num_returns, int64_t timeout_ms,
+    def wait(self, object_refs_or_generators, int num_returns, int64_t timeout_ms,
              TaskID current_task_id, c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
@@ -3035,7 +3035,7 @@ cdef class CoreWorker:
             CTaskID c_task_id = current_task_id.native()
 
         object_refs = []
-        for ref_or_generator in object_refs_or_generator:
+        for ref_or_generator in object_refs_or_generators:
             if (not isinstance(ref_or_generator, ObjectRef)
                     and not isinstance(ref_or_generator, StreamingObjectRefGenerator)):
                 raise TypeError(
@@ -3060,7 +3060,7 @@ cdef class CoreWorker:
         assert len(results) == len(object_refs)
 
         ready, not_ready = [], []
-        for i, object_ref_or_generator in enumerate(object_refs_or_generator):
+        for i, object_ref_or_generator in enumerate(object_refs_or_generators):
             if results[i]:
                 ready.append(object_ref_or_generator)
             else:
