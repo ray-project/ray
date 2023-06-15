@@ -435,6 +435,13 @@ class DreamerV3Config(AlgorithmConfig):
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
+    @property
+    def share_module_between_env_runner_and_learner(self) -> bool:
+        # If we only have one local Learner (num_learner_workers=0) and only
+        # one local EnvRunner (num_rollout_workers=0), share the RLModule
+        # between these two to avoid having to sync weights, ever.
+        return self.num_learner_workers == 0 and self.num_rollout_workers == 0
+
 
 class DreamerV3(Algorithm):
     """Implementation of the model-based DreamerV3 RL algorithm described in [1]."""
@@ -450,9 +457,15 @@ class DreamerV3(Algorithm):
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
-            self.workers.local_worker().rl_module.dreamer_model.summary(
+            self.workers.local_worker().module.dreamer_model.summary(
                 expand_nested=True
             )
+
+        # Share RLModule between EnvRunner and single (local) Learner instance.
+        # To avoid possibly expensive weight synching step.
+        if self.config.share_module_between_env_runner_and_learner:
+            assert self.workers.local_worker().module is None
+            self.workers.local_worker().module = self.learner_group
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
@@ -608,9 +621,16 @@ class DreamerV3(Algorithm):
         # Update weights - after learning on the LearnerGroup - on all EnvRunner
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-            self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
-            self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            self.workers.sync_weights(from_worker_or_learner_group=self.learner_group)
+            # Only necessary if RLModule is not shared between (local) EnvRunner and
+            # (local) Learner.
+            if not self.config.share_module_between_env_runner_and_learner:
+                self._counters[
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
+                ] = 0
+                self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
+                self.workers.sync_weights(
+                    from_worker_or_learner_group=self.learner_group
+                )
 
         # Try trick from https://medium.com/dive-into-ml-ai/dealing-with-memory-leak-
         # issue-in-keras-model-training-e703907a6501
@@ -620,7 +640,10 @@ class DreamerV3(Algorithm):
             with self._timers[GARBAGE_COLLECTION_TIMER]:
                 gc.collect()
 
+        # Add train results and the actual training ratio to stats. The latter should
+        # be close to the configured `training_ratio`.
         results.update(train_results)
+        results["actual_training_ratio"] = training_ratio
 
         # Return all results.
         return results

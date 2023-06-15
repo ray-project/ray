@@ -17,7 +17,7 @@ from supersuit.generic_wrappers import resize_v1
 import tensorflow as tf
 import tree  # pip install dm_tree
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dreamerv3 import DreamerV3Config
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
@@ -34,7 +34,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
     def __init__(
         self,
-        config: AlgorithmConfig,
+        config: DreamerV3Config,
         **kwargs,
     ):
         """Initializes a DreamerV3EnvRunner instance.
@@ -111,10 +111,16 @@ class DreamerV3EnvRunner(EnvRunner):
         assert self.num_envs == self.config.num_envs_per_worker
 
         # Create our RLModule to compute actions with.
-        policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-        module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
-        # TODO (sven): DreamerV3 is currently single-agent only.
-        self.rl_module = module_spec.build()[DEFAULT_POLICY_ID]
+        if self.config.share_module_between_env_runner_and_learner:
+            # DreamerV3 Algorithm will set this to the local Learner's module.
+            self.module = None
+        # Create our own instance of a DreamerV3RLModule (which then needs to be
+        # weight-synched each iteration).
+        else:
+            policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
+            module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
+            # TODO (sven): DreamerV3 is currently single-agent only.
+            self.module = module_spec.build()[DEFAULT_POLICY_ID]
 
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
@@ -213,7 +219,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Get initial states for all `batch_size_B` rows in the forward batch.
         initial_states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.rl_module.get_initial_state(),
+            self.module.get_initial_state(),
         )
 
         # Have to reset the env (on all vector sub-envs).
@@ -271,9 +277,9 @@ class DreamerV3EnvRunner(EnvRunner):
                 }
                 # Explore or not.
                 if explore:
-                    outs = self.rl_module.forward_exploration(batch)
+                    outs = self.module.forward_exploration(batch)
                 else:
-                    outs = self.rl_module.forward_inference(batch)
+                    outs = self.module.forward_inference(batch)
 
                 # Model outputs one-hot actions (if discrete). Convert to int actions
                 # as well.
@@ -302,7 +308,7 @@ class DreamerV3EnvRunner(EnvRunner):
                     )
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.rl_module.get_initial_state().items():
+                    for k, v in self.module.get_initial_state().items():
                         states[k][i] = v.numpy()
                     is_first[i] = True
                     done_episodes_to_return.append(self._episodes[i])
@@ -347,7 +353,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.rl_module.get_initial_state(),
+            self.module.get_initial_state(),
         )
         is_first = np.ones((self.num_envs,), dtype=np.float32)
 
@@ -376,9 +382,9 @@ class DreamerV3EnvRunner(EnvRunner):
                 }
 
                 if explore:
-                    outs = self.rl_module.forward_exploration(batch)
+                    outs = self.module.forward_exploration(batch)
                 else:
-                    outs = self.rl_module.forward_inference(batch)
+                    outs = self.module.forward_inference(batch)
 
                 actions = outs[SampleBatch.ACTIONS].numpy()
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
@@ -413,7 +419,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.rl_module.get_initial_state().items():
+                    for k, v in self.module.get_initial_state().items():
                         states[k][i] = v.numpy()
                     is_first[i] = True
 
@@ -473,12 +479,12 @@ class DreamerV3EnvRunner(EnvRunner):
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
-        self.rl_module.set_state(weights[DEFAULT_POLICY_ID])
+        self.module.set_state(weights[DEFAULT_POLICY_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.rl_module
+        assert self.env and self.module
 
     @override(EnvRunner)
     def stop(self):
