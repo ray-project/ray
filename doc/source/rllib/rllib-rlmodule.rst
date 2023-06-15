@@ -140,7 +140,93 @@ The minimum requirement is for sub-classes of :py:class:`~ray.rllib.core.rl_modu
 
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`: Forward pass for exploration.
 
-Also the class's constrcutor requires a dataclass config object called `~ray.rllib.core.rl_module.rl_module.RLModuleConfig` which contains the following fields:
+For your custom :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
+methods, you must return a dictionary that either contains the key "actions" and/or the key "action_dist_inputs".
+
+If you return the "actions" key:
+
+- RLlib will use the actions provided thereunder as-is.
+- If you also returned the "action_dist_inputs" key: RLlib will also create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and - in the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` - compute action probs and logp values from the given actions automatically.
+
+If you do not return the "actions" key:
+
+- You must return the "action_dist_inputs" key instead from your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference` methods.
+- RLlib will create a :py:class:`~ray.rllib.models.distributions.Distribution` object from the distribution parameters under that key and sample actions from the thus generated distribution.
+- In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration`, RLlib will also compute action probs and logp values from the sampled actions automatically.
+
+.. note::
+
+    In the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`,
+    the generated distributions (from returned key "action_dist_inputs") will always be made deterministic first via
+    the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
+    Thus, for example, sampling from a Categorical distribution will be reduced to simply selecting the argmax actions from the distribution's logits/probs.
+
+Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and
+``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance.
+
+
+.. tab-set::
+
+    .. tab-item:: Returning "actions" key
+
+        .. code-block:: python
+
+            """
+            An RLModule whose forward_exploration/inference methods return the
+            "actions" key.
+            """
+
+            class MyRLModule(TorchRLModule):
+                ...
+
+                def _forward_inference(self, batch):
+                    ...
+                    return {
+                        "actions": ...  # actions will be used as-is
+                    }
+
+                def _forward_exploration(self, batch):
+                    ...
+                    return {
+                        "actions": ...  # actions will be used as-is (no sampling step!)
+                        "action_dist_inputs": ...  # optional: If provided, will be used to compute action probs and logp.
+                    }
+
+    .. tab-item:: Not returning "actions" key
+
+        .. code-block:: python
+
+            """
+            An RLModule whose forward_exploration/inference methods do NOT return the
+            "actions" key.
+            """
+
+            class MyRLModule(TorchRLModule):
+                ...
+
+                def _forward_inference(self, batch):
+                    ...
+                    return {
+                        # RLlib will:
+                        # - Generate distribution from these parameters.
+                        # - Convert distribution to a deterministic equivalent.
+                        # - "sample" from the deterministic distribution.
+                        "action_dist_inputs": ...
+                    }
+
+                def _forward_exploration(self, batch):
+                    ...
+                    return {
+                        # RLlib will:
+                        # - Generate distribution from these parameters.
+                        # - "sample" from the (stochastic) distribution.
+                        # - Compute action probs/logs automatically using the sampled
+                        #   actions and the generated distribution object.
+                        "action_dist_inputs": ...
+                    }
+
+
+Also the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class's constrcutor requires a dataclass config object called `~ray.rllib.core.rl_module.rl_module.RLModuleConfig` which contains the following fields:
 
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.observation_space`: The observation space of the environment (either processed or raw).
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.action_space`: The action space of the environment.
@@ -427,25 +513,10 @@ What your customization could have looked like before:
 
 
 All of the ``Policy.compute_***`` functions expect that
-`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and `~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_inference`
 return a dictionary that either contains the key "actions" and/or the key "action_dist_inputs".
 
-If you return the "actions" key:
-* RLlib will use the actions provided thereunder directly and as-is.
-* If you also returned the "action_dist_inputs" key: RLlib will also create a ``ray.rllib.models.distributions.Distribution`` object from the distribution parameters under that key and - in the case of ``forward_exploration()`` - compute action probs and logp values from the given actions automatically.
-
-If you do not return the "actions" key:
-* You must return the "action_dist_inputs" key instead from your ``forward_inference()`` and ``forward_exploration()`` methods.
-* RLlib will create a ``ray.rllib.models.distributions.Distribution`` object from the distribution parameters under that key and sample actions from the thus generated distribution.
-* In the case of ``forward_exploration()``, RLlib will also compute action probs and logp values from the sampled actions automatically.
-
-Note that in the case of ``forward_inference()``, the generated distributions (from returned key "action_dist_inputs") will always be made deterministic via
-the ``ray.rllib.models.distributions.Distribution.to_deterministic`` utility before a possible action sample step.
-Thus, for example, sampling from a Categorical distribution will be reduced to simply selecting the argmax actions from the distribution's logits/probs.
-
-Commonly used distribution implementations can be found under ``ray.rllib.models.tf.tf_distributions`` for tensorflow and
-``ray.rllib.models.torch.torch_distributions`` for torch. You can choose to return determinstic actions, by creating a determinstic distribution instance.
-See `Writing Custom Single Agent RL Modules`_ for more details on how to implement your own custom RL Module.
+See `Writing Custom Single Agent RL Modules`_ for more details on how to implement your own custom RL Modules.
 
 .. tab-set::
 
@@ -472,63 +543,6 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
                 def _forward_exploration(self, batch):
                     ...
 
-
-    .. tab-item:: Returning "actions"
-
-        .. code-block:: python
-
-            """
-            An RLModule whose forward_exploration/inference methods return the
-            "actions" key.
-            """
-
-            class MyRLModule(TorchRLModule):
-                ...
-
-                def _forward_inference(self, batch):
-                    ...
-                    return {
-                        "actions": ...  # actions will be used as-is
-                        # "action_dist_inputs": ...  # this is optional
-                    }
-
-                def _forward_exploration(self, batch):
-                    ...
-                    return {
-                        "actions": ...  # actions will be used as-is (no sampling step!)
-                        "action_dist_inputs": ...  # optional: If provided, will be used to compute action probs and logp.
-                    }
-
-    .. tab-item:: Not returning "actions"
-
-        .. code-block:: python
-
-            """
-            An RLModule whose forward_exploration/inference methods do NOT return the
-            "actions" key.
-            """
-
-            class MyRLModule(TorchRLModule):
-                ...
-
-                def _forward_inference(self, batch):
-                    ...
-                    return {
-                        # - Generate distribution from these parameters.
-                        # - Convert distribution to a deterministic equivalent.
-                        # - "sample" from the deterministic distribution.
-                        "action_dist_inputs": ...
-                    }
-
-                def _forward_exploration(self, batch):
-                    ...
-                    return {
-                        # - Generate distribution from these parameters.
-                        # - "sample" from the (stochastic) distribution.
-                        # - Compute action probs/logs automatically using the sampled
-                        #   actions and the generated distribution object.
-                        "action_dist_inputs": ...
-                    }
 
 Notable TODOs
 -------------
