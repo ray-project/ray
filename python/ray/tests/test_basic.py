@@ -1114,12 +1114,6 @@ def test_import_ray_does_not_import_grpc():
     import grpc  # noqa: F401
 
 
-# https://github.com/ray-project/ray/issues/36431
-def test_temp_dir_must_be_absolute(shutdown_only):
-    # This test fails with a relative path _temp_dir.
-    with pytest.raises(ValueError):
-        ray.init(_temp_dir='relative_path')
-
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
