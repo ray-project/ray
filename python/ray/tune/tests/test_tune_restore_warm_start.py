@@ -422,7 +422,6 @@ class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
-@unittest.skip("ax warm start tests currently failing (need to upgrade ax)")
 class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         from ax.service.ax_client import AxClient
