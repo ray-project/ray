@@ -479,7 +479,10 @@ class DreamerV3EnvRunner(EnvRunner):
     #  API. Replace by proper state overriding via `EnvRunner.set_state()`
     def set_weights(self, weights, global_vars=None):
         """Writes the weights of our (single-agent) RLModule."""
-        self.module.set_state(weights[DEFAULT_POLICY_ID])
+        if self.module is None:
+            assert not self.config.share_module_between_env_runner_and_learner
+        else:
+            self.module.set_state(weights[DEFAULT_POLICY_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):
