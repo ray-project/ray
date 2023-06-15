@@ -81,18 +81,12 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.3.0": "cf7a56b4b0b648c324722df7c99c168e92ff0b45"}
+    test_commits = {"2.5.0": "ddf0ccab7aa87be5cf6cf7df9d6e24a3611fb345"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
                 # TODO(https://github.com/ray-project/ray/issues/31362)
                 if py_version == (3, 11) and sys_platform != "linux":
-                    continue
-
-                # TODO(https://github.com/ray-project/ray/issues/33396)
-                # We currently don't have a release with the new wheel names with the
-                # x86_64 suffix.
-                if sys_platform == "darwin":
                     continue
 
                 url = get_release_wheel_url(commit, sys_platform, version, py_version)

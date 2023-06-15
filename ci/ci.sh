@@ -203,7 +203,7 @@ test_python() {
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
+      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
@@ -328,14 +328,6 @@ check_sphinx_links() {
     else
       FAST=True make linkcheck
     fi
-  )
-}
-
-install_cython_examples() {
-  (
-    cd "${WORKSPACE_DIR}"/doc/examples/cython
-    pip install scipy
-    python setup.py install --user
   )
 }
 
@@ -758,10 +750,6 @@ build() {
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
     fi
-  fi
-
-  if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    install_cython_examples
   fi
 
   if [ "${LINT-}" = 1 ]; then
