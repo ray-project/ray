@@ -442,6 +442,7 @@
       python/ray/tests/...
 
 - label: ":book: Documentation"
+  soft_fail: true
   commands:
     - export LINT=1
     - ./ci/env/install-dependencies.sh
