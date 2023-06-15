@@ -15,11 +15,11 @@ NODE_VERSION="14"
 
 # Python version key, interpreter version code, numpy tuples.
 PYTHON_NUMPYS=(
-  "3.7 cp37-cp37m 1.14.5"
-  "3.8 cp38-cp38 1.14.5"
-  "3.9 cp39-cp39 1.19.3"
-  "3.10 cp310-cp310 1.22.0"
-  "3.11 cp311-cp311 1.22.0"
+  "py37 cp37-cp37m 1.14.5"
+  "py38 cp38-cp38 1.14.5"
+  "py39 cp39-cp39 1.19.3"
+  "py310 cp310-cp310 1.22.0"
+  "py311 cp311-cp311 1.22.0"
 )
 
 yum -y install unzip zip sudo
