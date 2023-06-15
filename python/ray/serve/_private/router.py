@@ -108,6 +108,8 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                     f"{self._deployment_name} but none available.",
                     extra={"log_to_stderr": False},
                 )
+                # Clear before waiting to avoid immediately waking up if there
+                # had ever been an update before.
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
 
