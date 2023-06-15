@@ -2638,7 +2638,7 @@ class AlgorithmConfig(_Config):
 
             self._is_atari = is_atari(env)
             # Clean up env's resources, if any.
-            env.stop()
+            env.close()
 
         return self._is_atari
 
