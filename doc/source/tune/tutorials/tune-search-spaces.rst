@@ -114,10 +114,8 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
         # num_samples will repeat the entire config 10 times.
         tune_config=tune.TuneConfig(num_samples=10),
         param_space={
-            # ``sample_from`` creates a generator to call the lambda once per trial.
-            "alpha": tune.sample_from(lambda spec: np.random.uniform(100)),
-            # ``sample_from`` also supports "conditional search spaces"
-            "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+            "alpha": tune.uniform(0, 1),
+            "beta": tune.randn(),
             "nn_layers": [
                 # tune.grid_search will make it so that all values are evaluated.
                 tune.grid_search([16, 64, 256]),
@@ -172,7 +170,7 @@ This lets you specify conditional parameter distributions.
         my_trainable,
         run_config=air.RunConfig(name="my_trainable"),
         param_space={
-            "alpha": tune.sample_from(lambda config: np.random.uniform(100)),
+            "alpha": tune.sample_from(lambda _: np.random.uniform(100)),
             "beta": tune.sample_from(lambda config: config["alpha"] * np.random.normal()),
             "nn_layers": [
                 tune.grid_search([16, 64, 256]),

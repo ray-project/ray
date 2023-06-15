@@ -347,10 +347,10 @@ class PopulationBasedTrainingSynchTest(unittest.TestCase):
                 "a": tune.uniform(0, 1),
                 "score": tune.grid_search([0, 1]),
                 "training_time": tune.sample_from(
-                    lambda spec: training_times[spec.config["score"]]
+                    lambda config: training_times[config["score"]]
                 ),
                 "saving_time": tune.sample_from(
-                    lambda spec: saving_times[spec.config["score"]]
+                    lambda config: saving_times[config["score"]]
                 ),
             },
             tune_config=TuneConfig(

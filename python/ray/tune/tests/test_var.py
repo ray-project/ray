@@ -226,8 +226,8 @@ class VariantGeneratorTest(unittest.TestCase):
                 "run": "PPO",
                 "config": {
                     "x": 1,
-                    "y": tune.sample_from(lambda spec: spec.config.x + 1),
-                    "z": tune.sample_from(lambda spec: spec.config.y + 1),
+                    "y": tune.sample_from(lambda config: config["x"] + 1),
+                    "z": tune.sample_from(lambda config: config["y"] + 1),
                 },
             },
             "condition_resolution",
@@ -244,7 +244,7 @@ class VariantGeneratorTest(unittest.TestCase):
                 "run": "PPO",
                 "config": {
                     "x": grid_search([1, 2]),
-                    "y": tune.sample_from(lambda spec: spec.config.x * 100),
+                    "y": tune.sample_from(lambda config: config["x"] * 100),
                 },
             },
             "dependent_lambda",
@@ -261,11 +261,11 @@ class VariantGeneratorTest(unittest.TestCase):
                 "config": {
                     "x": grid_search(
                         [
-                            tune.sample_from(lambda spec: spec.config.y * 100),
-                            tune.sample_from(lambda spec: spec.config.y * 200),
+                            tune.sample_from(lambda config: config["y"] * 100),
+                            tune.sample_from(lambda config: config["y"] * 200),
                         ]
                     ),
-                    "y": tune.sample_from(lambda spec: 1),
+                    "y": tune.sample_from(lambda _: 1),
                 },
             },
             "dependent_grid_search",
@@ -306,9 +306,9 @@ class VariantGeneratorTest(unittest.TestCase):
             {
                 "run": "PPO",
                 "config": {
-                    "x": {"y": {"z": tune.sample_from(lambda spec: 1)}},
-                    "y": tune.sample_from(lambda spec: 12),
-                    "z": tune.sample_from(lambda spec: spec.config.x.y.z * 100),
+                    "x": {"y": {"z": tune.sample_from(lambda _: 1)}},
+                    "y": tune.sample_from(lambda _: 12),
+                    "z": tune.sample_from(lambda config: config["x"]["y"]["z"] * 100),
                 },
             },
             "nested_values",
@@ -348,7 +348,7 @@ class VariantGeneratorTest(unittest.TestCase):
                     {
                         "run": "PPO",
                         "config": {
-                            "foo": tune.sample_from(lambda spec: spec.config.foo),
+                            "foo": tune.sample_from(lambda config: config["foo"]),
                         },
                     },
                     "recursive_dep",

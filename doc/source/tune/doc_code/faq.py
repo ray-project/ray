@@ -400,7 +400,7 @@ tuner = tune.Tuner(
     ),
     param_space={
         "alpha": tune.uniform(100, 200),
-        "beta": tune.sample_from(lambda spec: spec.config.alpha * np.random.normal()),
+        "beta": tune.sample_from(lambda config: config["alpha"] * np.random.normal()),
         "nn_layers": [
             tune.grid_search([16, 64, 256]),
             tune.grid_search([16, 64, 256]),

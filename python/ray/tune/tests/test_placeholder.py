@@ -121,6 +121,7 @@ class PlaceholderTest(unittest.TestCase):
             "param1": "ok",
             "param2": ["not ok", tune.sample_from(lambda: "not ok")],
             # Both lambdas, either taking spec or config, should work.
+            # NOTE: spec.config.param is deprecated.
             "param3": {
                 "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
             },

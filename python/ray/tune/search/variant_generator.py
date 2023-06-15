@@ -35,14 +35,14 @@ def generate_variants(
         They can also be used to express random search (e.g., by calling
         into the `random` or `np` module).
 
-            "cpu": lambda spec: spec.config.num_workers
+            "cpu": lambda config: config["num_workers"]
             "batch_size": lambda spec: random.uniform(1, 1000)
 
     Finally, to support defining specs in plain JSON / YAML, grid search
     and lambda functions can also be defined alternatively as follows:
 
         "activation": {"grid_search": ["relu", "tanh"]}
-        "cpu": {"eval": "spec.config.num_workers"}
+        "cpu": {"eval": "config['num_workers']"}
 
     Use `format_vars` to format the returned dict of hyperparameters.
 

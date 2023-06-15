@@ -469,7 +469,9 @@ class Function(Domain):
                 logger.warning(
                     "sample_from functions that take a spec dict are "
                     "deprecated. Please update your function to work with "
-                    "the config dict directly."
+                    "the config dict directly:\n"
+                    "tune.sample_from(lambda spec: spec.config.a) -> "
+                    "tune.sample_from(lambda config: config['a'])"
                 )
                 return r
 
