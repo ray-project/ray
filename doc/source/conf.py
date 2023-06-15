@@ -196,7 +196,6 @@ exclude_patterns = [
     "data/examples/ocr_example.ipynb",
     "data/examples/pytorch_resnet_batch_prediction.ipynb",
     "data/examples/random-access.rst",
-    "ray-core/runtime_env_auth.md",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
