@@ -4791,14 +4791,9 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
-        - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
     cluster_env: stress_tests/state_api_app_config.yaml
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
