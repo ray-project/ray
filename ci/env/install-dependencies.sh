@@ -465,7 +465,7 @@ install_pip_packages() {
   fi
 
   # Generate the pip command with collected requirements files
-  pip_cmd="pip install --use-deprecated=legacy-resolver -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+  pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
