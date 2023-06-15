@@ -155,7 +155,11 @@ prepare_docker() {
     EXPOSE 10001
     RUN pip install /${wheel}[serve]
     RUN (sudo apt update || true) && sudo apt install curl -y
+    RUN ln -fs /usr/lib/x86_64-linux-gnu/libstdc++.so /home/ray/anaconda3/lib/libstdc++.so
+    RUN ln -fs /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /home/ray/anaconda3/lib/libstdc++.so.6
     " > $tmp_dir/Dockerfile
+
+    # Todo: remove libstdc++ symlinks once anaconda comes with more up-to-date glibcxx
 
     pushd $tmp_dir
     docker build . -t ray_ci:v1

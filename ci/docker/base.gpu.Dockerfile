@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 
 ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
@@ -29,18 +29,22 @@ ENV BUILDKITE_BAZEL_CACHE_URL=${REMOTE_CACHE_URL}
 
 RUN apt-get update -qq && apt-get upgrade -qq
 RUN apt-get install -y -qq \
+    software-properties-common \
     curl python-is-python3 git build-essential \
     sudo unzip unrar apt-utils dialog tzdata wget rsync \
     language-pack-en tmux cmake gdb vim htop \
     libgtk2.0-dev zlib1g-dev libgl1-mesa-dev \
-    clang-format-12 jq \
-    clang-tidy-12 clang-12
-# Make using GCC 9 explicit.
-RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
-RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
-    ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
-    ln -s /usr/bin/clang-12 /usr/bin/clang
+    clang-format-14 clang-tidy-14 clang-14 \
+    gcc-11 g++-11 \
+    jq libomp-dev
+
+# Make using GCC 11 explicit.
+RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 90 --slave /usr/bin/g++ g++ /usr/bin/g++-11 \
+    --slave /usr/bin/gcov gcov /usr/bin/gcov-11
+
+RUN ln -s /usr/bin/clang-format-14 /usr/bin/clang-format && \
+    ln -s /usr/bin/clang-tidy-14 /usr/bin/clang-tidy && \
+    ln -s /usr/bin/clang-14 /usr/bin/clang
 
 RUN curl -o- https://get.docker.com | sh
 
@@ -59,8 +63,9 @@ RUN (echo "build --remote_cache=${REMOTE_CACHE_URL}" >> /root/.bazelrc); \
 RUN mkdir /ray
 WORKDIR /ray
 
-# Below should be re-run each time
+# Below should be re-run each time.
 COPY . .
 
 RUN ./ci/env/install-dependencies.sh init
+
 RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh

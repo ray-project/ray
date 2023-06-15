@@ -348,12 +348,21 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DL=1 ./ci/env/install-dependencies.sh
-    - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
       -- python/ray/tests/...
+
+- label: ":python: (Small & Client) HA"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=3.8 ./ci/ci.sh build
+    - python ./ci/build/build-docker-images.py --py-versions py38 -T cpu --build-type BUILDKITE --build-base --only-base
+    - bash ./ci/ci.sh prepare_docker
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
       --test_env=DOCKER_HOST=tcp://docker:2376
@@ -557,7 +566,7 @@
     - ./ci/env/install-dependencies.sh
     # Specifying above somehow messes up the Ray install.
     # Uninstall and re-install Ray so that we can use Ray Client
-    # (remove thirdparty_files to sidestep an issue with psutil).
+    # (remove thirdparty_files to sidestep an issue with psutil)
     - pip uninstall -y ray && rm -rf /ray/python/ray/thirdparty_files
     - pushd /ray && git clean -f -f -x -d -e .whl -e python/ray/dashboard/client && popd
     - bazel clean --expunge

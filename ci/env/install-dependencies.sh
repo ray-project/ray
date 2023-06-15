@@ -80,9 +80,17 @@ install_miniconda() {
     conda="$(command -v conda || true)"
   fi
 
-  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
+  if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ] || [ "${PYTHON}" = "3.7" ]; then
+    # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py38_23.1.0-1"
+
+    local miniconda_version="Miniconda3-py37_23.1.0-1"
+#    if [ "${PYTHON}" = "3.7" ]; then
+#      local miniconda_version="Miniconda3-py37_23.1.0-1"
+#    else
+#      local miniconda_version="Miniconda3-latest"
+#    fi
+
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -94,6 +102,7 @@ install_miniconda() {
       darwin*)
         if [ "$(uname -m)" = "arm64" ]; then
           HOSTTYPE="arm64"
+          miniconda_version="Miniconda3-latest"
           miniconda_dir="/opt/homebrew/opt/miniconda"
         else
           HOSTTYPE="x86_64"
@@ -159,8 +168,21 @@ install_miniconda() {
     (
       set +x
       echo "Resetting Anaconda Python ${python_version}..."
+
       "${WORKSPACE_DIR}"/ci/suppress_output conda install -q -y --rev 0
     )
+  fi
+
+  if [ -n "${BUILDKITE-}" ] && grep -qo 22.04 < /etc/issue; then
+    # Fix outdated libstdc++ in conda on ubuntu 22.04.
+    # Ubuntu 22.04 ships a newer libstdc++, which is not supported by the miniconda
+    # version we use for py37. But we can't update miniconda without making python 3.7
+    # harder to install. So we manually update libstdc++ in conda instead.
+    # Once we update our base miniconda to a version that does not support python 3.7
+    # anymore, we can remove these links as the newer minicondas should be shipped
+    # with a compatible libstdc++.
+    ln -fs /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/miniconda/lib/libstdc++.so
+    ln -fs /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /opt/miniconda/lib/libstdc++.so.6
   fi
 
   command -V python

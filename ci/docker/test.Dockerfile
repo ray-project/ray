@@ -16,3 +16,6 @@ RUN bash --login -i ./ci/env/install-dependencies.sh
 
 # Install Ray
 RUN SKIP_BAZEL_BUILD=1 RAY_INSTALL_JAVA=0 bash --login -i -c -- "python3 -m pip install -e /ray/python/"
+
+# Check importing ray works
+RUN bash --login -i -c --  "python3 -c 'import ray'"

@@ -287,6 +287,23 @@ class TestParsedRuntimeEnv:
 
         del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
 
+    def test_inject_stdlibcxx(self):
+        # Should not be injected if not provided by env var.
+        result = RuntimeEnv(env_vars={"hi": "hi"})
+        assert "_inject_stdlibcxx" not in result
+
+        os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"] = "1"
+
+        # Should be injected if provided by env var.
+        result = RuntimeEnv()
+        assert result["_inject_stdlibcxx"]
+
+        # Should be preserved if passed.
+        result = RuntimeEnv(_inject_stdlibcxx=False)
+        assert not result["_inject_stdlibcxx"]
+
+        del os.environ["RAY_RUNTIME_ENV_LOCAL_DEV_MODE"]
+
 
 class TestParseJobConfig:
     def test_parse_runtime_env_from_json_env_variable(self):

@@ -1008,7 +1008,7 @@ def get_conda_bin_executable(executable_name):
     return executable_name
 
 
-def get_conda_env_dir(env_name):
+def get_conda_env_dir(env_name: str, conda_exe: Optional[str] = None):
     """Find and validate the conda directory for a given conda environment.
 
     For example, given the environment name `tf1`, this function checks
@@ -1020,7 +1020,7 @@ def get_conda_env_dir(env_name):
         # The caller is neither in a conda env or in (base) env.  This is rare
         # because by default, new terminals start in (base), but we can still
         # support this case.
-        conda_exe = os.environ.get("CONDA_EXE")
+        conda_exe = os.environ.get("CONDA_EXE", conda_exe)
         if conda_exe is None:
             raise ValueError(
                 "Cannot find environment variables set by conda. "

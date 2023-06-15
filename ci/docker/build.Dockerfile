@@ -11,7 +11,7 @@ ENV BUILDKITE_PULL_REQUEST_BASE_BRANCH=${BUILDKITE_PULL_REQUEST_BASE_BRANCH}
 ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 # Set compiler here to build Ray with CLANG/LLVM
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-14
 
 # Move out of working dir /ray
 # Delete stale data
@@ -37,4 +37,3 @@ RUN bash --login -i -c -- "python3 -c 'import ray'"
 # Run determine test to run
 RUN bash --login -i -c "python ./ci/pipeline/determine_tests_to_run.py --output=json > affected_set.json"
 RUN cat affected_set.json
-

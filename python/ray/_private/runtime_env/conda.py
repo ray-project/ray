@@ -18,6 +18,7 @@ from ray._private.runtime_env.conda_utils import (
     create_conda_env_if_needed,
     delete_conda_env,
     get_conda_activate_commands,
+    get_conda_bin_executable,
 )
 from ray._private.runtime_env.context import RuntimeEnvContext
 from ray._private.runtime_env.packaging import Protocol, parse_uri
@@ -29,6 +30,7 @@ from ray._private.utils import (
     get_release_wheel_url,
     get_wheel_filename,
     try_to_create_directory,
+    get_conda_env_dir,
 )
 
 default_logger = logging.getLogger(__name__)
@@ -100,6 +102,21 @@ def _inject_ray_to_conda_site(
     # https://docs.python.org/3/library/site.html
     with open(os.path.join(site_packages_path, "ray_shared.pth"), "w") as f:
         f.write(ray_path)
+
+
+def _inject_libstdcxx_to_conda_site(base_env_dir: str, conda_env_dir: str):
+    """Copy libstdc++.so.6 from base env to (new) conda env."""
+    if base_env_dir == conda_env_dir:
+        return
+
+    for filename in ["libstdc++.so", "libstdc++.so.6"]:
+        base_path = os.path.join(base_env_dir, "lib", filename)
+        env_path = os.path.join(conda_env_dir, "lib", filename)
+        if not os.path.exists(base_path):
+            continue
+        if os.path.exists(env_path):
+            os.unlink(env_path)
+        shutil.copy(base_path, env_path)
 
 
 def _current_py_version():
@@ -355,6 +372,18 @@ class CondaPlugin(RuntimeEnvPlugin):
 
                 if runtime_env.get_extension("_inject_current_ray"):
                     _inject_ray_to_conda_site(conda_path=conda_env_name, logger=logger)
+                if runtime_env.get_extension("_inject_stdlibcxx"):
+                    conda_exe = get_conda_bin_executable("conda")
+                    if conda_exe == "conda":
+                        # Not resolved from env variable, use shutil to detect
+                        conda_exe = shutil.which("conda")
+                    _inject_libstdcxx_to_conda_site(
+                        base_env_dir=get_conda_env_dir("base", conda_exe=conda_exe),
+                        conda_env_dir=get_conda_env_dir(
+                            conda_env_name, conda_exe=conda_exe
+                        ),
+                    )
+
             logger.info(f"Finished creating conda environment at {conda_env_name}")
             return get_directory_size_bytes(conda_env_name)
 

@@ -14,6 +14,7 @@ import ray
 from ray.runtime_env import RuntimeEnv
 from ray._private.runtime_env.conda import (
     inject_dependencies,
+    _inject_libstdcxx_to_conda_site,
     _inject_ray_to_conda_site,
     _resolve_install_from_source_ray_dependencies,
     _current_py_version,
@@ -71,7 +72,9 @@ def conda_envs(tmp_path_factory):
             print(proc.stderr.decode())
             assert False
 
-        _inject_ray_to_conda_site(get_conda_env_dir(env_name))
+        conda_env_dir = get_conda_env_dir(env_name)
+        _inject_libstdcxx_to_conda_site(get_conda_env_dir("base"), conda_env_dir)
+        _inject_ray_to_conda_site(conda_env_dir)
         ray_deps: List[str] = _resolve_install_from_source_ray_dependencies()
         ray_deps.append(f"emoji=={package_version}")
 

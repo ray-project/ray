@@ -48,11 +48,11 @@ PY_MATRIX = {
 ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
 
 BASE_IMAGES = {
-    "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
-    "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
+    "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04",
+    "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu22.04",
     "cu116": "nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04",
     "cu115": "nvidia/cuda:11.5.2-cudnn8-devel-ubuntu20.04",
-    "cpu": "ubuntu:focal",
+    "cpu": "ubuntu:22.04",
 }
 
 CUDA_FULL = {
@@ -479,7 +479,7 @@ def _docker_push(image, tag):
             print(progress_line)
 
 
-def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
+def _tag_and_push(full_image_name, old_tag, new_tag, push=False):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
     if "nightly" in new_tag and _release_build():
@@ -490,7 +490,7 @@ def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
             repository=full_image_name,
             tag=new_tag,
         )
-    if not merge_build:
+    if not push:
         print(
             "This is a PR Build! On a merge build, we would normally push"
             f"to: {full_image_name}:{new_tag}"
@@ -592,7 +592,7 @@ def create_image_tags(
 def push_and_tag_images(
     py_versions: List[str],
     image_types: List[str],
-    merge_build: bool = False,
+    push: bool = False,
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
 ):
@@ -699,7 +699,7 @@ def push_and_tag_images(
                     full_image_name,
                     old_tag=old_tag,
                     new_tag=new_tag,
-                    merge_build=merge_build,
+                    push=push,
                 )
 
 
@@ -787,6 +787,11 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
     help="Whether to build base-deps & ray-deps",
 )
 @click.option(
+    "--only-base/--no-only-base",
+    default=False,
+    help="Whether only to build ray base containers",
+)
+@click.option(
     "--only-build-worker-container/--no-only-build-worker-container",
     default=False,
     help="Whether only to build ray-worker-container",
@@ -797,6 +802,7 @@ def main(
     build_type: str,
     suffix: Optional[str] = None,
     build_base: bool = True,
+    only_base: bool = False,
     only_build_worker_container: bool = False,
 ):
     py_versions = (
@@ -869,6 +875,17 @@ def main(
             py_versions, image_types, build_base, suffix=suffix
         )
 
+        if only_base:
+            print("Built base images. Tagging.")
+            push_and_tag_images(
+                py_versions,
+                image_types,
+                push=False,
+                image_list=["base-deps", "ray-deps"],
+                suffix=suffix,
+            )
+            return
+
         if only_build_worker_container:
             build_for_all_versions(
                 "ray-worker-container", py_versions, image_types, suffix=suffix
@@ -931,7 +948,7 @@ def main(
                 push_and_tag_images(
                     py_versions,
                     image_types,
-                    merge_build=valid_branch and is_merge,
+                    push=valid_branch and is_merge,  # Push only on merge builds
                     image_list=images_to_tag_and_push,
                     suffix=suffix,
                 )

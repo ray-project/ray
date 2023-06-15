@@ -407,11 +407,14 @@
     - DATA_PROCESSING_TESTING=1 ARROW_VERSION=9.* ARROW_MONGO_VERSION=0.5.* ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - sudo apt-get purge -y mongodb*
-    - sudo apt-get install -y mongodb
+    - curl -fsSL https://pgp.mongodb.com/server-6.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-6.0.gpg --dearmor
+    - echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-6.0.gpg ] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/6.0 multiverse" | sudo tee /etc/apt/sources.list.d/mongodb-org-6.0.list
+    - sudo apt-get update -qq
+    - sudo apt-get install -y mongodb-org
     - sudo rm -rf /var/lib/mongodb/mongod.lock
-    - sudo service mongodb start
+    - mongod --fork --config /etc/mongod.conf
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=data_integration python/ray/data/...
-    - sudo service mongodb stop
+    - pkill -f mongod
     - sudo apt-get purge -y mongodb*
 
 - label: "Data tests (bulk executor)"

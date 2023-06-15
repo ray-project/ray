@@ -257,6 +257,7 @@ class RuntimeEnv(dict):
         "_ray_release",
         "_ray_commit",
         "_inject_current_ray",
+        "_inject_stdlibcxx",
         "config",
         # TODO(SongGuyang): We add this because the test
         # `test_experimental_package_github` set a `docker`
@@ -270,6 +271,7 @@ class RuntimeEnv(dict):
         "_ray_release",
         "_ray_commit",
         "_inject_current_ray",
+        "_inject_stdlibcxx",
     }
 
     def __init__(
@@ -347,6 +349,14 @@ class RuntimeEnv(dict):
         if "_inject_current_ray" not in self:
             if "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
                 self["_inject_current_ray"] = True
+
+        # Used for testing Ray that has been built against a stdlibc++
+        # version that is newer than the default one shipped by conda.
+        # This is the case in Ubuntu 22.04, which ships GLIBCXX_3.4.30,
+        # but the miniconda we use in CI only ships GLIBCXX_3.4.29.
+        if "_inject_stdlibcxx" not in self:
+            if "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
+                self["_inject_stdlibcxx"] = True
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
         # if a runtime env is empty without deserializing it.  This is a catch-
