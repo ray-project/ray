@@ -114,7 +114,7 @@ class TestImportAttr(unittest.TestCase):
         assert old_path == sys.path
 
         # Test invalid import does not change sys.path.
-        sys.path.append("working_dir_files")
+        sys.path.append("/ray/dashboard")
         old_path = sys.path.copy()
         with self.assertRaises(ModuleNotFoundError):
             bar = import_attr(full_path="resources.fooo.bar")
@@ -136,7 +136,7 @@ class TestImportAttr(unittest.TestCase):
         assert old_path == sys.path
 
         # Test invalid import does not change sys.path.
-        sys.path.append("working_dir_files")
+        sys.path.append("/ray/dashboard")
         old_path = sys.path.copy()
         with self.assertRaises(ModuleNotFoundError):
             bar = import_attr(full_path="resources.fooo:bar")

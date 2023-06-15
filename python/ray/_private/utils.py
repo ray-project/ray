@@ -1187,7 +1187,7 @@ def import_attr(full_path: str):
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
 
-    old_paths = sys.path
+    old_paths = sys.path.copy()
     try:
         # `ray/dashboard` took the import precedence and can collide user's modules.
         # Dropping `ray/dashboard` from sys.path to avoid the import collision.
