@@ -5047,10 +5047,6 @@
   frequency: nightly
   team: core
   cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_usage_threshold=0.7 
-        - RAY_task_oom_retries=-1
     cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
 
