@@ -1047,12 +1047,7 @@ class EnvRunnerV2:
                 policy: Policy = _try_find_policy_again(eval_data)
 
             if policy.config.get("_enable_rl_module_api", False):
-                batch_size = len(eval_data)
-                seq_lens = np.ones(batch_size, dtype=np.int32)
                 input_dict = concat_samples([d.data.sample_batch for d in eval_data])
-                input_dict = policy.maybe_add_time_dimension(
-                    input_dict, seq_lens=seq_lens
-                )
             else:
                 input_dict = _batch_inference_sample_batches(
                     [d.data.sample_batch for d in eval_data]
@@ -1063,10 +1058,6 @@ class EnvRunnerV2:
                 timestep=policy.global_timestep,
                 episodes=[self._active_episodes[t.env_id] for t in eval_data],
             )
-
-            if policy.config.get("_enable_rl_module_api", False):
-                result = list(result)
-                result[0] = result[0][0]
 
             eval_results[policy_id] = result
 

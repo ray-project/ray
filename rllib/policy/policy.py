@@ -1418,9 +1418,10 @@ class Policy(metaclass=ABCMeta):
         actions, state_outs, extra_outs = self.compute_actions_from_input_dict(
             self._dummy_batch, explore=explore
         )
-        for key, view_req in self.view_requirements.items():
-            if key not in self._dummy_batch.accessed_keys:
-                view_req.used_for_compute_actions = False
+        if not self.config.get("_enable_rl_module_api", False):
+            for key, view_req in self.view_requirements.items():
+                if key not in self._dummy_batch.accessed_keys:
+                    view_req.used_for_compute_actions = False
         # Add all extra action outputs to view reqirements (these may be
         # filtered out later again, if not needed for postprocessing or loss).
         for key, value in extra_outs.items():
@@ -1699,12 +1700,6 @@ class Policy(metaclass=ABCMeta):
                     )
                 else:
                     ret[view_col] = [view_req.space for _ in range(batch_size)]
-
-        if self.config.get("_enable_rl_module_api", False):
-            # With RL Modules, we need to prepare the batch, which is done implicitly
-            # by the old stack inside the model.
-            seq_lens = np.ones(batch_size)
-            ret = self.maybe_add_time_dimension(ret, seq_lens=seq_lens)
 
         # Due to different view requirements for the different columns,
         # columns in the resulting batch may not all have the same batch size.

@@ -433,21 +433,19 @@ class RLModule(abc.ABC):
             )
 
             if self.config.model_config_dict["lstm_use_prev_action"]:
-                vr["prev_action"] = ViewRequirement(
+                vr[SampleBatch.ACTIONS] = ViewRequirement(
                     data_col=SampleBatch.ACTIONS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
-                    space=space,
                 )
 
             if self.config.model_config_dict["lstm_use_prev_reward"]:
-                vr["prev_reward"] = ViewRequirement(
+                vr[SampleBatch.PREV_REWARDS] = ViewRequirement(
                     data_col=SampleBatch.REWARDS,
                     shift=-1,
                     used_for_compute_actions=True,
                     used_for_training=True,
-                    space=space,
                 )
 
             vr[STATE_OUT] = ViewRequirement(

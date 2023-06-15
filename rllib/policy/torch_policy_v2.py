@@ -342,7 +342,7 @@ class TorchPolicyV2(Policy):
                 item = torch.as_tensor(item)
                 size = item.size()
                 b_dim, t_dim = list(size[:2])
-                other_dims = size[2:]
+                other_dims = list(size[2:])
                 return item.reshape([b_dim * t_dim] + other_dims)
 
             for k, v in input_dict.items():
@@ -1181,9 +1181,20 @@ class TorchPolicyV2(Policy):
 
         extra_fetches = None
         if isinstance(self.model, RLModule):
+            # For recurrent models, we need to add a time dimension.
+            if not seq_lens:
+                # In order to calculate the batch size ad hoc, we need a sample batch.
+                if not isinstance(input_dict, SampleBatch):
+                    input_dict = SampleBatch(input_dict)
+                seq_lens = np.array([1] * len(input_dict))
+            input_dict = self.maybe_add_time_dimension(input_dict, seq_lens=seq_lens)
+            input_dict = convert_to_torch_tensor(input_dict, device=self.device)
+
             if explore:
                 action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
+                # For recurrent models, we need to remove the time dimension.
+                fwd_out = self.maybe_remove_time_dimension(fwd_out)
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )
@@ -1192,6 +1203,8 @@ class TorchPolicyV2(Policy):
             else:
                 action_dist_class = self.model.get_inference_action_dist_cls()
                 fwd_out = self.model.forward_inference(input_dict)
+                # For recurrent models, we need to remove the time dimension.
+                fwd_out = self.maybe_remove_time_dimension(fwd_out)
                 action_dist = action_dist_class.from_logits(
                     fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                 )

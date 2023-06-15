@@ -187,6 +187,14 @@ def compute_gae_for_sample_batch(
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
+        batch = compute_advantages(
+            sample_batch,
+            last_r,
+            policy.config["gamma"],
+            policy.config["lambda"],
+            use_gae=policy.config["use_gae"],
+            use_critic=policy.config.get("use_critic", True),
+        )
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
         # Input dict is provided to us automatically via the Model's
@@ -214,10 +222,18 @@ def compute_gae_for_sample_batch(
             #  running across different processes for different trajectories?
             #  This implementation right now will compute even the action_dist which
             #  will not be needed but takes time to compute.
+            # In order to calculate the batch size ad hoc, we need a sample batch.
+            if not isinstance(input_dict, SampleBatch):
+                input_dict = SampleBatch(input_dict)
+            seq_lens = np.array([1] * len(input_dict))
+            input_dict = policy.maybe_add_time_dimension(input_dict, seq_lens=seq_lens)
             if policy.framework == "torch":
                 input_dict = convert_to_torch_tensor(input_dict, device=policy.device)
+                # For recurrent models, we need to add a time dimension.
             input_dict = NestedDict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
+            # For recurrent models, we need to remove the time dimension.
+            fwd_out = policy.maybe_remove_time_dimension(fwd_out)
 
             vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
             rewards = np.array(sample_batch[SampleBatch.REWARDS])
