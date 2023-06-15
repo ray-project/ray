@@ -457,9 +457,7 @@ class DreamerV3(Algorithm):
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
-            self.workers.local_worker().module.dreamer_model.summary(
-                expand_nested=True
-            )
+            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
 
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.
