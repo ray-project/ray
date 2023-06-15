@@ -6,7 +6,7 @@ import time
 import pytest
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import wait_for_condition, SignalActor
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
@@ -205,6 +205,42 @@ def test_worker_replica_failure(serve_instance):
                 break
             except TimeoutError:
                 time.sleep(0.1)
+
+
+def test_no_available_replicas_does_not_block_proxy(serve_instance):
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class SlowStarter:
+        def __init__(self):
+            ray.get(signal_actor.wait.remote())
+
+        def __call__(self):
+            return "hi"
+
+    serve.run(SlowStarter.bind(), _blocking=False)
+
+    @ray.remote
+    def make_blocked_request():
+        print("MAKE BLOCKED")
+        r = requests.get("http://localhost:8000/")
+        r.raise_for_status()
+        print("BLOCKED DONE")
+        return r.text
+
+    blocked_ref = make_blocked_request.remote()
+    with pytest.raises(TimeoutError):
+        ray.get(blocked_ref, timeout=1)
+
+    r = requests.get("http://localhost:8000/-/routes")
+    r.raise_for_status()
+    print(r.text)
+    r = requests.get("http://localhost:8000/-/healthz")
+    r.raise_for_status()
+    print(r.text)
+
+    ray.get(signal_actor.send.remote())
+    assert ray.get(blocked_ref) == "hi"
 
 
 if __name__ == "__main__":

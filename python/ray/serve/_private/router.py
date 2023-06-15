@@ -89,7 +89,9 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
     This policy does *not* respect `max_concurrent_queries`.
     """
 
-    def __init__(self):
+    def __init__(self, deployment_name: str):
+        self._deployment_name = deployment_name
+        self._replica_id_set = set()
         self._replica_iterator = itertools.cycle([])
         self._replicas_updated_event = asyncio.Event()
 
@@ -102,9 +104,11 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 replica = next(self._replica_iterator)
             except StopIteration:
                 logger.info(
-                    "Tried to assign replica but none available",
+                    "Tried to assign replica for deployment "
+                    f"{self._deployment_name} but none available.",
                     extra={"log_to_stderr": False},
                 )
+                # self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
 
         if replica.is_cross_language:
@@ -121,6 +125,15 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
         )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        new_replica_ids = set(r.replica_tag for r in running_replicas)
+        if new_replica_ids != self._replica_id_set:
+            self._replica_id_set = new_replica_ids
+            logger.info(
+                "Got updated replicas for deployment "
+                f"{self._deployment_name}: {new_replica_ids}.",
+                extra={"log_to_stderr": False},
+            )
+
         random.shuffle(running_replicas)
         self._replica_iterator = itertools.cycle(running_replicas)
         self._replicas_updated_event.set()
@@ -384,7 +397,9 @@ class Router:
         """
         self._event_loop = event_loop
         if _stream:
-            self._replica_scheduler = RoundRobinStreamingReplicaScheduler()
+            self._replica_scheduler = RoundRobinStreamingReplicaScheduler(
+                deployment_name
+            )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
 
