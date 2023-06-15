@@ -211,6 +211,8 @@ class MapOperator(OneToOneOperator, ABC):
                 # Only save to metrics if we haven't already done so.
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
+        # This should take precedence over previously set scheduling strategy, as it
+        # implements actor-based locality overrides.
         if self._ray_remote_args_factory:
             return self._ray_remote_args_factory(ray_remote_args)
         return ray_remote_args
