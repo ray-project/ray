@@ -834,19 +834,13 @@ def test_generator_wait(shutdown_only):
     """
     Test basic cases.
     """
-    s = time.time()
-    r, ur = ray.wait([gen], num_returns=1)
-    print(time.time() - s)
-    assert len(r) == 1
-    assert ray.get(next(r[0])) == 0
-    assert len(ur) == 0
-
-    s = time.time()
-    r, ur = ray.wait([gen], num_returns=1)
-    print(time.time() - s)
-    assert len(r) == 1
-    assert ray.get(next(r[0])) == 1
-    assert len(ur) == 0
+    for expected_rval in [0, 1]:
+        s = time.time()
+        r, ur = ray.wait([gen], num_returns=1)
+        print(time.time() - s)
+        assert len(r) == 1
+        assert ray.get(next(r[0])) == expected_rval
+        assert len(ur) == 0
 
     # Should raise a stop iteration.
     for _ in range(3):
