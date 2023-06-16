@@ -10,7 +10,8 @@ from ray.data._internal.stats import StatsDict
 
 
 class UnionOperator(NAryOperator):
-    """An operator that combines blocks from input operators."""
+    """An operator that combines output blocks from
+    two or more input operators into a single output."""
 
     def __init__(
         self,
@@ -21,13 +22,18 @@ class UnionOperator(NAryOperator):
         Args:
             input_ops: Operators generating input data for this operator to union.
         """
-        # Intermediary buffers used to store blocks from each input dependency
-        # when order is preserved.
+
+        # By default, union does not preserve the order of output blocks.
+        # To preserve the order, configure ExecutionOptions accordingly.
+        self._preserve_order = False
+
+        # Intermediary buffers used to store blocks from each input dependency.
+        # Only used when `self._prserve_order` is True.
         self._input_buffers: List[List[RefBundle]] = [[] for _ in range(len(input_ops))]
 
         # The index of the input dependency that is currently the source of
         # the output buffer. New inputs from this input dependency will be added
-        # directly to the output buffer. Only used when order is preserved.
+        # directly to the output buffer. Only used when `self._preserve_order` is True.
         self._input_idx_to_output = 0
 
         self._output_buffer: List[RefBundle] = []
@@ -64,13 +70,21 @@ class UnionOperator(NAryOperator):
                 self._input_buffers[input_index].append(refs)
 
     def input_done(self, input_index: int) -> None:
-        next_input_idx = input_index + 1
+        """When `self._preserve_order` is True, change the
+        output buffer source to the next input dependency
+        once the current input dependency calls `input_done()`."""
+        if not self._preserve_order:
+            return
+        if not input_index == self._input_idx_to_output:
+            return
+        next_input_idx = self._input_idx_to_output + 1
         if next_input_idx < len(self._input_buffers):
             self._output_buffer.extend(self._input_buffers[next_input_idx])
             self._input_buffers[next_input_idx].clear()
-            self._input_idx_to_output += 1
+            self._input_idx_to_output = next_input_idx
+        super().input_done(input_index)
 
-    def inputs_done(self) -> None:
+    def all_inputs_done(self) -> None:
         # Note that in the case where order is not preserved, all inputs
         # are directly added to the output buffer as soon as they are received,
         # so there is no need to check any intermediary buffers.
@@ -80,7 +94,7 @@ class UnionOperator(NAryOperator):
                     f"Input at index {idx} still has "
                     f"{len(input_buffer)} blocks remaining."
                 )
-        super().inputs_done()
+        super().all_inputs_done()
 
     def has_next(self) -> bool:
         # Check if the output buffer still contains at least one block.

@@ -282,13 +282,13 @@ class MapOperator(OneToOneOperator, ABC):
         if self._metrics.cur > self._metrics.peak:
             self._metrics.peak = self._metrics.cur
 
-    def inputs_done(self):
+    def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
-        super().inputs_done()
+        super().all_inputs_done()
 
     def has_next(self) -> bool:
         assert self._started

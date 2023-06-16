@@ -29,7 +29,7 @@ class LimitOperator(OneToOneOperator):
         self._cur_output_bundles = 0
         super().__init__(self._name, input_op)
         if self._limit <= 0:
-            self.inputs_done()
+            self.all_inputs_done()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
@@ -79,7 +79,7 @@ class LimitOperator(OneToOneOperator):
         )
         self._buffer.append(out_refs)
         if self._limit_reached():
-            self.inputs_done()
+            self.all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0

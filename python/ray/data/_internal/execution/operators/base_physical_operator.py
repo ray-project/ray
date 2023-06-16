@@ -80,7 +80,7 @@ class AllToAllOperator(PhysicalOperator):
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
 
-    def inputs_done(self) -> None:
+    def all_inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
@@ -88,7 +88,7 @@ class AllToAllOperator(PhysicalOperator):
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
         self._next_task_index += 1
         self._input_buffer.clear()
-        super().inputs_done()
+        super().all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0

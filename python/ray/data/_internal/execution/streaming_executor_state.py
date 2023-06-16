@@ -122,7 +122,7 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
-        # Tracks whether each input op will no longer have input added to it.
+        # Tracks whether `input_done` is called for each input op.
         self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
 
@@ -310,7 +310,8 @@ def build_streaming_topology(
 
 
 def process_completed_tasks(topology: Topology) -> None:
-    """Process any newly completed tasks and update operator state."""
+    """Process any newly completed tasks. To update operator
+    states, call `update_operator_states()` afterwards."""
 
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
@@ -337,7 +338,10 @@ def process_completed_tasks(topology: Topology) -> None:
             op_state.add_output(op.get_next())
 
 
-def postprocess_completed_tasks(topology: Topology) -> None:
+def update_operator_states(topology: Topology) -> None:
+    """Update operator states accordingly for newly completed tasks.
+    Should be called after `process_completed_tasks()`."""
+
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
         if op_state.inputs_done_called:
@@ -352,7 +356,7 @@ def postprocess_completed_tasks(topology: Topology) -> None:
                 all_inputs_done = False
 
         if all_inputs_done:
-            op.inputs_done()
+            op.all_inputs_done()
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.

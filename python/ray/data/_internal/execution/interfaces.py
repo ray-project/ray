@@ -404,7 +404,7 @@ class PhysicalOperator(Operator):
         """
         pass
 
-    def inputs_done(self) -> None:
+    def all_inputs_done(self) -> None:
         """Called when all upstream operators have completed().
 
         After this is called, the executor guarantees that no more inputs will be added
