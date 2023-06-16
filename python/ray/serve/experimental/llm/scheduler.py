@@ -130,7 +130,11 @@ class InferenceScheduler:
             return self._stop
 
     def process_request(
-        self, input_text: str, params: SamplingParams, max_length: int = 1024, event=None
+        self,
+        input_text: str,
+        params: SamplingParams,
+        max_length: int = 1024,
+        event=None,
     ) -> FakeTokenStream:
         request = GenerationRequest(
             id=get_request_id(),
@@ -142,7 +146,7 @@ class InferenceScheduler:
         return self._add_request(request, event)
 
     async def async_process_request(
-       self, input_text: str, params: SamplingParams, max_length: int = 1024 
+        self, input_text: str, params: SamplingParams, max_length: int = 1024
     ) -> str:
         event = Event_ts()
         output = self.process_request(input_text, params, max_length, event)

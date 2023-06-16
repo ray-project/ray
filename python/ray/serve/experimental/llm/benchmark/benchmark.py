@@ -12,21 +12,21 @@ from ray.serve.experimental.llm.models.opt import OPT
 from transformers import AutoTokenizer
 
 
-def gen_random_prompts(model, vocab_range=(0, 5000), context_length=512, num_prompts=512):
+def gen_random_prompts(
+    model, vocab_range=(0, 5000), context_length=512, num_prompts=512
+):
     tokenizer = AutoTokenizer.from_pretrained(model, use_fast=False)
     import random
 
     random.seed(0xCADE)
     prompts = []
     for _ in range(num_prompts):
-        input_ids = [
-            random.randint(*vocab_range)
-            for _ in range(context_length)
-        ]
+        input_ids = [random.randint(*vocab_range) for _ in range(context_length)]
         prompt = tokenizer.decode(input_ids)
         prompts.append((prompt, {}))
 
     return prompts
+
 
 def generate_file_prompts():
     test_inputs = []
@@ -62,7 +62,9 @@ params = SamplingParams(
     seed=42,
 )
 
-inputs = gen_random_prompts("facebook/opt-6.7b", vocab_range=(0, 50000), context_length=512, num_prompts=512)
+inputs = gen_random_prompts(
+    "facebook/opt-6.7b", vocab_range=(0, 50000), context_length=512, num_prompts=512
+)
 
 scheduler = InferenceScheduler(
     tokenizer=TransfomerTokenizer(
@@ -77,7 +79,7 @@ scheduler = InferenceScheduler(
     inline=False,
 )
 
-print('starting')
+print("starting")
 
 results = []
 for line, _ in inputs:
@@ -86,6 +88,6 @@ for line, _ in inputs:
 
 for result in results:
     result.wait_until_finished()
-    #print(result.last())
+    # print(result.last())
 
 scheduler.stop()

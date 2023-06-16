@@ -9,10 +9,11 @@ class _EndOfStream:
 
 EOS = _EndOfStream()
 
+
 class Event_ts(asyncio.Event):
-    #TODO: clear() method
+    # TODO: clear() method
     def set(self):
-        #FIXME: The _loop attribute is not documented as public api!
+        # FIXME: The _loop attribute is not documented as public api!
         self._loop.call_soon_threadsafe(super().set)
 
 

@@ -16,7 +16,12 @@ class InferenceRequest:
     submit_time_ns: int
 
     @classmethod
-    def from_request(cls, request: GenerationRequest, loop: asyncio.AbstractEventLoop, event: Event_ts):
+    def from_request(
+        cls,
+        request: GenerationRequest,
+        loop: asyncio.AbstractEventLoop,
+        event: Event_ts,
+    ):
         return cls(
             id=request.id,
             request=request,
