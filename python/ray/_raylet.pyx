@@ -311,7 +311,7 @@ class StreamingObjectRefGenerator:
                 self._generator_task_exception = e
                 return ref
             else:
-                # meaning the task succeed without failure raise StopIteration.
+                # The task finished without an exception.
                 raise StopIteration
         return ref
 
