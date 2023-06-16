@@ -98,6 +98,7 @@ bool ClusterResourceManager::UpdateNode(scheduling::NodeID node_id,
 
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   received_node_resources_.erase(node_id);
+  node_labels_index_.RemoveLabels(node_id);
   return nodes_.erase(node_id) != 0;
 }
 
@@ -286,6 +287,7 @@ void ClusterResourceManager::DebugString(std::stringstream &buffer) const {
     buffer << node.second.GetLocalView().DebugString();
   }
   buffer << bundle_location_index_.DebugString();
+  buffer << "\n" << node_labels_index_.DebugString();
 }
 
 BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
@@ -301,6 +303,12 @@ void ClusterResourceManager::SetNodeLabels(
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = labels;
+
+  node_labels_index_.AddLabels(node_id, labels);
+}
+
+NodeLabelsIndex &ClusterResourceManager::GetNodeLabelsIndex() {
+  return node_labels_index_;
 }
 
 }  // namespace ray

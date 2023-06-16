@@ -174,4 +174,24 @@ TEST_F(ClusterResourceManagerTest, UpdateNodeNormalTaskResources) {
   ASSERT_TRUE(node_resources.normal_task_resources.Get(ResourceID::CPU()) == 0.8);
 }
 
+TEST_F(ClusterResourceManagerTest, TestAddAndRemoveNodeLabels) {
+  absl::flat_hash_map<std::string, std::string> labels = {{"node_ip", "1.1.1.1"}};
+  absl::flat_hash_map<std::string, std::string> labels_empty;
+  manager->SetNodeLabels(node0, labels);
+  manager->SetNodeLabels(node1, labels_empty);
+  const auto &node_resources_1 = manager->GetNodeResources(node0);
+  ASSERT_EQ(node_resources_1.labels, labels);
+  const auto &node_resources_2 = manager->GetNodeResources(node1);
+  ASSERT_EQ(node_resources_2.labels, labels_empty);
+  const auto &node_resources_3 = manager->GetNodeResources(node2);
+  ASSERT_EQ(node_resources_3.labels, labels_empty);
+
+  auto result =
+      manager->GetNodeLabelsIndex().GetNodesByKeyAndValue("node_ip", {"1.1.1.1"});
+  ASSERT_EQ(result, absl::flat_hash_set<scheduling::NodeID>{node0});
+  manager->RemoveNode(node0);
+  result = manager->GetNodeLabelsIndex().GetNodesByKeyAndValue("node_ip", {"1.1.1.1"});
+  ASSERT_TRUE(result.empty());
+}
+
 }  // namespace ray

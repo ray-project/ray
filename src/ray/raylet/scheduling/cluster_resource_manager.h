@@ -26,6 +26,7 @@
 #include "ray/raylet/scheduling/cluster_resource_data.h"
 #include "ray/raylet/scheduling/fixed_point.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
+#include "ray/raylet/scheduling/node_labels_index.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -136,6 +137,8 @@ class ClusterResourceManager {
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      const absl::flat_hash_map<std::string, std::string> &labels);
 
+  NodeLabelsIndex &GetNodeLabelsIndex();
+
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;
@@ -170,6 +173,8 @@ class ClusterResourceManager {
   absl::flat_hash_map<scheduling::NodeID, NodeResources> received_node_resources_;
 
   BundleLocationIndex bundle_location_index_;
+
+  NodeLabelsIndex node_labels_index_;
 
   /// Timer to revert local changes to the resources periodically.
   ray::PeriodicalRunner timer_;
