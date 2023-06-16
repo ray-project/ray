@@ -38,6 +38,18 @@ build:windows --enable_runfiles
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
 # Warnings should be errors
+build:linux --cxxopt="-fcoroutines"
+build:linux --cxxopt="-DBOOST_ASIO_HAS_CO_AWAIT"
+build:linux --cxxopt="-DBOOST_ASIO_HAS_STD_COROUTINE"
+
+build:macos --cxxopt="-fcoroutines-ts"
+build:macos --cxxopt="-DBOOST_ASIO_HAS_CO_AWAIT"
+build:macos --cxxopt="-Wno-error=deprecated-experimental-coroutine"
+
+build:msvc-cl --cxxopt="/await"
+build:msvc-cl --cxxopt="/DBOOST_ASIO_HAS_CO_AWAIT"
+
+
 build:linux    --per_file_copt="-\\.(asm|S)$@-Werror"
 build:macos    --per_file_copt="-\\.(asm|S)$@-Werror"
 build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
