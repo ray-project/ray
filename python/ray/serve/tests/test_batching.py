@@ -215,6 +215,39 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 
 
 @pytest.mark.asyncio
+async def test_batch_timeout_empty_queue():
+    """Check that Serve waits for before creating the first batch."""
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=10000)
+    async def timeout():
+        return "No-op"
+
+    tasks = [asyncio.create_task(timeout()) for _ in range(9)]
+    sleep_task = [asyncio.create_task(asyncio.sleep(0.1))]
+    done, _ = await asyncio.wait(
+        tasks + sleep_task, return_when=asyncio.FIRST_COMPLETED
+    )
+
+    # Due to the long timeout, none of the tasks should finish until a tenth
+    # request is submitted
+    assert len(done) == 1 and sleep_task[0] in done
+
+    tasks.append(asyncio.create_task(timeout()))
+    sleep_task = [asyncio.create_task(asyncio.sleep(0.1))]
+    done, pending = await asyncio.wait(
+        tasks + sleep_task, return_when=asyncio.FIRST_COMPLETED
+    )
+
+    # All the timeout tasks should be finished
+    assert len(done) == 10
+    for task in tasks:
+        assert task in done
+
+    # The timeout tasks should have finished before the sleep task finished
+    assert sleep_task[0] in pending
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)

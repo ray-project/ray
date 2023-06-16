@@ -1,4 +1,3 @@
-import time
 import asyncio
 from functools import wraps
 from dataclasses import dataclass
@@ -112,22 +111,13 @@ class _BatchQueue:
         Always returns a batch with at least one item - will block
         indefinitely until an item comes in.
         """
-        curr_timeout = self.timeout_s
+
         batch = []
         while len(batch) == 0:
-            loop_start = time.time()
-
-            # If the timeout is 0, wait for any item to be available on the
-            # queue.
-            if curr_timeout == 0:
-                batch.append(await self.queue.get())
-            # If the timeout is nonzero, wait for either the timeout to occur
-            # or the max batch size to be ready.
-            else:
-                try:
-                    await asyncio.wait_for(self.full_batch_event.wait(), curr_timeout)
-                except asyncio.TimeoutError:
-                    pass
+            try:
+                await asyncio.wait_for(self.full_batch_event.wait(), self.timeout_s)
+            except asyncio.TimeoutError:
+                pass
 
             # Pull up to the max_batch_size requests off the queue.
             while len(batch) < self.max_batch_size and not self.queue.empty():
@@ -140,9 +130,6 @@ class _BatchQueue:
                 and self.full_batch_event.is_set()
             ):
                 self.full_batch_event.clear()
-
-            # Adjust the timeout based on the time spent in this iteration.
-            curr_timeout = max(0, curr_timeout - (time.time() - loop_start))
 
         return batch
 
