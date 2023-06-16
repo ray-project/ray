@@ -6,21 +6,22 @@ import logging
 import pickle
 import socket
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from ray._private.utils import get_or_create_event_loop
+from typing import Callable, Dict, List, Optional, Tuple
 
 import uvicorn
 import starlette.responses
 import starlette.routing
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.http_util import (
+    ASGIMessageQueue,
     HTTPRequestWrapper,
     RawASGIResponse,
     receive_http_body,
@@ -72,167 +73,6 @@ if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
         "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
         "future versions."
     )
-
-
-async def _handle_streaming_response(
-    asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
-    scope: Scope,
-    receive: Receive,
-    send: Send,
-) -> str:
-    """Consumes the `asgi_response_generator` and sends its data over `send`.
-
-    This function is a proxy for a downstream ASGI response. The passed
-    generator is expected to return a stream of pickled ASGI messages
-    (dictionaries) that are sent using the provided ASGI interface.
-
-    Exception handling depends on whether the first message has already been sent:
-        - if an exception happens *before* the first message, a 500 status is sent.
-        - if an exception happens *after* the first message, the response stream is
-          terminated.
-
-    The difference in behavior is because once the first message has been sent, the
-    client has already received the status code so we cannot send a `500` (internal
-    server error).
-
-    Returns:
-        status_code
-    """
-
-    status_code = ""
-    try:
-        async for obj_ref in asgi_response_generator:
-            asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
-            for asgi_message in asgi_messages:
-                # There must be exactly one "http.response.start" message that
-                # always contains the "status" field.
-                if not status_code:
-                    assert asgi_message["type"] == "http.response.start", (
-                        "First response message must be 'http.response.start'",
-                    )
-                    assert "status" in asgi_message, (
-                        "'http.response.start' message must contain 'status'",
-                    )
-                    status_code = str(asgi_message["status"])
-
-                await send(asgi_message)
-    except Exception as e:
-        error_message = f"Unexpected error, traceback: {e}."
-        logger.warning(error_message)
-
-        if status_code == "":
-            # If first message hasn't been sent, return 500 status.
-            await Response(error_message, status_code=500).send(scope, receive, send)
-            return "500"
-        else:
-            # If first message has been sent, terminate the response stream.
-            return status_code
-
-    return status_code
-
-
-async def _send_request_to_handle(handle, scope, receive, send) -> str:
-    http_body_bytes = await receive_http_body(scope, receive, send)
-
-    # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the replica to avoid unnecessary
-    # serialization cost, so we use a simple dataclass here.
-    request = HTTPRequestWrapper(scope, http_body_bytes)
-    # Perform a pickle here to improve latency. Stdlib pickle for simple
-    # dataclasses are 10-100x faster than cloudpickle.
-    request = pickle.dumps(request)
-
-    retries = 0
-    backoff_time_s = 0.05
-    backoff = False
-    loop = get_or_create_event_loop()
-    # We have received all the http request conent. The next `receive`
-    # call might never arrive; if it does, it can only be `http.disconnect`.
-    client_disconnection_task = loop.create_task(receive())
-    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-        assignment_task: asyncio.Task = handle.remote(request)
-        done, _ = await asyncio.wait(
-            [assignment_task, client_disconnection_task],
-            return_when=FIRST_COMPLETED,
-        )
-        if client_disconnection_task in done:
-            message = await client_disconnection_task
-            assert message["type"] == "http.disconnect", (
-                "Received additional request payload that's not disconnect. "
-                "This is an invalid HTTP state."
-            )
-            logger.warning(
-                f"Client from {scope['client']} disconnected, cancelling the "
-                "request.",
-                extra={"log_to_stderr": False},
-            )
-            # This will make the .result() to raise cancelled error.
-            assignment_task.cancel()
-        try:
-            object_ref = await assignment_task
-
-            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
-                return await _handle_streaming_response(
-                    object_ref, scope, receive, send
-                )
-
-            # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
-            # some replicas crash simultaneously (e.g. if the head node crashes),
-            # requests to the dead replicas hang until the gcs recovers.
-            # This asyncio.wait can kill those hanging requests and retry them
-            # at another replica. Release tests should kill the head node and
-            # check if latency drops significantly. See
-            # https://github.com/ray-project/ray/pull/29534 for more info.
-
-            _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-            )
-            if request_timed_out:
-                logger.info(
-                    "Request didn't finish within "
-                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
-                    "with another replica. You can modify this timeout by "
-                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
-                )
-                backoff = True
-            else:
-                result = await object_ref
-                client_disconnection_task.cancel()
-                break
-        except asyncio.CancelledError:
-            # Here because the client disconnected, we will return a custom
-            # error code for metric tracking.
-            return DISCONNECT_ERROR_CODE
-        except RayTaskError as e:
-            error_message = f"Unexpected error, traceback: {e}."
-            await Response(error_message, status_code=500).send(scope, receive, send)
-            return "500"
-        except RayActorError:
-            logger.info(
-                "Request failed due to replica failure. There are "
-                f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
-                "remaining."
-            )
-            backoff = True
-        if backoff:
-            await asyncio.sleep(backoff_time_s)
-            # Be careful about the expotential backoff scaling here.
-            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
-            # initial backoff time, while 2x scaling means 512x the initial.
-            backoff_time_s *= 1.5
-            retries += 1
-            backoff = False
-    else:
-        error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-        await Response(error_message, status_code=500).send(scope, receive, send)
-        return "500"
-
-    if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-        await result(scope, receive, send)
-        return str(result.status_code)
-    else:
-        await Response(result).send(scope, receive, send)
-        return "200"
 
 
 class LongestPrefixRouter:
@@ -335,12 +175,21 @@ class HTTPProxy:
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
+        self.self_actor_handle = ray.get_runtime_context().current_actor
+        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
+
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+            logger.info(
+                "Experimental streaming feature flag enabled.",
+                extra={"log_to_stderr": False},
+            )
+
         def get_handle(name):
             return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
-                _internal_pickled_http_request=True,
+                _is_for_http_requests=True,
                 _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
@@ -424,6 +273,14 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
+        queue = self.asgi_receive_queues.get(request_id, None)
+        if queue is None:
+            raise KeyError(f"Request ID {request_id} not found.")
+
+        await queue.wait_for_message()
+        return queue.get_messages_nowait()
+
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
 
@@ -431,7 +288,9 @@ class HTTPProxy:
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
 
-        assert scope["type"] == "http"
+        assert scope["type"] in {"http", "websocket"}
+
+        method = scope.get("method", "websocket").upper()
 
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
@@ -441,7 +300,7 @@ class HTTPProxy:
             self.request_counter.inc(
                 tags={
                     "route": route_path,
-                    "method": scope["method"].upper(),
+                    "method": method,
                     "application": "",
                     "status_code": "200",
                 }
@@ -454,7 +313,7 @@ class HTTPProxy:
             self.request_counter.inc(
                 tags={
                     "route": route_path,
-                    "method": scope["method"].upper(),
+                    "method": method,
                     "application": "",
                     "status_code": "200",
                 }
@@ -469,13 +328,13 @@ class HTTPProxy:
                 tags={
                     "route": route_path,
                     "error_code": "404",
-                    "method": scope["method"].upper(),
+                    "method": method,
                 }
             )
             self.request_counter.inc(
                 tags={
                     "route": route_path,
-                    "method": scope["method"].upper(),
+                    "method": method,
                     "application": "",
                     "status_code": "404",
                 }
@@ -490,24 +349,34 @@ class HTTPProxy:
             scope["path"] = route_path.replace(route_prefix, "", 1)
             scope["root_path"] = root_path + route_prefix
 
+        request_id = get_random_letters(10)
         request_context_info = {
             "route": route_path,
-            "request_id": get_random_letters(10),
+            "request_id": request_id,
             "app_name": app_name,
         }
         start_time = time.time()
-        for key, value in scope["headers"]:
+        for key, value in scope.get("headers", []):
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                 request_context_info["multiplexed_model_id"] = value.decode()
                 break
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
         )
-        status_code = await _send_request_to_handle(handle, scope, receive, send)
+
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+            status_code = await self.send_request_to_replica_streaming(
+                request_id, handle, scope, receive, send
+            )
+        else:
+            status_code = await self.send_request_to_replica_unary(
+                handle, scope, receive, send
+            )
+
         self.request_counter.inc(
             tags={
                 "route": route_path,
-                "method": scope["method"].upper(),
+                "method": method,
                 "application": app_name,
                 "status_code": status_code,
             }
@@ -524,7 +393,7 @@ class HTTPProxy:
         )
         logger.info(
             access_log_msg(
-                method=scope["method"],
+                method=method,
                 status=str(status_code),
                 latency_ms=latency_ms,
             ),
@@ -535,18 +404,203 @@ class HTTPProxy:
                 tags={
                     "route": route_path,
                     "error_code": status_code,
-                    "method": scope["method"].upper(),
+                    "method": method,
                 }
             )
             self.deployment_request_error_counter.inc(
                 tags={
                     "deployment": handle.deployment_name,
                     "error_code": status_code,
-                    "method": scope["method"].upper(),
+                    "method": method,
                     "route": route_path,
                     "application": app_name,
                 }
             )
+
+    async def send_request_to_replica_unary(
+        self,
+        handle: RayServeHandle,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> str:
+        http_body_bytes = await receive_http_body(scope, receive, send)
+
+        # NOTE(edoakes): it's important that we defer building the starlette
+        # request until it reaches the replica to avoid unnecessary
+        # serialization cost, so we use a simple dataclass here.
+        request = HTTPRequestWrapper(scope, http_body_bytes)
+
+        # Perform a pickle here to improve latency. Stdlib pickle for simple
+        # dataclasses are 10-100x faster than cloudpickle.
+        request = pickle.dumps(request)
+
+        retries = 0
+        backoff_time_s = 0.05
+        backoff = False
+        loop = get_or_create_event_loop()
+        # We have received all the http request conent. The next `receive`
+        # call might never arrive; if it does, it can only be `http.disconnect`.
+        while retries < HTTP_REQUEST_MAX_RETRIES + 1:
+            assignment_task: asyncio.Task = handle.remote(request)
+            client_disconnection_task = loop.create_task(receive())
+            done, _ = await asyncio.wait(
+                [assignment_task, client_disconnection_task],
+                return_when=FIRST_COMPLETED,
+            )
+            if client_disconnection_task in done:
+                message = await client_disconnection_task
+                assert message["type"] == "http.disconnect", (
+                    "Received additional request payload that's not disconnect. "
+                    "This is an invalid HTTP state."
+                )
+                logger.warning(
+                    f"Client from {scope['client']} disconnected, cancelling the "
+                    "request.",
+                    extra={"log_to_stderr": False},
+                )
+                # This will make the .result() to raise cancelled error.
+                assignment_task.cancel()
+            else:
+                client_disconnection_task.cancel()
+
+            try:
+                object_ref = await assignment_task
+
+                # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
+                # some replicas crash simultaneously (e.g. if the head node crashes),
+                # requests to the dead replicas hang until the gcs recovers.
+                # This asyncio.wait can kill those hanging requests and retry them
+                # at another replica. Release tests should kill the head node and
+                # check if latency drops significantly. See
+                # https://github.com/ray-project/ray/pull/29534 for more info.
+                _, request_timed_out = await asyncio.wait(
+                    [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                )
+                if request_timed_out:
+                    logger.info(
+                        "Request didn't finish within "
+                        f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
+                        "with another replica. You can modify this timeout by "
+                        'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                    )
+                    backoff = True
+                else:
+                    result = await object_ref
+                    break
+            except asyncio.CancelledError:
+                # Here because the client disconnected, we will return a custom
+                # error code for metric tracking.
+                return DISCONNECT_ERROR_CODE
+            except RayTaskError as e:
+                error_message = f"Unexpected error, traceback: {e}."
+                await Response(error_message, status_code=500).send(
+                    scope, receive, send
+                )
+                return "500"
+            except RayActorError:
+                logger.info(
+                    "Request failed due to replica failure. There are "
+                    f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
+                    "remaining."
+                )
+                backoff = True
+            if backoff:
+                await asyncio.sleep(backoff_time_s)
+                # Be careful about the expotential backoff scaling here.
+                # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+                # initial backoff time, while 2x scaling means 512x the initial.
+                backoff_time_s *= 1.5
+                retries += 1
+                backoff = False
+        else:
+            error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
+            await Response(error_message, status_code=500).send(scope, receive, send)
+            return "500"
+
+        if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
+            await result(scope, receive, send)
+            return str(result.status_code)
+        else:
+            await Response(result).send(scope, receive, send)
+            return "200"
+
+    async def proxy_asgi_receive(
+        self, receive: Receive, queue: ASGIMessageQueue
+    ) -> Optional[int]:
+        """Proxies the `receive` interface, placing its messages into the queue.
+
+        Once a disconnect message is received, the call exits and `receive` is no longer
+        called.
+
+        For HTTP messages, `None` is always returned.
+        For websocket messages, the disconnect code is returned if a disconnect code is
+        received.
+        """
+        while True:
+            msg = await receive()
+            await queue(msg)
+
+            if msg["type"] == "http.disconnect":
+                return None
+
+            if msg["type"] == "websocket.disconnect":
+                return msg["code"]
+
+    async def send_request_to_replica_streaming(
+        self,
+        request_id: str,
+        handle: RayServeHandle,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> str:
+        # Proxy the receive interface by placing the received messages on a queue.
+        # The downstream replica must call back into `receive_asgi_messages` on this
+        # actor to receive the messages.
+        receive_queue = ASGIMessageQueue()
+        self.asgi_receive_queues[request_id] = receive_queue
+        proxy_asgi_receive_task = get_or_create_event_loop().create_task(
+            self.proxy_asgi_receive(receive, receive_queue)
+        )
+
+        status_code = ""
+        try:
+            object_ref_generator = await handle.remote(
+                pickle.dumps(scope), self.self_actor_handle
+            )
+            async for obj_ref in object_ref_generator:
+                asgi_messages: List[Message] = pickle.loads(await obj_ref)
+                for asgi_message in asgi_messages:
+                    if asgi_message["type"] == "http.response.start":
+                        # HTTP responses begin with exactly one "http.response.start"
+                        # message containing the "status" field. Other response types
+                        # (e.g., WebSockets) may not.
+                        status_code = str(asgi_message["status"])
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
+
+                    await send(asgi_message)
+        except Exception as e:
+            logger.exception(e)
+            status_code = "500"
+        finally:
+            if not proxy_asgi_receive_task.done():
+                proxy_asgi_receive_task.cancel()
+            else:
+                # If the server disconnects, status_code is set above from the
+                # disconnect message. Otherwise the disconnect code comes from
+                # a client message via the receive interface.
+                if (
+                    status_code == ""
+                    and scope["type"] == "websocket"
+                    and proxy_asgi_receive_task.exception() is None
+                ):
+                    status_code = str(proxy_asgi_receive_task.result())
+
+            del self.asgi_receive_queues[request_id]
+
+        return status_code
 
 
 @ray.remote(num_cpus=0)
@@ -655,3 +709,6 @@ Please make sure your http-host and http-port are specified correctly."""
         Make sure the async event loop is not blocked.
         """
         pass
+
+    async def receive_asgi_messages(self, request_id: str) -> bytes:
+        return pickle.dumps(await self.app.receive_asgi_messages(request_id))

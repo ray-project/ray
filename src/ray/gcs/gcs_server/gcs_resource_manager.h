@@ -147,6 +147,14 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
   GetAggregatedResourceLoad() const;
 
+  /// Get the placement group load info. This is used for autoscaler.
+  const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
+    if (placement_group_load_.has_value()) {
+      return placement_group_load_.value();
+    }
+    return nullptr;
+  }
+
  private:
   /// Aggregate nodes' pending task info.
   ///

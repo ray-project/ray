@@ -5,7 +5,7 @@ Metrics are useful for monitoring and troubleshooting Ray applications and Clust
 Ray records and emits time-series metrics using the [Prometheus format](https://prometheus.io/docs/instrumenting/exposition_formats/). Ray does not provide a native storage solution for metrics. Users need to manage the lifecycle of the metrics by themselves. This page provides instructions on how to collect and monitor metrics from Ray Clusters.
 
 
-## System and applcication metrics
+## System and application metrics
 Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsbile for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
 
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
@@ -214,9 +214,7 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
-#### Troubleshooting
-
-##### Using Ray configurations in Grafana with Homebrew on macOS X
+**Troubleshooting: Using Ray configurations in Grafana with Homebrew on macOS X**
 
 Homebrew installs Grafana as a service that is automatically launched for you.
 Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.

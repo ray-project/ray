@@ -118,14 +118,14 @@ class RayServeHandle:
         handle_options: Optional[HandleOptions] = None,
         *,
         _router: Optional[Router] = None,
-        _internal_pickled_http_request: bool = False,
+        _is_for_http_requests: bool = False,
         _stream: bool = False,
     ):
         self.controller_handle = controller_handle
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.deployment_name}#{get_random_letters()}"
-        self._pickled_http_request = _internal_pickled_http_request
+        self._is_for_http_requests = _is_for_http_requests
         self._stream = _stream
 
         self.request_counter = metrics.Counter(
@@ -190,7 +190,7 @@ class RayServeHandle:
             self.deployment_name,
             new_options,
             _router=self.router,
-            _internal_pickled_http_request=self._pickled_http_request,
+            _is_for_http_requests=self._is_for_http_requests,
         )
 
     def options(
@@ -221,7 +221,7 @@ class RayServeHandle:
             _request_context.request_id,
             deployment_name,
             call_method=handle_options.method_name,
-            http_arg_is_pickled=self._pickled_http_request,
+            is_http_request=self._is_for_http_requests,
             route=_request_context.route,
             app_name=_request_context.app_name,
             multiplexed_model_id=_request_context.multiplexed_model_id,
@@ -269,7 +269,7 @@ class RayServeHandle:
             "controller_handle": self.controller_handle,
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
-            "_internal_pickled_http_request": self._pickled_http_request,
+            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
@@ -363,7 +363,7 @@ class RayServeSyncHandle(RayServeHandle):
             "controller_handle": self.controller_handle,
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
-            "_internal_pickled_http_request": self._pickled_http_request,
+            "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 

@@ -56,14 +56,13 @@ class AnyscaleJobManager:
         env = os.environ.copy()
         env.setdefault("ANYSCALE_HOST", str(ANYSCALE_HOST))
 
-        full_cmd = " ".join(f"{k}={v}" for k, v in env_vars.items()) + " " + cmd_to_run
         logger.info(f"Executing {cmd_to_run} with {env_vars} via Anyscale job submit")
 
         anyscale_client = self.sdk
 
-        runtime_env = None
+        runtime_env = {"env_vars": env_vars}
         if working_dir:
-            runtime_env = {"working_dir": working_dir}
+            runtime_env["working_dir"] = working_dir
             if upload_path:
                 runtime_env["upload_path"] = upload_path
 
@@ -74,7 +73,7 @@ class AnyscaleJobManager:
                     description=f"Smoke test: {self.cluster_manager.smoke_test}",
                     project_id=self.cluster_manager.project_id,
                     config=dict(
-                        entrypoint=full_cmd,
+                        entrypoint=cmd_to_run,
                         runtime_env=runtime_env,
                         build_id=self.cluster_manager.cluster_env_build_id,
                         compute_config_id=self.cluster_manager.cluster_compute_id,
