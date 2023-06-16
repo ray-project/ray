@@ -420,7 +420,7 @@ class RLModule(abc.ABC):
         This method should be called with view requirements that already contain
         information such as the given observation space, action space, etc.
         This method may then add additional shifts or state columns to the view
-        requirements.
+        requirements, or apply other changes.
 
         Args:
             defaults: The default view requirements to update.

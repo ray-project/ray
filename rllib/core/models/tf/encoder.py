@@ -240,8 +240,7 @@ class TfGRUEncoder(TfModel, Encoder):
 
         if self.tokenizer is not None:
             # Push observations through the tokenizer encoder if we built one.
-            out = self.tokenizer(inputs)
-            out = out[ENCODER_OUT]
+            out = tokenize(self.tokenizer, inputs)
         else:
             # Otherwise, just use the raw observations.
             out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
@@ -359,16 +358,8 @@ class TfLSTMEncoder(TfModel, Encoder):
         outputs = {}
 
         if self.tokenizer is not None:
-            # First fold time- and batch dimensions.
-            obs = inputs[SampleBatch.OBS]
-            size = list(tf.shape(obs))
-            b_dim, t_dim = size[:2]
-            fold, unfold = get_fold_unfold_batch_and_time(b_dim, t_dim)
-            # Push through the tokenizer encoder.
-            out = self.tokenizer(fold(inputs))
-            out = out[ENCODER_OUT]
-            # Then unfold batch- and time-dimensions again.
-            out = unfold(out)
+            # Push observations through the tokenizer encoder if we built one.
+            out = tokenize(self.tokenizer, inputs)
         else:
             # Otherwise, just use the raw observations.
             out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
@@ -393,3 +384,26 @@ class TfLSTMEncoder(TfModel, Encoder):
             "c": tf.stack(states_out_c, 1),
         }
         return outputs
+
+
+def tokenize(tokenizer: Encoder, inputs: dict) -> dict:
+    """Tokenizes the observations from the input dict.
+
+    Args:
+        tokenizer: The tokenizer to use.
+        inputs: The input dict.
+
+    Returns:
+        The output dict.
+    """
+    # Tokenizer may depend solely on observations.
+    obs = inputs[SampleBatch.OBS]
+    tokenizer_inputs = {SampleBatch.OBS: obs}
+    shape = list(obs.shape)
+    b_dim, t_dim = shape[:2]
+    fold, unfold = get_fold_unfold_batch_and_time(b_dim, t_dim)
+    # Push through the tokenizer encoder.
+    out = tokenizer(fold(tokenizer_inputs))
+    out = out[ENCODER_OUT]
+    # Then unfold batch- and time-dimensions again.
+    return unfold(out)

@@ -176,6 +176,7 @@ class TorchPolicyV2(Policy):
         self._state_inputs = self.model.get_initial_state()
         self._is_recurrent = len(tree.flatten(self._state_inputs)) > 0
         if self.config.get("_enable_rl_module_api", False):
+            # Maybe update view_requirements, e.g. for recurrent case.
             self.view_requirements = self.model.update_default_view_requirements(
                 self.view_requirements
             )

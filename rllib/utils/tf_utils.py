@@ -611,11 +611,14 @@ def get_fold_unfold_batch_and_time(b_dim: int, t_dim: int):
     def unfold_mapping(item):
         if item is None:
             return item
-        other_dims = list(tf.shape(item)[1:])
-        assert other_dims[0] % (b_dim * t_dim) == 0, (
-            "The first dimension of the tensor must be a multiple of the "
-            "batch and time dimensions. Got {} and {}.".format(
-                other_dims[0], (b_dim, t_dim)
+        item = tf.convert_to_tensor(item)
+        shape = list(item.shape)
+        current_b_dim = shape[0]
+        other_dims = shape[1:]
+        assert current_b_dim == b_dim * t_dim, (
+            "The first dimension of the tensor must be equal to the product of "
+            "the desired batch and time dimensions. Got {} and {}.".format(
+                current_b_dim, b_dim * t_dim
             )
         )
         return tf.reshape(item, [b_dim, t_dim] + other_dims)

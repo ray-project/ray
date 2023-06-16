@@ -9,6 +9,7 @@ import threading
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import gymnasium as gym
+import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
@@ -453,12 +454,17 @@ class EagerTFPolicyV2(Policy):
             return dist_class
 
     def _init_view_requirements(self):
-        # Auto-update model's inference view requirements, if recurrent.
-        self._update_model_view_requirements_from_init_state()
-        # Combine view_requirements for Model and Policy.
-        # TODO(jungong) : models will not carry view_requirements once they
-        # are migrated to be organic Keras models.
-        self.view_requirements.update(self.model.view_requirements)
+        if self.config.get("_enable_rl_module_api", False):
+            # Maybe update view_requirements, e.g. for recurrent case.
+            self.view_requirements = self.model.update_default_view_requirements(
+                self.view_requirements
+            )
+        else:
+            # Auto-update model's inference view requirements, if recurrent.
+            self._update_model_view_requirements_from_init_state()
+            # Combine view_requirements for Model and Policy.
+            self.view_requirements.update(self.model.view_requirements)
+
         # Disable env-info placeholder.
         if SampleBatch.INFOS in self.view_requirements:
             self.view_requirements[SampleBatch.INFOS].used_for_training = False
@@ -516,6 +522,14 @@ class EagerTFPolicyV2(Policy):
             )
 
         if self.config.get("_enable_rl_module_api"):
+            # For recurrent models, we need to add a time dimension.
+            seq_lens = input_dict.get("seq_lens", None)
+            if not seq_lens:
+                # In order to calculate the batch size ad hoc, we need a sample batch.
+                if not isinstance(input_dict, SampleBatch):
+                    input_dict = SampleBatch(input_dict)
+                seq_lens = np.array([1] * len(input_dict))
+            input_dict = self.maybe_add_time_dimension(input_dict, seq_lens=seq_lens)
             if explore:
                 ret = self._compute_actions_helper_rl_module_explore(input_dict)
             else:
