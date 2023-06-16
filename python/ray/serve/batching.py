@@ -117,7 +117,9 @@ class _BatchQueue:
             time.time() - batch_start_time < self.timeout_s
             and len(batch) < self.max_batch_size
         ):
-            remaining_batch_time_s = self.timeout_s - (time.time() - batch_start_time)
+            remaining_batch_time_s = max(
+                self.timeout_s - (time.time() - batch_start_time), 0
+            )
             try:
                 batch.append(
                     await asyncio.wait_for(self.queue.get(), remaining_batch_time_s)
