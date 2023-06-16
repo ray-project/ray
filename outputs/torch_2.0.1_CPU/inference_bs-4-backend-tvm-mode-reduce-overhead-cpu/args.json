@@ -1,1 +1,0 @@
-{"batch_size": 4, "num_iters": 5000, "backend": "tvm", "mode": "reduce-overhead", "output": "./outputs", "burn_in": 500, "cpu": true}

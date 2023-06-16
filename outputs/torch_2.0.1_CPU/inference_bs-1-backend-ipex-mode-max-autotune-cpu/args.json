@@ -1,1 +1,0 @@
-{"batch_size": 1, "num_iters": 5000, "backend": "ipex", "mode": "max-autotune", "output": "./outputs", "burn_in": 500, "cpu": true}

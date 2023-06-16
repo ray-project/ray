@@ -1,1 +1,0 @@
-{"batch_size": 4, "num_iters": 5000, "backend": "inductor", "mode": "reduce-overhead", "output": "./outputs", "burn_in": 500}
