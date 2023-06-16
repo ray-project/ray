@@ -66,12 +66,30 @@ def wrap_transformers_trainer(
     return trainer
 
 
+# TODO(ml-team): Replace with a Datasets-HuggingFace integration when available.
+class RayDatasetHFIterable(datasets.iterable_dataset.ExamplesIterable):
+    """HF ExamplesIterable backed by a Dataset."""
+
+    def __init__(self, dataset: DataIterator) -> None:
+        self.dataset = dataset
+        self.generate_examples_fn = self.dataset.iter_rows
+
+        # Required for the superclass
+        self.kwargs = {}
+
+    def __iter__(self):
+        for row in self.generate_examples_fn(**self.kwargs):
+            yield (0, {k: v for k, v in row.items()})
+
+
 def process_dataset_for_hf(
     dataset: DataIterator, disable_transformers_splitting: bool = False
 ) -> "IterableDataset":
     """Converts a Ray Dataset into a HF IterableDataset."""
-    iterable_dataset = datasets.iterable_dataset.IterableDataset.from_generator(
-        dataset.iter_rows
+    hf_iterable = RayDatasetHFIterable(dataset)
+
+    iterable_dataset = datasets.iterable_dataset.IterableDataset(
+        hf_iterable, format_type="torch"
     ).with_format("torch")
 
     if isinstance(dataset, StreamSplitDataIterator):
