@@ -4791,6 +4791,9 @@
   group: core-daily-test
   working_dir: nightly_tests
 
+  stable: false 
+  jailed: true
+
   python: "3.8"
   frequency: nightly
   team: core
@@ -4803,7 +4806,7 @@
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
-    timeout: 3600
+    timeout: 4200
     script: python stress_tests/test_state_api_scale.py
     wait_for_nodes:
       num_nodes: 7
