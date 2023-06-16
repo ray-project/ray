@@ -1,0 +1,1 @@
+{"batch_size": 1, "num_iters": 5000, "backend": "cudagraphs", "mode": "reduce-overhead", "output": "./outputs", "burn_in": 500, "cpu": true}

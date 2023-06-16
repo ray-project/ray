@@ -1,0 +1,1 @@
+{"batch_size": 4, "num_iters": 5000, "backend": "inductor", "mode": "default", "output": "./outputs", "burn_in": 500, "cpu": true}
