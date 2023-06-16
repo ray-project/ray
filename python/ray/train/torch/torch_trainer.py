@@ -129,7 +129,7 @@ class TorchTrainer(DataParallelTrainer):
 
     Example:
 
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn as nn
@@ -149,7 +149,7 @@ class TorchTrainer(DataParallelTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 20
             num_workers = 3
 
             # Define your network structure
@@ -165,6 +165,7 @@ class TorchTrainer(DataParallelTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
                 # Fetch training set from the session
                 dataset_shard = session.get_dataset_shard("train")
@@ -203,13 +204,12 @@ class TorchTrainer(DataParallelTrainer):
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
                     session.report({"loss": loss.item(), "epoch": epoch},
-                                         checkpoint=Checkpoint.from_dict(
-                                         dict(epoch=epoch, model=model.state_dict()))
+                                            checkpoint=Checkpoint.from_dict(
+                                            dict(epoch=epoch, model=model.state_dict()))
                     )
 
-            torch.manual_seed(42)
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
@@ -227,7 +227,7 @@ class TorchTrainer(DataParallelTrainer):
             best_checkpoint_loss = result.metrics['loss']
 
             # Assert loss is less 0.09
-            assert best_checkpoint_loss <= 0.09   # doctest: +SKIP
+            assert best_checkpoint_loss <= 0.09
 
     Args:
 
