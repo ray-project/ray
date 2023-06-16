@@ -137,7 +137,9 @@ def test_zero_cpus_actor(ray_start_cluster):
     assert valid_node.unique_id == ray.get(a.method.remote())
 
 
-def test_fractional_resources(shutdown_only):
+@pytest.mark.parametrize("ACCELERATOR_TYPE", ["CUDA", "XPU"])
+def test_fractional_resources(shutdown_only, ACCELERATOR_TYPE):
+    ray._private.ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR = ACCELERATOR_TYPE
     ray.init(num_cpus=6, num_gpus=3, resources={"Custom": 1})
 
     @ray.remote(num_gpus=0.5)
