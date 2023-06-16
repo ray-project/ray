@@ -1,3 +1,4 @@
+import time
 import asyncio
 from functools import wraps
 from dataclasses import dataclass
@@ -84,7 +85,6 @@ class _BatchQueue:
                 background to handle batches if provided.
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
-        self.full_batch_event = asyncio.Event()
         self.max_batch_size = max_batch_size
         self.timeout_s = timeout_s
 
@@ -96,10 +96,6 @@ class _BatchQueue:
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
-        # Signal when the full batch is ready. The event will be reset
-        # in wait_for_batch.
-        if self.queue.qsize() == self.max_batch_size:
-            self.full_batch_event.set()
 
     async def wait_for_batch(self) -> List[Any]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
@@ -113,23 +109,20 @@ class _BatchQueue:
         """
 
         batch = []
-        while len(batch) == 0:
+        batch.append(await self.queue.get())
+
+        batch_start_time = time.time()
+        while (
+            time.time() - batch_start_time < self.timeout_s
+            and len(batch) < self.max_batch_size
+        ):
+            remaining_batch_time_s = self.timeout_s - (time.time() - batch_start_time)
             try:
-                await asyncio.wait_for(self.full_batch_event.wait(), self.timeout_s)
+                batch.append(
+                    await asyncio.wait_for(self.queue.get(), remaining_batch_time_s)
+                )
             except asyncio.TimeoutError:
                 pass
-
-            # Pull up to the max_batch_size requests off the queue.
-            while len(batch) < self.max_batch_size and not self.queue.empty():
-                batch.append(self.queue.get_nowait())
-
-            # Reset the event if there are fewer than max_batch_size requests
-            # in the queue.
-            if (
-                self.queue.qsize() < self.max_batch_size
-                and self.full_batch_event.is_set()
-            ):
-                self.full_batch_event.clear()
 
         return batch
 
