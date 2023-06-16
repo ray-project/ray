@@ -15,8 +15,6 @@ from typing import (
     TypeVar,
     AsyncGenerator,
     Iterable,
-    Union,
-    TYPE_CHECKING,
 )
 
 from ray.util.annotations import PublicAPI
@@ -24,9 +22,6 @@ from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.utils import extract_self_if_method_call
 from ray._private.signature import extract_signature, flatten_args, recover_args
-
-if TYPE_CHECKING:
-    from ray.serve.deployment import Deployment
 
 
 @dataclass
@@ -254,24 +249,24 @@ def _validate_max_batch_size(max_batch_size):
             max_batch_size = int(max_batch_size)
         else:
             raise TypeError(
-                "max_batch_size must be integer >= 1"
+                f"max_batch_size must be integer >= 1, got {max_batch_size}"
             )
 
     if max_batch_size < 1:
         raise ValueError(
-            "max_batch_size must be an integer >= 1"
+            f"max_batch_size must be an integer >= 1, got {max_batch_size}"
         )
 
 
 def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
     if not isinstance(batch_wait_timeout_s, (float, int)):
         raise TypeError(
-            "batch_wait_timeout_s must be a float >= 0"
+            "batch_wait_timeout_s must be a float >= 0, " f"got {batch_wait_timeout_s}"
         )
 
     if batch_wait_timeout_s < 0:
         raise ValueError(
-            "batch_wait_timeout_s must be a float >= 0"
+            "batch_wait_timeout_s must be a float >= 0, " f"got {batch_wait_timeout_s}"
         )
 
 
@@ -405,12 +400,16 @@ def batch(
             # This is purposefully undocumented for now while we figure out
             # the best API.
             if hasattr(batch_queue_object, "_ray_serve_max_batch_size"):
-                new_max_batch_size = getattr(batch_queue_object, "_ray_serve_max_batch_size")
+                new_max_batch_size = getattr(
+                    batch_queue_object, "_ray_serve_max_batch_size"
+                )
                 _validate_max_batch_size(new_max_batch_size)
                 batch_queue.max_batch_size = new_max_batch_size
 
             if hasattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s"):
-                new_batch_wait_timeout_s = getattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s")
+                new_batch_wait_timeout_s = getattr(
+                    batch_queue_object, "_ray_serve_batch_wait_timeout_s"
+                )
                 _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
                 batch_queue.timeout_s = new_batch_wait_timeout_s
 
