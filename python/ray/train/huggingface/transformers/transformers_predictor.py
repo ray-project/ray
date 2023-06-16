@@ -2,7 +2,6 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Type, Union
 
 import pandas as pd
-from transformers import PreTrainedModel, TFPreTrainedModel
 
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import TENSOR_COLUMN_NAME
@@ -40,6 +39,7 @@ try:
     from transformers.pipelines.table_question_answering import (
         TableQuestionAnsweringPipeline,
     )
+    from transformers.models import PreTrainedModel, TFPreTrainedModel
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 
