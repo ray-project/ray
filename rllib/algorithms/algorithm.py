@@ -706,7 +706,8 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             policy_dict, _ = self.config.get_multi_agent_setup(
-                env=self.workers.local_worker().env
+                env=self.workers.local_worker().env,
+                spaces=getattr(self.workers.local_worker(), "spaces", None),
             )
             module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             learner_group_config = self.config.get_learner_group_config(module_spec)
