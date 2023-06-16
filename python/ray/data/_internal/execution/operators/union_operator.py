@@ -64,7 +64,6 @@ class UnionOperator(NAryOperator):
                 self._input_buffers[input_index].append(refs)
 
     def input_done(self, input_index: int) -> None:
-        assert input_index == self._input_idx_to_output
         next_input_idx = input_index + 1
         if next_input_idx < len(self._input_buffers):
             self._output_buffer.extend(self._input_buffers[next_input_idx])

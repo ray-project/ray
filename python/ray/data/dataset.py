@@ -1622,16 +1622,21 @@ class Dataset:
             for idx, bl in enumerate(bls):
                 if isinstance(bl, LazyBlockList):
                     bs, ms = bl._get_blocks_with_metadata()
-                    op = datasets[idx]._plan._logical_plan.dag
                 else:
                     assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
-                    op = datasets[idx]._plan._logical_plan.dag
+                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
+                if isinstance(op_logical_plan, LogicalPlan):
+                    ops_to_union.append(op_logical_plan.dag)
+                else:
+                    ops_to_union.append(None)
                 blocks.extend(bs)
                 metadata.extend(ms)
-                ops_to_union.append(op)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
-            logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
+
+            logical_plan = None
+            if all(ops_to_union):
+                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
