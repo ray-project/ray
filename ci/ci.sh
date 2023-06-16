@@ -313,8 +313,7 @@ build_sphinx_docs() {
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
-      FAST=True make develop
+      FAST=True make html
       pip install datasets==2.0.0
     fi
   )
@@ -329,24 +328,6 @@ check_sphinx_links() {
       FAST=True make linkcheck
     fi
   )
-}
-
-install_cython_examples() {
-  (
-    cd "${WORKSPACE_DIR}"/doc/examples/cython
-    pip install scipy
-    python setup.py install --user
-  )
-}
-
-install_go() {
-  local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
-
-  if [ -z "${GOPATH-}" ]; then
-    GOPATH="${GOPATH:-${HOME}/go_dir}"
-    export GOPATH
-  fi
 }
 
 _bazel_build_before_install() {
@@ -543,17 +524,22 @@ lint_annotations() {
 }
 
 lint_bazel() {
-  # Run buildifier without affecting external environment variables
-  (
-    mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
+  if [[ ! "${OSTYPE}" =~ ^linux ]]; then
+    echo "Bazel lint not supported on non-linux systems."
+    exit 1
+  fi
+  if [[ "$(uname -m)" != "x86_64" ]]; then
+    echo "Bazel lint only supported on x86_64."
+    exit 1
+  fi
 
-    # Build buildifier
-    go install github.com/bazelbuild/buildtools/buildifier@latest
+  LINT_BAZEL_TMP="$(mktemp -d)"
+  curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
+    -o "${LINT_BAZEL_TMP}/buildifier"
+  chmod +x "${LINT_BAZEL_TMP}/buildifier"
+  BUILDIFIER="${LINT_BAZEL_TMP}/buildifier" "${ROOT_DIR}/lint/bazel-format.sh"
 
-    # Now run buildifier
-    "${ROOT_DIR}"/lint/bazel-format.sh
-  )
+  rm -rf "${LINT_BAZEL_TMP}"  # Clean up
 }
 
 lint_bazel_pytest() {
@@ -655,7 +641,6 @@ _lint() {
 }
 
 lint() {
-  install_go
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
@@ -758,14 +743,6 @@ build() {
       # Try generating Sphinx documentation. To do this, we need to install Ray first.
       build_sphinx_docs
     fi
-  fi
-
-  if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    install_cython_examples
-  fi
-
-  if [ "${LINT-}" = 1 ]; then
-    install_go
   fi
 
   if [[ "${NEED_WHEELS}" == "true" ]]; then
