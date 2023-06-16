@@ -320,6 +320,11 @@ def set_omp_num_threads_if_unset() -> bool:
     if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
         # Non worker mode, no ops.
         logger.warning("SSSSSS:3," + str(runtime_ctx.worker.mode))
+        import traceback
+        import io
+        buf = io.StringIO()
+        traceback.print_stack(file=buf)
+        logger.warning("SSSSSS:buf1:" + buf.getvalue())
         return False
 
     num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")

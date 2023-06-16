@@ -433,6 +433,11 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
 
             for pool_info in threadpool_info():
                 logger.warning("SSSSSS:11," + str(pool_info["num_threads"]))
+                import traceback
+                import io
+                buf = io.StringIO()
+                traceback.print_stack(file=buf)
+                logger.warning("SSSSSS:buf2:" + buf.getvalue())
                 assert pool_info["num_threads"] == 2
 
             import numexpr
