@@ -1,6 +1,6 @@
 .. _ray-client-ref:
 
-Ray Client: Interactive Development
+Ray Client
 ===================================
 
 **What is the Ray Client?**
@@ -25,6 +25,10 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
 
    do_work.remote(2)
    #....
+
+.. note::
+   When using Ray for ML work or other workloads that require sophisticated network communication, Ray Client has certain limitations and may not work as expected. Use :ref:`Ray Jobs API<jobs-   overview>` for interactive develop on ML projects.
+
 
 When to use Ray Client
 ----------------------
