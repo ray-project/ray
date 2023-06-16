@@ -95,7 +95,7 @@ class BaseTrainer(abc.ABC):
     Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
-    .. code-block:: python
+    .. testcode::
 
         import torch
 
@@ -121,8 +121,12 @@ class BaseTrainer(abc.ABC):
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
+                    torch_ds = dataset.iter_torch_batches(
+                        dtypes=torch.float, batch_size=2
+                    )
                     for batch in torch_ds:
-                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
+                        X = torch.unsqueeze(batch["x"], 1)
+                        y = torch.unsqueeze(batch["y"], 1)
                         # Compute prediction error
                         pred = self.model(X)
                         batch_loss = loss_fn(pred, y)
@@ -140,15 +144,11 @@ class BaseTrainer(abc.ABC):
                     # results.
                     session.report({"loss": loss, "epoch": epoch_idx})
 
-    **How do I use an existing Trainer or one of my custom Trainers?**
 
-    Initialize the Trainer, and call Trainer.fit()
-
-    .. code-block:: python
-
+        # Initialize the Trainer, and call Trainer.fit()
         import ray
         train_dataset = ray.data.from_items(
-            [{"x": i, "y": i} for i in range(3)])
+            [{"x": i, "y": i} for i in range(10)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
 
@@ -225,9 +225,10 @@ class BaseTrainer(abc.ABC):
         :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
         attempt to resume on both experiment-level and trial-level failures:
 
-        .. code-block:: python
+        .. testcode::
 
             import os
+            import ray
             from ray import air
             from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
@@ -542,14 +543,15 @@ class BaseTrainer(abc.ABC):
 
         Example:
 
-        .. code-block:: python
+        .. testcode::
 
             from ray.train.trainer import BaseTrainer
+            from ray.air import session
 
             class MyTrainer(BaseTrainer):
                 def training_loop(self):
                     for epoch_idx in range(5):
-                        ...
+                        # ...
                         session.report({"epoch": epoch_idx})
 
         """
