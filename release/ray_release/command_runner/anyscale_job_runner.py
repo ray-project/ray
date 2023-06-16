@@ -3,7 +3,7 @@ import os
 import re
 import tempfile
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.job_runner import JobRunner
@@ -203,6 +203,7 @@ class AnyscaleJobRunner(JobRunner):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
+        pip: Optional[List[str]] = None,
     ) -> float:
         prepare_command_strs = []
         prepare_command_timeouts = []
@@ -262,6 +263,7 @@ class AnyscaleJobRunner(JobRunner):
             working_dir=".",
             upload_path=self.upload_path,
             timeout=int(timeout),
+            pip=pip,
         )
         try:
             error = self.job_manager.last_job_result.state.error

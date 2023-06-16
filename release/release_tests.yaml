@@ -695,8 +695,14 @@
   jailed: true
 
   frequency: nightly
+  python: "3.8"
   team: data
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_task_oom_retries=50
+        - RAY_min_memory_free_bytes=1000000000
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
@@ -722,8 +728,14 @@
   jailed: true
 
   frequency: nightly
+  python: "3.8"
   team: data
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_task_oom_retries=50
+        - RAY_min_memory_free_bytes=1000000000
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
@@ -750,7 +762,13 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
+      runtime_env:
+        - RAY_task_oom_retries=50
+        - RAY_min_memory_free_bytes=1000000000
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16_worker_nodes_2.yaml
 
@@ -4760,6 +4778,7 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
     cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -5049,6 +5068,7 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
     cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
@@ -5484,7 +5504,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: inference.yaml
 
@@ -5509,7 +5532,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: shuffle_app_config.yaml
     cluster_compute: shuffle_compute.yaml
 
@@ -5533,7 +5559,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5559,7 +5588,12 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
@@ -5584,7 +5618,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
@@ -5609,7 +5646,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
@@ -5634,7 +5674,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
@@ -5664,7 +5707,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
@@ -5689,7 +5735,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5712,7 +5761,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5736,7 +5788,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5759,7 +5814,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: read_tfrecords_benchmark_app.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5783,7 +5841,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5807,7 +5868,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5831,7 +5895,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: multi_node_benchmark_compute.yaml
 
@@ -5855,7 +5922,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5958,7 +6028,11 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -5983,7 +6057,13 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6008,7 +6088,13 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6265,8 +6351,14 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
+    byod:
+      runtime_env:
+        - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 

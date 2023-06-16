@@ -324,6 +324,7 @@ def _running_test_script(
             env=command_env,
             timeout=command_timeout,
             raise_on_timeout=not is_long_running,
+            pip=test.get_byod_pips(),
         )
     except (
         TestCommandError,
