@@ -432,7 +432,6 @@ def test_union_e2e(ray_start_regular_shared, enable_optimizer, preserve_order):
     assert ds2.sum() == 15
     _check_usage_record(["FromItems"])
 
-    print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     ds2 = ds2.union(ds2)
     assert ds2.count() == 10
     assert ds2.sum() == 30

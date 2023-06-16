@@ -13,6 +13,7 @@ from ray.data._internal.stats import StatsDict
 
 class OneToOneOperator(PhysicalOperator):
     """An operator that has one input and one output dependency.
+
     This operator serves as the base for map, filter, limit, etc.
     """
 
@@ -35,6 +36,7 @@ class OneToOneOperator(PhysicalOperator):
 
 class AllToAllOperator(PhysicalOperator):
     """A blocking operator that executes once its inputs are complete.
+
     This operator implements distributed sort / shuffle operations, etc.
     """
 
@@ -127,6 +129,7 @@ class AllToAllOperator(PhysicalOperator):
 
 class NAryOperator(PhysicalOperator):
     """An operator that has multiple input dependencies and one output.
+
     This operator serves as the base for union, zip, etc.
     """
 
