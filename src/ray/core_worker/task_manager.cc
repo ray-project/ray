@@ -138,7 +138,7 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
 void ObjectRefStream::MarkEndOfStream(int64_t item_index,
                                       ObjectID *object_id_in_last_index) {
   if (end_of_stream_index_ != -1) {
-    return false;
+    return;
   }
   // ObjectRefStream should guarantee the max_index_seen_
   // will always have an object reference to avoid hang.
@@ -151,7 +151,7 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   item_index_to_refs_.emplace(end_of_stream_index_, end_of_stream_id);
   *object_id_in_last_index = end_of_stream_id;
-  return true;
+  return;
 }
 
 ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
@@ -506,16 +506,16 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     auto stream_it = object_ref_streams_.find(generator_id);
     if (stream_it == object_ref_streams_.end()) {
       // Stream has been already deleted. Do not handle it.
-      return false;
+      return;
     }
 
-    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index;
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                   << end_of_stream_index;
     stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
   }
 
   if (!last_object_id.IsNil()) {
-    reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id,
-                                                         generator_id);
+    reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
     // Put a dummy object at the end of the stream. We don't need to check if
     // the object should be stored in plasma because the end of the stream is a
@@ -749,8 +749,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     if (first_execution) {
       ObjectID last_ref_in_stream;
-      MarkEndOfStream(generator_id,
-                                reply.streaming_generator_return_ids_size());
+      MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size());
     } else {
       // end of stream should have been already marked
       if (is_application_error) {

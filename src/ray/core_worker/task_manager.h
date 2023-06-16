@@ -681,9 +681,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
-  void MarkEndOfStream(const ObjectID &generator_id,
-                       int64_t end_of_stream_index,
-                       ObjectID *object_id_in_last_index) LOCKS_EXCLUDED(mu_);
+  void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
+      LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
   std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
