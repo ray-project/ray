@@ -16,6 +16,7 @@ _recorded_operators_lock = threading.Lock()
 # The white list of operator names allowed to be recorded.
 _op_name_white_list = [
     # Read
+    "ReadBigQuery",
     "ReadRange",
     "ReadMongo",
     "ReadParquet",
@@ -34,6 +35,7 @@ _op_name_white_list = [
     "FromNumpy",
     "FromPandas",
     # Write
+    "WriteBigQuery",
     "WriteParquet",
     "WriteJSON",
     "WriteCSV",

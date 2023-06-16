@@ -33,6 +33,7 @@ from ray.data.read_api import (  # noqa: F401
     range,
     range_table,
     range_tensor,
+    read_bigquery,
     read_binary_files,
     read_csv,
     read_datasource,

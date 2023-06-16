@@ -45,6 +45,7 @@ from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataConte
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
+    BigQueryDatasource,
     BinaryDatasource,
     Connection,
     CSVDatasource,
@@ -514,6 +515,67 @@ def read_mongo(
         schema=schema,
         ray_remote_args=ray_remote_args,
         **mongo_args,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_bigquery(
+    project_id: str,
+    dataset: Optional[str] = None,
+    query: Optional[str] = None,
+    *,
+    parallelism: int = -1,
+    ray_remote_args: Dict[str, Any] = None,
+    **bigquery_args,
+) -> Dataset:
+    """Create an Arrow dataset from BigQuery.
+
+    The data to read from is specified via the ``project_id``, ``dataset``
+    and/or ``query``parameters. The dataset is created from the results of
+    executing``query`` if a query is provided. Otherwise, the entire
+    ``dataset`` will be read.
+
+    You can check out more details here about these BigQuery concepts:
+    - Project id: https://cloud.google.com/resource-manager/docs/creating-managing-projects # noqa: E501
+    - Dataset: https://cloud.google.com/bigquery/docs/datasets-intro # noqa: E501
+    - Query: https://cloud.google.com/bigquery/docs/reference/standard-sql/query-syntax # noqa: E501
+
+    This method uses the BigQuery Storage Read API which reads in parallel,
+    with a Ray read task to handle each stream. The number of streams is
+    determined by ``parallelism`` which can be requested from this interface
+    or automatically chosen if unspecified (see the ``parallelism`` arg below).
+
+    Examples:
+        >>> import ray
+        >>> # Users will need to authenticate beforehand (https://cloud.google.com/sdk/gcloud/reference/auth/login)
+        >>> ds = ray.data.read_bigquery( # doctest: +SKIP
+        ...     project_id="my_project"
+        ...     query = "SELECT * FROM `bigquery-public-data.samples.gsod` LIMIT 1000",
+        ... )
+
+    Args:
+        project_id: The name of the associated Google Cloud Project that hosts the dataset to read.
+            For more information, see details in https://cloud.google.com/resource-manager/docs/creating-managing-projects.
+        dataset: The name of the dataset hosted in BigQuery in the format of `dataset_id.table_id`.
+            Both the dataset_id and table_id must exist otherwise an exception will be raised.
+        parallelism: The requested parallelism of the read. If -1, it will be
+            automatically chosen based on the available cluster resources and estimated
+            in-memory data size.
+        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        bigquery_args: kwargs passed to bigquery methods (currently unused).
+
+    Returns:
+        Dataset producing Arrow records from the results of executing the query (or reading the entire dataset)
+        on the specified BigQuery dataset.
+    """
+    return read_datasource(
+        BigQueryDatasource(),
+        parallelism=parallelism,
+        project_id=project_id,
+        dataset=dataset,
+        query=query,
+        ray_remote_args=ray_remote_args,
+        **bigquery_args,
     )
 
 

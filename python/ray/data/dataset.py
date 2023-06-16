@@ -2716,6 +2716,48 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    def write_bigquery(
+        self,
+        dataset: str,
+        project_id: str,
+        ray_remote_args: Dict[str, Any] = None,
+    ) -> None:
+        """Write the dataset to a BigQuery dataset table.
+
+        This is only supported for datasets convertible to Arrow records.
+        To control the number of parallel write tasks, use ``.repartition()``
+        before calling this method.
+
+        Examples:
+            >>> import ray
+            >>> import pandas as pd
+            >>> docs = [{"title": "BigQuery Datasource test"} for key in range(4)]
+            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
+            >>> ds.write_bigquery( # doctest: +SKIP
+            >>>     BigQueryDatasource(), # doctest: +SKIP
+            >>>     project_id="my_project_id" # doctest: +SKIP
+            >>>     dataset="my_dataset_table", # doctest: +SKIP
+            >>> ) # doctest: +SKIP
+
+        Args:
+            project_id: The name of the associated Google Cloud Project that hosts
+                the dataset to read. For more information, see details in
+                https://cloud.google.com/resource-manager/docs/creating-managing-projects.
+            dataset: The name of the dataset in the format of `dataset_id.table_id`.
+                The dataset is created if it does not already exist. The table_id is
+                overwritten if it exists.
+            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+        """
+        from ray.data.datasource import BigQueryDatasource
+
+        self.write_datasource(
+            BigQueryDatasource(),
+            ray_remote_args=ray_remote_args,
+            dataset=dataset,
+            project_id=project_id,
+        )
+
+    @ConsumptionAPI
     def write_datasource(
         self,
         datasource: Datasource,
