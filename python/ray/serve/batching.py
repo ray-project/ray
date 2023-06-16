@@ -115,10 +115,7 @@ class _BatchQueue:
 
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
-        while (
-            time.time() - batch_start_time < self.timeout_s
-            and len(batch) < self.max_batch_size
-        ):
+        while True:
             remaining_batch_time_s = max(
                 self.timeout_s - (time.time() - batch_start_time), 0
             )
@@ -134,6 +131,12 @@ class _BatchQueue:
 
             except asyncio.TimeoutError:
                 pass
+
+            if (
+                time.time() - batch_start_time >= self.timeout_s
+                or len(batch) >= self.max_batch_size
+            ):
+                break
 
         return batch
 
