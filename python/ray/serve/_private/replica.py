@@ -207,6 +207,16 @@ def create_replica_wrapper(name: str):
             # Used to guard `initialize_replica` so that it isn't called twice.
             self._replica_init_lock = asyncio.Lock()
 
+        @ray.method(concurrency_group=HEALTH_CHECK_CONCURRENCY_GROUP)
+        def get_num_ongoing_requests(self) -> [str, int, bool]:
+            """TODO: name and comment.
+
+            Maybe pickle for perf. ?
+            """
+            num_ongoing_requests = self.replica.get_num_pending_and_running_requests()
+            accepted = num_ongoing_requests < self.replica.deployment_config.max_concurrent_queries
+            return self._replica_tag, num_ongoing_requests, accepted
+
         @ray.method(num_returns=2)
         async def handle_request(
             self,
@@ -494,7 +504,7 @@ class RayServeReplica:
             self.metrics_pusher = MetricsPusher(
                 process_remote_func,
                 config.metrics_interval_s,
-                self._collect_autoscaling_metrics,
+                self.collect_autoscaling_metrics,
             )
             self.metrics_pusher.start()
 
@@ -504,25 +514,27 @@ class RayServeReplica:
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         replica_actor_name = _format_replica_actor_name(self.deployment_name)
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stat = actor_stats.get(f"{replica_actor_name}.handle_request")
-        streaming_method_stat = actor_stats.get(
+        method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
+        streaming_method_stats = actor_stats.get(
             f"{replica_actor_name}.handle_request_streaming"
         )
-        method_stat_java = actor_stats.get(
+        method_stats_java = actor_stats.get(
             f"{replica_actor_name}.handle_request_from_java"
         )
         return merge_dict(
-            merge_dict(method_stat, streaming_method_stat), method_stat_java
+            merge_dict(method_stats, streaming_method_stats), method_stats_java
         )
 
-    def _collect_autoscaling_metrics(self):
-        method_stat = self._get_handle_request_stats()
+    def get_num_running_requests(self) -> int:
+        stats = self._get_handle_request_stats() or {}
+        return stats.get("running", 0)
 
-        num_inflight_requests = 0
-        if method_stat is not None:
-            num_inflight_requests = method_stat["pending"] + method_stat["running"]
+    def get_num_pending_and_running_requests(self) -> int:
+        stats = self._get_handle_request_stats() or {}
+        return stats.get("pending", 0) + stats.get("running", 0)
 
-        return {self.replica_tag: num_inflight_requests}
+    def collect_autoscaling_metrics(self):
+        return {self.replica_tag: self.get_num_pending_and_running_requests()}
 
     def get_runner_method(self, request_metadata: RequestMetadata) -> Callable:
         method_name = request_metadata.call_method
@@ -698,13 +710,13 @@ class RayServeReplica:
             self.processing_latency_tracker.observe(
                 latency_ms, tags={"route": request_metadata.route}
             )
-            logger.info(
-                access_log_msg(
-                    method=request_metadata.call_method,
-                    status="OK" if success else "ERROR",
-                    latency_ms=latency_ms,
-                )
-            )
+            # logger.info(
+                # access_log_msg(
+                    # method=request_metadata.call_method,
+                    # status="OK" if success else "ERROR",
+                    # latency_ms=latency_ms,
+                # )
+            # )
 
             return result
 
@@ -718,21 +730,21 @@ class RayServeReplica:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
             await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
-            method_stat = self._get_handle_request_stats()
-            # The handle_request method wasn't even invoked.
-            if method_stat is None:
-                break
-            num_ongoing_requests = method_stat["running"] + method_stat["pending"]
-            # The handle_request method has 0 inflight requests.
-            if num_ongoing_requests == 0:
-                break
-            else:
+
+            num_ongoing_requests = self.get_num_pending_and_running_requests()
+            if num_ongoing_requests > 0:
                 logger.info(
                     "Waiting for an additional "
                     f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
                     f"down because there are {num_ongoing_requests} ongoing "
                     "requests."
                 )
+            else:
+                logger.info(
+                    "Graceful shutdown complete; replica exiting.",
+                    extra={"log_to_stderr": False},
+                )
+                break
 
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after successfully calling it so the

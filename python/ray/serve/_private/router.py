@@ -4,10 +4,11 @@ from collections import defaultdict
 from dataclasses import dataclass
 import itertools
 import logging
+import math
 import pickle
 import random
 import sys
-from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -85,14 +86,12 @@ class ReplicaScheduler(ABC):
 
 class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
     """Round-robins requests across a set of actor replicas using streaming calls.
-
-    This policy does *not* respect `max_concurrent_queries`.
     """
 
     def __init__(self, deployment_name: str):
         self._deployment_name = deployment_name
-        self._replicas = []
-        self._replica_id_set = set()
+        self._replica_id_set: Set[str] = set()
+        self._replicas: Dict[str, RunningReplicaInfo] = {}
         self._replicas_updated_event = asyncio.Event()
 
     async def choose_two_gen(self) -> AsyncGenerator[List[RunningReplicaInfo], None]:
@@ -118,41 +117,55 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 print("Woke up.")
                 self._replicas_updated_event.clear()
 
-            yield random.sample(self._replicas, k=2) if len(self._replicas) > 1 else [
-                self._replicas[0]
+            chosen_ids = random.sample(self._replica_id_set, k=min(2, len(self._replica_id_set)))
+            yield [
+                self._replicas[chosen_id] for chosen_id in chosen_ids
             ]
 
-            curr_sleep_s = max(curr_sleep_s * 2, max_sleep_s)
+            curr_sleep_s = min(curr_sleep_s * 2, max_sleep_s)
             print(f"Sleeping for {curr_sleep_s}s.")
             await asyncio.sleep(curr_sleep_s)
 
     async def select_replica(
         self, replicas: List[RunningReplicaInfo]
     ) -> Optional[RunningReplicaInfo]:
-        tasks = [r.actor_handle.get_num_ongoing_queries.remote() for r in replicas]
+        tasks = [r.actor_handle.get_num_ongoing_requests.remote() for r in replicas]
         done, pending = await asyncio.wait(
             tasks, timeout=0.1, return_when=asyncio.ALL_COMPLETED
         )
 
-        chosen = None
-        lowest_queue_len = None
-        for k, task in enumerate(tasks):
-            if task in done and task.exception() is None:
-                queue_len, accepted = task.result()
-                print("queue_len:", queue_len)
-                print("accepted:", accepted)
-                if accepted and queue_len < lowest_queue_len:
-                    chosen = replicas[k]
+        # print("DONE:", done)
+        # print("PENDING:", pending)
 
-        return chosen
+        if len(done) == 0:
+            print("NO TASKS FINISHED")
+
+
+        chosen_replica_id = None
+        lowest_queue_len = math.inf
+        for task in done:
+            if task.exception() is not None:
+                print(f"Exception: {e}")
+            else:
+                replica_id, queue_len, accepted = task.result()
+                print(replica_id, "queue_len:", queue_len)
+                if accepted and queue_len < lowest_queue_len:
+                    chosen_replica_id = replica_id
+                    lowest_queue_len = queue_len
+
+        if chosen_replica_id is None:
+            print("No available replicas.")
+            return None
+
+        return self._replicas[chosen_replica_id]
 
     async def assign_replica(
         self, query: Query
     ) -> "ray._raylet.StreamingObjectRefGenerator":
-        replica = None
-        while replica is None:
-            async for candidates in self.choose_two_gen():
-                replica = await self.select_replica(candidates)
+        async for candidates in self.choose_two_gen():
+            replica = await self.select_replica(candidates)
+            if replica is not None:
+                break
 
         if replica.is_cross_language:
             raise RuntimeError(
@@ -168,7 +181,8 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
         )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        new_replica_ids = {r.replica_tag for r in running_replicas}
+        self._replicas = {r.replica_tag: r for r in running_replicas}
+        new_replica_ids = set(self._replicas.keys())
         if new_replica_ids != self._replica_id_set:
             self._replica_id_set = new_replica_ids
             logger.info(
@@ -177,7 +191,6 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 extra={"log_to_stderr": False},
             )
 
-        self._replicas = running_replicas
         self._replicas_updated_event.set()
 
 
