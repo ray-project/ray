@@ -44,7 +44,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters, call_function_from_import_path
 from ray._private.utils import import_attr
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -617,6 +617,30 @@ class HTTPProxyActor:
         if http_middlewares is None:
             http_middlewares = []
 
+        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+            middlewares = call_function_from_import_path(
+                RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+            )
+            if middlewares is None:
+                middlewares = []
+            if not isinstance(middlewares, list):
+                raise ValueError(
+                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
+                    "must return a list of Starlette middlewares."
+                )
+            else:
+                # All middlewares must be Starlette middlewares.
+                # https://www.starlette.io/middleware/#using-pure-asgi-middleware
+                for middleware in middlewares:
+                    if not issubclass(
+                        type(middleware), starlette.middleware.Middleware
+                    ):
+                        raise ValueError(
+                            f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
+                            f"must return a list of Starlette middlewares, instead got {type(middleware)} type item in the list."
+                        )
+            http_middlewares.extend(middlewares)
+
         self.host = host
         self.port = port
         self.root_path = root_path
@@ -627,24 +651,6 @@ class HTTPProxyActor:
 
         self.wrapped_app = self.app
 
-        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-            proxy_callback = import_attr(RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH)
-            if not callable(proxy_callback):
-                raise ValueError(
-                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
-                    "is not callable."
-                )
-            logger.info(
-                "Calling HTTP proxy callback func "
-                f"{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}"
-            )
-            middlewares = proxy_callback()
-            if not isinstance(middlewares, list):
-                raise ValueError(
-                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
-                    "must return a list of Starlette middlewares."
-                )
-            http_middlewares.extend(middlewares)
         for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 

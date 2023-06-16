@@ -63,6 +63,7 @@ from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     DEFAULT,
     override_runtime_envs_except_env_vars,
+    call_function_from_import_path,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -114,6 +115,10 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
+        if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
+            logger.info("controller_callback_called")
+            print("controller_callback_called")
+            call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
@@ -179,19 +184,6 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-
-        if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
-            controller_callback = import_attr(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
-            if not callable(controller_callback):
-                raise ValueError(
-                    f"Controller callback {RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH} "
-                    "is not callable."
-                )
-            logger.info(
-                "Calling controller callback func "
-                f"{RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH}"
-            )
-            controller_callback()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""

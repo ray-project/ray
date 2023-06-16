@@ -189,7 +189,6 @@ def _start_controller(
             head_node_id=head_node_id,
             detached=detached,
         )
-
         proxy_handles = ray.get(controller.get_http_proxies.remote())
         if len(proxy_handles) > 0:
             try:
