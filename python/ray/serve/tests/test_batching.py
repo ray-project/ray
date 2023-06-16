@@ -217,7 +217,11 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 
 @pytest.mark.asyncio
 async def test_batch_timeout_empty_queue():
-    """Check that Serve waits when creating batches."""
+    """Check that Serve waits when creating batches.
+
+    Serve should wait a full batch_wait_timeout_s after receiving the first
+    request in the next batch before processing the batch.
+    """
 
     @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
     async def no_op(requests):
