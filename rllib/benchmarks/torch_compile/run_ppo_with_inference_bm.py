@@ -8,7 +8,7 @@ config = (
         "ALE/Breakout-v5", 
         clip_rewards=True,
         env_config={
-            "frame_skip": 1,
+            "frameskip": 1,
             "full_action_space": False,
             "repeat_action_probability": 0.0,
         }
@@ -17,7 +17,6 @@ config = (
     .training( 
         train_batch_size=5000,
         sgd_minibatch_size=500,
-        rollout_fragment_length="auto",
         num_sgd_iter=10,
         vf_loss_coeff=0.01,
         vf_clip_param=10.0,
@@ -34,6 +33,7 @@ config = (
         num_rollout_workers=16, 
         num_envs_per_worker=1,
         batch_mode="truncate_episodes",
+        rollout_fragment_length="auto",
     )
     .framework(
         "torch",
@@ -43,7 +43,7 @@ config = (
         torch_compile_worker_dynamo_mode="reduce-overhead"
     )
     .resources(
-        num_learner_workers=4,
+        num_learner_workers=8,
         num_gpus_per_learner_worker=1,
     )
 )
