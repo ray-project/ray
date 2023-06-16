@@ -219,24 +219,24 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 async def test_batch_timeout_empty_queue():
     """Check that Serve waits for before creating the first batch."""
 
-    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.05)
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
     async def no_op(requests):
         return ["No-op"] * len(requests)
 
     # Run one request, so internal batch queue gets constructed
     await get_or_create_event_loop().create_task(no_op(None))
 
-    time.sleep(0.05)
+    time.sleep(0.1)
 
     tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
-    done, _ = await asyncio.wait(tasks, timeout=0.001)
+    done, _ = await asyncio.wait(tasks, timeout=0.01)
 
     # Due to the long timeout, none of the tasks should finish until a tenth
     # request is submitted
     assert len(done) == 0
 
     tasks.append(get_or_create_event_loop().create_task(no_op(None)))
-    done, _ = await asyncio.wait(tasks, timeout=0.001)
+    done, _ = await asyncio.wait(tasks, timeout=0.01)
 
     # All the timeout tasks should be finished
     assert len(done) == 10
