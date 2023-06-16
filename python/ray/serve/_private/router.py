@@ -7,7 +7,7 @@ import logging
 import pickle
 import random
 import sys
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -91,27 +91,68 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
 
     def __init__(self, deployment_name: str):
         self._deployment_name = deployment_name
+        self._replicas = []
         self._replica_id_set = set()
-        self._replica_iterator = itertools.cycle([])
         self._replicas_updated_event = asyncio.Event()
+
+    async def choose_two_gen(self) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+        """TODO.
+
+        TODO:
+            - blacklist replicas so we don't try the same ones repeatedly?
+            - add exponential backoff.
+            - should we give up if we try N replicas without succeeding, or just keep trying?
+              Safer to keep retrying with exponential backoff (people spam massive queues today).
+        """
+        max_sleep_s = 1.0
+        curr_sleep_s = 0.1
+        while True:
+            while len(self._replicas) == 0:
+                logger.info(
+                    "Tried to assign replica for deployment "
+                    f"{self._deployment_name} but none available.",
+                    extra={"log_to_stderr": False},
+                )
+                print("No replicas, waiting...")
+                await self._replicas_updated_event.wait()
+                print("Woke up.")
+                self._replicas_updated_event.clear()
+
+            yield random.sample(self._replicas, k=2) if len(self._replicas) > 1 else [
+                self._replicas[0]
+            ]
+
+            curr_sleep_s = max(curr_sleep_s * 2, max_sleep_s)
+            print(f"Sleeping for {curr_sleep_s}s.")
+            await asyncio.sleep(curr_sleep_s)
+
+    async def select_replica(
+        self, replicas: List[RunningReplicaInfo]
+    ) -> Optional[RunningReplicaInfo]:
+        tasks = [r.actor_handle.get_num_ongoing_queries.remote() for r in replicas]
+        done, pending = await asyncio.wait(
+            tasks, timeout=0.1, return_when=asyncio.ALL_COMPLETED
+        )
+
+        chosen = None
+        lowest_queue_len = None
+        for k, task in enumerate(tasks):
+            if task in done and task.exception() is None:
+                queue_len, accepted = task.result()
+                print("queue_len:", queue_len)
+                print("accepted:", accepted)
+                if accepted and queue_len < lowest_queue_len:
+                    chosen = replicas[k]
+
+        return chosen
 
     async def assign_replica(
         self, query: Query
     ) -> "ray._raylet.StreamingObjectRefGenerator":
         replica = None
         while replica is None:
-            try:
-                replica = next(self._replica_iterator)
-            except StopIteration:
-                logger.info(
-                    "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none available.",
-                    extra={"log_to_stderr": False},
-                )
-                # Clear before waiting to avoid immediately waking up if there
-                # had ever been an update before.
-                self._replicas_updated_event.clear()
-                await self._replicas_updated_event.wait()
+            async for candidates in self.choose_two_gen():
+                replica = await self.select_replica(candidates)
 
         if replica.is_cross_language:
             raise RuntimeError(
@@ -136,8 +177,7 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 extra={"log_to_stderr": False},
             )
 
-        random.shuffle(running_replicas)
-        self._replica_iterator = itertools.cycle(running_replicas)
+        self._replicas = running_replicas
         self._replicas_updated_event.set()
 
 
