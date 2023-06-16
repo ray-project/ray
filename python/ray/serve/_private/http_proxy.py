@@ -45,7 +45,6 @@ from ray.serve._private.logging_utils import (
 )
 
 from ray.serve._private.utils import get_random_letters, call_function_from_import_path
-from ray._private.utils import import_attr
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -631,13 +630,20 @@ class HTTPProxyActor:
             else:
                 # All middlewares must be Starlette middlewares.
                 # https://www.starlette.io/middleware/#using-pure-asgi-middleware
+                error_message = (
+                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
+                    "must return a list of Starlette middlewares, instead got {} "
+                    "type item in the list."
+                )
                 for middleware in middlewares:
                     if not issubclass(
                         type(middleware), starlette.middleware.Middleware
                     ):
                         raise ValueError(
-                            f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
-                            f"must return a list of Starlette middlewares, instead got {type(middleware)} type item in the list."
+                            "HTTP proxy callback "
+                            f"{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
+                            f"must return a list of Starlette middlewares, "
+                            f"instead got {type(middleware)} type item in the list."
                         )
             http_middlewares.extend(middlewares)
 

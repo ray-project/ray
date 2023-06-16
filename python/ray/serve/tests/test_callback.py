@@ -112,8 +112,10 @@ def test_call_function_from_import_path():
     "ray_instance",
     [
         {
-            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": "ray.serve.tests.test_callback.add_logger",
-            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": "ray.serve.tests.test_callback.add_middleware",
+            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": 
+                "ray.serve.tests.test_callback.add_logger",
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": 
+                "ray.serve.tests.test_callback.add_middleware",
         },
     ],
     indirect=True,
@@ -142,8 +144,10 @@ def test_callback(ray_instance, capsys):
     "ray_instance",
     [
         {
-            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": "ray.serve.tests.test_callback.not_exist",
-            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": "ray.serve.tests.test_callback.raise_error_callback",
+            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": 
+                "ray.serve.tests.test_callback.not_exist",
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": 
+                "ray.serve.tests.test_callback.raise_error_callback",
         },
     ],
     indirect=True,
@@ -162,7 +166,7 @@ def test_callback_fail(ray_instance):
         controller_name="controller",
         node_ip_address="127.0.0.1",
     )
-    with pytest.raises(RayActorError, match="this is from raise_error_callback") as e:
+    with pytest.raises(RayActorError, match="this is from raise_error_callback"):
         ray.get(handle.ready.remote())
 
     actor_def = ray.serve.controller.ServeController
@@ -171,7 +175,7 @@ def test_callback_fail(ray_instance):
         http_config={},
         head_node_id="123",
     )
-    with pytest.raises(RayActorError, match="cannot be imported") as e:
+    with pytest.raises(RayActorError, match="cannot be imported"):
         ray.get(handle.check_alive.remote())
 
 
@@ -179,7 +183,8 @@ def test_callback_fail(ray_instance):
     "ray_instance",
     [
         {
-            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": "ray.serve.tests.test_callback.return_bad_objects",
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": 
+                "ray.serve.tests.test_callback.return_bad_objects",
         },
     ],
     indirect=True,
