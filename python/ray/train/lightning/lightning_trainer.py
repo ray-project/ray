@@ -34,10 +34,11 @@ class LightningConfigBuilder:
     """Configuration Class to pass into LightningTrainer.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn as nn
+            import pytorch_lightning as pl
             from ray.train.lightning import LightningConfigBuilder
 
             class LinearModule(pl.LightningModule):
@@ -60,6 +61,11 @@ class LightningConfigBuilder:
                 def configure_optimizers(self):
                     return torch.optim.SGD(self.parameters(), lr=0.1)
 
+            class MyDataModule(pl.LightningDataModule):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    # ...
+
             lightning_config = (
                 LightningConfigBuilder()
                 .module(
@@ -68,7 +74,8 @@ class LightningConfigBuilder:
                     output_dim=4,
                 )
                 .trainer(max_epochs=5, accelerator="gpu")
-                .fit_params(datamodule=datamodule)
+                .fit_params(datamodule=MyDataModule())
+                .strategy(name="ddp")
                 .checkpointing(monitor="loss", save_top_k=2, mode="min")
                 .build()
             )
@@ -238,7 +245,7 @@ class LightningTrainer(TorchTrainer):
     run ``pytorch_lightning.Trainer.fit``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn.functional as F
@@ -258,6 +265,8 @@ class LightningTrainer(TorchTrainer):
                     self.fc2 = torch.nn.Linear(feature_dim, 10)
                     self.lr = lr
                     self.accuracy = Accuracy()
+                    self.val_loss = []
+                    self.val_acc = []
 
                 def forward(self, x):
                     x = x.view(-1, 28 * 28)
@@ -277,13 +286,17 @@ class LightningTrainer(TorchTrainer):
                     logits = self.forward(x)
                     loss = F.nll_loss(logits, y)
                     acc = self.accuracy(logits, y)
+                    self.val_loss.append(loss)
+                    self.val_acc.append(acc)
                     return {"val_loss": loss, "val_accuracy": acc}
 
-                def validation_epoch_end(self, outputs):
-                    avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-                    avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
+                def on_validation_epoch_end(self):
+                    avg_loss = torch.stack(self.val_loss).mean()
+                    avg_acc = torch.stack(self.val_acc).mean()
                     self.log("ptl/val_loss", avg_loss)
                     self.log("ptl/val_accuracy", avg_acc)
+                    self.val_acc.clear()
+                    self.val_loss.clear()
 
                 def configure_optimizers(self):
                     optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
