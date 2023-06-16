@@ -355,11 +355,8 @@ def batch(
         if not iscoroutinefunction(_func):
             raise TypeError("Functions decorated with @serve.batch must be 'async def'")
 
-    if not callable(max_batch_size):
-        _validate_max_batch_size(max_batch_size)
-
-    if not callable(batch_wait_timeout_s):
-        _validate_batch_wait_timeout_s(batch_wait_timeout_s)
+    _validate_max_batch_size(max_batch_size)
+    _validate_batch_wait_timeout_s(batch_wait_timeout_s)
 
     def _batch_decorator(_func):
         async def batch_handler_generator(
