@@ -35,6 +35,7 @@ def _parse_args():
     parser.add_argument("--mode", type=str, default=None, help="torch dynamo mode")
     parser.add_argument("--output", type=str, default="./outputs", help="output directory")
     parser.add_argument("--burn-in", type=int, default=500, help="burn-in iterations")
+    parser.add_argument("--cpu", action="store_true", help="use CPU")
 
     return parser.parse_args()
 
@@ -60,16 +61,22 @@ def plot_results(*, results: dict, output: str, config: dict):
 
 def main(pargs):
     
-    if not torch.cuda.is_available():
-        raise RuntimeError("CUDA is required for this benchmark.")
+    if not torch.cuda.is_available() and not pargs.cpu:
+        raise RuntimeError(
+            "CUDA is required for this benchmark. Please run with --cpu flag."
+        )
     
     # create the output directory and save the config
     exp_name_pargs = {
         "bs": pargs.batch_size,
         "backend": pargs.backend,
-        "mode": pargs.mode
+        "mode": pargs.mode,
     }
+
     suffix_list = [f"{k}-{v}" for k, v in exp_name_pargs.items()]
+    if pargs.cpu:
+        suffix_list.append("cpu")
+
     suffix = "-".join(suffix_list)
     output = Path(pargs.output) / f"inference_{suffix}"
     output.mkdir(parents=True, exist_ok=True)
@@ -90,9 +97,10 @@ def main(pargs):
         catalog_class=PPOCatalog,
         model_config_dict=model_cfg 
     )
+    device = torch.device("cuda" if not pargs.cpu else "cpu")
 
-    eager_module = spec.build().cuda()
-    compiled_module = spec.build().cuda()
+    eager_module = spec.build().to(device)
+    compiled_module = spec.build().to(device)
     compile_config = TorchCompileConfig(
         compile_forward_exploration=True,
         torch_dynamo_backend=pargs.backend,
@@ -101,7 +109,7 @@ def main(pargs):
     compiled_module = compiled_module.compile(compile_config)
 
     batch = get_ppo_batch_for_env(env, batch_size=pargs.batch_size)
-    batch = convert_to_torch_tensor(batch, device="cuda")
+    batch = convert_to_torch_tensor(batch, device=device)
     
     # Burn-in
     print("Burn-in...")
