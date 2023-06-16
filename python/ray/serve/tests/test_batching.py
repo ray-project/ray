@@ -242,6 +242,7 @@ async def test_batch_timeout_empty_queue():
     assert len(done) == 10
     for task in tasks:
         assert task in done
+        assert await task == "No-op"
 
 
 @pytest.mark.asyncio
