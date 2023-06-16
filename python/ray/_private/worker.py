@@ -1240,8 +1240,8 @@ def init(
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific
-            conventional location, e.g., "/tmp/ray".
+            directory for the Ray process. Must be an absolute path. Defaults to an
+            OS-specific conventional location, e.g., "/tmp/ray".
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
