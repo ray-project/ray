@@ -138,7 +138,7 @@ class ObjectRefStream {
   /// anymore.
   ///
   /// \param[in] The last item index that means the end of stream.
-  bool MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
+  void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
@@ -146,7 +146,7 @@ class ObjectRefStream {
   std::vector<ObjectID> GetItemsUnconsumed() const;
 
  private:
-  ObjectID GetNextObjectRef(int64_t generator_index) const;
+  ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
   const ObjectID generator_id_;
   const TaskID generator_task_id_;
@@ -165,7 +165,11 @@ class ObjectRefStream {
   /// The next index of the stream.
   /// If next_index_ == end_of_stream_index_, that means it is the end of the stream.
   int64_t next_index_ = 0;
-  int64_t last_available_index_ = 0;
+  /// The maximum index that we have seen from the executor. We need to track
+  /// this in case the first execution fails mid-generator, and the second task
+  /// ends with fewer returns. Then, we mark one past this index as the end of
+  /// the stream.
+  int64_t max_index_seen_ = 0;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -677,7 +681,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
-  bool MarkEndOfStream(const ObjectID &generator_id,
+  void MarkEndOfStream(const ObjectID &generator_id,
                        int64_t end_of_stream_index,
                        ObjectID *object_id_in_last_index) LOCKS_EXCLUDED(mu_);
 

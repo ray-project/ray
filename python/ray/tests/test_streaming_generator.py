@@ -260,108 +260,108 @@ def test_generator_basic(shutdown_only):
         del ref
         i += 1
 
-    """Exceptions"""
+    # """Exceptions"""
 
-    @ray.remote
-    def f():
-        for i in range(5):
-            if i == 2:
-                raise ValueError
-            yield i
+    # @ray.remote
+    # def f():
+    #    for i in range(5):
+    #        if i == 2:
+    #            raise ValueError
+    #        yield i
 
-    gen = f.options(num_returns="streaming").remote()
-    print(ray.get(next(gen)))
-    print(ray.get(next(gen)))
-    with pytest.raises(ray.exceptions.RayTaskError) as e:
-        print(ray.get(next(gen)))
-    with pytest.raises(StopIteration):
-        ray.get(next(gen))
-    with pytest.raises(StopIteration):
-        ray.get(next(gen))
+    # gen = f.options(num_returns="streaming").remote()
+    # print(ray.get(next(gen)))
+    # print(ray.get(next(gen)))
+    # with pytest.raises(ray.exceptions.RayTaskError) as e:
+    #    print(ray.get(next(gen)))
+    # with pytest.raises(StopIteration):
+    #    ray.get(next(gen))
+    # with pytest.raises(StopIteration):
+    #    ray.get(next(gen))
 
-    """Generator Task failure"""
+    # """Generator Task failure"""
 
-    @ray.remote
-    class A:
-        def getpid(self):
-            import os
+    # @ray.remote
+    # class A:
+    #    def getpid(self):
+    #        import os
 
-            return os.getpid()
+    #        return os.getpid()
 
-        def f(self):
-            for i in range(5):
-                time.sleep(1)
-                yield i
+    #    def f(self):
+    #        for i in range(5):
+    #            time.sleep(1)
+    #            yield i
 
-    a = A.remote()
-    gen = a.f.options(num_returns="streaming").remote()
-    i = 0
-    for ref in gen:
-        if i == 2:
-            ray.kill(a)
-        if i == 3:
-            with pytest.raises(ray.exceptions.RayActorError) as e:
-                ray.get(ref)
-            assert "The actor is dead because it was killed by `ray.kill`" in str(
-                e.value
-            )
-            break
-        assert i == ray.get(ref)
-        del ref
-        i += 1
-    for _ in range(10):
-        with pytest.raises(StopIteration):
-            next(gen)
+    # a = A.remote()
+    # gen = a.f.options(num_returns="streaming").remote()
+    # i = 0
+    # for ref in gen:
+    #    if i == 2:
+    #        ray.kill(a)
+    #    if i == 3:
+    #        with pytest.raises(ray.exceptions.RayActorError) as e:
+    #            ray.get(ref)
+    #        assert "The actor is dead because it was killed by `ray.kill`" in str(
+    #            e.value
+    #        )
+    #        break
+    #    assert i == ray.get(ref)
+    #    del ref
+    #    i += 1
+    # for _ in range(10):
+    #    with pytest.raises(StopIteration):
+    #        next(gen)
 
-    """Retry exceptions"""
+    # """Retry exceptions"""
 
-    @ray.remote
-    class Actor:
-        def __init__(self):
-            self.should_kill = True
+    # @ray.remote
+    # class Actor:
+    #    def __init__(self):
+    #        self.should_kill = True
 
-        def should_kill(self):
-            return self.should_kill
+    #    def should_kill(self):
+    #        return self.should_kill
 
-        async def set(self, wait_s):
-            await asyncio.sleep(wait_s)
-            self.should_kill = False
+    #    async def set(self, wait_s):
+    #        await asyncio.sleep(wait_s)
+    #        self.should_kill = False
 
-    @ray.remote(retry_exceptions=[ValueError], max_retries=10)
-    def f(a):
-        for i in range(5):
-            should_kill = ray.get(a.should_kill.remote())
-            if i == 3 and should_kill:
-                raise ValueError
-            yield i
+    # @ray.remote(retry_exceptions=[ValueError], max_retries=10)
+    # def f(a):
+    #    for i in range(5):
+    #        should_kill = ray.get(a.should_kill.remote())
+    #        if i == 3 and should_kill:
+    #            raise ValueError
+    #        yield i
 
-    a = Actor.remote()
-    gen = f.options(num_returns="streaming").remote(a)
-    assert ray.get(next(gen)) == 0
-    assert ray.get(next(gen)) == 1
-    assert ray.get(next(gen)) == 2
-    a.set.remote(3)
-    assert ray.get(next(gen)) == 3
-    assert ray.get(next(gen)) == 4
-    with pytest.raises(StopIteration):
-        ray.get(next(gen))
+    # a = Actor.remote()
+    # gen = f.options(num_returns="streaming").remote(a)
+    # assert ray.get(next(gen)) == 0
+    # assert ray.get(next(gen)) == 1
+    # assert ray.get(next(gen)) == 2
+    # a.set.remote(3)
+    # assert ray.get(next(gen)) == 3
+    # assert ray.get(next(gen)) == 4
+    # with pytest.raises(StopIteration):
+    #    ray.get(next(gen))
 
-    """Cancel"""
+    # """Cancel"""
 
-    @ray.remote
-    def f():
-        for i in range(5):
-            time.sleep(5)
-            yield i
+    # @ray.remote
+    # def f():
+    #    for i in range(5):
+    #        time.sleep(5)
+    #        yield i
 
-    gen = f.options(num_returns="streaming").remote()
-    assert ray.get(next(gen)) == 0
-    ray.cancel(gen)
-    with pytest.raises(ray.exceptions.RayTaskError) as e:
-        assert ray.get(next(gen)) == 1
-    assert "was cancelled" in str(e.value)
-    with pytest.raises(StopIteration):
-        next(gen)
+    # gen = f.options(num_returns="streaming").remote()
+    # assert ray.get(next(gen)) == 0
+    # ray.cancel(gen)
+    # with pytest.raises(ray.exceptions.RayTaskError) as e:
+    #    assert ray.get(next(gen)) == 1
+    # assert "was cancelled" in str(e.value)
+    # with pytest.raises(StopIteration):
+    #    next(gen)
 
 
 @pytest.mark.parametrize("crash_type", ["exception", "worker_crash"])

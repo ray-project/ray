@@ -220,7 +220,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class ObjectRefStreamEneOfStreamError(RayError):
+class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
@@ -289,6 +289,7 @@ class StreamingObjectRefGenerator:
                 "Did you already shutdown Ray via ray.shutdown()?")
         core_worker = self.worker.core_worker
 
+        # Wait for the next ObjectRef to become ready.
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         ready, unready = ray.wait(
@@ -300,9 +301,9 @@ class StreamingObjectRefGenerator:
             ref = core_worker.try_read_next_object_ref_stream(
                 self._generator_ref)
             assert not ref.is_nil()
-        except ObjectRefStreamEneOfStreamError:
+        except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
-                # Exception has been returned. raise StopIteration.
+                # Exception has been returned.
                 raise StopIteration
 
             try:
@@ -328,6 +329,7 @@ class StreamingObjectRefGenerator:
 
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
+        # TODO(swang): Avoid fetching the value.
         ready, unready = await asyncio.wait([ref], timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
@@ -336,7 +338,7 @@ class StreamingObjectRefGenerator:
             ref = core_worker.try_read_next_object_ref_stream(
                 self._generator_ref)
             assert not ref.is_nil()
-        except ObjectRefStreamEneOfStreamError:
+        except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
                 # Exception has been returned. raise StopIteration.
                 raise StopAsyncIteration
@@ -351,94 +353,6 @@ class StreamingObjectRefGenerator:
                 raise StopAsyncIteration
 
         return ref
-
-    # async def _handle_next_async(self):
-    #     try:
-    #         return self._handle_next()
-    #     except ObjectRefStreamEneOfStreamError:
-    #         raise StopAsyncIteration
-
-    # def _handle_next_sync(self):
-    #     try:
-    #         return self._handle_next()
-    #     except ObjectRefStreamEneOfStreamError:
-    #         raise StopIteration
-
-    # def _handle_next(self):
-    #     """Get the next item from the ObjectRefStream.
-
-    #     This API return immediately all the time. It returns a nil object
-    #     if it doesn't have the next item ready. It raises
-    #     ObjectRefStreamEneOfStreamError if there's nothing more to read.
-    #     If there's a next item, it will return a object ref.
-    #     """
-    #     if hasattr(self.worker, "core_worker"):
-    #         obj = self.worker.core_worker.try_read_next_object_ref_stream(
-    #             self._generator_ref)
-    #         return obj
-    #     else:
-    #         raise ValueError(
-    #             "Cannot access the core worker. "
-    #             "Did you already shutdown Ray via ray.shutdown()?")
-
-    # def _handle_error(
-    #         self,
-    #         is_async: bool,
-    #         last_time: int,
-    #         timeout_s: float,
-    #         unexpected_network_failure_timeout_s: float):
-    #     """Handle the error case of next APIs.
-
-    #     Return None if there's no error. Returns a ref if
-    #     the ref is supposed to be return.
-    #     """
-    #     if self._generator_task_exception:
-    #         # The generator task has failed already.
-    #         # We raise StopIteration
-    #         # to conform the next interface in Python.
-    #         if is_async:
-    #             raise StopAsyncIteration
-    #         else:
-    #             raise StopIteration
-    #     else:
-    #         # Otherwise, we should ray.get on the generator
-    #         # ref to find if the task has a system failure.
-    #         # Return the generator ref that contains the system
-    #         # error as soon as possible.
-    #         r, _ = ray.wait([self._generator_ref], timeout=0)
-    #         if len(r) > 0:
-    #             try:
-    #                 ray.get(r)
-    #             except Exception as e:
-    #                 # If it has failed, return the generator task ref
-    #                 # so that the ref will raise an exception.
-    #                 self._generator_task_exception = e
-    #                 return self._generator_ref
-    #             finally:
-    #                 if self._generator_task_completed_time is None:
-    #                     self._generator_task_completed_time = time.time()
-
-    #     # Currently, since the ordering of intermediate result report
-    #     # is not guaranteed, it is possible that althoug the task
-    #     # has succeeded, all of the object references are not reported
-    #     # (e.g., when there are network failures).
-    #     # If all the object refs are not reported to the generator
-    #     # within 30 seconds, we consider is as an unreconverable error.
-    #     if self._generator_task_completed_time:
-    #         if (time.time() - self._generator_task_completed_time
-    #                 > unexpected_network_failure_timeout_s):
-    #             # It means the next wasn't reported although the task
-    #             # has been terminated 30 seconds ago.
-    #             self._generator_task_exception = AssertionError
-    #             assert False, (
-    #                 "Unexpected network failure occured. "
-    #                 f"Task ID: {self._generator_ref.task_id().hex()}"
-    #             )
-
-    #     if timeout_s != -1 and time.time() - last_time > timeout_s:
-    #         return ObjectRef.nil()
-
-    #     return None
 
     def __del__(self):
         if hasattr(self.worker, "core_worker"):
@@ -467,7 +381,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEneOfStreamError(message)
+        raise ObjectRefStreamEndOfStreamError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():

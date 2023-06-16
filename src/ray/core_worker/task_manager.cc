@@ -47,7 +47,7 @@ std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
 }
 
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
-  *object_id_out = GetNextObjectRef(next_index_);
+  *object_id_out = GetObjectRefAtIndex(next_index_);
   bool is_eof_set = end_of_stream_index_ != -1;
   if (is_eof_set && next_index_ >= end_of_stream_index_) {
     // next_index_ cannot be bigger than end_of_stream_index_.
@@ -74,7 +74,7 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   }
 }
 
-ObjectID ObjectRefStream::PeekNextItem() { return GetNextObjectRef(next_index_); }
+ObjectID ObjectRefStream::PeekNextItem() { return GetObjectRefAtIndex(next_index_); }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
   // Write to a stream if the object ID is not consumed yet.
@@ -99,7 +99,7 @@ bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_i
 }
 
 bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_index) {
-  RAY_CHECK_EQ(object_id, GetNextObjectRef(item_index));
+  RAY_CHECK_EQ(object_id, GetObjectRefAtIndex(item_index));
   if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
     // Ignore the index after the end of the stream index.
@@ -132,7 +132,7 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
            "feature using `max_retries=0` (task) or `max_task_retries=0` (actor).";
   }
   item_index_to_refs_.emplace(item_index, object_id);
-  last_available_index_ = std::max(last_available_index_, item_index + 1);
+  max_index_seen_ = std::max(max_index_seen_, item_index);
   return true;
 }
 
@@ -141,21 +141,21 @@ bool ObjectRefStream::MarkEndOfStream(int64_t item_index,
   if (end_of_stream_index_ != -1) {
     return false;
   }
-  // ObjectRefStream should guarantee the last_available_index_
+  // ObjectRefStream should guarantee the max_index_seen_
   // will always have an object reference to avoid hang.
   // That said, if there was already an index that's bigger than a given
   // end of stream index, we should mark that as the end of stream.
   // It can happen when a task is retried and return less values
   // (e.g., the second retry is failed by an exception or worker failure).
-  end_of_stream_index_ = std::max(last_available_index_, item_index);
+  end_of_stream_index_ = std::max(max_index_seen_ + 1, item_index);
 
-  auto end_of_stream_id = GetNextObjectRef(end_of_stream_index_);
+  auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   item_index_to_refs_.emplace(end_of_stream_index_, end_of_stream_id);
   *object_id_in_last_index = end_of_stream_id;
   return true;
 }
 
-ObjectID ObjectRefStream::GetNextObjectRef(int64_t generator_index) const {
+ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
   RAY_CHECK(generator_index < 100 * 1000 * 1000);
   // 2 for a single return from a generator task.
   return ObjectID::FromIndex(generator_task_id_, 2 + generator_index);
@@ -499,18 +499,30 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   return it != object_ref_streams_.end();
 }
 
-bool TaskManager::MarkEndOfStream(const ObjectID &generator_id,
-                                  int64_t end_of_stream_index,
-                                  ObjectID *object_id_in_last_index) {
-  absl::MutexLock lock(&mu_);
-  auto stream_it = object_ref_streams_.find(generator_id);
-  if (stream_it == object_ref_streams_.end()) {
-    // Stream has been already deleted. Do not handle it.
-    return false;
+void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
+                                  int64_t end_of_stream_index) {
+  ObjectID last_object_id;
+  {
+    absl::MutexLock lock(&mu_);
+    auto stream_it = object_ref_streams_.find(generator_id);
+    if (stream_it == object_ref_streams_.end()) {
+      // Stream has been already deleted. Do not handle it.
+      return false;
+    }
+
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                   << end_of_stream_index;
+    stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
   }
 
-  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index;
-  return stream_it->second.MarkEndOfStream(end_of_stream_index, object_id_in_last_index);
+  if (!last_object_id.IsNil()) {
+    reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
+    RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
+    // We don't need to check if the object was in plasma because the end of
+    // the stream is a fake ObjectRef that should never be read by the
+    // application.
+    in_memory_store_->Put(error, last_object_id);
+  }
 }
 
 bool TaskManager::HandleReportGeneratorItemReturns(
@@ -738,18 +750,8 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     if (first_execution) {
       ObjectID last_ref_in_stream;
-      // MarkEndOfStream should always succeed when it is the first execution.
-      RAY_CHECK(MarkEndOfStream(generator_id,
-                                reply.streaming_generator_return_ids_size(),
-                                &last_ref_in_stream));
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(last_ref_in_stream,
-                                                           generator_id);
-      RAY_CHECK_EQ(reply.return_objects_size(), 1);
-      const auto &return_object = reply.return_objects(0);
-      HandleTaskReturn(last_ref_in_stream,
-                       return_object,
-                       NodeID::FromBinary(worker_addr.raylet_id()),
-                       store_in_plasma_ids.count(last_ref_in_stream));
+      MarkEndOfStream(generator_id,
+                                reply.streaming_generator_return_ids_size();
     } else {
       // end of stream should have been already marked
       if (is_application_error) {
@@ -758,7 +760,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         // known streaming generator returns.
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-          RAY_CHECK_EQ(reply.return_objects_size(), 1UL);
+          RAY_CHECK_EQ(reply.return_objects_size(), 1);
           const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
                            return_object,
@@ -1121,19 +1123,11 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   }
 
   if (spec.IsStreamingGenerator()) {
-    // It means the task is failed.
-    // Mark the end of stream and write the error to the last object reference.
+    // If a streaming generator task failed, mark the end of the stream if it
+    // hasn't been ended already. The stream will be ended one index past the
+    // maximum index seen so far.
     const auto generator_id = spec.ReturnId(0);
-    ObjectID last_ref_in_stream;
-    if (MarkEndOfStream(generator_id, /*item_index*/ -1, &last_ref_in_stream)) {
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(last_ref_in_stream,
-                                                           generator_id);
-      if (store_in_plasma_ids.count(last_ref_in_stream)) {
-        put_in_local_plasma_callback_(error, last_ref_in_stream);
-      } else {
-        in_memory_store_->Put(error, last_ref_in_stream);
-      }
-    }
+    MarkEndOfStream(generator_id, /*item_index*/ -1);
 
     // If it was a streaming generator, try failing all the return object refs.
     // In a normal time, it is no-op because the object ref values are already
@@ -1143,7 +1137,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
-    for (auto i = 0; i < num_streaming_generator_returns; i++) {
+    for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.count(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);
