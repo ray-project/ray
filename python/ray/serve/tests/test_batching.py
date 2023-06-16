@@ -1,3 +1,4 @@
+import time
 import pytest
 import asyncio
 import requests
@@ -218,33 +219,26 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 async def test_batch_timeout_empty_queue():
     """Check that Serve waits for before creating the first batch."""
 
-    @serve.batch(max_batch_size=10, batch_wait_timeout_s=10000)
-    async def timeout():
-        return "No-op"
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=1)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
 
-    tasks = [asyncio.create_task(timeout()) for _ in range(9)]
-    sleep_task = [asyncio.create_task(asyncio.sleep(0.1))]
-    done, _ = await asyncio.wait(
-        tasks + sleep_task, return_when=asyncio.FIRST_COMPLETED
-    )
+    time.sleep(0.5)
+
+    tasks = [asyncio.create_task(no_op(None)) for _ in range(9)]
+    done, _ = await asyncio.wait(tasks, timeout=0.1)
 
     # Due to the long timeout, none of the tasks should finish until a tenth
     # request is submitted
-    assert len(done) == 1 and sleep_task[0] in done
+    assert len(done) == 0
 
-    tasks.append(asyncio.create_task(timeout()))
-    sleep_task = [asyncio.create_task(asyncio.sleep(0.1))]
-    done, pending = await asyncio.wait(
-        tasks + sleep_task, return_when=asyncio.FIRST_COMPLETED
-    )
+    tasks.append(asyncio.create_task(no_op(None)))
+    done, _ = await asyncio.wait(tasks, timeout=0.1)
 
     # All the timeout tasks should be finished
     assert len(done) == 10
     for task in tasks:
         assert task in done
-
-    # The timeout tasks should have finished before the sleep task finished
-    assert sleep_task[0] in pending
 
 
 @pytest.mark.asyncio
