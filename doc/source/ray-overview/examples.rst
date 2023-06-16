@@ -193,7 +193,7 @@ Ray Examples
 
         .. button-ref:: /data/examples/pytorch_resnet_batch_prediction
 
-            Torch Batch Prediction Example with Ray AIR
+            Image Classification Batch Inference with PyTorch ResNet152
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item cv
