@@ -642,7 +642,7 @@ class MetricsPusher:
 
 
 def call_function_from_import_path(import_path: str) -> Any:
-    """Call the function from given import path.
+    """Call the function given import path.
 
     Args:
         import_path: The import path of the function to call.
@@ -656,18 +656,14 @@ def call_function_from_import_path(import_path: str) -> Any:
     try:
         proxy_callback = import_attr(import_path)
     except Exception as e:
-        raise ValueError(
-            f"The callback import path {import_path} " f"cannot be imported: {e}"
-        )
+        raise ValueError(f"The import path {import_path} cannot be imported: {e}")
 
     if not callable(proxy_callback):
-        raise TypeError(f"The callback import path {import_path} " "is not callable.")
+        raise TypeError(f"The import path {import_path} is not callable.")
 
-    logger.info(f"Calling callback function {import_path}")
+    logger.info(f"Calling function {import_path}")
 
     try:
         return proxy_callback()
     except Exception as e:
-        raise RuntimeError(
-            f"The callback function {import_path} " f"raised an exception: {e}"
-        )
+        raise RuntimeError(f"The function {import_path} raised an exception: {e}")
