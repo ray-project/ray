@@ -184,7 +184,6 @@ class TestPPO(unittest.TestCase):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
         frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
-        # TODO(Artur): Re-enable LSTM
         lstm = [True, False]
         config_combinations = [frameworks, env_names, lstm]
         for config in itertools.product(*config_combinations):
