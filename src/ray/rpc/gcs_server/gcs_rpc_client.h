@@ -87,7 +87,6 @@ class Executor {
 /// The priority of timeout is each call > handler > whole service
 /// (the lower priority timeout is overwritten by the higher priority timeout).
 /// \param SPECS The cpp method spec. For example, override.
-/// \param IS_INSECURE Whether to attach a cluster_id token to the metadata of the call.
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
@@ -190,7 +189,7 @@ class GcsRpcClient {
  public:
   /// Constructor. GcsRpcClient is not thread safe.
   ///
-  // \param[in] address Address of gcs server.
+  /// \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
@@ -314,11 +313,6 @@ class GcsRpcClient {
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
                              KillActorViaGcs,
                              actor_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-  /// Register a client to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
-                             GetClusterId,
-                             node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Register a node to GCS Service.

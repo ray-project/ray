@@ -18,6 +18,7 @@
 #include <grpcpp/ext/proto_server_reflection_plugin.h>
 #include <grpcpp/impl/service_type.h>
 
+#include <atomic>
 #include <boost/asio/detail/socket_holder.hpp>
 
 #include "ray/common/ray_config.h"
@@ -159,9 +160,6 @@ void GrpcServer::RegisterService(GrpcService &service, bool token_auth) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
-    if (token_auth && cluster_id_.load().IsNil()) {
-      RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
-    }
     service.InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_.load());
   }
 }

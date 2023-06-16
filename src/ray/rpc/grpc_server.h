@@ -16,6 +16,7 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <atomic>
 #include <boost/asio.hpp>
 #include <thread>
 #include <utility>
