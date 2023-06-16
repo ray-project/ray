@@ -2,10 +2,12 @@ import logging
 import math
 from typing import Optional
 
-from ray.rllib.algorithms.a3c.a3c import A3C, A3CConfig
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
+from ray.rllib.execution.rollout_ops import (
+    synchronous_parallel_sample,
+)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -15,8 +17,8 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_TRAINED,
-    SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
+    SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import ResultDict
 
