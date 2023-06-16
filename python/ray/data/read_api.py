@@ -382,51 +382,30 @@ def read_datasource(
             )
         )
 
-    #    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
-    #        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
-    #        logger.warning(
-    #            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
-    #            "larger than the target block size "
-    #            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
-    #            "out-of-memory errors during processing. Consider reducing the size of "
-    #            "input files or using `.repartition(n)` to increase the number of "
-    #            "dataset blocks."
-    #        )
-    #    elif len(read_tasks) < requested_parallelism and (
-    #        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
-    #    ):
-    #        logger.warning(
-    #            f"{WARN_PREFIX} The number of blocks in this dataset "
-    #            f"({len(read_tasks)}) "
-    #            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
-    #            "This is much less than the number "
-    #            "of available CPU slots in the cluster. Use `.repartition(n)` to "
-    #            "increase the number of "
-    #            "dataset blocks."
-    #        )
+    # Compute the number of blocks the read will return.
+    if inmemory_size:
+        expected_block_size = inmemory_size / len(read_tasks)
+        logger.debug(f"Expected block size {expected_block_size}")
+        size_based_splits = math.floor(
+            max(1, expected_block_size / ctx.target_max_block_size)
+        )
+    else:
+        size_based_splits = 1
+    logger.debug(f"Size based split factor {size_based_splits}")
+    estimated_num_blocks = len(read_tasks) * size_based_splits
+    logger.debug(f"Blocks after size splits {estimated_num_blocks}")
 
-    # TODO update the warnings above
-    if len(read_tasks) < requested_parallelism:
-        desired_splits_per_file = requested_parallelism / len(read_tasks)
-        print("Desired splits per file", desired_splits_per_file)
-        if inmemory_size:
-            expected_block_size = inmemory_size / len(read_tasks)
-            print("Expected block size", expected_block_size)
-            size_based_splits = math.floor(
-                max(1, expected_block_size / ctx.target_max_block_size)
-            )
-            print("Size based splits", size_based_splits)
-        else:
-            size_based_splits = 1
-        k = math.ceil(desired_splits_per_file / size_based_splits)
-        estimated_num_blocks = len(read_tasks) * size_based_splits * k
-        print("Additional split factor", k)
+    # Add more output splitting if needed.
+    if estimated_num_blocks < requested_parallelism:
+        k = math.ceil(requested_parallelism / estimated_num_blocks)
+        logger.info(
+            f"To satisfy the requested parallelism of {requested_parallelism}, "
+            f"each read task output will be split into {k} smaller blocks."
+        )
         for r in read_tasks:
             r._set_additional_split_factor(k)
-        print("Estimated num blocks", estimated_num_blocks)
-    else:
-        print("No additional splits are needed")
-        estimated_num_blocks = len(read_tasks)
+        estimated_num_blocks = estimated_num_blocks * k
+    logger.debug("Estimated num output blocks {estimated_num_blocks}")
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)

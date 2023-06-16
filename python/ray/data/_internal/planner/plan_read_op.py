@@ -59,7 +59,7 @@ def _plan_read_op(op: Read) -> PhysicalOperator:
         ]
 
     inputs = InputDataBuffer(
-        input_data_factory=get_input_data, override_num_blocks=op._estimated_num_blocks
+        input_data_factory=get_input_data, num_output_blocks=op._estimated_num_blocks
     )
 
     def do_read(blocks: Iterator[ReadTask], _: TaskContext) -> Iterator[Block]:
