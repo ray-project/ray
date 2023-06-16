@@ -27,6 +27,7 @@ class RayParams:
         num_gpus: Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
@@ -130,6 +131,7 @@ class RayParams:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
+        labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
         redis_max_memory: Optional[float] = None,
@@ -238,6 +240,7 @@ class RayParams:
         self.webui = webui
         self._system_config = _system_config or {}
         self._enable_object_reconstruction = enable_object_reconstruction
+        self.labels = labels
         self._check_usage()
 
         # Set the internal config options for object reconstruction.

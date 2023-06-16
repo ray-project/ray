@@ -4,23 +4,20 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
-
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data.tests.util import Counter
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
+    Partitioning,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
-    Partitioning,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
-from ray.data.tests.util import extract_values
+from ray.data.tests.util import Counter, extract_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -47,7 +44,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     values = np.stack(extract_values("data", ds.take(8)))
     np.testing.assert_array_equal(values, np.concatenate((arr1, arr2)))
     # Check that conversion task is included in stats.
-    assert "FromNumpyRefs" in ds.stats()
+    assert "FromNumpy" in ds.stats()
 
     # Test from single NumPy ndarray.
     if from_ref:
@@ -57,7 +54,7 @@ def test_from_numpy(ray_start_regular_shared, from_ref):
     values = np.stack(extract_values("data", ds.take(4)))
     np.testing.assert_array_equal(values, arr1)
     # Check that conversion task is included in stats.
-    assert "FromNumpyRefs" in ds.stats()
+    assert "FromNumpy" in ds.stats()
 
 
 def test_from_numpy_variable_shaped(ray_start_regular_shared):
