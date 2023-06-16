@@ -87,6 +87,7 @@ class _BatchQueue:
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
         self.max_batch_size = max_batch_size
         self.timeout_s = timeout_s
+        self.queue_put_event = asyncio.Event()
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
@@ -96,6 +97,7 @@ class _BatchQueue:
 
     def put(self, request: Tuple[_SingleRequest, asyncio.Future]) -> None:
         self.queue.put_nowait(request)
+        self.queue_put_event.set()
 
     async def wait_for_batch(self) -> List[Any]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
@@ -122,12 +124,13 @@ class _BatchQueue:
             )
             try:
                 # Wait for new arrivals.
-                batch.append(
-                    await asyncio.wait_for(self.queue.get(), remaining_batch_time_s)
+                await asyncio.wait_for(
+                    self.queue_put_event.wait(), remaining_batch_time_s
                 )
                 # Add all new arrivals to the batch.
                 while len(batch) < self.max_batch_size and not self.queue.empty():
                     batch.append(self.queue.get_nowait())
+                self.queue_put_event.clear()
 
             except asyncio.TimeoutError:
                 pass
