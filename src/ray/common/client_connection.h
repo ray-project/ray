@@ -24,8 +24,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/id.h"
-#include "ray/util/status.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/util/status.h"
 
 namespace ray {
 

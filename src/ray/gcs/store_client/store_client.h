@@ -19,9 +19,9 @@
 
 #include "ray/common/asio/io_service_pool.h"
 #include "ray/common/id.h"
-#include "ray/util/status.h"
 #include "ray/gcs/callback.h"
 #include "ray/util/logging.h"
+#include "ray/util/status.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

@@ -15,8 +15,8 @@
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 
 #include "ray/common/id.h"
-#include "ray/util/status.h"
 #include "ray/gcs/callback.h"
+#include "ray/util/status.h"
 
 namespace ray {
 namespace gcs {

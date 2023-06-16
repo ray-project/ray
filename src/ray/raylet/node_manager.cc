@@ -28,7 +28,6 @@
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/memory_monitor.h"
-#include "ray/util/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/worker_killing_policy.h"
@@ -37,6 +36,7 @@
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/sample.h"
+#include "ray/util/status.h"
 #include "ray/util/util.h"
 
 namespace {

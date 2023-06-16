@@ -23,11 +23,11 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/util/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/plasma_generated.h"
+#include "ray/util/status.h"
 #include "src/ray/protobuf/common.pb.h"
 
 namespace plasma {

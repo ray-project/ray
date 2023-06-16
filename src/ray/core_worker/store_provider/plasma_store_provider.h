@@ -18,12 +18,12 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/buffer.h"
 #include "ray/common/id.h"
-#include "ray/util/status.h"
 #include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/object_manager/plasma/client.h"
 #include "ray/raylet_client/raylet_client.h"
+#include "ray/util/status.h"
 
 namespace ray {
 namespace core {

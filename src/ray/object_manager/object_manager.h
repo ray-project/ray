@@ -32,7 +32,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/status.h"
 #include "ray/object_manager/chunk_object_reader.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_buffer_pool.h"
@@ -43,6 +42,7 @@
 #include "ray/object_manager/push_manager.h"
 #include "ray/rpc/object_manager/object_manager_client.h"
 #include "ray/rpc/object_manager/object_manager_server.h"
+#include "ray/util/status.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 

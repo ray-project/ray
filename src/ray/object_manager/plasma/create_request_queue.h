@@ -20,12 +20,12 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/file_system_monitor.h"
-#include "ray/util/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"
 #include "ray/object_manager/plasma/plasma.h"
 #include "ray/object_manager/plasma/protocol.h"
+#include "ray/util/status.h"
 
 namespace plasma {
 

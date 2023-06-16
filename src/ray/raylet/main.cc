@@ -19,12 +19,12 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/status.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/status.h"
 
 using json = nlohmann::json;
 

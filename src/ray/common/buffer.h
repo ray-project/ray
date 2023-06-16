@@ -19,8 +19,8 @@
 #include <functional>
 #include <memory>
 
-#include "ray/util/status.h"
 #include "ray/thirdparty/aligned_alloc.h"
+#include "ray/util/status.h"
 
 #define BUFFER_ALIGNMENT 64
 

@@ -20,9 +20,9 @@
 
 #include <thread>
 
-#include "ray/util/status.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/status.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
 

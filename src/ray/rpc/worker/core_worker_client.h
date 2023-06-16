@@ -29,10 +29,10 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/hash/hash.h"
-#include "ray/util/status.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/rpc/grpc_client.h"
 #include "ray/util/logging.h"
+#include "ray/util/status.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 

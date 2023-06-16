@@ -18,10 +18,10 @@
 #include <string>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/util/status.h"
 #include "ray/gcs/asio.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
+#include "ray/util/status.h"
 
 namespace ray {
 

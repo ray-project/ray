@@ -23,8 +23,8 @@
 #include <vector>
 
 #include "ray/common/buffer.h"
-#include "ray/util/status.h"
 #include "ray/object_manager/plasma/common.h"
+#include "ray/util/status.h"
 #include "ray/util/visibility.h"
 #include "src/ray/protobuf/common.pb.h"
 
