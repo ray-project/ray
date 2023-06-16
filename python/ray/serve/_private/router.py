@@ -85,8 +85,7 @@ class ReplicaScheduler(ABC):
 
 
 class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
-    """Round-robins requests across a set of actor replicas using streaming calls.
-    """
+    """Round-robins requests across a set of actor replicas using streaming calls."""
 
     def __init__(self, deployment_name: str):
         self._deployment_name = deployment_name
@@ -117,10 +116,10 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 print("Woke up.")
                 self._replicas_updated_event.clear()
 
-            chosen_ids = random.sample(self._replica_id_set, k=min(2, len(self._replica_id_set)))
-            yield [
-                self._replicas[chosen_id] for chosen_id in chosen_ids
-            ]
+            chosen_ids = random.sample(
+                self._replica_id_set, k=min(2, len(self._replica_id_set))
+            )
+            yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
             curr_sleep_s = min(curr_sleep_s * 2, max_sleep_s)
             print(f"Sleeping for {curr_sleep_s}s.")
@@ -140,12 +139,11 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
         if len(done) == 0:
             print("NO TASKS FINISHED")
 
-
         chosen_replica_id = None
         lowest_queue_len = math.inf
         for task in done:
             if task.exception() is not None:
-                print(f"Exception: {e}")
+                print(f"Exception: {task.exception()}")
             else:
                 replica_id, queue_len, accepted = task.result()
                 print(replica_id, "queue_len:", queue_len)
@@ -415,7 +413,7 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
-                "Failed to assign a replica for " f"query {query.metadata.request_id}"
+                f"Failed to assign a replica for query {query.metadata.request_id}"
             )
             # Maybe there exists a free replica, we just need to refresh our
             # query tracker.

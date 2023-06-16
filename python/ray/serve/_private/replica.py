@@ -214,7 +214,10 @@ def create_replica_wrapper(name: str):
             Maybe pickle for perf. ?
             """
             num_ongoing_requests = self.replica.get_num_pending_and_running_requests()
-            accepted = num_ongoing_requests < self.replica.deployment_config.max_concurrent_queries
+            accepted = (
+                num_ongoing_requests
+                < self.replica.deployment_config.max_concurrent_queries
+            )
             return self._replica_tag, num_ongoing_requests, accepted
 
         @ray.method(num_returns=2)
@@ -710,13 +713,13 @@ class RayServeReplica:
             self.processing_latency_tracker.observe(
                 latency_ms, tags={"route": request_metadata.route}
             )
-            # logger.info(
-                # access_log_msg(
-                    # method=request_metadata.call_method,
-                    # status="OK" if success else "ERROR",
-                    # latency_ms=latency_ms,
-                # )
-            # )
+            logger.info(
+                access_log_msg(
+                    method=request_metadata.call_method,
+                    status="OK" if success else "ERROR",
+                    latency_ms=latency_ms,
+                )
+            )
 
             return result
 
