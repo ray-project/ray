@@ -258,17 +258,19 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
     reason="Streaming feature flag is disabled.",
 )
 def test_http_disconnect(serve_instance):
+    """Test that response generators are cancelled when the client disconnects."""
     signal_actor = SignalActor.remote()
 
     @serve.deployment
     class SimpleGenerator:
         def __call__(self, request: Request) -> StreamingResponse:
             async def wait_for_disconnect():
-                while not await request.is_disconnected():
-                    yield b""
-
-                print("Disconnected!")
-                signal_actor.send.remote()
+                try:
+                    yield "hi"
+                    await asyncio.sleep(100)
+                except asyncio.CancelledError:
+                    print("Cancelled!")
+                    signal_actor.send.remote()
 
             return StreamingResponse(wait_for_disconnect())
 

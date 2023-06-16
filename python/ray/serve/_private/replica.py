@@ -362,7 +362,7 @@ def create_replica_wrapper(name: str):
             _after: Optional[Any] = None,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             # Unused `_after` argument is for scheduling: passing an ObjectRef
-            # allows delaying reconfiguration until after this call has returned.
+            # allows delaying this call until after the `_after` call has returned.
             try:
                 # Ensure that initialization is only performed once.
                 # When controller restarts, it will call this method again.
@@ -383,7 +383,8 @@ def create_replica_wrapper(name: str):
                 raise RuntimeError(traceback.format_exc()) from None
 
         async def reconfigure(
-            self, deployment_config: DeploymentConfig
+            self,
+            deployment_config: DeploymentConfig,
         ) -> Tuple[DeploymentConfig, DeploymentVersion]:
             try:
                 await self.replica.reconfigure(deployment_config)
@@ -478,6 +479,11 @@ class RayServeReplica:
         self.num_processing_items = metrics.Gauge(
             "serve_replica_processing_queries",
             description="The current number of queries being processed.",
+        )
+
+        self.num_pending_items = metrics.Gauge(
+            "serve_replica_pending_queries",
+            description="The current number of pending queries.",
         )
 
         self.restart_counter.inc()
@@ -665,7 +671,10 @@ class RayServeReplica:
         request_kwargs: Dict[str, Any],
     ) -> Any:
         async with self.rwlock.reader_lock:
-            num_running_requests = self._get_handle_request_stats()["running"]
+            request_stats = self._get_handle_request_stats()
+            num_running_requests = request_stats["running"]
+            num_pending_requests = request_stats["pending"]
+            self.num_pending_items.set(num_pending_requests)
             self.num_processing_items.set(num_running_requests)
 
             # Set request context variables for subsequent handle so that

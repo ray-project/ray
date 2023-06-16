@@ -10,16 +10,8 @@ from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data._internal.plan import AllToAllStage
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data._internal.shuffle import ShuffleOp, SimpleShufflePlan
-from ray.data.aggregate import (
-    AggregateFn,
-    Count,
-    Max,
-    Mean,
-    Min,
-    Std,
-    Sum,
-    _AggregateOnKeyBase,
-)
+from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
+from ray.data.aggregate._aggregate import _AggregateOnKeyBase
 from ray.data.block import (
     Block,
     BlockAccessor,
