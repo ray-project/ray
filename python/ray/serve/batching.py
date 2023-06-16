@@ -121,16 +121,16 @@ class _BatchQueue:
                 self.timeout_s - (time.time() - batch_start_time), 0
             )
             try:
+                # Wait for new arrivals.
                 batch.append(
                     await asyncio.wait_for(self.queue.get(), remaining_batch_time_s)
                 )
+                # Add all new arrivals to the batch.
+                while len(batch) < self.max_batch_size and not self.queue.empty():
+                    batch.append(self.queue.get_nowait())
+
             except asyncio.TimeoutError:
                 pass
-
-        # No time left to wait for more queue arrivals. Add any requests
-        # that are already queued until batch is full or queue is empty.
-        while len(batch) < self.max_batch_size and not self.queue.empty():
-            batch.append(self.queue.get_nowait())
 
         return batch
 
