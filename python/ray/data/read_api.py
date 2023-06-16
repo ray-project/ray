@@ -386,7 +386,7 @@ def read_datasource(
     if inmemory_size:
         expected_block_size = inmemory_size / len(read_tasks)
         logger.debug(f"Expected block size {expected_block_size}")
-        size_based_splits = math.floor(
+        size_based_splits = round(
             max(1, expected_block_size / ctx.target_max_block_size)
         )
     else:
