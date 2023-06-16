@@ -746,30 +746,26 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     controller = serve_instance._controller
     signal = SignalActor.options(name="signal123").remote()
 
-    conf = {
-        "applications": [
+    app_config = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
             {
-                "import_path": "ray.serve.tests.test_config_files.get_signal.app",
-                "deployments": [
-                    {
-                        "name": "A",
-                        "autoscaling_config": {
-                            "metrics_interval_s": 0.1,
-                            "min_replicas": 0,
-                            "max_replicas": 10,
-                            "look_back_period_s": 0.2,
-                            "downscale_delay_s": 0.2,
-                            "upscale_delay_s": 0.2,
-                        },
-                        "graceful_shutdown_timeout_s": 1,
-                        "max_concurrent_queries": 1000,
-                    }
-                ],
+                "name": "A",
+                "autoscaling_config": {
+                    "metrics_interval_s": 0.1,
+                    "min_replicas": 0,
+                    "max_replicas": 10,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 0.2,
+                    "upscale_delay_s": 0.2,
+                },
+                "graceful_shutdown_timeout_s": 1,
+                "max_concurrent_queries": 1000,
             }
-        ]
+        ],
     }
 
-    serve_instance.deploy_apps(ServeDeploySchema(**conf))
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Deployed A with min_replicas 1 and max_replicas 10.")
     wait_for_condition(
         lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
@@ -793,9 +789,9 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     time.sleep(3)
     print("Issued 458 requests. Request routing in-progress.")
 
-    conf["applications"][0]["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
-    conf["applications"][0]["deployments"][0]["autoscaling_config"]["max_replicas"] = 20
-    serve_instance.deploy_apps(ServeDeploySchema(**conf))
+    app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
+    app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 20
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A.")
 
     wait_for_condition_raise(
@@ -819,8 +815,8 @@ def test_e2e_update_autoscaling_deployment(serve_instance):
     assert get_deployment_start_time(controller, "A") == start_time
 
     # scale down to 0
-    conf["applications"][0]["deployments"][0]["autoscaling_config"]["min_replicas"] = 0
-    serve_instance.deploy_apps(ServeDeploySchema(**conf))
+    app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 0
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A.")
     wait_for_condition(
         lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
@@ -841,30 +837,26 @@ def test_e2e_raise_min_replicas(serve_instance):
     controller = serve_instance._controller
     signal = SignalActor.options(name="signal123").remote()
 
-    config = {
-        "applications": [
+    app_config = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
             {
-                "import_path": "ray.serve.tests.test_config_files.get_signal.app",
-                "deployments": [
-                    {
-                        "name": "A",
-                        "autoscaling_config": {
-                            "metrics_interval_s": 0.1,
-                            "min_replicas": 0,
-                            "max_replicas": 10,
-                            "look_back_period_s": 0.2,
-                            "downscale_delay_s": 0.2,
-                            "upscale_delay_s": 0.2,
-                        },
-                        "graceful_shutdown_timeout_s": 1,
-                        "max_concurrent_queries": 1000,
-                    }
-                ],
+                "name": "A",
+                "autoscaling_config": {
+                    "metrics_interval_s": 0.1,
+                    "min_replicas": 0,
+                    "max_replicas": 10,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": 0.2,
+                    "upscale_delay_s": 0.2,
+                },
+                "graceful_shutdown_timeout_s": 1,
+                "max_concurrent_queries": 1000,
             }
-        ]
+        ],
     }
 
-    serve_instance.deploy_apps(ServeDeploySchema(**config))
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Deployed A.")
     wait_for_condition(
         lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
@@ -883,10 +875,8 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     first_deployment_replicas = get_running_replica_tags(controller, "A")
 
-    config["applications"][0]["deployments"][0]["autoscaling_config"][
-        "min_replicas"
-    ] = 2
-    serve_instance.deploy_apps(ServeDeploySchema(**config))
+    app_config["deployments"][0]["autoscaling_config"]["min_replicas"] = 2
+    serve_instance.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     print("Redeployed A with min_replicas set to 2.")
     wait_for_condition(
         lambda: get_deployment_status(controller, "A") == DeploymentStatus.HEALTHY
@@ -1098,30 +1088,25 @@ app = g.bind()
                 )
 
     # Step 2: Deploy it with max_replicas=1
-    payload = {
-        "applications": [
+    app_config = {
+        "import_path": "app:app",
+        "runtime_env": {"working_dir": f"file://{tmp_path.name}"},
+        "deployments": [
             {
-                "import_path": "app:app",
-                "runtime_env": {"working_dir": f"file://{tmp_path.name}"},
-                "deployments": [
-                    {
-                        "name": "g",
-                        "autoscaling_config": {
-                            "min_replicas": 0,
-                            "max_replicas": 1,
-                            "downscale_delay_s": 600,
-                            "upscale_delay_s": 0,
-                            "metrics_interval_s": 1,
-                            "look_back_period_s": 1,
-                        },
-                    }
-                ],
+                "name": "g",
+                "autoscaling_config": {
+                    "min_replicas": 0,
+                    "max_replicas": 1,
+                    "downscale_delay_s": 600,
+                    "upscale_delay_s": 0,
+                    "metrics_interval_s": 1,
+                    "look_back_period_s": 1,
+                },
             }
-        ]
+        ],
     }
-    app_config = payload["applications"][0]
 
-    client.deploy_apps(ServeDeploySchema(**payload))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
 
     # Step 3: Verify that it can scale from 0 to 1.
@@ -1152,7 +1137,7 @@ app = g.bind()
 
     # Step 4: Change the max replicas to 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
-    client.deploy_apps(ServeDeploySchema(**payload))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=1)
 
@@ -1165,7 +1150,7 @@ app = g.bind()
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 5
     app_config["deployments"][0]["autoscaling_config"]["initial_replicas"] = 3
     app_config["deployments"][0]["autoscaling_config"]["upscale_delay"] = 600
-    client.deploy_apps(ServeDeploySchema(**payload))
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
     wait_for_condition(lambda: client.get_serve_status().app_status.status == "RUNNING")
     wait_for_condition(check_num_replicas, retry_interval_ms=1000, timeout=20, num=3)
 
