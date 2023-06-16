@@ -217,30 +217,31 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 
 @pytest.mark.asyncio
 async def test_batch_timeout_empty_queue():
-    """Check that Serve waits for before creating the first batch."""
+    """Check that Serve waits when creating batches."""
 
     @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
     async def no_op(requests):
         return ["No-op"] * len(requests)
 
-    # Run one request, so internal batch queue gets constructed
-    await get_or_create_event_loop().create_task(no_op(None))
+    num_iterations = 2
+    for iteration in range(num_iterations):
+        tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
+        done, _ = await asyncio.wait(tasks, timeout=0.01)
 
-    time.sleep(0.1)
+        # Due to the long timeout, none of the tasks should finish until a tenth
+        # request is submitted
+        assert len(done) == 0
 
-    tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
-    done, _ = await asyncio.wait(tasks, timeout=0.01)
+        tasks.append(get_or_create_event_loop().create_task(no_op(None)))
+        done, _ = await asyncio.wait(tasks, timeout=0.01)
 
-    # Due to the long timeout, none of the tasks should finish until a tenth
-    # request is submitted
-    assert len(done) == 0
+        # All the timeout tasks should be finished
+        assert set(tasks) == set(done)
+        assert all(t.result() == "No-op" for t in tasks)
 
-    tasks.append(get_or_create_event_loop().create_task(no_op(None)))
-    done, _ = await asyncio.wait(tasks, timeout=0.01)
-
-    # All the timeout tasks should be finished
-    assert set(tasks) == set(done)
-    assert all(t.result() == "No-op" for t in tasks)
+        if iteration < num_iterations - 1:
+            # Leave queue empty for batch_wait_timeout_s between batches
+            time.sleep(0.1)
 
 
 @pytest.mark.asyncio
