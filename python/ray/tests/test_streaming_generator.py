@@ -18,6 +18,7 @@ from ray.exceptions import WorkerCrashedError
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
     "health_check_period_ms": 100,
+    "health_check_timeout_ms": 100,
     "health_check_initial_delay_ms": 0,
     "max_direct_call_object_size": 100,
     "task_retry_delay_ms": 100,
@@ -890,7 +891,7 @@ def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
         else:
             with pytest.raises(ray.exceptions.RayTaskError) as e:
                 assert ray.get(fetch.remote(ref)) == i
-            "The worker died" in str(e.value)
+                assert "The worker died" in str(e.value)
 
 
 def test_generator_max_returns(monkeypatch, shutdown_only):

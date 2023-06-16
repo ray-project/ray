@@ -627,17 +627,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         << "Tried to complete task that was not pending " << task_id;
     spec = it->second.spec;
 
-    if (reply.streaming_generator_return_ids_size() > 0) {
-      RAY_CHECK(spec.IsStreamingGenerator());
-      spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
-      for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
-        if (return_id_info.is_plasma_object()) {
-          it->second.reconstructable_return_ids.insert(
-              ObjectID::FromBinary(return_id_info.object_id()));
-        }
-      }
-    }
-
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
@@ -652,11 +641,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
       }
 
-      // Set the number of return values from a streaming generator when it is the
-      // first execution.
+      // Set the number of return values from a streaming generator when it is
+      // the first execution. This is necessary in case the task is re-executed
+      // later, because we need to make sure that the task returns the same
+      // number of objects.
       if (reply.streaming_generator_return_ids_size() > 0) {
         RAY_CHECK(spec.IsStreamingGenerator());
         spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
+        RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+                       << " has " << spec.NumStreamingGeneratorReturns()
+                       << " return objects.";
         for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
           if (return_id_info.is_plasma_object()) {
             it->second.reconstructable_return_ids.insert(
@@ -713,11 +707,15 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   if (is_application_error && !first_execution && spec.IsStreamingGenerator()) {
-    // It means the task has reexeucted, but in the second execution, it fails with
+    RAY_LOG(DEBUG) << "Streaming generator task " << spec.TaskId()
+                   << " failed with application error, failing "
+                   << spec.NumStreamingGeneratorReturns() << " return objects.";
+    // It means the task has re-executed, but in the second execution, it fails with
     // an application error. In this case, we should fail all the rest of
     // known streaming generator returns.
     for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+      RAY_LOG(DEBUG) << "Failing streamed object " << generator_return_id;
       RAY_CHECK_EQ(reply.return_objects_size(), 1);
       const auto &return_object = reply.return_objects(0);
       HandleTaskReturn(generator_return_id,
