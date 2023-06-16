@@ -26,12 +26,12 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    do_work.remote(2)
    #....
 
-.. note::
-   When using Ray for ML work or other workloads that require sophisticated network communication, Ray Client has certain limitations and may not work as expected. Use :ref:`Ray Jobs API<jobs-   overview>` for interactive develop on ML projects.
-
 
 When to use Ray Client
 ----------------------
+
+.. note::
+   Ray Client has certain limitations and may not work as expected when using Ray for ML workloads that require sophisticated network communication. Use :ref:`Ray Jobs API<jobs-overview>` for interactive development on ML projects.
 
 Ray Client can be used when you want to connect an interactive Python shell to a **remote** cluster.
 
