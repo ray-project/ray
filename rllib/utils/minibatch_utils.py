@@ -87,11 +87,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 # roll miniback to zero when we reach the end of the batch
                 self._start[module_id] = e
 
-            # TODO (Kourosh): len(batch) is not correct here. However it's also not
-            # clear what the correct value should be. Since training does not depend on
-            # this it will be fine for now.
-            length = max(len(b) for b in minibatch.values())
-            minibatch = MultiAgentBatch(minibatch, length)
+            minibatch = MultiAgentBatch(minibatch, 0)
             yield minibatch
 
 

@@ -681,12 +681,11 @@ def sequence_mask(
     """
     # If maxlen not given, use the longest lengths in the `lengths` tensor.
     if maxlen is None:
-        maxlen = int(lengths.max())
+        maxlen = lengths.max()
 
-    mask = ~(
-        torch.ones((len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t()
-        > lengths
-    )
+    mask = torch.ones(tuple(lengths.shape) + (int(maxlen),))
+
+    mask = ~(mask.to(lengths.device).cumsum(dim=1).t() > lengths)
     # Time major transformation.
     if not time_major:
         mask = mask.t()

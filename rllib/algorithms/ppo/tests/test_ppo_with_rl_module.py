@@ -106,13 +106,13 @@ class TestPPO(unittest.TestCase):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
-                for lstm in [False, True]:
+                for lstm in [True, False]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
-                    # TODO: Maybe add an API to get the Learner(s) instances within
-                    #  a learner group, remote or not.
+                    # # TODO: Maybe add an API to get the Learner(s) instances within
+                    # #  a learner group, remote or not.
                     learner = algo.learner_group._learner
                     optim = learner.get_optimizer()
                     # Check initial LR directly set in optimizer vs the first (ts=0)

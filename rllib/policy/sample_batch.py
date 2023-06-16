@@ -235,6 +235,8 @@ class SampleBatch(dict):
         # Numpyfy seq_lens if list.
         elif isinstance(seq_lens_, list):
             self[SampleBatch.SEQ_LENS] = seq_lens_ = np.array(seq_lens_, dtype=np.int32)
+        elif (torch and torch.is_tensor(seq_lens_)) or (tf and tf.is_tensor(seq_lens_)):
+            self[SampleBatch.SEQ_LENS] = seq_lens_
 
         if (
             self.max_seq_len is None
@@ -1555,6 +1557,11 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                 "sub-structures under that key don't match. "
                 f"`samples`={samples}\n Original error: \n {e}"
             )
+
+    if concatd_seq_lens != [] and torch.is_tensor(concatd_seq_lens[0]):
+        concatd_seq_lens = torch.Tensor(concatd_seq_lens)
+    elif concatd_seq_lens != [] and tf.is_tensor(concatd_seq_lens[0]):
+        concatd_seq_lens = tf.convert_to_tensor(concatd_seq_lens)
 
     # Return a new (concat'd) SampleBatch.
     return SampleBatch(

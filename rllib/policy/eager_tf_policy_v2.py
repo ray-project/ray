@@ -881,9 +881,6 @@ class EagerTFPolicyV2(Policy):
         extra_fetches = {}
 
         input_dict = NestedDict(input_dict)
-        # TODO (sven): Support RNNs when using RLModules.
-        input_dict[STATE_IN] = None
-        input_dict[SampleBatch.SEQ_LENS] = None
 
         action_dist_class = self.model.get_exploration_action_dist_cls()
         fwd_out = self.model.forward_exploration(input_dict)
