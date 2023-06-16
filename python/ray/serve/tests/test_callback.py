@@ -49,6 +49,10 @@ def return_bad_objects():
     return [1, 2, 3]
 
 
+ADD_MIDDLEWARE_IMPORT_PATH = "ray.serve.tests.test_callback.add_middleware"
+ADD_LOGGER_IMPORT_PATH = "ray.serve.tests.test_callback.add_logger"
+RAISE_ERROR_IMPORT_PATH = "ray.serve.tests.test_callback.raise_error_callback"
+RETURN_BAD_OBJECTS_IMPORT_PATH = "ray.serve.tests.test_callback.return_bad_objects"
 NOT_CALLABLE_OBJECT = 1
 # ==== Callback function end ====
 
@@ -87,19 +91,15 @@ def test_call_function_from_import_path():
     """Basic test for call_function_from_import_path"""
 
     # basic
-    assert [1, 2, 3] == call_function_from_import_path(
-        "ray.serve.tests.test_callback.return_bad_objects"
-    )
+    assert [1, 2, 3] == call_function_from_import_path(RETURN_BAD_OBJECTS_IMPORT_PATH)
 
     # rasie exception when callback function raise exception
     with pytest.raises(RuntimeError, match="this is from raise_error_callback"):
-        call_function_from_import_path(
-            "ray.serve.tests.test_callback.raise_error_callback"
-        )
+        call_function_from_import_path(RAISE_ERROR_IMPORT_PATH)
 
     # raise exception when providing invalid import path
     with pytest.raises(ValueError, match="cannot be imported"):
-        call_function_from_import_path("ray.serve.tests.test_callback.not_exist")
+        call_function_from_import_path("not_exist")
 
     # raise exception when providing non callable object
     with pytest.raises(TypeError, match="is not callable"):
@@ -112,10 +112,8 @@ def test_call_function_from_import_path():
     "ray_instance",
     [
         {
-            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": 
-                "ray.serve.tests.test_callback.add_logger",
-            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": 
-                "ray.serve.tests.test_callback.add_middleware",
+            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": ADD_LOGGER_IMPORT_PATH,
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": ADD_MIDDLEWARE_IMPORT_PATH,
         },
     ],
     indirect=True,
@@ -144,10 +142,8 @@ def test_callback(ray_instance, capsys):
     "ray_instance",
     [
         {
-            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": 
-                "ray.serve.tests.test_callback.not_exist",
-            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": 
-                "ray.serve.tests.test_callback.raise_error_callback",
+            "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH": "not_exist",
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": RAISE_ERROR_IMPORT_PATH,
         },
     ],
     indirect=True,
@@ -183,8 +179,7 @@ def test_callback_fail(ray_instance):
     "ray_instance",
     [
         {
-            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": 
-                "ray.serve.tests.test_callback.return_bad_objects",
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": RETURN_BAD_OBJECTS_IMPORT_PATH,
         },
     ],
     indirect=True,
@@ -202,7 +197,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     )
     with pytest.raises(
         RayActorError, match="must return a list of Starlette middlewares"
-    ) as e:
+    ):
         ray.get(handle.ready.remote())
 
 

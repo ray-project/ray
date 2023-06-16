@@ -630,11 +630,6 @@ class HTTPProxyActor:
             else:
                 # All middlewares must be Starlette middlewares.
                 # https://www.starlette.io/middleware/#using-pure-asgi-middleware
-                error_message = (
-                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
-                    "must return a list of Starlette middlewares, instead got {} "
-                    "type item in the list."
-                )
                 for middleware in middlewares:
                     if not issubclass(
                         type(middleware), starlette.middleware.Middleware
