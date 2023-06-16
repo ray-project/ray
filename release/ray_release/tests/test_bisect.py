@@ -1,16 +1,13 @@
 import sys
 import pytest
 from unittest import mock
-from typing import List, Set, Dict
+from typing import List, Dict
 
 from ray_release.scripts.ray_bisect import _bisect, _obtain_test_result, _sanity_check
-from ray_release.test import Test
 
 
 def test_sanity_check():
-    def _mock_run_test(
-        test: Test, commit: Set[str], run_per_commit: int
-    ) -> Dict[str, Dict[int, str]]:
+    def _mock_run_test(*args, **kwawrgs) -> Dict[str, Dict[int, str]]:
         return {
             "passing_revision": {0: "passed", 1: "passed"},
             "failing_revision": {0: "failed", 1: "failed"},
@@ -21,12 +18,12 @@ def test_sanity_check():
         "ray_release.scripts.ray_bisect._run_test",
         side_effect=_mock_run_test,
     ):
-        assert _sanity_check({}, "passing_revision", "failing_revision", 2)
-        assert _sanity_check({}, "passing_revision", "flaky_revision", 2)
-        assert not _sanity_check({}, "failing_revision", "passing_revision", 2)
-        assert not _sanity_check({}, "passing_revision", "passing_revision", 2)
-        assert not _sanity_check({}, "failing_revision", "failing_revision", 2)
-        assert not _sanity_check({}, "flaky_revision", "failing_revision", 2)
+        assert _sanity_check({}, "passing_revision", "failing_revision", 2, True)
+        assert _sanity_check({}, "passing_revision", "flaky_revision", 2, True)
+        assert not _sanity_check({}, "failing_revision", "passing_revision", 2, True)
+        assert not _sanity_check({}, "passing_revision", "passing_revision", 2, True)
+        assert not _sanity_check({}, "failing_revision", "failing_revision", 2, True)
+        assert not _sanity_check({}, "flaky_revision", "failing_revision", 2, True)
 
 
 def test_obtain_test_result():
@@ -81,9 +78,7 @@ def test_bisect():
 
     for output, input in test_cases.items():
 
-        def _mock_run_test(
-            test: Test, commit: List[str], rerun_per_commit
-        ) -> Dict[str, str]:
+        def _mock_run_test(*args, **kwawrgs) -> Dict[str, str]:
             return input
 
         with mock.patch(
@@ -91,7 +86,7 @@ def test_bisect():
             side_effect=_mock_run_test,
         ):
             for concurreny in range(1, 4):
-                assert _bisect({}, list(input.keys()), concurreny, 1) == output
+                assert _bisect({}, list(input.keys()), concurreny, 1, True) == output
 
 
 if __name__ == "__main__":
