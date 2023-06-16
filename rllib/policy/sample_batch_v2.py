@@ -225,6 +225,20 @@ class SampleBatchV2(SampleBatch):
         # by column name (str) via e.g. self["some-col"].
         dict.__init__(self, *args, **kwargs)
 
+        # Indicates whether, for this batch, sequence lengths should be slices by
+        # their index in the batch or by their index as a sequence.
+        # This is useful if a batch contains tensors of shape (B, T, ...), where each
+        # index of B indicates one sequence. In this case, when slicing the batch,
+        # we want one sequence to be slices out per index in B (
+        # `_slice_seq_lens_by_batch_index=True`. However, if the padded batch
+        # contains tensors of shape (B*T, ...), where each index of B*T indicates
+        # one timestep, we want one sequence to be sliced per T steps in B*T (
+        # `self._slice_seq_lens_in_B=False`).
+        # ._slice_seq_lens_in_B = True is only meant to be used for batches that we
+        # feed into Learner._update(), all other places in RLlib are not expected to
+        # need this.
+        self._slice_seq_lens_in_B = False
+
         self.accessed_keys = set()
         self.added_keys = set()
         self.deleted_keys = set()
@@ -1020,6 +1034,9 @@ class SampleBatchV2(SampleBatch):
             A new SampleBatch, however "linking" into the same data
             (sliced) as self.
         """
+        if self._slice_seq_lens_in_B:
+            return self._batch_slice(slice_)
+
         start = slice_.start or 0
         stop = slice_.stop or len(self)
         # If stop goes beyond the length of this batch -> Make it go till the
@@ -1048,14 +1065,94 @@ class SampleBatchV2(SampleBatch):
             stop_seq_len, stop_unpadded = self._slice_map[stop]
             start_padded = start_unpadded
             stop_padded = stop_unpadded
+
             if self.zero_padded and self.max_seq_len is not None:
                 start_padded = start_seq_len * self.max_seq_len
                 stop_padded = stop_seq_len * self.max_seq_len
 
             def map_(path, value):
-                if path[0] != SampleBatch.SEQ_LENS and not path[0].startswith(
-                    "state_in"
-                ):
+                if path[0] != SampleBatch.SEQ_LENS:
+                    if path[0] != SampleBatch.INFOS:
+                        return value[start_padded:stop_padded]
+                    else:
+                        return value[start_unpadded:stop_unpadded]
+                else:
+                    return value[start_seq_len:stop_seq_len]
+
+            data = tree.map_structure_with_path(map_, self)
+            return SampleBatchV2(
+                data,
+                _is_training=self.is_training,
+                _time_major=self.time_major,
+                _zero_padded=self.zero_padded,
+                _max_seq_len=self.max_seq_len if self.zero_padded else None,
+                _num_grad_updates=self.num_grad_updates,
+            )
+        else:
+            data = tree.map_structure(lambda value: value[start:stop], self)
+            return SampleBatchV2(
+                data,
+                _is_training=self.is_training,
+                _time_major=self.time_major,
+                _num_grad_updates=self.num_grad_updates,
+            )
+
+    def _batch_slice(self, slice_: slice) -> "SampleBatchV2":
+        """Helper method to handle SampleBatch slicing using a slice object.
+
+        The returned SampleBatch uses the same underlying data object as
+        `self`, so changing the slice will also change `self`.
+
+        Note that only zero or positive bounds are allowed for both start
+        and stop values. The slice step must be 1 (or None, which is the
+        same).
+
+        Args:
+            slice_: The python slice object to slice by.
+
+        Returns:
+            A new SampleBatch, however "linking" into the same data
+            (sliced) as self.
+        """
+        start = slice_.start or 0
+        stop = slice_.stop or len(self[SampleBatch.SEQ_LENS])
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
+        if stop > len(self):
+            stop = len(self)
+        assert start >= 0 and stop >= 0 and slice_.step in [1, None]
+
+        if (
+            self.get(SampleBatch.SEQ_LENS) is not None
+            and len(self[SampleBatch.SEQ_LENS]) > 0
+        ):
+            # Build our slice-map, if not done already.
+            if not self._slice_map:
+                sum_ = 0
+                for i, l in enumerate(map(int, self[SampleBatch.SEQ_LENS])):
+                    self._slice_map.extend([(i, sum_)] * l)
+                    sum_ = sum_ + l
+                # In case `stop` points to the very end (lengths of this
+                # batch), return the last sequence (the -1 here makes sure we
+                # never go beyond it; would result in an index error below).
+                self._slice_map.append((len(self[SampleBatch.SEQ_LENS]), sum_))
+
+            start_seq_len, start_unpadded = self._slice_map[start]
+            stop_seq_len, stop_unpadded = self._slice_map[stop]
+            start_padded = start_unpadded
+            stop_padded = stop_unpadded
+
+            if self._slice_seq_lens_in_B:
+                start_seq_len = start_unpadded
+                stop_seq_len = stop_unpadded
+
+            if self.zero_padded and self.max_seq_len is not None:
+                start_padded = start_seq_len * self.max_seq_len
+                stop_padded = stop_seq_len * self.max_seq_len
+
+            def map_(path, value):
+                if path[0] != SampleBatch.SEQ_LENS:
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]
                     else:

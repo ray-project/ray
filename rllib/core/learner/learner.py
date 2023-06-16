@@ -1147,6 +1147,14 @@ class Learner:
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
         batch = self._convert_batch_type(batch)
+        for pid, policy_batch in batch.policy_batches.items():
+            if self.module._rl_modules[pid].is_recurrent():
+                # We assume that arriving batches for recurrent modules are already
+                # padded to the max sequence length and have tensors of shape
+                # [B, T, ...]. Therefore, we slice sequence lengths in B. See
+                # SampleBatch for more information.
+                policy_batch._slice_seq_lens_in_B = True
+
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).

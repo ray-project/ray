@@ -70,10 +70,12 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
                 samples_to_concat = []
                 # cycle through the batch until we have enough samples
-                while n_steps >= len(module_batch) - s:
+                from ray.rllib.policy.sample_batch import SampleBatch
+
+                while n_steps >= len(module_batch[SampleBatch.SEQ_LENS]) - s:
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)
-                    n_steps -= len(sample)
+                    n_steps -= len(sample[SampleBatch.SEQ_LENS])
                     s = 0
                     self._num_covered_epochs[module_id] += 1
 
@@ -84,7 +86,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 # concatenate all the samples, we should have minibatch_size of sample
                 # after this step
                 minibatch[module_id] = concat_samples(samples_to_concat)
-                # roll miniback to zero when we reach the end of the batch
+                # roll minibatch to zero when we reach the end of the batch
                 self._start[module_id] = e
 
             minibatch = MultiAgentBatch(minibatch, 0)
