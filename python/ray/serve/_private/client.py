@@ -221,6 +221,16 @@ class ServeControllerClient:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
     def _wait_for_deployment_created(self, name: str, timeout_s: int = -1):
+        """Waits for the named deployment to be created.
+
+        A deployment being created simply means that its been registered
+        with the deployment state manager. The deployment state manager
+        will then continue to reconcile the deployment towards its
+        target state.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
             status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
@@ -237,10 +247,9 @@ class ServeControllerClient:
     def _wait_for_application_running(self, name: str, timeout_s: int = -1):
         """Waits for the named application to enter "RUNNING" status.
 
-        Raises RuntimeError if the application enters the "DEPLOY_FAILED" status
-        instead.
-
-        Raises TimeoutError if this doesn't happen before timeout_s.
+        Raises:
+            RuntimeError: if the application enters the "DEPLOY_FAILED" status instead.
+            TimeoutError: if this doesn't happen before timeout_s.
         """
         start = time.time()
         while time.time() - start < timeout_s or timeout_s < 0:
