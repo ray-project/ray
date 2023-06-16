@@ -23,7 +23,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/plasma.h"

@@ -21,7 +21,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
 

@@ -25,7 +25,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/object_manager/memory_object_reader.h"
 #include "ray/object_manager/plasma/client.h"
 

@@ -15,7 +15,7 @@
 #include "ray/object_manager/object_buffer_pool.h"
 
 #include "absl/time/time.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/util/logging.h"
 
 namespace ray {

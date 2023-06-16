@@ -18,7 +18,7 @@
 
 #include <mutex>
 
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 
 // These are forward declarations from hiredis.
 extern "C" {

@@ -18,7 +18,7 @@
 #include <functional>
 
 #include "ray/common/id.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 
 namespace ray {
 

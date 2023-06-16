@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 
 #include "gtest/gtest.h"
 #include "ray/common/grpc_util.h"

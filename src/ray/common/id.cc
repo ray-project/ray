@@ -23,7 +23,7 @@
 
 #include "absl/time/clock.h"
 #include "ray/common/constants.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/util/macros.h"
 #include "ray/util/util.h"
 

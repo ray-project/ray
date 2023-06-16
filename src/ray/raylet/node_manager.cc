@@ -28,7 +28,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
 #include "ray/common/memory_monitor.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/worker_killing_policy.h"
@@ -318,8 +318,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
         }
       },
       /*get_pull_manager_at_capacity*/
-      [this]() { return object_manager_.PullManagerHasPullsQueued(); },
-      /*labels*/ config.labels);
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -989,30 +988,33 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
-  // Set node labels when node added.
-  absl::flat_hash_map<std::string, std::string> labels(node_info.labels().begin(),
-                                                       node_info.labels().end());
-  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
-      scheduling::NodeID(node_id.Binary()), labels);
-
-  // TODO: Always use the message from ray syncer.
-  ResourceRequest resources;
-  for (auto &resource_entry : node_info.resources_total()) {
-    resources.Set(scheduling::ResourceID(resource_entry.first),
-                  FixedPoint(resource_entry.second));
-  }
-  if (ResourceCreateUpdated(node_id, resources)) {
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  }
-  // Update the resource view if a new message has been sent.
-  if (RayConfig::instance().use_ray_syncer()) {
-    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
-                                                   syncer::MessageType::RESOURCE_VIEW)) {
-      if (sync_msg) {
-        ConsumeSyncMessage(sync_msg);
-      }
-    }
-  }
+  // Fetch resource info for the remote node and update cluster resource map.
+  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
+      node_id,
+      [this, node_id](
+          Status status,
+          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
+        // TODO: Always use the message from ray syncer.
+        if (data) {
+          ResourceRequest resources;
+          for (auto &resource_entry : *data) {
+            resources.Set(scheduling::ResourceID(resource_entry.first),
+                          FixedPoint(resource_entry.second->resource_capacity()));
+          }
+          if (ResourceCreateUpdated(node_id, resources)) {
+            cluster_task_manager_->ScheduleAndDispatchTasks();
+          }
+        }
+        // Update the resource view if a new message has been sent.
+        if (RayConfig::instance().use_ray_syncer()) {
+          if (auto sync_msg = ray_syncer_.GetSyncMessage(
+                  node_id.Binary(), syncer::MessageType::RESOURCE_VIEW)) {
+            if (sync_msg) {
+              ConsumeSyncMessage(sync_msg);
+            }
+          }
+        }
+      }));
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {

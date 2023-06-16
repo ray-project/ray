@@ -26,7 +26,7 @@
 
 // Adapted from Apache Arrow, Apache Kudu, TensorFlow
 
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 
 #include <assert.h>
 

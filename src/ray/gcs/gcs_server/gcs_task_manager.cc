@@ -15,7 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
 #include "ray/common/ray_config.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {

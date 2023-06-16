@@ -42,7 +42,7 @@ cdef extern from * namespace "polyfill" nogil:
     cdef T move[T](T)
 
 
-cdef extern from "ray/common/status.h" namespace "ray" nogil:
+cdef extern from "ray/util/status.h" namespace "ray" nogil:
     cdef cppclass StatusCode:
         pass
 
@@ -135,7 +135,7 @@ cdef extern from "ray/common/status.h" namespace "ray" nogil:
     cdef CRayStatus RayStatus_NotImplemented "Status::NotImplemented"()
 
 
-cdef extern from "ray/common/status.h" namespace "ray::StatusCode" nogil:
+cdef extern from "ray/util/status.h" namespace "ray::StatusCode" nogil:
     cdef StatusCode StatusCode_OK "OK"
     cdef StatusCode StatusCode_OutOfMemory "OutOfMemory"
     cdef StatusCode StatusCode_KeyError "KeyError"

@@ -19,7 +19,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <iostream>
 
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/util/util.h"
 
 namespace {

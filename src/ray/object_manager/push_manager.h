@@ -22,7 +22,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 
 namespace ray {
 

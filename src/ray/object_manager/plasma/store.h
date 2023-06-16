@@ -29,7 +29,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/file_system_monitor.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/connection.h"

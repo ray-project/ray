@@ -17,7 +17,7 @@
 #include <boost/optional/optional.hpp>
 #include <vector>
 
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 
 namespace ray {
 

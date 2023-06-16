@@ -25,7 +25,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/ray_object.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/object_manager/ownership_based_object_directory.h"

@@ -174,7 +174,7 @@ class GcsChannel:
 
 
 class GcsCode(enum.IntEnum):
-    # corresponding to ray/src/ray/common/status.h
+    # corresponding to ray/src/ray/util/status.h
     OK = 0
     NotFound = 17
     GrpcUnavailable = 26

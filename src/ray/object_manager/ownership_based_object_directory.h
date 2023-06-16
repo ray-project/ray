@@ -23,7 +23,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
-#include "ray/common/status.h"
+#include "ray/util/status.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/object_manager/object_directory.h"
 #include "ray/pubsub/subscriber.h"
