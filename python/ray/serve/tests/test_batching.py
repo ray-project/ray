@@ -41,23 +41,22 @@ def test_batching(serve_instance):
     assert max(counter_result) < 20
 
 
-def test_batching_callable(serve_instance):
+def test_batching_magic_attributes(serve_instance):
     @serve.deployment
     class BatchingExample:
         def __init__(self):
             self.count = 0
             self.batch_sizes = set()
 
-        def get_max_batch_size(self):
+        @property
+        def _ray_serve_max_batch_size(self):
             return self.count + 1
 
-        def get_batch_wait_timeout_s(self):
+        @property
+        def _ray_serve_batch_wait_timeout_s(self):
             return 1
 
-        @serve.batch(
-            max_batch_size=get_max_batch_size,
-            batch_wait_timeout_s=get_batch_wait_timeout_s,
-        )
+        @serve.batch
         async def handle_batch(self, requests):
             self.count += 1
             batch_size = len(requests)
