@@ -231,15 +231,16 @@ class RayModelCheckpoint(ModelCheckpoint):
         # Create and report the latest checkpoint
         with tempfile.TemporaryDirectory() as tmpdir:
             src_model_path = os.path.expanduser(self.last_model_path)
+            dst_model_path = os.path.join(tmpdir, MODEL_KEY)
 
             # Copy the lightning ckpt into a tmp directory
             # - File ckpt:       last.ckpt   -> checkpoint_00000x/model
-            # - Directory ckpt:  last.ckpt/* -> checkpoint_00000x/*
+            # - Directory ckpt:  last.ckpt/* -> checkpoint_00000x/model/*
             if self.is_report_rank:
                 if os.path.isdir(src_model_path):
-                    shutil.copytree(src_model_path, tmpdir, dirs_exist_ok=True)
+                    shutil.copytree(src_model_path, dst_model_path)
                 elif os.path.isfile(src_model_path):
-                    shutil.copy(src_model_path, os.path.join(tmpdir, MODEL_KEY))
+                    shutil.copy(src_model_path, dst_model_path)
 
             # Only the report_rank worker creates the actual checkpoints.
             # Other workers create placeholder checkpoints to prevent blocking.
