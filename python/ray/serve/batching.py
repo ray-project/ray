@@ -105,9 +105,9 @@ class _BatchQueue:
     async def wait_for_batch(self) -> List[Any]:
         """Wait for batch respecting self.max_batch_size and self.timeout_s.
 
-        Returns a batch of up to self.max_batch_size items, waiting for up
-        to self.timeout_s for a full batch. After the timeout, returns as many
-        items as are ready.
+        Returns a batch of up to self.max_batch_size items. Waits for up to
+        to self.timeout_s after receiving the first request that will be in
+        the next batch. After the timeout, returns as many items as are ready.
 
         Always returns a batch with at least one item - will block
         indefinitely until an item comes in.
