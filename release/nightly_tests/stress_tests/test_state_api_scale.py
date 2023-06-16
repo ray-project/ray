@@ -29,6 +29,11 @@ from ray.util.state import (
     list_tasks,
 )
 
+import logging
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(message)s")
+logger = logging.getLogger(__file__)
+
 GiB = 1024 * 1024 * 1024
 MiB = 1024 * 1024
 
@@ -46,7 +51,7 @@ def invoke_state_api_n(*args, **kwargs):
 def test_many_tasks(num_tasks: int):
     TASK_NAME_TEMPLATE = "pi4_sample_{num_tasks}"
     if num_tasks == 0:
-        print("Skipping test with no tasks")
+        logger.info("Skipping test with no tasks")
         return
 
     # No running tasks
@@ -113,7 +118,7 @@ def test_many_tasks(num_tasks: int):
 
 def test_many_actors(num_actors: int):
     if num_actors == 0:
-        print("Skipping test with no actors")
+        logger.info("Skipping test with no actors")
         return
 
     @ray.remote
@@ -139,7 +144,7 @@ def test_many_actors(num_actors: int):
     ]
 
     waiting_actors = [actor.running.remote() for actor in actors]
-    print("Waiting for actors to finish...")
+    logger.info("Waiting for actors to finish...")
     ray.get(waiting_actors)
 
     invoke_state_api_n(
@@ -165,7 +170,7 @@ def test_many_actors(num_actors: int):
 
 def test_many_objects(num_objects, num_actors):
     if num_objects == 0:
-        print("Skipping test with no objects")
+        logger.info("Skipping test with no objects")
         return
 
     pg = placement_group([{"CPU": 1}] * num_actors, strategy="SPREAD")
@@ -180,11 +185,16 @@ def test_many_objects(num_objects, num_actors):
         def create_objs(self, num_objects):
             import os
 
-            for _ in range(num_objects):
+            for i in range(num_objects):
                 # Object size shouldn't matter here.
                 self.objs.append(ray.put(bytearray(os.urandom(1024))))
+                if i + 1 % 100 == 0:
+                    logger.info(f"Created object {i+1}...")
 
             return self.objs
+
+        def ready(self):
+            pass
 
     actors = [
         ObjectActor.options(
@@ -194,6 +204,10 @@ def test_many_objects(num_objects, num_actors):
         ).remote()
         for _ in tqdm.trange(num_actors, desc="Creating actors...")
     ]
+
+    waiting_actors = [actor.ready.remote() for actor in actors]
+    for _ in tqdm.trange(len(actors), desc="Waiting actors to be ready..."):
+        _ready, waiting_actors = ray.wait(waiting_actors)
 
     # Splitting objects to multiple actors for creation,
     # credit: https://stackoverflow.com/a/2135920
@@ -234,7 +248,7 @@ def test_many_objects(num_objects, num_actors):
 
 def test_large_log_file(log_file_size_byte: int):
     if log_file_size_byte == 0:
-        print("Skipping test with 0 log file size")
+        logger.info("Skipping test with 0 log file size")
         return
 
     import sys
@@ -376,27 +390,27 @@ def test(
     start_time = time.perf_counter()
     # Run some long-running tasks
     for n in num_tasks_arr:
-        print(f"\nRunning with many tasks={n}")
+        logger.info(f"Running with many tasks={n}")
         test_many_tasks(num_tasks=n)
-        print(f"\ntest_many_tasks({n}) PASS")
+        logger.info(f"test_many_tasks({n}) PASS")
 
     # Run many actors
     for n in num_actors_arr:
-        print(f"\nRunning with many actors={n}")
+        logger.info(f"Running with many actors={n}")
         test_many_actors(num_actors=n)
-        print(f"\ntest_many_actors({n}) PASS")
+        logger.info(f"test_many_actors({n}) PASS")
 
     # Create many objects
     for n in num_objects_arr:
-        print(f"\nRunning with many objects={n}")
+        logger.info(f"Running with many objects={n}")
         test_many_objects(num_objects=n, num_actors=num_actors_for_objects)
-        print(f"\ntest_many_objects({n}) PASS")
+        logger.info(f"test_many_objects({n}) PASS")
 
     # Create large logs
     for n in log_file_size_arr:
-        print(f"\nRunning with large file={n} bytes")
+        logger.info(f"Running with large file={n} bytes")
         test_large_log_file(log_file_size_byte=n)
-        print(f"\ntest_large_log_file({n} bytes) PASS")
+        logger.info(f"test_large_log_file({n} bytes) PASS")
 
     print("\n\nPASS")
     end_time = time.perf_counter()
