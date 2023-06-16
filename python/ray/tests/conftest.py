@@ -190,7 +190,7 @@ def start_redis(db_dir):
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            port = find_available_port(49159, 55536, 1)
+            port = find_available_port(49159, 55536, 1)[0]
             print("Start Redis with port: ", port)
             temp_dir = ray._private.utils.get_ray_temp_dir()
             node_id, proc = start_redis_instance(
@@ -202,9 +202,9 @@ def start_redis(db_dir):
                 db_dir=db_dir,
             )
             try:
-                if not wait_for_condition(redis_alive, 3, 100, port):
-                    continue
-            except Exception:
+                wait_for_condition(redis_alive, 3, 100, port=port)
+            except Exception as e:
+                print(e)
                 continue
 
             redis_ports.append(port)
