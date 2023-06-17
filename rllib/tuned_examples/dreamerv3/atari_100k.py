@@ -58,7 +58,7 @@ config = (
     .training(
         model_size="S",
         training_ratio=1024,
-        batch_size_B=16 * num_gpus,
+        batch_size_B=16 * (num_gpus or 1),
         # TODO
         model={
             "batch_length_T": 64,

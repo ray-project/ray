@@ -129,6 +129,10 @@ class DreamerV3Config(AlgorithmConfig):
         self.actor_grad_clip_by_global_norm = 100.0
 
         # Reporting.
+        # DreamerV3 is super sample efficient and only needs very few episodes
+        # (normally) to learn. Leaving this at its default value would gravely
+        # underestimate the learning performance over the course of an experiment.
+        self.metrics_num_episodes_for_smoothing = 1
         self.report_individual_batch_item_stats = False
         self.report_dream_data = False
         self.report_images_and_videos = False
@@ -536,9 +540,8 @@ class DreamerV3(Algorithm):
         # buffer with the minimum amount of samples.
         replayed_steps_this_iter = sub_iter = 0
         while (
-            (replayed_steps_this_iter / env_steps_last_sample)
-            < self.config.training_ratio
-        ):
+            replayed_steps_this_iter / env_steps_last_sample
+        ) < self.config.training_ratio:
 
             # Time individual batch updates.
             with self._timers[LEARN_ON_BATCH_TIMER]:
@@ -636,7 +639,7 @@ class DreamerV3(Algorithm):
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
         results.update(train_results)
-        results["actual_training_ratio"] = self.training_ratio
+        results[ALL_MODULES]["actual_training_ratio"] = self.training_ratio
 
         # Return all results.
         return results
