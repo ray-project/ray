@@ -17,7 +17,10 @@ doctest(
 )
 
 doctest(
-    files = ["tensorflow/tensorflow_trainer.py"],
+    files = [
+        "tensorflow/tensorflow_trainer.py",
+        "huggingface/transformers/transformers_trainer.py",
+    ],
     tags = ["team:ml"],
     gpu = True
 )
