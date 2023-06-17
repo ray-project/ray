@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import gymnasium as gym
 import torch
-import seaborn as sns 
+import seaborn as sns
 from pathlib import Path
 import json
 import tqdm
@@ -25,15 +25,22 @@ from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, time
 sns.set_style("darkgrid")
 
 # This is needed for performance reasons under inductor backend
-torch.set_float32_matmul_precision('high')
+torch.set_float32_matmul_precision("high")
+
 
 def _parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--batch-size", "-bs", type=int, default=1, help="Batch size")
-    parser.add_argument("--num-iters", "-n", type=int, default=5000, help="Number of iterations")
-    parser.add_argument("--backend", type=str, default="cudagraphs", help="torch dynamo backend")
+    parser.add_argument(
+        "--num-iters", "-n", type=int, default=5000, help="Number of iterations"
+    )
+    parser.add_argument(
+        "--backend", type=str, default="cudagraphs", help="torch dynamo backend"
+    )
     parser.add_argument("--mode", type=str, default=None, help="torch dynamo mode")
-    parser.add_argument("--output", type=str, default="./outputs", help="output directory")
+    parser.add_argument(
+        "--output", type=str, default="./outputs", help="output directory"
+    )
     parser.add_argument("--burn-in", type=int, default=500, help="burn-in iterations")
     parser.add_argument("--cpu", action="store_true", help="use CPU")
 
@@ -45,27 +52,28 @@ def plot_results(*, results: dict, output: str, config: dict):
     eager_throughputs = results["eager_throughputs"]
     compiled_throughputs = results["compiled_throughputs"]
     batch_size = config["batch_size"]
-    
+
     upper_limit = max(np.concatenate([eager_throughputs, compiled_throughputs]))
-        
+
     fig, axes = plt.subplots(nrows=1, ncols=2, figsize=(10, 3))
     axes[0].plot(eager_throughputs)
-    axes[0].set_title(f'Eager num_iters / sec, batch size {batch_size}')
+    axes[0].set_title(f"Eager num_iters / sec, batch size {batch_size}")
     axes[0].set_ylim(0, upper_limit)
     axes[1].plot(compiled_throughputs)
-    axes[1].set_title(f'Compile num_iters / sec, batch size {batch_size}')
+    axes[1].set_title(f"Compile num_iters / sec, batch size {batch_size}")
     axes[1].set_ylim(0, upper_limit)
     fig.tight_layout()
     plt.savefig(output / f"throughputs.png")
     plt.clf()
 
+
 def main(pargs):
-    
+
     if not torch.cuda.is_available() and not pargs.cpu:
         raise RuntimeError(
             "CUDA is required for this benchmark. Please run with --cpu flag."
         )
-    
+
     # create the output directory and save the config
     exp_name_pargs = {
         "bs": pargs.batch_size,
@@ -95,7 +103,7 @@ def main(pargs):
         observation_space=env.observation_space,
         action_space=env.action_space,
         catalog_class=PPOCatalog,
-        model_config_dict=model_cfg 
+        model_config_dict=model_cfg,
     )
     device = torch.device("cuda" if not pargs.cpu else "cpu")
 
@@ -104,13 +112,13 @@ def main(pargs):
     compile_config = TorchCompileConfig(
         compile_forward_exploration=True,
         torch_dynamo_backend=pargs.backend,
-        torch_dynamo_mode=pargs.mode
+        torch_dynamo_mode=pargs.mode,
     )
     compiled_module = compiled_module.compile(compile_config)
 
     batch = get_ppo_batch_for_env(env, batch_size=pargs.batch_size)
     batch = convert_to_torch_tensor(batch, device=device)
-    
+
     # Burn-in
     print("Burn-in...")
     for _ in tqdm.tqdm(range(pargs.burn_in)):
@@ -135,9 +143,9 @@ def main(pargs):
     for _ in tqdm.tqdm(range(pargs.num_iters)):
         fn = lambda: compiled_module.forward_exploration(batch)
         _, t = timed(fn)
-        compiled_times.append(t)  
+        compiled_times.append(t)
         pass
-    compiled_throughputs = 1 / np.array(compiled_times)  
+    compiled_throughputs = 1 / np.array(compiled_times)
     print("Compiled done.")
 
     # Results
@@ -157,7 +165,6 @@ def main(pargs):
 
     # Plot
     plot_results(results=results, output=output, config=config)
-    
 
 
 if __name__ == "__main__":
