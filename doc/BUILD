@@ -15,7 +15,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
+    tags = ["exclusive", "team:ml", "highly_parallel"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
@@ -25,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -317,11 +317,13 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
-            "source/serve/multi-app.md",
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst"
+            "source/data/transforming-data.rst",
+            "source/train/faq.rst"
         ]
     ),
     size = "large",
