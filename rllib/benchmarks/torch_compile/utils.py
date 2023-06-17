@@ -2,6 +2,7 @@ from typing import Union
 
 import numpy as np
 import gymnasium as gym
+import time
 
 import torch
 
@@ -53,15 +54,27 @@ def get_ppo_batch_for_env(env: Union[str, gym.Env], batch_size):
     )
 
 
-def timed(fn, no_grad=True):
-    start = torch.cuda.Event(enable_timing=True)
-    end = torch.cuda.Event(enable_timing=True)
-    start.record()
-    if no_grad:
-        with torch.no_grad():
+def timed(fn, no_grad=True, use_cuda=True):
+    def run_fn():
+        if no_grad:
+            with torch.no_grad():
+                result = fn()
+        else:
             result = fn()
+        return result
+    
+    if use_cuda:
+        start = torch.cuda.Event(enable_timing=True)
+        end = torch.cuda.Event(enable_timing=True)
+        start.record()
+        result = run_fn()
+        end.record()
+        torch.cuda.synchronize()
+        delta_t = start.elapsed_time(end) / 1000
     else:
-        result = fn()
-    end.record()
-    torch.cuda.synchronize()
-    return result, start.elapsed_time(end) / 1000
+        start = time.time()
+        result = run_fn()
+        end = time.time()
+        delta_t = end - start
+
+    return result, delta_t

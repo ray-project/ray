@@ -81,7 +81,7 @@ def main(pargs):
 
     compiled_throughput = results[0].metrics["num_env_steps_sampled_throughput_per_sec"]
     eager_throughput = results[1].metrics["num_env_steps_sampled_throughput_per_sec"]
-    print(f"Speed up (%): {compiled_throughput / eager_throughput - 1}")
+    print(f"Speed up (%): {100 * (compiled_throughput / eager_throughput - 1)}")
 
 
 if __name__ == "__main__":

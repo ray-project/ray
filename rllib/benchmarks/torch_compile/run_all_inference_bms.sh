@@ -41,5 +41,5 @@ for bs in "${batch_sizes[@]}"
 do
     # Call the Python script with the batch size argument
     echo "Running for batch size $bs"
-    python rllib/benchmarks/torch_compile/run_inference_bm.py -bs $bs --backend $backend --mode $mode $cpu_flag
+    python rllib/benchmarks/torch_compile/run_inference_bm.py -bs "$bs" --backend "$backend" --mode "$mode" $cpu_flag
 done
