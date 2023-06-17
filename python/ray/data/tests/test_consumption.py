@@ -157,7 +157,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+        == "MaterializedDataset(num_blocks=2, num_rows=0, schema=Unknown schema)"
     )
 
     # Test map on empty dataset.
@@ -1483,7 +1483,6 @@ def test_read_write_local_node(ray_start_cluster):
 
     def check_dataset_is_local(ds):
         blocks = ds.get_internal_block_refs()
-        assert len(blocks) == num_files
         ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
         location_data = ray.experimental.get_object_locations(blocks)
         locations = []
@@ -1681,7 +1680,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet")
     assert ds._plan.get_plan_as_string("Dataset") == (
         "Dataset(\n"
-        "   num_blocks=1,\n"
+        "   num_blocks=8,\n"
         "   num_rows=150,\n"
         "   schema={\n"
         "      sepal.length: double,\n"

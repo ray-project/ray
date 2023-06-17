@@ -383,29 +383,32 @@ def read_datasource(
         )
 
     # Compute the number of blocks the read will return.
-    if inmemory_size:
-        expected_block_size = inmemory_size / len(read_tasks)
-        logger.debug(f"Expected block size {expected_block_size}")
-        size_based_splits = round(
-            max(1, expected_block_size / ctx.target_max_block_size)
-        )
-    else:
-        size_based_splits = 1
-    logger.debug(f"Size based split factor {size_based_splits}")
-    estimated_num_blocks = len(read_tasks) * size_based_splits
-    logger.debug(f"Blocks after size splits {estimated_num_blocks}")
+    if read_tasks:
+        if inmemory_size:
+            expected_block_size = inmemory_size / len(read_tasks)
+            logger.debug(f"Expected block size {expected_block_size}")
+            size_based_splits = round(
+                max(1, expected_block_size / ctx.target_max_block_size)
+            )
+        else:
+            size_based_splits = 1
+        logger.debug(f"Size based split factor {size_based_splits}")
+        estimated_num_blocks = len(read_tasks) * size_based_splits
+        logger.debug(f"Blocks after size splits {estimated_num_blocks}")
 
-    # Add more output splitting if needed.
-    if estimated_num_blocks < requested_parallelism:
-        k = math.ceil(requested_parallelism / estimated_num_blocks)
-        logger.info(
-            f"To satisfy the requested parallelism of {requested_parallelism}, "
-            f"each read task output will be split into {k} smaller blocks."
-        )
-        for r in read_tasks:
-            r._set_additional_split_factor(k)
-        estimated_num_blocks = estimated_num_blocks * k
-    logger.debug("Estimated num output blocks {estimated_num_blocks}")
+        # Add more output splitting if needed.
+        if estimated_num_blocks < requested_parallelism:
+            k = math.ceil(requested_parallelism / estimated_num_blocks)
+            logger.info(
+                f"To satisfy the requested parallelism of {requested_parallelism}, "
+                f"each read task output will be split into {k} smaller blocks."
+            )
+            for r in read_tasks:
+                r._set_additional_split_factor(k)
+            estimated_num_blocks = estimated_num_blocks * k
+        logger.debug("Estimated num output blocks {estimated_num_blocks}")
+    else:
+        estimated_num_blocks = 0
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
