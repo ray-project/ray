@@ -1,28 +1,23 @@
 import argparse
 
-
-import numpy as np
 import matplotlib.pyplot as plt
-import numpy as np
+
 import gymnasium as gym
-import torch
-import seaborn as sns
 from pathlib import Path
+import numpy as np
 import json
 import tqdm
 
+import torch
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, timed
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchCompileConfig
-from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.env.wrappers.atari_wrappers import wrap_deepmind
+from ray.rllib.models.catalog import MODEL_DEFAULTS
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-
-from ray.rllib.benchmarks.torch_compile.utils import get_ppo_batch_for_env, timed
-
-sns.set_style("darkgrid")
 
 # This is needed for performance reasons under inductor backend
 torch.set_float32_matmul_precision("high")
@@ -63,7 +58,7 @@ def plot_results(*, results: dict, output: str, config: dict):
     axes[1].set_title(f"Compile num_iters / sec, batch size {batch_size}")
     axes[1].set_ylim(0, upper_limit)
     fig.tight_layout()
-    plt.savefig(output / f"throughputs.png")
+    plt.savefig(output / "throughputs.png")
     plt.clf()
 
 
@@ -131,8 +126,7 @@ def main(pargs):
     print("Eager...")
     eager_times = []
     for _ in tqdm.tqdm(range(pargs.num_iters)):
-        fn = lambda: eager_module.forward_exploration(batch)
-        _, t = timed(fn)
+        _, t = timed(lambda: eager_module.forward_exploration(batch))
         eager_times.append(t)
     eager_throughputs = 1 / np.array(eager_times)
     print("Eager done.")
@@ -141,8 +135,7 @@ def main(pargs):
     print("Compiled...")
     compiled_times = []
     for _ in tqdm.tqdm(range(pargs.num_iters)):
-        fn = lambda: compiled_module.forward_exploration(batch)
-        _, t = timed(fn)
+        _, t = timed(lambda: compiled_module.forward_exploration(batch))
         compiled_times.append(t)
         pass
     compiled_throughputs = 1 / np.array(compiled_times)

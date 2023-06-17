@@ -1,6 +1,7 @@
+import argparse
+
 from ray import tune, air
 from ray.rllib.algorithms.ppo import PPOConfig
-import argparse
 
 # Note:
 # To run this benchmark you need to have a ray cluster of at least
