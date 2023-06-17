@@ -15,7 +15,7 @@ def _parse_args():
         "--num-iters", "-n", type=int, default=10, help="Number of iterations"
     )
     parser.add_argument(
-        "--backend", type=str, default="ipex", help="torch dynamo backend"
+        "--backend", type=str, default="onnxrt", help="torch dynamo backend" 
     )
     parser.add_argument("--mode", type=str, default=None, help="torch dynamo mode")
     parser.add_argument("--smoke-test", action="store_true", help="smoke test")
@@ -72,7 +72,7 @@ def main(pargs):
     tuner = tune.Tuner(
         "PPO",
         run_config=air.RunConfig(
-            stop={"training_iteration": pargs.num_iters},
+            stop={"training_iteration": 1 if pargs.smoke_test else pargs.num_iters},
         ),
         param_space=config,
     )

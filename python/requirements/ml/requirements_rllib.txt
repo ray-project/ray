@@ -47,6 +47,3 @@ rich==12.0.1
 # Msgpack checkpoint stuff.
 msgpack
 msgpack_numpy
-
-# ipex torch 2.0 backend
-intel_extension_for_pytorch
