@@ -3361,7 +3361,7 @@ class AlgorithmConfig(_Config):
             config.framework(
                 torch_compile=self.torch_compile_learner,
                 torch_compile_cfg=self.get_torch_compile_learner_config(),
-                what_to_compile=self.torch_compile_learner_what_to_compile,
+                torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
             )
         elif self.framework_str == "tf2":
             config.framework(eager_tracing=self.eager_tracing)
