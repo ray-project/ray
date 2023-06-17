@@ -1240,8 +1240,8 @@ def init(
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific
-            conventional location, e.g., "/tmp/ray".
+            directory for the Ray process. Must be an absolute path. Defaults to an
+            OS-specific conventional location, e.g., "/tmp/ray".
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -2230,16 +2230,15 @@ def connect(
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
-    worker_id = worker.worker_id
-    worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
-    worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
-    worker.gcs_function_key_subscriber = ray._raylet.GcsFunctionKeySubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
+
+    if mode == SCRIPT_MODE:
+        worker_id = worker.worker_id
+        worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
+            worker_id=worker_id, address=worker.gcs_client.address
+        )
+        worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
+            worker_id=worker_id, address=worker.gcs_client.address
+        )
 
     if driver_object_store_memory is not None:
         logger.warning(
@@ -2295,8 +2294,6 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_function_key_subscriber"):
-            worker.gcs_function_key_subscriber.close()
         if hasattr(worker, "gcs_error_subscriber"):
             worker.gcs_error_subscriber.close()
         if hasattr(worker, "gcs_log_subscriber"):

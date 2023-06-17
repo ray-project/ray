@@ -188,15 +188,6 @@ exclude_patterns = [
     "ray-references/api/ray-observability/state/doc/ray.*",
     "ray-observability/reference/doc/ray.*",
     "cluster/running-applications/doc/ray.*",
-    "data/examples/batch_inference_object_detection.ipynb",
-    "data/examples/batch_training.ipynb",
-    "data/examples/custom-datasource.rst",
-    "data/examples/huggingface_vit_batch_prediction.ipynb",
-    "data/examples/nyc_taxi_basic_processing.ipynb",
-    "data/examples/ocr_example.ipynb",
-    "data/examples/pytorch_resnet_batch_prediction.ipynb",
-    "data/examples/random-access.rst",
-    "ray-core/runtime_env_auth.md",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
