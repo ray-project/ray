@@ -459,9 +459,9 @@ class DreamerV3(Algorithm):
         # To avoid possibly expensive weight synching step.
         if self.config.share_module_between_env_runner_and_learner:
             assert self.workers.local_worker().module is None
-            self.workers.local_worker().module = (
-                self.learner_group._learner.module[DEFAULT_POLICY_ID]
-            )
+            self.workers.local_worker().module = self.learner_group._learner.module[
+                DEFAULT_POLICY_ID
+            ]
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
@@ -488,16 +488,24 @@ class DreamerV3(Algorithm):
                 "(required for a single train batch)."
             )
 
+        # Have we sampled yet in this `training_step()` call?
+        have_sampled = False
         with self._timers[SAMPLE_TIMER]:
             # Continue sampling from the actual environment (and add collected samples
-            # to our replay buffer) until we:
-            # a) have at least batch_size_B x batch_length_T timesteps stored in the
-            # buffer
-            # AND
-            # b) the computed `training_ratio` is lower than the configured (desired)
-            # one, meaning, we should train some more.
-            while True:
+            # to our replay buffer) as long as we:
+            while (
+                # a) Don't have at least batch_size_B x batch_length_T timesteps stored
+                # in the buffer. This is the minimum needed to train.
+                self.replay_buffer.get_num_timesteps()
+                < (self.config.batch_size_B * self.config.batch_length_T)
+                # b) The computed `training_ratio` is >= the configured (desired)
+                # training ratio (meaning we should continue sampling).
+                or self.training_ratio >= self.config.training_ratio
+                # c) we have not sampled at all yet in this `training_step()` call.
+                or not have_sampled
+            ):
                 done_episodes, ongoing_episodes = env_runner.sample()
+                have_sampled = True
 
                 # We took B x T env steps.
                 env_steps_last_sample = sum(
@@ -512,35 +520,25 @@ class DreamerV3(Algorithm):
                 # separate `add()` calls.
                 self.replay_buffer.add(episodes=done_episodes + ongoing_episodes)
 
-                ts_in_buffer = self.replay_buffer.get_num_timesteps()
-                # The current (lifetime) training ratio, computed via
-                # [ts sampled from buffer and learned on] over
-                # [ts sampled from actual env].
-                training_ratio = (
-                    self._counters[NUM_ENV_STEPS_TRAINED]
-                    / self._counters[NUM_ENV_STEPS_SAMPLED]
-                )
-                if (
-                    # More timesteps than BxT.
-                    ts_in_buffer
-                    >= (self.config.batch_size_B * self.config.batch_length_T)
-                    # And enough timesteps for the next train batch to not exceed
-                    # the training_ratio.
-                    and training_ratio < self.config.training_ratio
-                ):
-                    # Summarize environment interaction and buffer data.
-                    results[ALL_MODULES] = report_sampling_and_replay_buffer(
-                        replay_buffer=self.replay_buffer,
-                        training_ratio=training_ratio,
-                    )
-                    break
+        # Summarize environment interaction and buffer data.
+        results[ALL_MODULES] = report_sampling_and_replay_buffer(
+            replay_buffer=self.replay_buffer,
+        )
 
         # Continue sampling batch_size_B x batch_length_T sized batches from the buffer
         # and using these to update our models (`LearnerGroup.update()`) until the
         # computed `training_ratio` is larger than the configured one, meaning we should
         # go back and collect more samples again from the actual environment.
-        replayed_steps = sub_iter = 0
-        while training_ratio < self.config.training_ratio:
+        # However, when calculating the `training_ratio` here, we use only the
+        # trained steps in this very `training_step()` call over the most recent sample
+        # amount (`env_steps_last_sample`), not the global values. This is to avoid a
+        # heavy overtraining at the very beginning when we have just pre-filled the
+        # buffer with the minimum amount of samples.
+        replayed_steps_this_iter = sub_iter = 0
+        while (
+            (replayed_steps_this_iter / env_steps_last_sample)
+            < self.config.training_ratio
+        ):
 
             # Time individual batch updates.
             with self._timers[LEARN_ON_BATCH_TIMER]:
@@ -551,7 +549,8 @@ class DreamerV3(Algorithm):
                     batch_size_B=self.config.batch_size_B,
                     batch_length_T=self.config.batch_length_T,
                 )
-                replayed_steps += self.config.batch_size_B * self.config.batch_length_T
+                replayed_steps = self.config.batch_size_B * self.config.batch_length_T
+                replayed_steps_this_iter += replayed_steps
 
                 # Convert some bool columns to float32 and one-hot actions.
                 sample["is_first"] = sample["is_first"].astype(np.float32)
@@ -569,14 +568,8 @@ class DreamerV3(Algorithm):
                     SampleBatch(sample).as_multi_agent(),
                     reduce_fn=self._reduce_results,
                 )
-
                 self._counters[NUM_AGENT_STEPS_TRAINED] += replayed_steps
                 self._counters[NUM_ENV_STEPS_TRAINED] += replayed_steps
-
-                training_ratio = (
-                    self._counters[NUM_ENV_STEPS_TRAINED]
-                    / self._counters[NUM_ENV_STEPS_SAMPLED]
-                )
 
                 # Perform additional (non-gradient updates), such as the critic EMA-copy
                 # update.
@@ -643,10 +636,22 @@ class DreamerV3(Algorithm):
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
         results.update(train_results)
-        results["actual_training_ratio"] = training_ratio
+        results["actual_training_ratio"] = self.training_ratio
 
         # Return all results.
         return results
+
+    @property
+    def training_ratio(self) -> float:
+        """Returns the actual training ratio of this Algorithm.
+
+        The training ratio is copmuted by dividing the total number of steps
+        trained thus far (replayed from the buffer) over the total number of actual
+        env steps taken thus far.
+        """
+        return self._counters[NUM_ENV_STEPS_TRAINED] / (
+            self._counters[NUM_ENV_STEPS_SAMPLED]
+        )
 
     @staticmethod
     def _reduce_results(results: List[Dict[str, Any]]):
