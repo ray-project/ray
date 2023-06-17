@@ -64,3 +64,13 @@ python ./run_ppo_with_inference_bm.py --backend <backend> --mode <mode>
 
 Here is a summary of results:
 
+| Backend | Mode | Speedup (%) |
+|---------|------|-------------|
+| onnxrt | default | -72.34 |
+| onnxrt | reduce-overhead | -72.72 |
+| ipex | default | 11.71 |
+| ipex | reduce-overhead | 11.31 |
+| ipex | max-autotune | 10.51 |
+
+
+As you can see `onnxrt` does not gain any speed ups in the setup we tested (in fact it slows the workload down by %70) while the `ipex` provides ~%10 speed up. If we change the model architecture these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
