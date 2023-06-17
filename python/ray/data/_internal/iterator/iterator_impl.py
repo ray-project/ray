@@ -1,12 +1,13 @@
-from typing import TYPE_CHECKING, Optional, Union, Iterator, Tuple
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Union
 
-from ray.types import ObjectRef
+from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
-from ray.data._internal.stats import DatasetStats
+from ray.types import ObjectRef
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data import Dataset
 
 

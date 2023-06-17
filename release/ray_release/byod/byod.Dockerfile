@@ -18,4 +18,5 @@ sudo apt-get update -y \
 EOF
 
 COPY "$PIP_REQUIREMENTS" .
-RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir install -r requirements_byod.txt
+RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir https://ray-ci-deps-wheels.s3.us-west-2.amazonaws.com/AutoROM.accept_rom_license-0.5.4-py3-none-any.whl
+RUN "$HOME"/anaconda3/bin/pip install --no-cache-dir -r requirements_byod.txt

@@ -97,7 +97,6 @@ There are at least 3 ways to define your custom serialization process:
      print(copied.conn)
 
   .. testoutput::
-    :options: +ELLIPSIS
 
     <sqlite3.Connection object at ...>
     <sqlite3.Connection object at ...>
@@ -207,7 +206,7 @@ Below, we demonstrate this behavior on a function with a non-serializable object
 The resulting output is:
 
 .. testoutput::
-  :options: +SKIP
+  :options: +MOCK
 
     =============================================================
     Checking Serializability of <function test at 0x7ff130697e50>
@@ -239,4 +238,3 @@ Known Issues
 Users could experience memory leak when using certain python3.8 & 3.9 versions. This is due to `a bug in python's pickle module <https://bugs.python.org/issue39492>`_.
 
 This issue has been solved for Python 3.8.2rc1, Python 3.9.0 alpha 4 or late versions.
-

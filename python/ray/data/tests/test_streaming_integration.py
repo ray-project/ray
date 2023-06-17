@@ -1,29 +1,27 @@
 import itertools
-import pandas as pd
 import random
-import pytest
 import threading
 import time
+from typing import Any, List
 
-from typing import List, Any
+import pandas as pd
+import pytest
 
 import ray
 from ray import cloudpickle
-from ray.data.context import DataContext
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     RefBundle,
 )
-from ray.data._internal.execution.streaming_executor import (
-    StreamingExecutor,
-)
 from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
-from ray._private.test_utils import wait_for_condition
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 
@@ -257,6 +255,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     remote_function._task_launch_hook = _test_hook
     DataContext.get_current().use_streaming_executor = True
     DataContext.get_current().execution_options.preserve_order = True
+    DataContext.get_current().large_args_threshold = 0
 
     # Simple 2-stage pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
