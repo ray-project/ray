@@ -5,7 +5,7 @@ import gc
 
 import gymnasium as gym
 import torch
-from ray.rllib.core.models.tests.test_base_models import _dynamo_is_available
+from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.torch import TorchRLModule

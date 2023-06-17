@@ -5,25 +5,12 @@ import gymnasium as gym
 
 import ray
 from ray.rllib.core.learner.learner import FrameworkHyperparameters
-from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.models.tests.test_base_models import _dynamo_is_available
+from ray.rllib.utils.torch_utils import _dynamo_is_available
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.testing.utils import get_learner
 from ray.rllib.core.testing.utils import get_module_spec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.test_utils import get_cartpole_dataset_reader
-
-
-def _get_learner(learning_rate: float = 1e-3) -> Learner:
-    env = gym.make("CartPole-v1")
-    # adding learning rate as a configurable parameter to avoid hardcoding it
-    # and information leakage across tests that rely on knowing the LR value
-    # that is used in the learner.
-    learner = get_learner("torch", env, learning_rate=learning_rate)
-    learner.build()
-
-    return learner
 
 
 class TestLearner(unittest.TestCase):
@@ -44,23 +31,24 @@ class TestLearner(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         is_multi_agents = [False, True]
-        what_to_compiles = ["complete_update", "forward_train"]
+        what_to_compiles = ["forward_train", "complete_update"]
 
         for is_multi_agent, what_to_compile in itertools.product(
             is_multi_agents, what_to_compiles
         ):
+            print(
+                f"Testing is_multi_agent={is_multi_agent},"
+                f"what_to_compile={what_to_compile}"
+            )
             framework_hps = FrameworkHyperparameters(
                 torch_compile=True,
                 torch_compile_cfg=TorchCompileConfig(),
                 what_to_compile=what_to_compile,
             )
-            spec = get_module_spec(
-                framework="torch", env=env, is_multi_agent=is_multi_agent
+            learner = get_learner(
+                framework="torch", env=env, framework_hps=framework_hps
             )
-            learner = BCTorchLearner(
-                module_spec=spec,
-                framework_hyperparameters=framework_hps,
-            )
+
             learner.build()
 
             reader = get_cartpole_dataset_reader(batch_size=512)
@@ -92,15 +80,10 @@ class TestLearner(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         framework_hps = FrameworkHyperparameters(
-            torch_compile=False,
+            torch_compile=True,
             torch_compile_cfg=TorchCompileConfig(),
         )
-
-        spec = get_module_spec(framework="torch", env=env)
-        learner = BCTorchLearner(
-            module_spec=spec,
-            framework_hyperparameters=framework_hps,
-        )
+        learner = get_learner(framework="torch", env=env, framework_hps=framework_hps)
         learner.build()
 
         import torch._dynamo as dynamo
@@ -110,16 +93,27 @@ class TestLearner(unittest.TestCase):
         batch = reader.next().as_multi_agent()
         batch = learner._convert_batch_type(batch)
 
+        # The followingcall to dynamo.explain() breaks depending on the torch version.
+        # It works for torch==2.0.0.
+        # TODO(Artur): Fit this to to the correct torch version once it is enabled on
+        #  CI.
         # This is a helper method of dynamo to analyze where breaks occur.
-        dynamo_explanation = dynamo.explain(learner._update, batch)
-        print(dynamo_explanation[5])
+        (
+            explanation,
+            out_guards,
+            graphs,
+            ops_per_graph,
+            break_reasons,
+            explanation_verbose,
+        ) = dynamo.explain(learner._update, batch)
+
+        print(explanation_verbose)
 
         # There should be only one break reason - `return_value` - since inputs and
         # outputs are not checked
-        break_reasons_list = dynamo_explanation[4]
-
         # TODO(Artur): Attempt bringing breaks down to 1. (This may not be possible)
-        self.assertEquals(len(break_reasons_list), 3)
+        # Note: This test is skipped on CI if torch dynamo is available.
+        self.assertEquals(len(break_reasons), 3)
 
 
 if __name__ == "__main__":

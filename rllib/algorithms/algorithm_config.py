@@ -283,6 +283,7 @@ class AlgorithmConfig(_Config):
         }
         # Torch compile settings
         self.torch_compile_learner = False
+        self.torch_compile_learner_what_to_compile = "complete_update"
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
@@ -1233,6 +1234,7 @@ class AlgorithmConfig(_Config):
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         torch_compile_learner: Optional[bool] = NotProvided,
+        torch_compile_learner_what_to_compile: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_mode: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker: Optional[bool] = NotProvided,
@@ -1259,8 +1261,21 @@ class AlgorithmConfig(_Config):
             local_tf_session_args: Override the following tf session args on the local
                 worker
             torch_compile_learner: If True, forward_train methods on TorchRLModules
-            on the learner are compiled. If not specified, the default is to compile
-            forward train on the learner.
+                on the learner are compiled. If not specified, the default is to compile
+                forward train on the learner.
+            torch_compile_learner_what_to_compile: A string specifying what to
+                compile on the learner side if torch_compile_learner is True.
+                This can be one of the following:
+                - "complete_update": Compile the forward_train method, the loss
+                    calculation and the optimizer step together on the TorchLearner.
+                - "forward_train": Compile only forward train.
+                Note:
+                - torch.compiled code can become slow on graph breaks or even raise
+                    errors on unsupported operations. Empirically, compiling
+                    `forward_train` should introduce little graph breaks, raise no
+                    errors but result in a speedup comparable to compiling the
+                    complete update.
+                - Using `complete_update` is experimental and may result in errors.
             torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
             torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
@@ -1302,6 +1317,16 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_learner_dynamo_mode is not NotProvided:
             self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
+        if torch_compile_learner_what_to_compile is not NotProvided:
+            if torch_compile_learner_what_to_compile == "complete_update":
+                logger.debug(
+                    "Using `complete_update` for torch compilation on the "
+                    "Learner. This setting is experimental and may result in "
+                    "errors."
+                )
+            self.torch_compile_learner_what_to_compile = (
+                torch_compile_learner_what_to_compile
+            )
         if torch_compile_worker is not NotProvided:
             self.torch_compile_worker = torch_compile_worker
         if torch_compile_worker_dynamo_backend is not NotProvided:
@@ -3275,6 +3300,7 @@ class AlgorithmConfig(_Config):
             config.framework(
                 torch_compile=self.torch_compile_learner,
                 torch_compile_cfg=self.get_torch_compile_learner_config(),
+                what_to_compile=self.torch_compile_learner_what_to_compile,
             )
         elif self.framework_str == "tf2":
             config.framework(eager_tracing=self.eager_tracing)

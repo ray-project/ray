@@ -14,6 +14,7 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
+from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 _, tf, _ = try_import_tf()
 torch, nn = try_import_torch()
@@ -24,17 +25,6 @@ TODO(Artur): There are a couple of tests for torch.compile that are outstanding:
 - Removing a Compiled and non-compiled module to make sure there is no leak
 - ...
 """
-
-
-def _dynamo_is_available():
-    # This only works if torch._dynamo is available
-    try:
-        # TODO(Artur): Remove this once torch._dynamo is available on CI
-        import torch._dynamo as dynamo  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
 
 
 class TestModelBase(unittest.TestCase):
@@ -272,14 +262,25 @@ class TestModelBase(unittest.TestCase):
 
         import torch._dynamo as dynamo
 
+        # The followingcall to dynamo.explain() breaks depending on the torch version.
+        # It works for torch==2.0.0.
+        # TODO(Artur): Fit this to to the correct torch version once it is enabled on
+        #  CI.
         # This is a helper method of dynamo to analyze where breaks occur.
-        dynamo_explanation = dynamo.explain(compile_me, {"in": torch.Tensor([[1]])})
-        print(dynamo_explanation[5])
+        (
+            explanation,
+            out_guards,
+            graphs,
+            ops_per_graph,
+            break_reasons,
+            explanation_verbose,
+        ) = dynamo.explain(compile_me, {"in": torch.Tensor([[1]])})
+
+        print(explanation_verbose)
 
         # There should be only one break reason - `return_value` - since inputs and
         # outputs are not checked
-        break_reasons_list = dynamo_explanation[4]
-        self.assertEquals(len(break_reasons_list), 1)
+        self.assertEquals(len(break_reasons), 1)
 
     @unittest.skipIf(not _dynamo_is_available(), "torch._dynamo not available")
     def test_torch_compile_forwards(self):
