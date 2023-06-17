@@ -182,10 +182,6 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                 lm_datasets["validation"]
             )
 
-            # Take a small subset for doctest
-            ray_train_ds = ray_train_ds.limit(512).materialize()
-            ray_evaluation_ds = ray_evaluation_ds.limit(512).materialize()
-
             def trainer_init_per_worker(train_dataset, eval_dataset, **config):
                 model_config = AutoConfig.from_pretrained(model_checkpoint)
                 model = AutoModelForCausalLM.from_config(model_config)
@@ -197,6 +193,8 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
                     learning_rate=2e-5,
                     weight_decay=0.01,
                     no_cuda=(not use_gpu),
+                    # Take a small subset for doctest
+                    max_steps=100,
                 )
                 return transformers.Trainer(
                     model=model,
