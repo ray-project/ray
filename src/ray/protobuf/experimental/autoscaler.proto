@@ -82,18 +82,12 @@ message ClusterResourceConstraint {
 
 message NodeState {
   enum NodeStatus {
-    // Node is alive.
-    ALIVE = 0;
+    // Node is alive and running workloads.
+    RUNNING = 0;
     // Node is dead.
     DEAD = 1;
-    // Node is being drained.
-    DRAIN_PENDING = 2;
-    // Node is being drained.
-    DRAIN_FAILED = 3;
-    // Node is being drained.
-    DRAINING = 4;
-    // Node is already drained, and ready to be removed.
-    DRAINED = 5;
+    // Node is idle.
+    IDLE = 2;
   }
   // The node id internal to Ray in binary format.
   bytes node_id = 11;
@@ -119,13 +113,9 @@ message NodeState {
   // The status of the node.
   NodeStatus status = 17;
 
-  message IdleInfo {
-    // Idle since a timestamp. If the node is currently not idle,
-    // this will be 0. An idle node is defined
-    int64 since_ts = 1;
-  }
-
-  IdleInfo idle_info = 18;
+  // The time since the last status change of the node, i.e. how long
+  // the node has been in the current status.
+  int64 time_since_last_status_change_ms = 18;
 }
 
 // ============= Autoscaling State Service API =======================
