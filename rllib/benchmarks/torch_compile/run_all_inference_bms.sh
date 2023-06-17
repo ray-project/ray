@@ -2,6 +2,7 @@
 
 # Set the default backend
 backend="cudagraphs"
+# Set the default mode
 mode="default"
 # Set the default CPU flag
 cpu_flag=""
