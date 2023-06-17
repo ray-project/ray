@@ -433,6 +433,14 @@ py_test(
 )
 
 py_test(
+    name = "test_lightning_deepspeed",
+    size = "large",
+    srcs = ["tests/test_lightning_deepspeed.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
     name = "test_minimal",
     size = "small",
     srcs = ["tests/test_minimal.py"],
