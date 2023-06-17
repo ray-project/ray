@@ -87,7 +87,7 @@ class GrpcServer {
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
-        cluster_id_{.id{ClusterID::Nil()}},
+        cluster_id_{absl::Mutex{}, ClusterID::Nil()},
         is_closed_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
