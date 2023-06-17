@@ -854,22 +854,36 @@ class EagerTFPolicyV2(Policy):
         input_dict[STATE_IN] = None
         input_dict[SampleBatch.SEQ_LENS] = None
 
-        action_dist_class = self.model.get_exploration_action_dist_cls()
         fwd_out = self.model.forward_exploration(input_dict)
-        action_dist = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
-        actions = action_dist.sample()
+
+        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+        # Create a distribution object.
+        action_dist = None
+        if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+            action_dist_class = self.model.get_exploration_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            )
+
+        # If `forward_exploration()` returned actions, use them here as-is.
+        if SampleBatch.ACTIONS in fwd_out:
+            actions = fwd_out[SampleBatch.ACTIONS]
+        # Otherwise, sample actions from the distribution.
+        else:
+            assert action_dist
+            actions = action_dist.sample()
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():
             if k not in [SampleBatch.ACTIONS, "state_out"]:
                 extra_fetches[k] = v
 
-        # Action-logp and action-prob.
-        logp = action_dist.logp(actions)
-        extra_fetches[SampleBatch.ACTION_LOGP] = logp
-        extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
+        # Compute action-logp and action-prob from distribution and add to
+        # `extra_fetches`, if possible.
+        if action_dist is not None:
+            logp = action_dist.logp(actions)
+            extra_fetches[SampleBatch.ACTION_LOGP] = logp
+            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
 
         return actions, {}, extra_fetches
 
@@ -895,13 +909,25 @@ class EagerTFPolicyV2(Policy):
         input_dict[STATE_IN] = None
         input_dict[SampleBatch.SEQ_LENS] = None
 
-        action_dist_class = self.model.get_inference_action_dist_cls()
         fwd_out = self.model.forward_inference(input_dict)
-        action_dist = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
-        action_dist = action_dist.to_deterministic()
-        actions = action_dist.sample()
+
+        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+        # Create a (deterministic) distribution object.
+        action_dist = None
+        if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+            action_dist_class = self.model.get_inference_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            )
+            action_dist = action_dist.to_deterministic()
+
+        # If `forward_inference()` returned actions, use them here as-is.
+        if SampleBatch.ACTIONS in fwd_out:
+            actions = fwd_out[SampleBatch.ACTIONS]
+        # Otherwise, sample actions from the distribution.
+        else:
+            assert action_dist
+            actions = action_dist.sample()
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():
