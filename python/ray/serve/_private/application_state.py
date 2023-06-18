@@ -346,19 +346,15 @@ class ApplicationState:
                 return BuildAppStatus.FAILED, error_msg
             except RuntimeEnvSetupError:
                 error_msg = (
-                    (
-                        f"Runtime env setup for app '{self._name}' failed:\n"
-                        + traceback.format_exc()
-                    ),
+                    f"Runtime env setup for app '{self._name}' failed:\n"
+                    + traceback.format_exc()
                 )
                 logger.warning(error_msg)
                 return BuildAppStatus.FAILED, error_msg
             except Exception:
                 error_msg = (
-                    (
-                        f"Unexpected error occured while deploying application "
-                        f"'{self._name}': \n{traceback.format_exc()}"
-                    ),
+                    f"Unexpected error occured while deploying application "
+                    f"'{self._name}': \n{traceback.format_exc()}"
                 )
                 logger.warning(error_msg)
                 return BuildAppStatus.FAILED, error_msg
