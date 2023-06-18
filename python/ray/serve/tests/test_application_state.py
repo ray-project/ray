@@ -341,9 +341,9 @@ def test_app_unhealthy(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
-@patch.object(ApplicationState, "_check_obj_ref_ready")
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 @patch("ray.get")
-def test_deploy_through_config_succeed(get, check_obj_ref_ready):
+def test_deploy_through_config_succeed(get, check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
     Deploy obj ref finishes successfully, so status should transition to running.
     """
@@ -358,12 +358,12 @@ def test_deploy_through_config_succeed(get, check_obj_ref_ready):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before object ref is ready
-    check_obj_ref_ready.return_value = False
+    check_obj_ref_ready_nowait.return_value = False
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Object ref is ready, and the task has called apply_deployment_args
-    check_obj_ref_ready.return_value = True
+    check_obj_ref_ready_nowait.return_value = True
     app_state.apply_deployment_args([deployment_params("a")])
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
@@ -375,9 +375,9 @@ def test_deploy_through_config_succeed(get, check_obj_ref_ready):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
-@patch.object(ApplicationState, "_check_obj_ref_ready")
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 @patch("ray.get", side_effect=RayTaskError(None, "intentionally failed", None))
-def test_deploy_through_config_fail(get, check_obj_ref_ready):
+def test_deploy_through_config_fail(get, check_obj_ref_ready_nowait):
     """Test fail to deploy through config.
     Deploy obj ref errors out, so status should transition to deploy failed.
     """
@@ -392,12 +392,12 @@ def test_deploy_through_config_fail(get, check_obj_ref_ready):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before object ref is ready
-    check_obj_ref_ready.return_value = False
+    check_obj_ref_ready_nowait.return_value = False
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Object ref is ready, and the task has called apply_deployment_args
-    check_obj_ref_ready.return_value = True
+    check_obj_ref_ready_nowait.return_value = True
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     assert "failed" in app_state._status_msg or "error" in app_state._status_msg

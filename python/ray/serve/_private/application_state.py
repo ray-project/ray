@@ -1,6 +1,7 @@
 from dataclasses import dataclass
+from enum import Enum
 import traceback
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional, Callable, Tuple
 import logging
 
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -20,6 +21,7 @@ import time
 from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
+from ray.serve._private.utils import check_obj_ref_ready_nowait
 from ray.types import ObjectRef
 import ray
 from ray import cloudpickle
@@ -28,6 +30,12 @@ from ray.serve.exceptions import RayServeException
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 CHECKPOINT_KEY = "serve-application-state-checkpoint"
+
+
+class BuildAppStatus(Enum):
+    IN_PROGRESS = 1
+    SUCCEEDED = 2
+    FAILED = 3
 
 
 @dataclass
@@ -264,30 +272,26 @@ class ApplicationState:
     def _get_live_deployments(self) -> List[str]:
         return self._deployment_state_manager.get_deployments_in_application(self._name)
 
-    def _check_deployment_statuses_and_update_app_status(self) -> bool:
-        """Check deployment statuses, and update the application status correspondingly.
-
-        - If all deployments are healthy, mark the application status
-          as RUNNING
-        - Else if there are unhealthy deployments:
-          - If the current status is DEPLOYING or DEPLOY_FAILED, mark the
-            new application status as DEPLOY_FAILED
-          - Otherwise, mark the new application status as UNHEALTHY
-        - Else (there are updating deployments) don't update the
-          application status
+    def _determine_app_status(self) -> Tuple[ApplicationStatus, str]:
+        """Check deployment statuses and target state, and determine the
+        corresponding application status.
 
         Returns:
-            A boolean indicating whether the app is ready to be deleted
+            Status (ApplicationStatus):
+                RUNNING: all deployments are healthy.
+                DEPLOYING: there is one or more updating deployments,
+                    and there are no unhealthy deployments.
+                DEPLOY_FAILED: one or more deployments became unhealthy
+                    while the application was deploying.
+                UNHEALTHY: one or more deployments became unhealthy
+                    while the application was running.
+                DELETING: the application is being deleted.
+            Error message (str):
+                Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
 
-        # If we're waiting on the build app task to finish, we don't
-        # have info on what the target list of deployments is, so we
-        # can't check on deployment statuses
-        if self._target_state.deployment_infos is None:
-            return False
-
         if self._target_state.deleting:
-            return len(self._get_live_deployments()) == 0
+            return ApplicationStatus.DELETING, ""
 
         num_healthy_deployments = 0
         unhealthy_deployment_names = []
@@ -299,69 +303,67 @@ class ApplicationState:
                 num_healthy_deployments += 1
 
         if num_healthy_deployments == len(self.target_deployments):
-            self._update_status(ApplicationStatus.RUNNING)
+            return ApplicationStatus.RUNNING, ""
         elif len(unhealthy_deployment_names):
             status_msg = f"The deployments {unhealthy_deployment_names} are UNHEALTHY."
             if self._status in [
                 ApplicationStatus.DEPLOYING,
                 ApplicationStatus.DEPLOY_FAILED,
             ]:
-                self._update_status(
-                    ApplicationStatus.DEPLOY_FAILED, status_msg=status_msg
-                )
+                return ApplicationStatus.DEPLOY_FAILED, status_msg
             else:
-                self._update_status(ApplicationStatus.UNHEALTHY, status_msg=status_msg)
+                return ApplicationStatus.UNHEALTHY, status_msg
+        else:
+            return ApplicationStatus.DEPLOYING, ""
 
-        return False
+    def _reconcile_deploy_obj_ref(self) -> Tuple[BuildAppStatus, str]:
+        """Reconcile the in-progress deploy task.
 
-    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
-        finished, _ = ray.wait([obj_ref], timeout=0)
-        return len(finished) == 1
+        Resets the self._deploy_obj_ref if it finished, regardless of
+        whether it finished successfully.
 
-    def _check_deploy_obj_ref(self) -> None:
-        """Check on the in-progress deploy task, if there is any.
-
-        If something went wrong while executing the task, set status to
-        DEPLOY_FAILED.
+        Returns:
+            Status (BuildAppStatus):
+                SUCCEEDED: task finished successfully.
+                FAILED: an error occurred during execution of build app task
+                IN_PROGRESS: task hasn't finished yet.
+            Error message (str):
+                Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
-
-        if not self._deploy_obj_ref:
-            return
-
-        if self._check_obj_ref_ready(self._deploy_obj_ref):
+        if check_obj_ref_ready_nowait(self._deploy_obj_ref):
+            deploy_obj_ref, self._deploy_obj_ref = self._deploy_obj_ref, None
             try:
-                ray.get(self._deploy_obj_ref)
+                ray.get(deploy_obj_ref)
                 logger.info(f"Deploy task for app '{self._name}' ran successfully.")
+                return BuildAppStatus.SUCCEEDED, ""
             except RayTaskError as e:
                 # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
                 # here because the full details of the error is not displayed
                 # properly with traceback.format_exc(). RayTaskError has its own
                 # custom __str__ function.
-                self._update_status(
-                    ApplicationStatus.DEPLOY_FAILED,
-                    status_msg=f"Deploying app '{self._name}' failed:\n{str(e)}",
-                )
-                logger.warning(self._status_msg)
+                error_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
+                logger.warning(error_msg)
+                return BuildAppStatus.FAILED, error_msg
             except RuntimeEnvSetupError:
-                self._update_status(
-                    ApplicationStatus.DEPLOY_FAILED,
-                    status_msg=(
-                        f"Runtime env setup for app '{self._name}' "
-                        f"failed:\n{traceback.format_exc()}"
+                error_msg = (
+                    (
+                        f"Runtime env setup for app '{self._name}' failed:\n"
+                        + traceback.format_exc()
                     ),
                 )
-                logger.warning(self._status_msg)
+                logger.warning(error_msg)
+                return BuildAppStatus.FAILED, error_msg
             except Exception:
-                self._update_status(
-                    ApplicationStatus.DEPLOY_FAILED,
-                    status_msg=(
-                        "Unexpected error occured while deploying "
-                        f"application '{self._name}':"
-                        f"\n{traceback.format_exc()}"
+                error_msg = (
+                    (
+                        f"Unexpected error occured while deploying application "
+                        f"'{self._name}': \n{traceback.format_exc()}"
                     ),
                 )
-                logger.warning(self._status_msg)
-            self._deploy_obj_ref = None
+                logger.warning(error_msg)
+                return BuildAppStatus.FAILED, error_msg
+
+        return BuildAppStatus.IN_PROGRESS, ""
 
     def _reconcile_target_deployments(self) -> None:
         """Reconcile target deployments in application target state.
@@ -369,12 +371,6 @@ class ApplicationState:
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
         """
-
-        # If we're waiting on the build app task to finish, we don't
-        # have info on what the target list of deployments is, so don't
-        # perform reconciliation
-        if self._target_state.deployment_infos is None:
-            return
 
         # Set target state for each deployment
         for deployment_name, info in self._target_state.deployment_infos.items():
@@ -396,11 +392,25 @@ class ApplicationState:
             deleted.
         """
 
-        # Check on in-progress deploy task, if there is any.
-        self._check_deploy_obj_ref()
+        # Reconcile in-progress deploy task, if there is any.
+        if self._deploy_obj_ref:
+            task_status, error_msg = self._reconcile_deploy_obj_ref()
+            if task_status == BuildAppStatus.FAILED:
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, error_msg)
 
-        self._reconcile_target_deployments()
-        return self._check_deployment_statuses_and_update_app_status()
+        # If we're waiting on the build app task to finish, we don't
+        # have info on what the target list of deployments is, so don't
+        # perform reconciliation or check on deployment statuses
+        if self._target_state.deployment_infos is not None:
+            self._reconcile_target_deployments()
+
+            status, status_msg = self._determine_app_status()
+            self._update_status(status, status_msg)
+
+        # Check if app is ready to be deleted
+        if self._target_state.deleting:
+            return len(self._get_live_deployments()) == 0
+        return False
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
         return self._target_state
