@@ -582,7 +582,7 @@ def build(build_python, build_java, build_cpp):
 
 def walk_directory(directory):
     file_list = []
-    for (root, dirs, filenames) in os.walk(directory):
+    for root, dirs, filenames in os.walk(directory):
         for name in filenames:
             file_list.append(os.path.join(root, name))
     return file_list
