@@ -492,6 +492,9 @@ if is_automated_build and is_native_windows_or_msys():
 
 
 def build(build_python, build_java, build_cpp):
+    if is_automated_build:
+        raise Exception("This is automated build??")
+
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
             "Detected Python version {}, which is not supported. "
