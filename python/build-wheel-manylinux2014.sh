@@ -1,50 +1,35 @@
 #!/bin/bash
 
-set -x
+set -exuo pipefail
 
-# Cause the script to exit if a single command fails.
-set -euo pipefail
-
-cat << EOF > "/usr/bin/nproc"
-#!/bin/bash
-echo 10
-EOF
-chmod +x /usr/bin/nproc
+if [[ ! -e /usr/bin/nproc ]]; then
+  echo -e '#!/bin/bash\necho 10' > "/usr/bin/nproc"
+  chmod +x /usr/bin/nproc
+fi
 
 NODE_VERSION="14"
 
-# Python version key, interpreter version code, numpy tuples.
-PYTHON_NUMPYS=(
-  "py37 cp37-cp37m 1.14.5"
-  "py38 cp38-cp38 1.14.5"
-  "py39 cp39-cp39 1.19.3"
-  "py310 cp310-cp310 1.22.0"
-  "py311 cp311-cp311 1.22.0"
+YUM_PKGS=(
+  unzip zip sudo openssl xz
+  java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
 )
 
-yum -y install unzip zip sudo
-yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
-yum -y install openssl
-
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
-  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
-  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+  YMB_PKGS+=(
+    "libasan-4.8.5-44.el7.${HOSTTYPE}"
+    "libubsan-7.3.1-5.10.el7.${HOSTTYPE}"
+    "devtoolset-8-libasan-devel.${HOSTTYPE}"
+  )
 fi
+
+yum -y install "${YUM_PKGS[@]}"
 
 java -version
 JAVA_BIN="$(readlink -f "$(command -v java)")"
 echo "java_bin path ${JAVA_BIN}"
 export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 
-/ray/ci/env/install-bazel.sh
-# Put bazel into the PATH if building Bazel from source
-# export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
-
-# If converting down to manylinux2010, the following configuration should
-# be set for bazel
-#echo "build --config=manylinux2010" >> /root/.bazelrc
-echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
+# /ray/ci/env/install-bazel.sh
 
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
   bazel build //java:ray_java_pkg
@@ -55,8 +40,19 @@ fi
 set +x
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
 source "$HOME"/.nvm/nvm.sh
+
 nvm install "$NODE_VERSION"
 nvm use "$NODE_VERSION"
+
+# Install bazelisk via npm.
+npm install -g @bazel/bazelisk
+ln -s "$(which bazelisk)" /usr/local/bin/bazel
+cat << EOF
+build --config=ci
+build --announce_rc
+EOF > ~/.bazelrc
+
+########## Starts building here. ##########
 
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
@@ -73,6 +69,15 @@ set -x
 git config --global --add safe.directory /ray
 
 mkdir -p .whl
+
+# Python version key, interpreter version code, numpy tuples.
+PYTHON_NUMPYS=(
+  "py37 cp37-cp37m 1.14.5"
+  "py38 cp38-cp38 1.14.5"
+  "py39 cp39-cp39 1.19.3"
+  "py310 cp310-cp310 1.22.0"
+  "py311 cp311-cp311 1.22.0"
+)
 for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON_VERSION_KEY="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f1)"
   if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${PYTHON_VERSION_KEY}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
@@ -130,6 +135,6 @@ done
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
 
-if [ "${BUILD_JAR-}" == "1" ]; then
+if [[ "${BUILD_JAR-}" == "1" ]]; then
   ./java/build-jar-multiplatform.sh linux
 fi
