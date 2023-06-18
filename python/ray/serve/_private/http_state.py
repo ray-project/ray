@@ -4,7 +4,7 @@ import logging
 import random
 import time
 import traceback
-from typing import Dict, List, Tuple
+from typing import Dict, List, Set, Tuple
 
 import ray
 from ray.actor import ActorHandle
@@ -76,6 +76,15 @@ class HTTPProxyState:
         self._status = status
         self.update_actor_details(status=self._status)
 
+    def set_active_flag(self, node_id: str, active: bool):
+        """Set the active flag on the http proxy.
+
+        Set the active flag on the http proxy. Also log when active state changes.
+        """
+        if self._actor_handle.app.active != active:
+            logger.info(f"Setting active flag on node {node_id} to {active}.")
+            self._actor_handle.app.active = active
+
     def try_update_status(self, status: HTTPProxyStatus):
         """Try update with the new status and only update when the conditions are met.
 
@@ -120,15 +129,18 @@ class HTTPProxyState:
 
         1) When the HTTP proxy is already shutting down, do nothing.
         2) When the HTTP proxy is starting, check ready object reference. If ready
-        object reference returns a successful call, set status to HEALTHY. If the call
-        to ready() on the HTTP Proxy actor has any exception or timeout, increment the
-        consecutive health check failure counter and retry on the next update call. The
-        status is only set to UNHEALTHY when all retries have exhausted.
+        object reference returns a successful call and the http proxy is active, set
+        status to HEALTHY. If the http proxy is not active, set status to inactive.
+        If the call to ready() on the HTTP Proxy actor has any exception or timeout,
+        increment the consecutive health check failure counter and retry on the next
+        update call. The status is only set to UNHEALTHY when all retries have
+        exhausted.
         3) When the HTTP proxy already has an in-progress health check. If health check
-        object returns a successful call, set status to HEALTHY. If the call has any
-        exception or timeout, count towards 1 of the consecutive health check failures
-        and retry on the next update call. The status is only set to UNHEALTHY when all
-        retries have exhausted.
+        object returns a successful call and the http proxy is active, set status to
+        HEALTHY. If the http proxy is not active, set status to inactive. If the call
+        has any exception or timeout, count towards 1 of the consecutive health check
+        failures and retry on the next update call. The status is only set to UNHEALTHY
+        when all retries have exhausted.
         4) When the HTTP proxy need to setup another health check (when none of the
         above met and the time since the last health check is longer than
         PROXY_HEALTH_CHECK_PERIOD_S with some margin). Reset
@@ -143,7 +155,12 @@ class HTTPProxyState:
             if finished:
                 try:
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
-                    self.try_update_status(HTTPProxyStatus.HEALTHY)
+                    _status = (
+                        HTTPProxyStatus.HEALTHY
+                        if self._actor_handle.app.active
+                        else HTTPProxyStatus.INACTIVE
+                    )
+                    self.try_update_status(_status)
                     self.update_actor_details(
                         worker_id=worker_id,
                         log_file_path=log_file_path,
@@ -173,7 +190,12 @@ class HTTPProxyState:
                 self._health_check_obj_ref = None
                 try:
                     ray.get(finished[0])
-                    self.try_update_status(HTTPProxyStatus.HEALTHY)
+                    _status = (
+                        HTTPProxyStatus.HEALTHY
+                        if self._actor_handle.app.active
+                        else HTTPProxyStatus.INACTIVE
+                    )
+                    self.try_update_status(_status)
                 except Exception as e:
                     logger.warning(
                         f"Health check for HTTP proxy {self._actor_name} failed: {e}"
@@ -404,3 +426,14 @@ class HTTPState:
                 for proxy in self._proxy_states.values()
             ]
         )
+
+    def update_active_flags(self, active_nodes: Set[str]):
+        """Update the active states of all HTTP proxies.
+
+        Given a set of active nodes, set the active flag of all HTTP proxies.
+        """
+        for node_id, proxy_state in self._proxy_states.items():
+            if node_id in active_nodes:
+                proxy_state.set_active(node_id=node_id, active=True)
+            else:
+                proxy_state.set_active(node_id=node_id, active=False)

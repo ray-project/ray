@@ -271,6 +271,19 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
+    def _update_http_proxy_active_flag(self):
+        """Update the active flag of all http proxies.
+
+        Get a list of node ids that have running replicas and update the active on http
+        proxies.
+        """
+        if self.http_state is None:
+            return
+
+        self.http_state.update_active_flags(
+            self.deployment_state_manager.get_node_ids_with_running_replicas()
+        )
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -308,6 +321,8 @@ class ServeController:
                 self.application_state_manager.update()
             except Exception:
                 logger.exception("Exception updating application state.")
+
+            self._update_http_proxy_active_flag()
 
             try:
                 self._put_serve_snapshot()

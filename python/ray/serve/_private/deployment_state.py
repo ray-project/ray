@@ -10,7 +10,7 @@ import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -1227,6 +1227,17 @@ class DeploymentState:
     def get_running_replica_infos(self) -> List[RunningReplicaInfo]:
         return [
             replica.get_running_replica_info()
+            for replica in self._replicas.get([ReplicaState.RUNNING])
+        ]
+
+    def get_running_replica_node_ids(self) -> List[str]:
+        """Get the node ids of all running replicas in this deployment.
+
+        This is used to determine which node has replicas and in terms determine
+        the active flag on the http proxy.
+        """
+        return [
+            replica.actor_node_id()
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 
@@ -2486,3 +2497,14 @@ class DeploymentStateManager:
         self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
             info.replica_tag, info.model_ids
         )
+
+    def get_node_ids_with_running_replicas(self) -> Set[str]:
+        """Return set of node ids with running replicas.
+
+        This is used to determine which node has replicas and in terms determine
+        the active flag on the http proxy.
+        """
+        running_replicas = set()
+        for deployment_state in self._deployment_states.values():
+            running_replicas.update(deployment_state.get_running_replica_node_ids())
+        return running_replicas

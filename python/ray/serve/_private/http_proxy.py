@@ -243,6 +243,9 @@ class HTTPProxy:
                 "status_code",
             ),
         )
+        self._ongoing_requests = 0
+        self._ongoing_requests_dummy_obj_ref = None
+        self.active = True
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -273,6 +276,13 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def _service_unavailable(self, scope, receive, send):
+        response = Response(
+            "This node has no replica. Http proxy is unavailable.",
+            status_code=503,
+        )
+        await response.send(scope, receive, send)
+
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
@@ -297,6 +307,9 @@ class HTTPProxy:
         route_path = scope["path"][len(root_path) :]
 
         if route_path == "/-/routes":
+            if not self.active:
+                return await self._service_unavailable(scope, receive, send)
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
@@ -310,6 +323,9 @@ class HTTPProxy:
             )
 
         if route_path == "/-/healthz":
+            if not self.active:
+                return await self._service_unavailable(scope, receive, send)
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
@@ -321,6 +337,14 @@ class HTTPProxy:
             return await starlette.responses.PlainTextResponse("success")(
                 scope, receive, send
             )
+
+        # The current autoscale logic can downscale nodes with ongoing requests if the
+        # node doesn't have replicas and has no object references. This counter and
+        # the dummy object reference will have to keep the node alive while draining
+        # requests, so they are not dropped unintentionally.
+        self._ongoing_requests += 1
+        if self._ongoing_requests > 0 and self._ongoing_requests_dummy_obj_ref is None:
+            self._ongoing_requests_dummy_obj_ref = ray.put("ongoing_requests")
 
         route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
         if route_prefix is None:
@@ -416,6 +440,12 @@ class HTTPProxy:
                     "application": app_name,
                 }
             )
+
+        # Decrement the ongoing request counter and drop the dummy object reference
+        # signaling that the node can be downscaled safely.
+        self._ongoing_requests -= 1
+        if self._ongoing_requests == 0:
+            self._ongoing_requests_dummy_obj_ref = None
 
     async def send_request_to_replica_unary(
         self,
