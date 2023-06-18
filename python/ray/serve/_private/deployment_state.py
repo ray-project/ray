@@ -1237,7 +1237,7 @@ class DeploymentState:
         the active flag on the http proxy.
         """
         return [
-            replica.actor_node_id()
+            replica.actor_node_id
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 

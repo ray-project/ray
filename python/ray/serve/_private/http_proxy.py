@@ -742,3 +742,13 @@ Please make sure your http-host and http-port are specified correctly."""
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+
+    async def set_active_flag(self, node_id: str, active: bool):
+        """Set the active flag on the http proxy.
+
+        Set the active flag on the http proxy to signal `/-/healthz` and `/-/routes`
+        endpoints returns 503 on inactive proxies. Also log when active state changes.
+        """
+        if self.app.active != active:
+            logger.info(f"Setting active flag on node {node_id} to {active}.")
+            self.app.active = active

@@ -79,11 +79,12 @@ class HTTPProxyState:
     def set_active_flag(self, node_id: str, active: bool):
         """Set the active flag on the http proxy.
 
-        Set the active flag on the http proxy. Also log when active state changes.
+        Set the active flag on the http proxy. When the flag is set to false, also
+        update status to from HEALTHY to INACTIVE to display on the dashboard.
         """
-        if self._actor_handle.app.active != active:
-            logger.info(f"Setting active flag on node {node_id} to {active}.")
-            self._actor_handle.app.active = active
+        self._actor_handle.set_active_flag.remote(node_id=node_id, active=active)
+        if self._status == HTTPProxyStatus.HEALTHY and not active:
+            self.try_update_status(HTTPProxyStatus.INACTIVE)
 
     def try_update_status(self, status: HTTPProxyStatus):
         """Try update with the new status and only update when the conditions are met.
@@ -155,12 +156,7 @@ class HTTPProxyState:
             if finished:
                 try:
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
-                    _status = (
-                        HTTPProxyStatus.HEALTHY
-                        if self._actor_handle.app.active
-                        else HTTPProxyStatus.INACTIVE
-                    )
-                    self.try_update_status(_status)
+                    self.try_update_status(HTTPProxyStatus.HEALTHY)
                     self.update_actor_details(
                         worker_id=worker_id,
                         log_file_path=log_file_path,
@@ -190,12 +186,7 @@ class HTTPProxyState:
                 self._health_check_obj_ref = None
                 try:
                     ray.get(finished[0])
-                    _status = (
-                        HTTPProxyStatus.HEALTHY
-                        if self._actor_handle.app.active
-                        else HTTPProxyStatus.INACTIVE
-                    )
-                    self.try_update_status(_status)
+                    self.try_update_status(HTTPProxyStatus.HEALTHY)
                 except Exception as e:
                     logger.warning(
                         f"Health check for HTTP proxy {self._actor_name} failed: {e}"
@@ -430,10 +421,15 @@ class HTTPState:
     def update_active_flags(self, active_nodes: Set[str]):
         """Update the active states of all HTTP proxies.
 
-        Given a set of active nodes, set the active flag of all HTTP proxies.
+        Given a set of active nodes, set the active flag of all HTTP proxies, except
+        for head node. Head node will always be active.
         """
         for node_id, proxy_state in self._proxy_states.items():
+            # Head node will always be active.
+            if node_id == self._head_node_id:
+                continue
+
             if node_id in active_nodes:
-                proxy_state.set_active(node_id=node_id, active=True)
+                proxy_state.set_active_flag(node_id=node_id, active=True)
             else:
-                proxy_state.set_active(node_id=node_id, active=False)
+                proxy_state.set_active_flag(node_id=node_id, active=False)
