@@ -48,12 +48,6 @@ THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
 
 CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
 
-# In automated builds, we do a few adjustments before building. For instance,
-# the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda
-# feedstock.
-is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
-
 exe_suffix = ".exe" if sys.platform == "win32" else ""
 
 # .pyd is the extension Python requires on Windows for shared libraries.
@@ -484,13 +478,6 @@ def replace_symlinks_with_junctions():
             )
 
 
-if is_automated_build and is_native_windows_or_msys():
-    # Automated replacements should only happen in automatic build
-    # contexts for now
-    patch_isdir()
-    replace_symlinks_with_junctions()
-
-
 def build(build_python, build_java, build_cpp):
     if tuple(sys.version_info[:2]) not in SUPPORTED_PYTHONS:
         msg = (
@@ -574,26 +561,6 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
-    if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
-
-        for d in (root_dir, out_dir):
-            if not os.path.exists(d):
-                os.makedirs(d)
-
-        bazel_precmd_flags = [
-            "--output_user_root=" + root_dir,
-            "--output_base=" + out_dir,
-        ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
-
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
     bazel_targets += ["//cpp:ray_cpp_pkg"] if build_cpp else []
@@ -608,7 +575,7 @@ def build(build_python, build_java, build_cpp):
 
     return bazel_invoke(
         subprocess.check_call,
-        bazel_precmd_flags + ["build"] + bazel_flags + ["--"] + bazel_targets,
+        ["build"] + bazel_flags + ["--"] + bazel_targets,
         env=bazel_env,
     )
 
