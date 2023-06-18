@@ -26,10 +26,11 @@ yum -y install unzip zip sudo
 yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
 yum -y install openssl
 
+echo "---- HOSTTYPE=${HOSTTYPE-}"
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
-  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
-  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+  yum install -y libasan-4.8.5-44.el7.x86_64 \
+    libubsan-7.3.1-5.10.el7.x86_64 \
+    devtoolset-8-libasan-devel.x86_64
 fi
 
 java -version
