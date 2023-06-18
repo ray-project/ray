@@ -148,9 +148,11 @@ def test_nonstrict_value_repr(ray_start_10_cpus_shared, enable_nonstrict_mode):
 
 
 def test_nonstrict_compute(ray_start_10_cpus_shared, enable_nonstrict_mode):
-    ray.data.range(10).map(lambda x: x, compute="actors").show()
-    ray.data.range(10).map(lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)).show()
-    ray.data.range(10).map(lambda x: x, compute="tasks").show()
+    ray.data.range(10, parallelism=1).map(lambda x: x, compute="actors").show()
+    ray.data.range(10, parallelism=1).map(
+        lambda x: x, compute=ray.data.ActorPoolStrategy(1, 1)
+    ).show()
+    ray.data.range(10, parallelism=1).map(lambda x: x, compute="tasks").show()
 
 
 def test_nonstrict_schema(ray_start_10_cpus_shared, enable_nonstrict_mode):
