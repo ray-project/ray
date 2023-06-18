@@ -110,8 +110,6 @@ class DreamerV3Config(AlgorithmConfig):
             "type": "EpisodeReplayBuffer",
             "capacity": int(1e6),
         }
-
-        self.lr = None
         self.world_model_lr = 1e-4
         self.actor_lr = 3e-5
         self.critic_lr = 3e-5
@@ -140,6 +138,7 @@ class DreamerV3Config(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with DreamerV3-specific
         # values.
+        self.lr = None
         self.framework_str = "tf2"
         self.gamma = 0.997  # [1] eq. 7.
         # Do not use! Set `batch_size_B` and `batch_length_T` instead.

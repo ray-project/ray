@@ -29,8 +29,8 @@ config = (
     # TODO (sven): concretize this: If you use >1 GPU and increase the batch size
     #  accordingly, you might also want to increase the number of envs per worker
     .rollouts(
-        num_envs_per_worker=num_gpus,
-        remote_worker_envs=False,
+        num_envs_per_worker=(num_gpus or 1),
+        remote_worker_envs=True,
     )
     .environment(
         # [2]: "We follow the evaluation protocol of Machado et al. (2018) with 200M
@@ -50,6 +50,7 @@ config = (
         }
     )
     .reporting(
+        metrics_num_episodes_for_smoothing=(num_gpus or 1),
         report_images_and_videos=False,
         report_dream_data=False,
         report_individual_batch_item_stats=False,
