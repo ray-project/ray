@@ -2,6 +2,7 @@
 boto3
 cmake
 crc32c
+modin
 numpy
 pyarrow
 pytest
