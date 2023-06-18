@@ -742,7 +742,7 @@ build() {
     build_wheels_and_jars
     return
   fi
-  
+
   # Build and install ray into the system.
   # For building the wheel, see build_wheels_and_jars.
   _bazel_build_before_install
