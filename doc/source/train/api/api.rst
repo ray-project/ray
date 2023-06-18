@@ -23,6 +23,7 @@ Trainer Base Classes
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
+    ~train.data_config.DataConfig
     ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` API
@@ -84,6 +85,8 @@ PyTorch Training Loop Utilities
     ~train.torch.accelerate
     ~train.torch.backward
     ~train.torch.enable_reproducibility
+
+.. _train-lightning-integration:
 
 PyTorch Lightning
 ~~~~~~~~~~~~~~~~~
@@ -159,8 +162,8 @@ Transformers
 .. autosummary::
     :toctree: doc/
 
-    ~train.hf_transformers.TransformersTrainer
-    ~train.hf_transformers.TransformersCheckpoint
+    ~train.huggingface.TransformersTrainer
+    ~train.huggingface.TransformersCheckpoint
 
 Accelerate
 **********
@@ -168,7 +171,7 @@ Accelerate
 .. autosummary::
     :toctree: doc/
 
-    ~train.hf_accelerate.AccelerateTrainer
+    ~train.huggingface.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~
@@ -229,7 +232,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
-    train.hf_transformers.TransformersTrainer.restore
+    train.huggingface.TransformersTrainer.restore
 
 .. note::
 

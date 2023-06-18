@@ -1,7 +1,7 @@
 (serve-gradio-dag-visualization)=
 # Visualizing a Deployment Graph with Gradio
 
-You can visualize the [deployment graph](serve-model-composition-deployment-graph) you built with [Gradio](https://gradio.app/). This integration allows you to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
+You can visualize the [deployment graph](serve-deployment-graphs) you built with [Gradio](https://gradio.app/). This integration allows you to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
 
 To access this feature, you need to install Gradio. 
 :::{note} 
@@ -121,7 +121,7 @@ new_root_node = DAGDriver.bind(old_root_node)
 
 Since the Gradio UI is set at deploy time, the type of Gradio component used to display intermediate outputs of the graph is also statically determined from the graph deployed. It is important that the correct Gradio component is used for each graph node.
 
-The developer simply needs to specify the return type annotation of each function or method in the deployment graph.
+Specify the return type annotation of each function or method in the deployment graph.
 :::{note}
 If no return type annotation is specified for a node, then the Gradio component for that node will default to a [Gradio Textbox](https://gradio.app/docs/#textbox).
 :::

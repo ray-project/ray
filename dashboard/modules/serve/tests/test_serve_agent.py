@@ -10,7 +10,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails

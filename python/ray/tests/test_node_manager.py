@@ -1,5 +1,5 @@
 import ray
-from ray.experimental.state.api import list_workers
+from ray.util.state import list_workers
 from ray._private.test_utils import (
     get_load_metrics_report,
     run_string_as_driver,
@@ -9,7 +9,7 @@ from ray._private.test_utils import (
 )
 import pytest
 import os
-from ray.experimental.state.api import list_objects
+from ray.util.state import list_objects
 import subprocess
 from ray._private.utils import get_num_cpus
 import time

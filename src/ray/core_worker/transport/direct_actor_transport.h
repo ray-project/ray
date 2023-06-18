@@ -30,6 +30,7 @@
 #include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
+#include "ray/core_worker/common.h"
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/fiber.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -55,6 +56,7 @@ class CoreWorkerDirectTaskReceiver {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrower_refs,
       bool *is_retryable_error,
       std::string *application_error)>;

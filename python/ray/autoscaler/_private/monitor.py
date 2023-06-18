@@ -2,7 +2,7 @@
 
 import argparse
 import json
-import logging.handlers
+import logging
 import os
 import signal
 import sys
@@ -370,6 +370,7 @@ class Monitor:
 
     def _run(self):
         """Run the monitor loop."""
+
         while True:
             try:
                 gcs_request_start_time = time.time()
@@ -399,11 +400,15 @@ class Monitor:
                     self.autoscaler.update()
                     status["autoscaler_update_time"] = time.time() - update_start_time
                     autoscaler_summary = self.autoscaler.summary()
-                    self.emit_metrics(
-                        load_metrics_summary,
-                        autoscaler_summary,
-                        self.autoscaler.all_node_types,
-                    )
+                    try:
+                        self.emit_metrics(
+                            load_metrics_summary,
+                            autoscaler_summary,
+                            self.autoscaler.all_node_types,
+                        )
+                    except Exception:
+                        logger.exception("Error emitting metrics")
+
                     if autoscaler_summary:
                         status["autoscaler_report"] = asdict(autoscaler_summary)
                         status[
@@ -463,7 +468,7 @@ class Monitor:
         for _, node_type, _ in autoscaler_summary.pending_nodes:
             pending_node_count[node_type] += 1
 
-        for node_type, count in autoscaler_summary.pending_launches:
+        for node_type, count in autoscaler_summary.pending_launches.items():
             pending_node_count[node_type] += count
 
         for node_type in node_types:
@@ -543,7 +548,6 @@ class Monitor:
                 time.sleep(2)
 
     def _handle_failure(self, error):
-        logger.exception("Error in monitor loop")
         if (
             self.autoscaler is not None
             and os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1"
@@ -590,6 +594,7 @@ class Monitor:
             self._initialize_autoscaler()
             self._run()
         except Exception:
+            logger.exception("Error in monitor loop")
             self._handle_failure(traceback.format_exc())
             raise
 

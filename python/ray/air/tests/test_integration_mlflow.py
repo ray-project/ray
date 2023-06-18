@@ -42,14 +42,16 @@ def clear_env_vars():
 
 class MLflowTest(unittest.TestCase):
     def setUp(self):
-        self.tracking_uri = tempfile.mkdtemp()
-        self.registry_uri = tempfile.mkdtemp()
+        self.tracking_uri = "sqlite:///" + tempfile.mkdtemp() + "/mlflow.sqlite"
+        self.registry_uri = "sqlite:///" + tempfile.mkdtemp() + "/mlflow.sqlite"
 
         client = MlflowClient(
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri
         )
         client.create_experiment(name="existing_experiment")
-        assert client.get_experiment_by_name("existing_experiment").experiment_id == "0"
+        # Mlflow > 2 creates a "Default" experiment which has ID 0, so we start our
+        # test with ID 1.
+        assert client.get_experiment_by_name("existing_experiment").experiment_id == "1"
 
     def tearDown(self) -> None:
         # Remove tune session if initialized to clean up for next test
@@ -70,10 +72,10 @@ class MLflowTest(unittest.TestCase):
             logger.mlflow_util._mlflow.get_registry_uri(), self.registry_uri
         )
         self.assertListEqual(
-            [e.name for e in logger.mlflow_util._mlflow.list_experiments()],
-            ["existing_experiment", "test_exp"],
+            [e.name for e in logger.mlflow_util._mlflow.search_experiments()],
+            ["test_exp", "existing_experiment", "Default"],
         )
-        self.assertEqual(logger.mlflow_util.experiment_id, "1")
+        self.assertEqual(logger.mlflow_util.experiment_id, "2")
 
         # Check if client recognizes already existing experiment.
         logger = MLflowLoggerCallback(
@@ -82,7 +84,7 @@ class MLflowTest(unittest.TestCase):
             registry_uri=self.registry_uri,
         )
         logger.setup()
-        self.assertEqual(logger.mlflow_util.experiment_id, "0")
+        self.assertEqual(logger.mlflow_util.experiment_id, "1")
 
         # Pass in experiment name as env var.
         clear_env_vars()
@@ -91,7 +93,7 @@ class MLflowTest(unittest.TestCase):
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri
         )
         logger.setup()
-        self.assertEqual(logger.mlflow_util.experiment_id, "1")
+        self.assertEqual(logger.mlflow_util.experiment_id, "2")
 
         # Pass in existing experiment name as env var.
         clear_env_vars()
@@ -100,16 +102,16 @@ class MLflowTest(unittest.TestCase):
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri
         )
         logger.setup()
-        self.assertEqual(logger.mlflow_util.experiment_id, "0")
+        self.assertEqual(logger.mlflow_util.experiment_id, "1")
 
         # Pass in existing experiment id as env var.
         clear_env_vars()
-        os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
+        os.environ["MLFLOW_EXPERIMENT_ID"] = "1"
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri
         )
         logger.setup()
-        self.assertEqual(logger.mlflow_util.experiment_id, "0")
+        self.assertEqual(logger.mlflow_util.experiment_id, "1")
 
         # Pass in non existing experiment id as env var.
         # This should create a new experiment.
@@ -124,18 +126,18 @@ class MLflowTest(unittest.TestCase):
         # Experiment id env var should take precedence over name env var.
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_exp"
-        os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
+        os.environ["MLFLOW_EXPERIMENT_ID"] = "1"
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri
         )
         logger.setup()
-        self.assertEqual(logger.mlflow_util.experiment_id, "0")
+        self.assertEqual(logger.mlflow_util.experiment_id, "1")
 
         # Using tags
         tags = {"user_name": "John", "git_commit_hash": "abc123"}
         clear_env_vars()
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "test_tags"
-        os.environ["MLFLOW_EXPERIMENT_ID"] = "0"
+        os.environ["MLFLOW_EXPERIMENT_ID"] = "1"
         logger = MLflowLoggerCallback(
             tracking_uri=self.tracking_uri, registry_uri=self.registry_uri, tags=tags
         )
@@ -159,7 +161,7 @@ class MLflowTest(unittest.TestCase):
 
         # Check if run is created with proper tags.
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=["1"])
+        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=["2"])
         self.assertEqual(len(all_runs), 1)
         # all_runs is a pandas dataframe.
         all_runs = all_runs.to_dict(orient="records")
@@ -174,7 +176,7 @@ class MLflowTest(unittest.TestCase):
 
         # When same trial is started again, new run should not be created.
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=["1"])
+        all_runs = logger.mlflow_util._mlflow.search_runs(experiment_ids=["2"])
         self.assertEqual(len(all_runs), 1)
 
         # Check metrics are logged properly.
@@ -217,35 +219,15 @@ class MLflowTest(unittest.TestCase):
         with self.assertRaises(DeprecationWarning):
             wrap_function(train_fn_2)(trial_config)
 
-    def testMlFlowSetupConfig(self):
+    # TODO(ml-team): Remove in 2.6.
+    def testMlFlowSetupConfigDeprecated(self):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
 
-        # No MLflow config passed in.
-        with self.assertRaises(ValueError):
-            setup_mlflow(trial_config)
-
-        trial_config.update({"mlflow": {}})
+        trial_config.update({"mlflow": {"experiment_name": "asdf"}})
         # No tracking uri or experiment_id/name passed in.
-        with self.assertRaises(ValueError):
+        with self.assertRaises(DeprecationWarning):
             setup_mlflow(trial_config)
-
-        # Invalid experiment-id
-        trial_config["mlflow"].update({"experiment_id": "500"})
-        # No tracking uri or experiment_id/name passed in.
-        with self.assertRaises(ValueError):
-            setup_mlflow(trial_config)
-
-        # Set to experiment that does not already exist.
-        # New experiment should be created.
-        trial_config["mlflow"]["tracking_uri"] = self.tracking_uri
-        trial_config["mlflow"]["experiment_name"] = "new_experiment"
-        with self.assertRaises(ValueError):
-            setup_mlflow(trial_config)
-
-        trial_config["mlflow"]["experiment_name"] = "existing_experiment"
-        mlflow = setup_mlflow(trial_config)
-        mlflow.end_run()
 
     def testMlFlowSetupExplicit(self):
         clear_env_vars()
@@ -298,7 +280,7 @@ class MLflowUtilTest(unittest.TestCase):
         self.dirpath = tempfile.mkdtemp()
         import mlflow
 
-        mlflow.set_tracking_uri(self.dirpath)
+        mlflow.set_tracking_uri("sqlite:///" + self.dirpath + "/mlflow.sqlite")
         mlflow.create_experiment(name="existing_experiment")
 
         self.mlflow_util = _MLflowLoggerUtil()
@@ -321,7 +303,7 @@ class MLflowUtilTest(unittest.TestCase):
         self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri, experiment_name="existing_experiment"
         )
-        assert self.mlflow_util.experiment_id == "0"
+        assert self.mlflow_util.experiment_id == "1"
 
     def test_run_started_with_correct_experiment(self):
         experiment_name = "my_experiment_name"
@@ -342,7 +324,7 @@ class MLflowUtilTest(unittest.TestCase):
     def test_experiment_name_env_var(self):
         os.environ["MLFLOW_EXPERIMENT_NAME"] = "existing_experiment"
         self.mlflow_util.setup_mlflow(tracking_uri=self.tracking_uri)
-        assert self.mlflow_util.experiment_id == "0"
+        assert self.mlflow_util.experiment_id == "1"
         del os.environ["MLFLOW_EXPERIMENT_NAME"]
 
     def test_id_precedence(self):
@@ -357,7 +339,7 @@ class MLflowUtilTest(unittest.TestCase):
         self.mlflow_util.setup_mlflow(
             tracking_uri=self.tracking_uri, experiment_name="new_experiment"
         )
-        assert self.mlflow_util.experiment_id == "1"
+        assert self.mlflow_util.experiment_id == "2"
 
     def test_setup_fail(self):
         with self.assertRaises(ValueError):

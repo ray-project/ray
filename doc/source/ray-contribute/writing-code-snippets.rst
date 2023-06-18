@@ -132,7 +132,9 @@ want to print intermediate objects, use *doctest-style*. ::
         >>> import ray
         >>> ds = ray.data.range(100)
         >>> ds.schema()
-        Schema({'id': DataType(int64)})
+        Column  Type
+        ------  ----
+        id      int64
         >>> ds.take(5)
         [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
@@ -182,8 +184,7 @@ How to handle hard-to-test examples
 When is it okay to not test an example?
 =======================================
 
-You don't need to test examples that require GPUs, or examples that depend on external
-systems like Weights and Biases.
+You don't need to test examples that depend on external systems like Weights and Biases.
 
 Skipping *doctest-style* examples
 =================================
@@ -219,28 +220,14 @@ If your Python code is non-deterministic, or if your output is excessively long,
 Ignoring *doctest-style* outputs
 ================================
 
-To ignore parts of a *doctest-style* output, add `:options: +ELLIPSIS` to
-the `doctest` directive and replace problematic sections with ellipsis. ::
-
-    .. doctest::
-        :options: +ELLIPSIS
-
-        >>> import ray
-        >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
-        Dataset(
-           num_blocks=...,
-           num_rows=...,
-           schema={image: numpy.ndarray(shape=..., dtype=uint8)}
-        )
-
-If you omit the `doctest` directive, append `# doctest: +ELLIPSIS` to your code instead.
+To ignore parts of a *doctest-style* output, replace problematic sections with ellipses. ::
 
     >>> import ray
-    >>> ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")  # doctest: +ELLIPSIS
+    >>> ray.data.read_images("example://image-datasets/simple")
     Dataset(
        num_blocks=...,
        num_rows=...,
-       schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+       schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
     )
 
 To ignore an output altogether, write a *code-block-style* snippet. Don't use `# doctest: +SKIP`.
@@ -248,26 +235,25 @@ To ignore an output altogether, write a *code-block-style* snippet. Don't use `#
 Ignoring *code-block-style* outputs
 ===================================
 
-If parts of your output are long or non-deterministic, add `:options: +ELLIPSIS` to
-the `testoutput` directive and replace problematic sections with ellipsis. ::
+If parts of your output are long or non-deterministic, replace problematic sections
+with ellipses. ::
 
     .. testcode::
 
         import ray
-        ds = ray.data.read_images("s3://anonymous@air-example-data-2/imagenet-sample-images")
+        ds = ray.data.read_images("example://image-datasets/simple")
         print(ds)
 
     .. testoutput::
-        :options: +ELLIPSIS
 
         Dataset(
            num_blocks=...,
            num_rows=...,
-           schema={image: numpy.ndarray(shape=..., dtype=uint8)}
+           schema={image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)}
         )
 
 If your output is nondeterministic and you want to display a sample output, add
-`:options: +SKIP`. ::
+`:options: +MOCK`. ::
 
     .. testcode::
 
@@ -275,12 +261,12 @@ If your output is nondeterministic and you want to display a sample output, add
         print(random.random())
 
     .. testoutput::
-        :options: +SKIP
+        :options: +MOCK
 
         0.969461416250246
 
-If your output is hard to test and you don't want to display a sample output, add
-`:options: +SKIP` and `:hide:`. ::
+If your output is hard to test and you don't want to display a sample output, use
+ellipses and `:hide:`. ::
 
     .. testcode::
 
@@ -288,22 +274,67 @@ If your output is hard to test and you don't want to display a sample output, ad
 
     .. testoutput::
         :hide:
-        :options: +SKIP
 
-        ...  # Add ellipsis. Otherwise, Sphinx can't parse the block.
+        ...
 
---------------------
-How to test examples
---------------------
+------------------------------
+How to test examples with GPUs
+------------------------------
 
-Testing specific examples
-=========================
+To configure Bazel to run an example with GPUs, complete the following steps:
 
-To test specific examples, install `pytest-sphinx`.
+#. Open the corresponding ``BUILD`` file. If your example is in the ``doc/`` folder,
+   open ``doc/BUILD``. If your example is in the ``python/`` folder, open a file like
+   ``python/ray/train/BUILD``.
+
+#. Locate the ``doctest`` rule. It looks like this: ::
+
+    doctest(
+        files = glob(
+            include=["source/**/*.rst"],
+        ),
+        size = "large",
+        tags = ["team:none"]
+    )
+
+#. Add the file that contains your example to the list of excluded files. ::
+
+    doctest(
+        files = glob(
+            include=["source/**/*.rst"],
+            exclude=["source/data/requires-gpus.rst"]
+        ),
+        tags = ["team:none"]
+    )
+
+#. If it doesn't already exist, create a ``doctest`` rule with ``gpu`` set to ``True``. ::
+
+    doctest(
+        files = [],
+        tags = ["team:none"],
+        gpu = True
+    )
+
+#. Add the file that contains your example to the GPU rule. ::
+
+    doctest(
+        files = ["source/data/requires-gpus.rst"]
+        size = "large",
+        tags = ["team:none"],
+        gpu = True
+    )
+
+For a practical example, see ``doc/BUILD`` or ``python/ray/train/BUILD``.
+
+----------------------------
+How to locally test examples
+----------------------------
+
+To locally test examples, install the Ray fork of `pytest-sphinx`.
 
 .. code-block:: bash
 
-    pip install pytest-sphinx
+    pip install git+https://github.com/ray-project/pytest-sphinx
 
 Then, run pytest on a module, docstring, or user guide.
 
@@ -312,14 +343,3 @@ Then, run pytest on a module, docstring, or user guide.
     pytest --doctest-modules python/ray/data/read_api.py
     pytest --doctest-modules python/ray/data/read_api.py::ray.data.read_api.range
     pytest --doctest-modules doc/source/data/getting-started.rst
-
-Testing all examples
-====================
-
-To test all code snippets, run
-
-.. code-block:: bash
-
-    RAY_MOCK_MODULES=0 make doctest
-
-in the `ray/doc` directory.

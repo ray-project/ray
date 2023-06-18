@@ -469,7 +469,17 @@ SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
 }
 
 absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
-GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
+GcsPlacementGroupScheduler::GetAndRemoveBundlesOnNode(const NodeID &node_id) {
+  auto bundles = GetBundlesOnNode(node_id);
+  RAY_UNUSED(committed_bundle_location_index_.Erase(node_id));
+  RAY_UNUSED(cluster_resource_scheduler_.GetClusterResourceManager()
+                 .GetBundleLocationIndex()
+                 .Erase(node_id));
+  return bundles;
+}
+
+absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) const {
   absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>> bundles_on_node;
   const auto &maybe_bundle_locations =
       committed_bundle_location_index_.GetBundleLocationsOnNode(node_id);
@@ -480,10 +490,6 @@ GcsPlacementGroupScheduler::GetBundlesOnNode(const NodeID &node_id) {
       const auto &bundle_index = bundle.first.second;
       bundles_on_node[bundle_placement_group_id].push_back(bundle_index);
     }
-    committed_bundle_location_index_.Erase(node_id);
-    cluster_resource_scheduler_.GetClusterResourceManager()
-        .GetBundleLocationIndex()
-        .Erase(node_id);
   }
   return bundles_on_node;
 }
@@ -691,6 +697,14 @@ bool GcsPlacementGroupScheduler::TryReleasingBundleResources(
   const auto &bundle_spec = bundle.second;
   std::vector<scheduling::ResourceID> bundle_resource_ids;
   absl::flat_hash_map<std::string, FixedPoint> wildcard_resources;
+
+  if (!cluster_resource_manager.HasNode(node_id)) {
+    // If the node is dead, we do not need to release the bundle resources.
+    // The bundle resources will be released when the node is removed by
+    // the cluster resource manager.
+    return true;
+  }
+
   // Subtract wildcard resources and delete bundle resources.
   for (const auto &entry : bundle_spec->GetFormattedResources()) {
     auto resource_id = scheduling::ResourceID(entry.first);

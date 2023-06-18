@@ -148,7 +148,7 @@ Hugging Face
 TransformersTrainer
 *******************
 
-:class:`TransformersTrainer <ray.train.hf_transformers.TransformersTrainer>` further extends :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, built
+:class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>` further extends :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, built
 for interoperability with the HuggingFace Transformers library.
 
 Users are required to provide a ``trainer_init_per_worker`` function which returns a
@@ -172,17 +172,17 @@ training via Pytorch DDP.
 AccelerateTrainer
 *****************
 
-If you prefer a more fine-grained Hugging Face API than what Transformers provides, you can use :class:`AccelerateTrainer <ray.train.hf_accelerate.AccelerateTrainer>`
-to run training functions making use of Hugging Face Accelerate. Similarly to :class:`TransformersTrainer <ray.train.hf_transformers.TransformersTrainer>`, :class:`AccelerateTrainer <ray.train.hf_accelerate.AccelerateTrainer>`
+If you prefer a more fine-grained Hugging Face API than what Transformers provides, you can use :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>`
+to run training functions making use of Hugging Face Accelerate. Similarly to :class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>`, :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>`
 is also an extension of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
 
-:class:`AccelerateTrainer <ray.train.hf_accelerate.AccelerateTrainer>` allows you to pass an Accelerate configuration file generated with ``accelerate config`` to be applied on all training workers.
+:class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>` allows you to pass an Accelerate configuration file generated with ``accelerate config`` to be applied on all training workers.
 This ensures that the worker environments are set up correctly for Accelerate, allowing you to take advantage of Accelerate APIs and integrations such as DeepSpeed and FSDP
 just as you would if you were running Accelerate without Ray.
 
 .. note::
     ``AccelerateTrainer`` will override some settings set with ``accelerate config``, mainly related to
-    the topology and networking. See the :class:`AccelerateTrainer <ray.train.hf_accelerate.AccelerateTrainer>`
+    the topology and networking. See the :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>`
     API reference for more details.
 
 Aside from Accelerate support, the usage is identical to :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, meaning you define your own training function

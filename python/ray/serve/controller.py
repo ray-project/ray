@@ -12,8 +12,8 @@ from ray._private.utils import (
     import_attr,
     run_background_task,
 )
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.common import (
     DeploymentInfo,
@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     StatusOverview,
     ServeDeployMode,
+    MultiplexedReplicaInfo,
 )
 from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
@@ -31,7 +32,6 @@ from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
-    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
@@ -171,7 +171,7 @@ class ServeController:
             node_ip=ray.util.get_node_ip_address(),
             actor_id=ray.get_runtime_context().get_actor_id(),
             actor_name=self.controller_name,
-            worker_id=ray._private.worker.global_worker.worker_id.hex(),
+            worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
 
@@ -187,6 +187,9 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        logger.debug(
+            f"Received autoscaling metrics: {data} at timestamp {send_timestamp}"
+        )
         self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
@@ -702,6 +705,8 @@ class ServeController:
                 status=app_status_info.status,
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
+                # This can be none if the app was deployed through
+                # serve.run, or if the app is in deleting state
                 deployed_app_config=self.get_app_config(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
@@ -795,6 +800,14 @@ class ServeController:
             )
             self.application_state_manager.delete_application(name)
         self.delete_deployments(deployments_to_delete)
+
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed model ids for a replica of deployment
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self.deployment_state_manager.record_multiplexed_replica_info(info)
 
 
 @ray.remote(num_cpus=0, max_calls=1)
@@ -914,14 +927,7 @@ class ServeControllerAvatar:
                 lifetime="detached" if detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
-                # Schedule the controller on the head node with a soft constraint. This
-                # prefers it to run on the head node in most cases, but allows it to be
-                # restarted on other nodes in an HA cluster.
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node_id, soft=True
-                )
-                if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
-                else None,
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
                 namespace="serve",
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(

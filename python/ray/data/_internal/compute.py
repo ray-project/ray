@@ -10,7 +10,6 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    UserDefinedFunction,
     Block,
     BlockAccessor,
     BlockExecStats,
@@ -18,8 +17,9 @@ from ray.data.block import (
     BlockPartition,
     CallableClass,
     StrictModeError,
+    UserDefinedFunction,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -388,10 +388,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if "scheduling_strategy" not in remote_args:
             ctx = DataContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 

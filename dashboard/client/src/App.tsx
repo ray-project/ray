@@ -32,7 +32,10 @@ import {
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
 import { ServeLayout } from "./pages/serve/ServeLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
-import { ServeHttpProxyDetailPage } from "./pages/serve/ServeSystemActorDetailPage";
+import {
+  ServeControllerDetailPage,
+  ServeHttpProxyDetailPage,
+} from "./pages/serve/ServeSystemActorDetailPage";
 import { TaskPage } from "./pages/task/TaskPage";
 import { getNodeList } from "./service/node";
 import { lightTheme } from "./theme";
@@ -223,6 +226,10 @@ const App = () => {
                 <Route element={<Metrics />} path="metrics" />
                 <Route element={<ServeLayout />} path="serve">
                   <Route element={<ServeApplicationsListPage />} path="" />
+                  <Route
+                    element={<ServeControllerDetailPage />}
+                    path="controller"
+                  />
                   <Route
                     element={<ServeHttpProxyDetailPage />}
                     path="httpProxies/:httpProxyId"
