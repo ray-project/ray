@@ -468,7 +468,14 @@ class DataParallelTrainer(BaseTrainer):
                 logger.debug(
                     f"Deleting the stale lazy checkpoint marker file: {marker_file}."
                 )
-                marker_file.unlink()
+                # Multiple workers on the same node may delete this file at the
+                # same time. Return if the marker file has been deleted.
+                # TODO(ml-team): replace this try-except block with `missing_ok=True`
+                # after we completely drop py37 support.
+                try:
+                    marker_file.unlink()
+                except FileNotFoundError:
+                    return
 
         # Start the remote actors.
         backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)
