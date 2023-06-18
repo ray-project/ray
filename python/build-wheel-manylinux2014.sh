@@ -16,9 +16,9 @@ YUM_PKGS=(
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   YMB_PKGS+=(
-    "libasan-4.8.5-44.el7.${HOSTTYPE}"
-    "libubsan-7.3.1-5.10.el7.${HOSTTYPE}"
-    "devtoolset-8-libasan-devel.${HOSTTYPE}"
+    "libasan-4.8.5-44.el7.x86_64"
+    "libubsan-7.3.1-5.10.el7.x86_64"
+    "devtoolset-8-libasan-devel.x86_64"
   )
 fi
 
@@ -30,11 +30,6 @@ echo "java_bin path ${JAVA_BIN}"
 export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 
 # /ray/ci/env/install-bazel.sh
-
-if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
-  bazel build //java:ray_java_pkg
-  unset RAY_INSTALL_JAVA
-fi
 
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
@@ -54,6 +49,18 @@ EOF > ~/.bazelrc
 
 ########## Starts building here. ##########
 
+# Add the repo folder to the safe.dictory global variable to avoid the failure
+# because of secruity check from git, when executing the following command
+# `git clean ...`,  while building wheel locally.
+git config --global --add safe.directory /ray
+
+echo "--- Build java parts"
+if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
+  bazel build //java:ray_java_pkg
+  unset RAY_INSTALL_JAVA
+fi
+
+echo "--- Build dashboard frontend"
 # Build the dashboard so its static assets can be included in the wheel.
 # TODO(mfitton): switch this back when deleting old dashboard code.
 (
@@ -63,13 +70,9 @@ EOF > ~/.bazelrc
 )
 set -x
 
-# Add the repo folder to the safe.dictory global variable to avoid the failure
-# because of secruity check from git, when executing the following command
-# `git clean ...`,  while building wheel locally.
-git config --global --add safe.directory /ray
-
 mkdir -p .whl
 
+echo "--- Build python wheels"
 # Python version key, interpreter version code, numpy tuples.
 PYTHON_NUMPYS=(
   "py37 cp37-cp37m 1.14.5"
