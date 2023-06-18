@@ -42,10 +42,10 @@ nvm use "$NODE_VERSION"
 # Install bazelisk via npm.
 npm install -g @bazel/bazelisk
 ln -s "$(which bazelisk)" /usr/local/bin/bazel
-cat << EOF
+cat > ~/.bazelrc << EOF
 build --config=ci
 build --announce_rc
-EOF > ~/.bazelrc
+EOF
 
 ########## Starts building here. ##########
 
