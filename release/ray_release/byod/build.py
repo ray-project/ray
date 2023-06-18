@@ -17,6 +17,8 @@ DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
+REQUIREMENTS_BYOD = "requirements_byod.txt"
+REQUIREMENTS_ML_BYOD = "requirements_ml_byod.txt"
 
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
@@ -77,6 +79,11 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     ):
         for ray_image, test in to_be_built.items():
             byod_image = test.get_anyscale_base_byod_image()
+            byod_requirements = (
+                REQUIREMENTS_BYOD
+                if test.get_byod_type() == "cpu"
+                else REQUIREMENTS_ML_BYOD
+            )
             if _byod_image_exist(test):
                 logger.info(f"Image {byod_image} already exists")
                 built.add(ray_image)
@@ -114,7 +121,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                         "--build-arg",
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",
-                        "PIP_REQUIREMENTS=requirements_byod.txt",
+                        f"PIP_REQUIREMENTS={byod_requirements}",
                         "--build-arg",
                         "DEBIAN_REQUIREMENTS=requirements_debian_byod.txt",
                         "-t",
