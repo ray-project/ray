@@ -171,6 +171,8 @@ def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
     """
     Checks if the given Anyscale BYOD image exists.
     """
+    if os.environ.get("BYOD_NO_CACHE", False):
+        return False
     client = boto3.client("ecr")
     image_tag = (
         test.get_byod_base_image_tag() if base_image else test.get_byod_image_tag()
