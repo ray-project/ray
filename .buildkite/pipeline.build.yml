@@ -457,7 +457,7 @@
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
     - pip install "mosaicml==0.12.1" "urllib3<1.27" --ignore-installed
-    - ./ci/ci.sh build
+    - ./ci/ci.sh build_sphinx_docs
 
 - label: ":octopus: Tune multinode tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]
