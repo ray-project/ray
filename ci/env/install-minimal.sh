@@ -43,7 +43,8 @@ eval "${WORKSPACE_DIR}/ci/ci.sh build"
 # Install test requirements
 python -m pip install -U \
   pytest==7.0.1 \
-  numpy
+  numpy \
+  grpcio
 
 # Train requirements.
 # TODO: make this dynamic

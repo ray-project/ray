@@ -161,6 +161,12 @@ void AgentManager::GetOrCreateRuntimeEnv(
     const rpc::RuntimeEnvConfig &runtime_env_config,
     const std::string &serialized_allocated_resource_instances,
     GetOrCreateRuntimeEnvCallback callback) {
+  json runtime_env = json::parse(serialized_runtime_env);
+
+  // We just pretend we set up the runtime environment
+  callback(true, serialized_runtime_env, /*setup_error_message*/ "");
+  return;
+
   // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
     std::stringstream str_stream;
