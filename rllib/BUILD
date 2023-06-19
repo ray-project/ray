@@ -1075,12 +1075,14 @@ py_test(
 )
 
 # DreamerV3
-py_test(
-    name = "test_dreamerv3",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
-)
+# TODO (sven): Enable once the version conflict for gymnasium/supersuit/pettingzoo
+#  /shimmy/mujoco has been resolved.
+#py_test(
+#    name = "test_dreamerv3",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+#)
 
 # DT
 py_test(
