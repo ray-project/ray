@@ -6,7 +6,6 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
-import tensorflow as tf
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.continue_predictor import (
@@ -26,7 +25,11 @@ from ray.rllib.algorithms.dreamerv3.tf.models.components.sequence_model import (
     SequenceModel,
 )
 from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import symlog
+
+
+_, tf, _ = try_import_tf()
 
 
 class WorldModel(tf.keras.Model):
@@ -56,7 +59,7 @@ class WorldModel(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: str = "XS",
+        model_size: str = "XS",
         action_space: gym.Space,
         batch_length_T: int = 64,
         encoder: tf.keras.Model,
@@ -67,7 +70,7 @@ class WorldModel(tf.keras.Model):
         """Initializes a WorldModel instance.
 
         Args:
-             model_dimension: The "Model Size" used according to [1] Appendinx B.
+             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
              action_space: The action space the our environment used.
              batch_length_T: The length (T) of the sequences used for training. The
@@ -87,7 +90,7 @@ class WorldModel(tf.keras.Model):
                 the last decoder layer produces the exact, normalized pixel values
                 (not a Gaussian as described in [1]!).
             num_gru_units: The number of GRU units to use. If None, use
-                `model_dimension` to figure out this parameter.
+                `model_size` to figure out this parameter.
             symlog_obs: Whether to predict decoded observations in symlog space.
                 This should be False for image based observations.
                 According to the paper [1] Appendix E: "NoObsSymlog: This ablation
@@ -98,7 +101,7 @@ class WorldModel(tf.keras.Model):
         """
         super().__init__(name="world_model")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.batch_length_T = batch_length_T
         self.symlog_obs = symlog_obs
         self.action_space = action_space
@@ -109,7 +112,7 @@ class WorldModel(tf.keras.Model):
         # Posterior predictor consisting of an MLP and a RepresentationLayer:
         # [ht, lt] -> zt.
         self.posterior_mlp = MLP(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             output_layer_size=None,
             # In Danijar's code, the posterior predictor only has a single layer,
             # no matter the model size:
@@ -118,17 +121,15 @@ class WorldModel(tf.keras.Model):
         )
         # The (posterior) z-state generating layer.
         self.posterior_representation_layer = RepresentationLayer(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
         )
 
         # Dynamics (prior z-state) predictor: ht -> z^t
-        self.dynamics_predictor = DynamicsPredictor(
-            model_dimension=self.model_dimension
-        )
+        self.dynamics_predictor = DynamicsPredictor(model_size=self.model_size)
 
         # GRU for the RSSM: [at, ht, zt] -> ht+1
         self.num_gru_units = get_gru_units(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             override=num_gru_units,
         )
         # Initial h-state variable (learnt).
@@ -142,17 +143,15 @@ class WorldModel(tf.keras.Model):
         )
         # The actual sequence model containing the GRU layer.
         self.sequence_model = SequenceModel(
-            model_dimension=self.model_dimension,
+            model_size=self.model_size,
             action_space=self.action_space,
             num_gru_units=self.num_gru_units,
         )
 
         # Reward Predictor: [ht, zt] -> rt.
-        self.reward_predictor = RewardPredictor(model_dimension=self.model_dimension)
+        self.reward_predictor = RewardPredictor(model_size=self.model_size)
         # Continue Predictor: [ht, zt] -> ct.
-        self.continue_predictor = ContinuePredictor(
-            model_dimension=self.model_dimension
-        )
+        self.continue_predictor = ContinuePredictor(model_size=self.model_size)
 
         # Decoder: [ht, zt] -> x^t.
         self.decoder = decoder
@@ -276,7 +275,7 @@ class WorldModel(tf.keras.Model):
         # Make actions and `is_first` time-major.
         actions = tf.transpose(
             actions,
-            perm=[1, 0] + list(range(2, len(actions.shape))),  # .as_list() TODO
+            perm=[1, 0] + list(range(2, tf.shape(actions).shape.as_list()[0])),
         )
         is_first = tf.transpose(is_first, perm=[1, 0])
 
@@ -343,7 +342,7 @@ class WorldModel(tf.keras.Model):
         h_BxT = tf.reshape(h_t1_to_T, shape=[-1] + h_t1_to_T.shape.as_list()[2:])
         z_BxT = tf.reshape(z_t1_to_T, shape=[-1] + z_t1_to_T.shape.as_list()[2:])
 
-        _, obs_distribution = self.decoder(h=h_BxT, z=z_BxT)
+        obs_distribution_means = self.decoder(h=h_BxT, z=z_BxT)
 
         # Compute (predicted) reward distributions.
         rewards, reward_logits = self.reward_predictor(
@@ -356,11 +355,11 @@ class WorldModel(tf.keras.Model):
         )
 
         # Return outputs for loss computation.
-        # Note that all shapes are [B, ...] (no time axis).
+        # Note that all shapes are [BxT, ...] (time axis already folded).
         return {
             # Obs.
             "sampled_obs_symlog_BxT": observations,
-            "obs_distribution_BxT": obs_distribution,
+            "obs_distribution_means_BxT": obs_distribution_means,
             # Rewards.
             "reward_logits_BxT": reward_logits,
             "rewards_BxT": rewards,

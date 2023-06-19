@@ -1066,13 +1066,23 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
 )
 
-# Dreamer
+# Dreamer (V1)
 py_test(
     name = "test_dreamer",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
+
+# DreamerV3
+# TODO (sven): Enable once the version conflict for gymnasium/supersuit/pettingzoo
+#  /shimmy/mujoco has been resolved.
+#py_test(
+#    name = "test_dreamerv3",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+#)
 
 # DT
 py_test(
@@ -4345,6 +4355,7 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
+    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",

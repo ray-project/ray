@@ -114,6 +114,12 @@ def _import_dreamer():
     return dreamer.Dreamer, dreamer.Dreamer.get_default_config()
 
 
+def _import_dreamerv3():
+    import ray.rllib.algorithms.dreamerv3 as dreamerv3
+
+    return dreamerv3.DreamerV3, dreamerv3.DreamerV3.get_default_config()
+
+
 def _import_dt():
     import ray.rllib.algorithms.dt as dt
 
@@ -239,6 +245,7 @@ ALGORITHMS = {
     "DDPPO": _import_ddppo,
     "DQN": _import_dqn,
     "Dreamer": _import_dreamer,
+    "DreamerV3": _import_dreamerv3,
     "DT": _import_dt,
     "IMPALA": _import_impala,
     "APPO": _import_appo,
@@ -278,6 +285,7 @@ ALGORITHMS_CLASS_TO_NAME = {
     "DDPPO": "DDPPO",
     "DQN": "DQN",
     "Dreamer": "Dreamer",
+    "DreamerV3": "DreamerV3",
     "DT": "DT",
     "Impala": "IMPALA",
     "APPO": "APPO",
