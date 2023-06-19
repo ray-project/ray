@@ -6,6 +6,7 @@ import requests
 import starlette
 from starlette.middleware import Middleware
 import sys
+import time
 
 
 import ray
@@ -199,6 +200,38 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
         RayActorError, match="must return a list of Starlette middlewares"
     ):
         ray.get(handle.ready.remote())
+
+
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {
+            "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH": RAISE_ERROR_IMPORT_PATH,
+        },
+    ],
+    indirect=True,
+)
+def test_http_proxy_calllback_failures(ray_instance, capsys):
+    """Test http proxy into unhealthy state when callback function fails"""
+
+    try:
+        serve.start()
+    except RayActorError:
+        # serve.start will fail because the http proxy is not started successfully
+        # and client use proxy handle to check the proxy readiness, so it will raise
+        # RayActorError.
+        pass
+
+    # 1s sleep to be long enough for proxy unhealthy message logged.
+    time.sleep(1)
+
+    captured = capsys.readouterr()
+    assert "this is from raise_error_callback" in captured.err
+    # Error message printed when http proxy in STARTING state and not able to be started.
+    assert (
+        "Unexpected error occurred when checking readiness of HTTP Proxy"
+        in captured.err
+    )
 
 
 if __name__ == "__main__":
