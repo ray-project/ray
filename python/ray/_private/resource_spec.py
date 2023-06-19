@@ -168,16 +168,17 @@ class ResourceSpec(
         if is_head:
             resources[HEAD_NODE_RESOURCE_NAME] = 1.0
 
-        # get cpu num
+        # Get cpu num
         num_cpus = self.num_cpus
         if num_cpus is None:
             num_cpus = ray._private.utils.get_num_cpus()
 
-        # get accelerate device info
-        if ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "CUDA": # get cuda device num
+        # Get accelerate device info
+        accelerator = ray._private.utils.get_current_accelerator()
+        if accelerator == "CUDA": # get cuda device num
             num_gpus, gpu_types = _get_cuda_info(self.num_gpus)
             resources.update(gpu_types)
-        elif ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "XPU": # get xpu device num
+        elif accelerator == "XPU": # get xpu device num
             # here we take xpu as gpu, so no need to develop core's scheduling policy
             # If we don't want to take xpu as gpu, ray core need to develop new scheduling policy
             num_gpus, gpu_types = _get_xpu_info(self.num_gpus)
@@ -301,6 +302,13 @@ def _get_cuda_info(num_gpus):
 
 def _get_xpu_info(num_xpus):
     """Attempt to process the number of XPUs as GPUs
+
+    Here we use `dpctl` to detect XPU device:
+      Enumrate all device by API dpctl.get_devices
+      Notice that ONEAPI_DEVICE_SELECTOR environment variable should be unset
+      Or dpctl.get_devices will only return filtered device set by ONEAPI_DEVICE_SELECTOR
+    Another method to enumrate XPU device is to use C++ API, maybe can upgrade later
+ 
     Returns:
         The number of XPUs that detected by dpctl with specific backend and device type
     """

@@ -315,11 +315,14 @@ def get_xpu_visible_devices():
     return list(xpu_ids_str.split(","))
 
 
+def get_current_accelerator():
+    return os.environ.get("RAY_ACCELERATOR", ray_constants.RAY_ACCELERATOR_DEFAULT)
+
+
 def get_gpu_visible_devices():
-    if ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "CUDA":
-        return get_cuda_visible_devices()
-    elif ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "XPU":
+    if get_current_accelerator() == "XPU":
         return get_xpu_visible_devices()
+    return get_cuda_visible_devices()
 
 
 def set_omp_num_threads_if_unset() -> bool:
@@ -362,43 +365,44 @@ def set_omp_num_threads_if_unset() -> bool:
     return True
 
 
-def set_cuda_visible_devices(gpu_ids):
+def set_cuda_visible_devices(dev_ids):
     """Set the CUDA_VISIBLE_DEVICES environment variable.
 
     Args:
-        gpu_ids (List[str]): List of strings representing GPU IDs.
+        dev_ids (List[str]): List of strings representing GPU IDs.
     """
 
     if os.environ.get(ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR):
         return
 
     global last_set_gpu_ids
-    if last_set_gpu_ids == gpu_ids:
+    if last_set_gpu_ids == dev_ids:
         return  # optimization: already set
 
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in gpu_ids])
-    last_set_gpu_ids = gpu_ids
+    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in dev_ids])
+    last_set_gpu_ids = dev_ids
 
 
-def set_xpu_visible_devices(xpu_ids):
+def set_xpu_visible_devices(dev_ids):
     """Set the ONEAPI_DEVICE_SELECTOR environment variable.
     Args:
-        xpu_ids (List[str]): List of strings representing GPU IDs
+        dev_ids (List[str]): List of strings representing GPU IDs
     """
 
     if os.environ.get(ray_constants.NOSET_XPU_VISIBLE_DEVICES_ENV_VAR):
         return
 
-    ids_str = ",".join([str(i) for i in xpu_ids])
+    ids_str = ",".join([str(i) for i in dev_ids])
     os.environ["XPU_VISIBLE_DEVICES"] = ids_str
     os.environ["ONEAPI_DEVICE_SELECTOR"] = ray_constants.RAY_DEVICE_XPU_BACKEND_TYPE + ":" + ids_str
 
 
-def set_gpu_visible_devices(gpu_ids):
-    if ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "CUDA":
-        set_cuda_visible_devices(gpu_ids)
-    elif ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "XPU":
-        set_xpu_visible_devices(gpu_ids)
+def set_gpu_visible_devices(device_ids):
+    accelerator = get_current_accelerator()
+    if accelerator == "XPU":
+        return set_xpu_visible_devices(device_ids)
+    elif accelerator == "CUDA":
+        return set_cuda_visible_devices(device_ids)
 
 
 def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:

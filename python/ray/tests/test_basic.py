@@ -232,7 +232,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
 
 @pytest.mark.parametrize("ACCELERATOR_TYPE", ["CUDA", "XPU"])
 def test_submit_api(shutdown_only, ACCELERATOR_TYPE):
-    ray._private.ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR = ACCELERATOR_TYPE
+    os.environ["RAY_ACCELERATOR"] = ACCELERATOR_TYPE
     ray.init(num_cpus=2, num_gpus=1, resources={"Custom": 1})
 
     @ray.remote

@@ -423,8 +423,8 @@ class Worker:
         self.mode = None
         self.actors = {}
         # When the worker is constructed.
-        # Record the original value of the CUDA_VISIBLE_DEVICES environment variable.
-        # Record the original value of the XPU_VISIBLE_DEVICES environment variable.
+        # Record the original value of the CUDA_VISIBLE_DEVICES environment variable,
+        # or value of the XPU_VISIBLE_DEVICES environment variable.
         self.original_gpu_ids = ray._private.utils.get_gpu_visible_devices()
         # A dictionary that maps from driver id to SerializationContext
         # TODO: clean up the SerializationContext once the job finished.
@@ -884,8 +884,12 @@ def get_cuda_ids():
 
 def get_xpu_ids():
     """ Get the IDs of the XPUs that are available to the worker.
+
     If the XPU_VISIBLE_DEVICES environment variable was set when the worker
-    started up,
+    started up, then the IDs returned by this method will be a subset of the
+    IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
+    [0, NUM_GPUS - 1], where NUM_GPUS is the number of GPUs that the node has.
+
     Returns:
         A list of XPU IDs
     """
@@ -899,44 +903,42 @@ def get_xpu_ids():
                 "called from the driver. This is because Ray does not manage "
                 "XPU allocations to the driver process."
             )
-    # Here we use `dpctl` to detect XPU device:
-    #   Enumrate all device by API dpctl.get_devices
-    #   Notice that ONEAPI_DEVICE_SELECTOR environment variable should be unset
-    #   Or dpctl.get_devices will only return filtered device set by ONEAPI_DEVICE_SELECTOR
-    # Another method to enumrate XPU device is to use C++ API, maybe can upgrade laster
-    has_dpctl = True
-    try:
-        import dpctl
-    except ImportError:
-        has_dpctl = False
 
-    if not has_dpctl:
-        return []
+    # Get all resources from global core worker
+    all_resource_ids = global_worker.core_worker.resource_ids()
+    assigned_ids = set()
+    for resource, assignment in all_resource_ids.items():
+        # Handle both normal and placement group GPU resources.
+        # Note: We should only get the GPU ids from the placement
+        # group resource that does not contain the bundle index!
+        import re
 
-    xpu_devices = dpctl.get_devices(backend=ray_constants.RAY_DEVICE_XPU_BACKEND_TYPE,
-                                    device_type=ray_constants.RAY_DEVICE_XPU_DEVICE_TYPE)
-    xpu_ava_ids = set()
-    xpu_dev_prefix = f"{ray_constants.RAY_DEVICE_XPU_BACKEND_TYPE}:{ray_constants.RAY_DEVICE_XPU_DEVICE_TYPE}"
-    for xpu_dev in xpu_devices:
-        xpu_id = int(xpu_dev.filter_string.split(xpu_dev_prefix)[1])
-        xpu_ava_ids.add(xpu_id)
+        if resource == "GPU" or re.match(r"^GPU_group_[0-9A-Za-z]+$", resource):
+            for resource_id, _ in assignment:
+                assigned_ids.add(resource_id)
 
-    xpu_ids = []
+    assigned_ids = list(assigned_ids)
+    # If the user had already set CUDA_VISIBLE_DEVICES, then respect that (in
+    # the sense that only GPU IDs that appear in CUDA_VISIBLE_DEVICES should be
+    # returned).
     if global_worker.original_gpu_ids is not None:
-        xpu_ids = [
-            global_worker.original_gpu_ids[xpu_id] for xpu_id in xpu_ava_ids
+        assigned_ids = [
+            global_worker.original_gpu_ids[gpu_id] for gpu_id in assigned_ids
         ]
 
-    return xpu_ids
+    return assigned_ids
 
 
 @PublicAPI
 @client_mode_hook
 def get_gpu_ids():
-    if ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "CUDA":
-        return get_cuda_ids()
-    elif ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR == "XPU":
-        return get_xpu_ids()
+    accelerator = ray._private.utils.get_current_accelerator()
+    ids = []
+    if accelerator == "CUDA":
+        ids = get_cuda_ids()
+    elif accelerator == "XPU":
+        ids = get_xpu_ids()
+    return ids
 
 
 @Deprecated(

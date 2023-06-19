@@ -37,9 +37,26 @@ def save_gpu_ids_shutdown_only():
         del os.environ["CUDA_VISIBLE_DEVICES"]
 
 
+@pytest.fixture
+def save_xpu_ids_shutdown_only():
+    # Record the curent value of this environment variable so that we can
+    # reset it after the test.
+    original_xpu_ids = os.environ.get("XPU_VISIBLE_DEVICES", None)
+
+    yield None
+
+    # The code after the yield will run as teardown code.
+    ray.shutdown()
+    # Reset the environment variable.
+    if original_xpu_ids is not None:
+        os.environ["XPU_VISIBLE_DEVICES"] = original_xpu_ids
+    else:
+        del os.environ["XPU_VISIBLE_DEVICES"]
+
+
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows")
 def test_specific_gpus(save_gpu_ids_shutdown_only):
-    ray._private.ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR = "CUDA"
+    os.environ["RAY_ACCELERATOR"] = "CUDA"
     allowed_gpu_ids = [4, 5, 6]
     os.environ["CUDA_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_gpu_ids])
     ray.init(num_gpus=3)
@@ -62,21 +79,21 @@ def test_specific_gpus(save_gpu_ids_shutdown_only):
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Hangs on Windows")
-def test_specific_xpus(save_gpu_ids_shutdown_only):
-    ray._private.ray_constants.RAY_DEVICE_CURRENT_ACCELERATOR = "XPU"
+def test_specific_xpus(save_xpu_ids_shutdown_only):
+    os.environ["RAY_ACCELERATOR"] = "XPU"
     allowed_xpu_ids = [1, 3, 5]
     os.environ["XPU_VISIBLE_DEVICES"] = ",".join([str(i) for i in allowed_xpu_ids])
     ray.init(num_gpus=3)
 
     @ray.remote(num_gpus=1)
     def f():
-        xpu_ids = ray.get_xpu_ids()
+        xpu_ids = ray.get_gpu_ids()
         assert len(xpu_ids) == 1
         assert int(xpu_ids[0]) in allowed_xpu_ids
 
     @ray.remote(num_gpus=2)
     def g():
-        xpu_ids = ray.get_xpu_ids()
+        xpu_ids = ray.get_gpu_ids()
         assert len(xpu_ids) == 2
         assert int(xpu_ids[0]) in allowed_xpu_ids
         assert int(xpu_ids[1]) in allowed_xpu_ids
