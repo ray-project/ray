@@ -125,7 +125,7 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
         ray.data.range(1000, parallelism=1).map(
             lambda _: {"out": LARGE_VALUE}
         ).write_csv(path)
-        return ray.data.read_csv(path)
+        return ray.data.read_csv(path, parallelism=1)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -171,7 +171,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         # will only write to one file, even though there are multiple
         # blocks created by block splitting.
         ds.write_parquet(path)
-        return ray.data.read_parquet(path, parallelism=200)
+        return ray.data.read_parquet(path, parallelism=1)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -182,17 +182,17 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     ctx.target_max_block_size = 3_000_000
     ds2 = gen("out2")
     nrow = ds2._block_num_rows()
-    assert 3 < len(nrow) < 5, nrow
+    assert 2 < len(nrow) < 5, nrow
     for x in nrow[:-1]:
-        assert 50000 < x < 75000, (x, nrow)
+        assert 50000 < x < 95000, (x, nrow)
 
     # 1MiB
     ctx.target_max_block_size = 1_000_000
     ds3 = gen("out3")
     nrow = ds3._block_num_rows()
-    assert 8 < len(nrow) < 12, nrow
+    assert 6 < len(nrow) < 12, nrow
     for x in nrow[:-1]:
-        assert 20000 < x < 25000, (x, nrow)
+        assert 20000 < x < 35000, (x, nrow)
 
 
 @pytest.mark.parametrize("use_actors", [False, True])

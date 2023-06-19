@@ -289,7 +289,7 @@ class _ParquetDatasourceReader(Reader):
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
 
-            if meta.num_rows is not None and meta.size_bytes is not None:
+            if meta.num_rows and meta.size_bytes:
                 # Make sure the batches read are small enough to enable yielding of
                 # output blocks incrementally during the read.
                 row_size = meta.size_bytes / meta.num_rows

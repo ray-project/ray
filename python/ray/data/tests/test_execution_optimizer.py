@@ -443,6 +443,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         read_op = Read(
             ParquetDatasource(),
             [],
+            0,
             # This case is testing fusing the following 2 map_batches operators.
             # So we add incompatible remote args to the read op to make sure
             # it doesn't get fused.
@@ -491,6 +492,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         read_op = Read(
             ParquetDatasource(),
             [],
+            0,
             # This case is testing fusing the following 2 map_batches operators.
             # So we add incompatible remote args to the read op to make sure
             # it doesn't get fused.
