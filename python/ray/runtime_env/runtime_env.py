@@ -355,7 +355,7 @@ class RuntimeEnv(dict):
         # This is the case in Ubuntu 22.04, which ships GLIBCXX_3.4.30,
         # but the miniconda we use in CI only ships GLIBCXX_3.4.29.
         if "_inject_stdlibcxx" not in self:
-            if "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ:
+            if "RAY_RUNTIME_ENV_LOCAL_DEV_MODE" in os.environ or os.environ.get("CI"):
                 self["_inject_stdlibcxx"] = True
 
         # NOTE(architkulkarni): This allows worker caching code in C++ to check
