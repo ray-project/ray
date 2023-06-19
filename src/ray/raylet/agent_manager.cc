@@ -163,7 +163,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
     GetOrCreateRuntimeEnvCallback callback) {
   json runtime_env = json::parse(serialized_runtime_env);
   auto runtime_env_map = runtime_env.get<std::unordered_map<std::string, json>>();
-  bool is_simple = true;
+  bool is_simple = RayConfig::instance().enable_runtime_env_v2();
   for (const auto& entry : runtime_env_map) {
     if (entry.first != "env_vars") {
       is_simple = false;

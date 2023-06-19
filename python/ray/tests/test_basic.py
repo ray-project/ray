@@ -148,6 +148,11 @@ def test_default_worker_import_dependency():
 
 
 # https://github.com/ray-project/ray/issues/7287
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [{"_system_config": {"enable_runtime_env_v2": True}}],
+    indirect=True,
+)
 def test_omp_threads_set(ray_start_cluster, monkeypatch):
     import os
 
