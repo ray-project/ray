@@ -767,7 +767,6 @@ def test_parquet_write(ray_start_regular_shared, fs, data_path, endpoint_url):
 def test_parquet_write_create_dir(
     ray_start_regular_shared, fs, data_path, endpoint_url
 ):
-    # TODO(scott_optimizer): need union https://github.com/ray-project/ray/pull/36242
     if endpoint_url is None:
         storage_options = {}
     else:

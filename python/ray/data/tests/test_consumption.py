@@ -80,7 +80,6 @@ def test_dataset_lineage_serialization(shutdown_only):
 
 
 def test_dataset_lineage_serialization_unsupported(shutdown_only):
-    # TODO(scott_optimizer): need union https://github.com/ray-project/ray/pull/36242
     ray.init()
     # In-memory data sources not supported.
     ds = ray.data.from_items(list(range(10)))
@@ -1049,7 +1048,6 @@ def test_lazy_loading_iter_batches_exponential_rampup(ray_start_regular_shared):
 
 
 def test_union(ray_start_regular_shared):
-    # TODO(scott_optimizer): need union https://github.com/ray-project/ray/pull/36242
     ds = ray.data.range(20, parallelism=10)
 
     # Test lazy union.

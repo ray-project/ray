@@ -133,6 +133,7 @@ def _get_execution_dag(
     # Get DAG of physical operators and input statistics.
     if (
         DataContext.get_current().optimizer_enabled
+        # TODO(scottjlee): remove this once we deprecate dataset pipelines.
         and not plan._skip_optimizer_pipeline
     ):
         dag = get_execution_plan(plan._logical_plan).dag

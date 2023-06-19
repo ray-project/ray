@@ -20,6 +20,8 @@ def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     # prevents resource deadlocks due to overlapping stage execution (e.g.,
     # task -> actor stage).
     ds = fn()
+    # Flag used to skip the new plan optimizer, which does not
+    # support DatasetPipeline (will fall back to legacy plan optimizer)
     ds._plan._skip_optimizer_pipeline = True
     return ds.materialize()
 
