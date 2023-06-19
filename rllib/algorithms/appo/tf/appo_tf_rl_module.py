@@ -4,7 +4,7 @@ from ray.rllib.algorithms.appo.appo_learner import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
+from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,

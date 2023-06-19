@@ -134,7 +134,7 @@ if __name__ == "__main__":
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")),
         )
-        .training(train_batch_size=1024, model={"vf_share_layers": vf_share_layers})
+        .training(train_batch_size=1024)
         .rollouts(num_rollout_workers=1, rollout_fragment_length="auto")
         .framework(args.framework, eager_tracing=args.eager_tracing)
         .multi_agent(

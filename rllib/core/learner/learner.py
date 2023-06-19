@@ -1150,9 +1150,9 @@ class Learner:
         batch = self._convert_batch_type(batch)
         for pid, policy_batch in batch.policy_batches.items():
             if self.module._rl_modules[pid].is_recurrent():
-                assert policy_batch.get(SampleBatch.SEQ_LENS, None) is not None, (
-                    "Recurrent modules require a `seq_lens` tensor in the policy batch."
-                )
+                assert (
+                    policy_batch.get(SampleBatch.SEQ_LENS, None) is not None
+                ), "Recurrent modules require a `seq_lens` tensor in the policy batch."
                 # We assume that arriving batches for recurrent modules are already
                 # padded to the max sequence length and have tensors of shape
                 # [B, T, ...]. Therefore, we slice sequence lengths in B. See

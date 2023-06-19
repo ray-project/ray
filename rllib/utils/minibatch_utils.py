@@ -2,6 +2,7 @@ import math
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.policy.sample_batch import SampleBatch
 
 
 @DeveloperAPI
@@ -69,15 +70,30 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 n_steps = self._minibatch_size
 
                 samples_to_concat = []
-                # cycle through the batch until we have enough samples
-                from ray.rllib.policy.sample_batch import SampleBatch
 
-                while n_steps >= len(module_batch[SampleBatch.SEQ_LENS]) - s:
-                    sample = module_batch[s:]
-                    samples_to_concat.append(sample)
-                    n_steps -= len(sample[SampleBatch.SEQ_LENS])
-                    s = 0
-                    self._num_covered_epochs[module_id] += 1
+                # cycle through the batch until we have enough samples
+                if module_batch._slice_seq_lens_in_B:
+                    assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
+                        "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"
+                        "to be present in the batch for slicing a batch in the batch "
+                        "dimension B."
+                    )
+
+                    while n_steps >= len(module_batch[SampleBatch.SEQ_LENS]) - s:
+                        sample = module_batch[s:]
+                        samples_to_concat.append(sample)
+                        len_sample = len(sample[SampleBatch.SEQ_LENS])
+                        assert len_sample > 0, "Length of a sample must be > 0"
+                        n_steps -= len(sample[SampleBatch.SEQ_LENS])
+                        s = 0
+                        self._num_covered_epochs[module_id] += 1
+                else:
+                    while n_steps >= len(module_batch) - s:
+                        sample = module_batch[s:]
+                        samples_to_concat.append(sample)
+                        n_steps -= len(sample)
+                        s = 0
+                        self._num_covered_epochs[module_id] += 1
 
                 e = s + n_steps  # end
                 if e > s:
