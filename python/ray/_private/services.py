@@ -1592,9 +1592,8 @@ def start_raylet(
 
     if not ray._private.utils.check_dashboard_dependencies_installed():
         # If dependencies are not installed, it is the minimally packaged
-        # ray. We should restrict the features within dashboard agent
-        # that requires additional dependencies to be downloaded.
-        agent_command.append("--minimal")
+        # ray.
+        agent_command = []
 
     command = [
         RAYLET_EXECUTABLE,
