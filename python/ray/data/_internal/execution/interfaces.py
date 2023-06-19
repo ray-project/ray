@@ -396,7 +396,15 @@ class PhysicalOperator(Operator):
         """
         raise NotImplementedError
 
-    def inputs_done(self) -> None:
+    def input_done(self, input_index: int) -> None:
+        """Called when the upstream operator at index `input_index` has completed().
+
+        After this is called, the executor guarantees that no more inputs will be added
+        via `add_input` for the given input index.
+        """
+        pass
+
+    def all_inputs_done(self) -> None:
         """Called when all upstream operators have completed().
 
         After this is called, the executor guarantees that no more inputs will be added
