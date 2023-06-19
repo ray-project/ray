@@ -162,10 +162,18 @@ void AgentManager::GetOrCreateRuntimeEnv(
     const std::string &serialized_allocated_resource_instances,
     GetOrCreateRuntimeEnvCallback callback) {
   json runtime_env = json::parse(serialized_runtime_env);
-
-  // We just pretend we set up the runtime environment
-  callback(true, serialized_runtime_env, /*setup_error_message*/ "");
-  return;
+  auto runtime_env_map = runtime_env.get<std::unordered_map<std::string, json>>();
+  bool is_simple = true;
+  for (const auto& entry : runtime_env_map) {
+    if (entry.first != "env_vars") {
+      is_simple = false;
+    }
+  }
+  if (is_simple) {
+    // We just pretend we set up the runtime environment
+    callback(true, serialized_runtime_env, /*setup_error_message*/ "");
+    return;
+  }
 
   // If the agent cannot be started, fail the request.
   if (!should_start_agent_) {
