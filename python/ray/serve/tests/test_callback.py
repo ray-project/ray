@@ -15,7 +15,7 @@ from ray import serve
 from ray.serve._private.utils import call_function_from_import_path
 
 
-# ==== Callback function begin ====
+# ==== Callbacks used in this test ====
 class ASGIMiddleware:
     def __init__(self, app):
         self.app = app
@@ -55,7 +55,7 @@ ADD_LOGGER_IMPORT_PATH = "ray.serve.tests.test_callback.add_logger"
 RAISE_ERROR_IMPORT_PATH = "ray.serve.tests.test_callback.raise_error_callback"
 RETURN_BAD_OBJECTS_IMPORT_PATH = "ray.serve.tests.test_callback.return_bad_objects"
 NOT_CALLABLE_OBJECT = 1
-# ==== Callback function end ====
+# ==== end ====
 
 
 @pytest.fixture()
