@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import boto3
 from botocore.exceptions import ClientError
+from github import Repository
 
 from ray_release.result import (
     ResultStatus,
@@ -91,10 +92,29 @@ class Test(dict):
         super().__init__(*args, **kwargs)
         self.test_results = None
 
+    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+        """
+        Returns whether this test is jailed with open issue.
+        """
+        # is jailed
+        state = self.get_state()
+        if state != TestState.JAILED:
+            return False
+
+        # has open issue
+        issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
+        if issue_number is None:
+            return False
+        issue = ray_github.get_issue(issue_number)
+        return issue.state == "open"
+
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.
         """
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false":
+            # Do not run BYOD tests on PRs
+            return False
         return self["cluster"].get("byod") is not None
 
     def get_byod_type(self) -> Optional[str]:
@@ -120,6 +140,14 @@ class Test(dict):
         if not self.is_byod_cluster():
             return {}
         return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+
+    def get_byod_pips(self) -> List[str]:
+        """
+        Returns the list of pips for the BYOD cluster.
+        """
+        if not self.is_byod_cluster():
+            return []
+        return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:
         """

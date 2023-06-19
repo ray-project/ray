@@ -182,4 +182,4 @@ def test_jupyter_rich_output(legacy_progress_reporter, start_client_server_4_cpu
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

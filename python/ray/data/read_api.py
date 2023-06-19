@@ -41,7 +41,7 @@ from ray.data._internal.util import (
     pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
+from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -331,11 +331,8 @@ def read_datasource(
         )
         local_uri = True
 
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     force_local = False
     cur_pg = ray.util.get_current_placement_group()
@@ -1415,7 +1412,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+        :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
 

@@ -1,4 +1,4 @@
-.. _transforming-data:
+.. _transforming_data:
 
 =================
 Transforming Data
@@ -7,6 +7,9 @@ Transforming Data
 Transformations let you process and modify your dataset. You can compose transformations
 to express a chain of computations.
 
+.. note::
+    Transformations are lazy by default. They aren't executed until you trigger consumption of the data by :ref:`iterating over the Dataset <iterating-over-data>`, :ref:`saving the Dataset <saving-data>`, or :ref:`inspecting properties of the Dataset <inspecting-data>`.
+
 This guide shows you how to:
 
 * `Transform rows <#transforming-rows>`_
@@ -14,6 +17,8 @@ This guide shows you how to:
 * `Groupby and transform groups <#groupby-and-transforming-groups>`_
 * `Shuffle rows <#shuffling-rows>`_
 * `Repartition data <#repartitioning-data>`_
+
+.. _transforming_rows:
 
 Transforming rows
 =================
@@ -71,6 +76,8 @@ If your transformation returns multiple rows for each input row, call
 
     [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
+.. _transforming_batches:
+
 Transforming batches
 ====================
 
@@ -107,6 +114,8 @@ uses tasks by default.
         ray.data.read_images("example://image-datasets/simple")
         .map_batches(increase_brightness)
     )
+
+.. _transforming_data_actors:
 
 Transforming batches with actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -191,8 +200,10 @@ To transform batches with actors, complete these steps:
 
             ds.materialize()
 
-Configuring batch type
-~~~~~~~~~~~~~~~~~~~~~~
+.. _configure_batch_format:
+
+Configuring batch format
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 Ray Data represents batches as dicts of NumPy ndarrays or pandas DataFrames. By
 default, Ray Data represents batches as dicts of NumPy ndarrays.
@@ -247,6 +258,8 @@ program might run out of memory. If you encounter an out-of-memory error, decrea
     The default batch size depends on your resource type. If you're using CPUs,
     the default batch size is 4096. If you're using GPUs, you must specify an explicit
     batch size.
+
+.. _transforming_groupby:
 
 Groupby and transforming groups
 ===============================
