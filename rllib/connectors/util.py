@@ -1,7 +1,6 @@
 import logging
 from typing import Any, Tuple, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.connectors.action.clip import ClipActionsConnector
 from ray.rllib.connectors.action.immutable import ImmutableActionsConnector
 from ray.rllib.connectors.action.lambdas import ConvertToNumpyConnector
@@ -22,12 +21,13 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.connectors.agent.synced_filter import SyncedFilterAgentConnector
 
 if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.policy.policy import Policy
 
 logger = logging.getLogger(__name__)
 
 
-def __preprocessing_enabled(config: AlgorithmConfig):
+def __preprocessing_enabled(config: "AlgorithmConfig"):
     if config._disable_preprocessor_api:
         return False
     # Same conditions as in RolloutWorker.__init__.
@@ -38,7 +38,7 @@ def __preprocessing_enabled(config: AlgorithmConfig):
     return True
 
 
-def __clip_rewards(config: AlgorithmConfig):
+def __clip_rewards(config: "AlgorithmConfig"):
     # Same logic as in RolloutWorker.__init__.
     # We always clip rewards for Atari games.
     return config.clip_rewards or config.is_atari
@@ -47,7 +47,7 @@ def __clip_rewards(config: AlgorithmConfig):
 @PublicAPI(stability="alpha")
 def get_agent_connectors_from_config(
     ctx: ConnectorContext,
-    config: AlgorithmConfig,
+    config: "AlgorithmConfig",
 ) -> AgentConnectorPipeline:
     connectors = []
 
@@ -81,7 +81,7 @@ def get_agent_connectors_from_config(
 @PublicAPI(stability="alpha")
 def get_action_connectors_from_config(
     ctx: ConnectorContext,
-    config: AlgorithmConfig,
+    config: "AlgorithmConfig",
 ) -> ActionConnectorPipeline:
     """Default list of action connectors to use for a new policy.
 
@@ -99,7 +99,7 @@ def get_action_connectors_from_config(
 
 
 @PublicAPI(stability="alpha")
-def create_connectors_for_policy(policy: "Policy", config: AlgorithmConfig):
+def create_connectors_for_policy(policy: "Policy", config: "AlgorithmConfig"):
     """Util to create agent and action connectors for a Policy.
 
     Args:
