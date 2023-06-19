@@ -3,6 +3,7 @@ import json
 import logging
 import pathlib
 from collections import defaultdict
+from enum import Enum
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -82,6 +83,18 @@ ENTROPY_KEY = "entropy"
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
+class TorchCompileWhatToCompile(str, Enum):
+    """Enumerates schemes of what parts of the TorchLearner can be compiled."""
+
+    # Compile the entire update step of the learner.
+    # This includes the forward pass of the RLModule, the loss computation, and the
+    # optimizer step.
+    complete_update = "complete_update"
+    # Only compile the forward methods (and therein the forward_train method) of the
+    # RLModule.
+    forward_train = "forward_train"
+
+
 @dataclass
 class FrameworkHyperparameters:
     """The framework specific hyper-parameters.
@@ -95,15 +108,16 @@ class FrameworkHyperparameters:
         torch_compile: Whether to use torch.compile() within the context of a given
             learner.
         what_to_compile: What to compile when using torch.compile(). Can be one of
-            ["complete_update", "forward_train"].
-            If "complete_update", the update step of the learner will be compiled. This
+            [TorchCompileWhatToCompile.complete_update,
+            TorchCompileWhatToCompile.forward_train].
+            If `complete_update`, the update step of the learner will be compiled. This
             includes the forward pass of the RLModule, the loss computation, and the
             optimizer step.
-            If "forward_train", only the forward methods (and therein the
+            If `forward_train`, only the forward methods (and therein the
             forward_train method) of the RLModule will be compiled.
             Either of the two may lead to different performance gains in different
             settings.
-            "complete_update" promises the highest performance gains, but may work
+            `complete_update` promises the highest performance gains, but may not work
             in some settings. By compiling only forward_train, you may already get
             some speedups and avoid issues that arise from compiling the entire update.
         troch_compile_config: The TorchCompileConfig to use for compiling the RL
@@ -112,14 +126,25 @@ class FrameworkHyperparameters:
 
     eager_tracing: bool = False
     torch_compile: bool = False
-    what_to_compile: str = "complete_update"
+    what_to_compile: str = TorchCompileWhatToCompile.forward_train
     torch_compile_cfg: Optional["TorchCompileConfig"] = None
 
     def validate(self):
-        if self.what_to_compile not in ["complete_update", "forward_train"]:
-            raise ValueError(
-                "what_to_compile must be one of ['complete_update', 'forward_train']."
-            )
+        if self.torch_compile:
+            if self.what_to_compile not in [
+                TorchCompileWhatToCompile.forward_train,
+                TorchCompileWhatToCompile.complete_update,
+            ]:
+                raise ValueError(
+                    f"what_to_compile must be one of ["
+                    f"TorchCompileWhatToCompile.forward_train, "
+                    f"TorchCompileWhatToCompile.complete_update] but is"
+                    f" {self.what_to_compile}"
+                )
+            if self.torch_compile_cfg is None:
+                raise ValueError(
+                    "torch_compile_cfg must be set when torch_compile is True."
+                )
 
 
 @dataclass

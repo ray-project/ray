@@ -28,6 +28,7 @@ from ray.rllib.core.learner.learner_group_config import (
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -282,7 +283,9 @@ class AlgorithmConfig(_Config):
         }
         # Torch compile settings
         self.torch_compile_learner = False
-        self.torch_compile_learner_what_to_compile = "complete_update"
+        self.torch_compile_learner_what_to_compile = (
+            TorchCompileWhatToCompile.forward_train
+        )
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
@@ -1261,9 +1264,10 @@ class AlgorithmConfig(_Config):
             torch_compile_learner_what_to_compile: A string specifying what to
                 compile on the learner side if torch_compile_learner is True.
                 This can be one of the following:
-                - "complete_update": Compile the forward_train method, the loss
-                    calculation and the optimizer step together on the TorchLearner.
-                - "forward_train": Compile only forward train.
+                - TorchCompileWhatToCompile.complete_update: Compile the
+                    forward_train method, the loss calculation and the optimizer step
+                    together on the TorchLearner.
+                - TorchCompileWhatToCompile.forward_train: Compile only forward train.
                 Note:
                 - torch.compiled code can become slow on graph breaks or even raise
                     errors on unsupported operations. Empirically, compiling
@@ -1313,12 +1317,6 @@ class AlgorithmConfig(_Config):
         if torch_compile_learner_dynamo_mode is not NotProvided:
             self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
         if torch_compile_learner_what_to_compile is not NotProvided:
-            if torch_compile_learner_what_to_compile == "complete_update":
-                logger.debug(
-                    "Using `complete_update` for torch compilation on the "
-                    "Learner. This setting is experimental and may result in "
-                    "errors."
-                )
             self.torch_compile_learner_what_to_compile = (
                 torch_compile_learner_what_to_compile
             )

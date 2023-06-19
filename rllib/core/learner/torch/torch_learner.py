@@ -15,6 +15,7 @@ from ray.rllib.core.learner.learner import (
     FrameworkHyperparameters,
     Learner,
     LearnerHyperparameters,
+    TorchCompileWhatToCompile,
 )
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
 from ray.rllib.core.rl_module.rl_module import (
@@ -82,7 +83,10 @@ class TorchLearner(Learner):
         # RL Modules.
         self._torch_compile_complete_update = False
         if self._framework_hyperparameters.torch_compile:
-            if self._framework_hyperparameters.what_to_compile == "complete_update":
+            if (
+                self._framework_hyperparameters.what_to_compile
+                == TorchCompileWhatToCompile.complete_update
+            ):
                 self._torch_compile_complete_update = True
                 self._compiled_update_initialized = False
             else:

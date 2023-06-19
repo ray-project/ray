@@ -4,7 +4,10 @@ import unittest
 import gymnasium as gym
 
 import ray
-from ray.rllib.core.learner.learner import FrameworkHyperparameters
+from ray.rllib.core.learner.learner import (
+    FrameworkHyperparameters,
+    TorchCompileWhatToCompile,
+)
 from ray.rllib.utils.torch_utils import _dynamo_is_available
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.core.testing.utils import get_learner
@@ -31,7 +34,10 @@ class TestLearner(unittest.TestCase):
 
         env = gym.make("CartPole-v1")
         is_multi_agents = [False, True]
-        what_to_compiles = ["forward_train", "complete_update"]
+        what_to_compiles = [
+            TorchCompileWhatToCompile.forward_train,
+            TorchCompileWhatToCompile.complete_update,
+        ]
 
         for is_multi_agent, what_to_compile in itertools.product(
             is_multi_agents, what_to_compiles
