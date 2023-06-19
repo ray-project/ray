@@ -139,16 +139,6 @@ if __name__ == "__main__":
             print(f"Skipping framework='{args.framework}' for QMIX.")
             continue
 
-        # Always run with eager-tracing when framework=tf2 if not in local-mode.
-        # Ignore this if the yaml explicitly tells us to disable eager tracing
-        if (
-            args.framework == "tf2"
-            and not args.local_mode
-            and not exp["config"].get("eager_tracing") is False
-        ):
-
-            exp["config"]["eager_tracing"] = True
-
         # Print out the actual config.
         print("== Test config ==")
         print(yaml.dump(experiments))

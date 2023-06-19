@@ -260,7 +260,7 @@ class AlgorithmConfig(_Config):
 
         # `self.framework()`
         self.framework_str = "torch"
-        self.eager_tracing = False
+        self.eager_tracing = True
         self.eager_max_retraces = 20
         self.tf_session_args = {
             # note: overridden by `local_tf_session_args`
@@ -1237,8 +1237,8 @@ class AlgorithmConfig(_Config):
         """Sets the config's DL framework settings.
 
         Args:
-            framework: tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
-                (eager or traced, if eager_tracing=True); torch: PyTorch
+            framework: torch: PyTorch; tf2: TensorFlow 2.x (eager execution or traced
+                if eager_tracing=True); tf: TensorFlow (static-graph);
             eager_tracing: Enable tracing in eager mode. This greatly improves
                 performance (speedup ~2x), but makes it slightly harder to debug
                 since Python code won't be evaluated after the initial eager pass.
