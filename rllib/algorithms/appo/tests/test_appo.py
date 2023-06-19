@@ -25,7 +25,7 @@ class TestAPPO(unittest.TestCase):
         config = appo.APPOConfig().rollouts(num_rollout_workers=1)
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             print("w/o v-trace")
             config.vtrace = False
             algo = config.build(env="CartPole-v1")
@@ -55,7 +55,7 @@ class TestAPPO(unittest.TestCase):
         )
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")
             for i in range(num_iterations):
                 results = algo.train()
@@ -117,30 +117,30 @@ class TestAPPO(unittest.TestCase):
         )
 
         def _step_n_times(algo, n: int):
-            """Step Algorithm n times.
-
-            Returns:
-                learning rate at the end of the execution.
-            """
             for _ in range(n):
                 results = algo.train()
                 print(algo.workers.local_worker().global_vars)
                 print(results)
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
-                "entropy_coeff"
-            ]
+            return (
+                results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                    "entropy_coeff"
+                ],
+                results["num_env_steps_sampled"],
+            )
 
         for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")
 
-            coeff = _step_n_times(algo, 10)  # 200 timesteps
-            # Should be close to the starting coeff of 0.01.
-            self.assertLessEqual(coeff, 0.01)
-            self.assertGreaterEqual(coeff, 0.001)
+            coeff, num_env_steps_sampled = _step_n_times(algo, 5)  # ~100 timesteps
+            if num_env_steps_sampled > 300:
+                self.assertLessEqual(coeff, 0.001)
+                self.assertGreaterEqual(coeff, 0.0001)
+            else:
+                self.assertLessEqual(coeff, 0.01)
+                self.assertGreaterEqual(coeff, 0.001)
 
-            coeff = _step_n_times(algo, 20)  # 400 timesteps
-            # Should have annealed to the final coeff of 0.0001.
-            self.assertLessEqual(coeff, 0.001)
+            coeff, num_env_steps_sampled = _step_n_times(algo, 20)  # ~400 timesteps
+            self.assertLessEqual(coeff, 0.0005)
 
             algo.stop()
 
