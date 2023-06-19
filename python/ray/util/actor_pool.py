@@ -340,7 +340,11 @@ class ActorPool:
         if not self.has_next():
             raise StopIteration("No more results to get")
         # TODO(ekl) bulk wait for performance
-        res, _ = ray.wait(list(self._future_to_actor), num_returns=1, timeout=timeout)
+        _first_to_future = {
+            future[0] if isinstance(future, tuple) else future: future
+            for future in self._future_to_actor
+        }
+        res, _ = ray.wait(list(_first_to_future), num_returns=1, timeout=timeout)
         timeout_msg = "Timed out waiting for result"
         raise_timeout_after_ignore = False
         if res:
@@ -350,7 +354,10 @@ class ActorPool:
                 raise TimeoutError(timeout_msg)
             else:
                 raise_timeout_after_ignore = True
-        i, a = self._future_to_actor.pop(future)
+
+        future = _first_to_future[future]
+        future_key = tuple(future) if isinstance(future, list) else future
+        i, a = self._future_to_actor.pop(future_key)
         self._return_actor(a)
         del self._index_to_future[i]
         self._next_return_index = max(self._next_return_index, i + 1)
