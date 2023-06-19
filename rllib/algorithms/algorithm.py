@@ -705,11 +705,20 @@ class Algorithm(Trainable):
             #  to be consistent with one another. To make a consistent parity between
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
+            local_worker = self.workers.local_worker()
             policy_dict, _ = self.config.get_multi_agent_setup(
-                env=self.workers.local_worker().env,
-                spaces=getattr(self.workers.local_worker(), "spaces", None),
+                env=local_worker.env,
+                spaces=getattr(local_worker, "spaces", None),
             )
-            module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
+            # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
+            #  we get this from the RolloutWorker's `marl_module_spec` property.
+            #  However, this is hacky (information leak) and should not remain this
+            #  way. For other EnvRunner classes (that don't have this property),
+            #  Algorithm should infer this itself.
+            if hasattr(local_worker, "marl_module_spec"):
+                module_spec = local_worker.marl_module_spec
+            else:
+                module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
@@ -728,7 +737,7 @@ class Algorithm(Trainable):
                 )
             # sync the weights from the learner group to the rollout workers
             weights = self.learner_group.get_weights()
-            self.workers.local_worker().set_weights(weights)
+            local_worker.set_weights(weights)
             self.workers.sync_weights()
 
         # Run `on_algorithm_init` callback after initialization is done.
