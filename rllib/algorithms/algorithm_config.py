@@ -130,7 +130,7 @@ class AlgorithmConfig(_Config):
         ...     .resources(num_gpus=0)
         ...     .rollouts(num_rollout_workers=4)
         ...     .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Trainer.
+        >>> # A config object can be used to construct the respective Algorithm.
         >>> rllib_algo = config.build()  # doctest: +SKIP
 
     Example:
@@ -142,7 +142,7 @@ class AlgorithmConfig(_Config):
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.Tuner().fit()`.
         >>> tune.Tuner(  # doctest: +SKIP
-        ...     "[registered trainer class]", param_space=config.to_dict()
+        ...     "[registered Algorithm class]", param_space=config.to_dict()
         ...     ).fit()
     """
 
@@ -237,7 +237,7 @@ class AlgorithmConfig(_Config):
     def __init__(self, algo_class=None):
         # Define all settings and their default values.
 
-        # Define the default RLlib Trainer class that this AlgorithmConfig will be
+        # Define the default RLlib Algorithm class that this AlgorithmConfig will be
         # applied to.
         self.algo_class = algo_class
 
@@ -1156,7 +1156,7 @@ class AlgorithmConfig(_Config):
                 `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
                 needs 2 GPUs: `num_learner_workers = 2` and
                 `num_gpus_per_learner_worker = 2`)
-            num_cpus_per_learner_worker: Number of CPUs allocated per trainer worker.
+            num_cpus_per_learner_worker: Number of CPUs allocated per Learner worker.
                 Only necessary for custom processing pipeline inside each Learner
                 requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
             num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
@@ -3090,7 +3090,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.learner.testing.torch.BCTrainer).
+            a string (e.g. ray.rllib.core.learner.testing.torch.BC).
         """
         raise NotImplementedError
 

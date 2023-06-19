@@ -410,7 +410,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             if not self.config.disable_env_checking:
                 check_env(self.env)
             # Custom validation function given, typically a function attribute of the
-            # algorithm trainer.
+            # Algorithm.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
@@ -2053,34 +2053,3 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         else:
             return _make_sub_env_local
-
-    @Deprecated(
-        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=True
-    )
-    def export_policy_model(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="Trainer.get_policy().import_model_from_h5([import_file])", error=True
-    )
-    def import_policy_model_from_h5(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
-        error=True,
-    )
-    def export_policy_checkpoint(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
-    def foreach_trainable_policy(self, func, **kwargs):
-        pass
-
-    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=True)
-    def save(self):
-        pass
-
-    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=True)
-    def restore(self, objs):
-        pass

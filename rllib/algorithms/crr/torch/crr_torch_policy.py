@@ -30,7 +30,7 @@ from ray.rllib.utils.torch_utils import (
     l2_loss,
 )
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
+    AlgorithmConfigDict,
     TensorType,
 )
 
@@ -42,7 +42,7 @@ class CRRTorchPolicy(TorchPolicyV2, TargetNetworkMixin):
         self,
         observation_space: gym.spaces.Space,
         action_space: gym.spaces.Space,
-        config: TrainerConfigDict,
+        config: AlgorithmConfigDict,
     ):
 
         self.target_model = None  # assign it in self.make_model
