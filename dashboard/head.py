@@ -146,7 +146,7 @@ class DashboardHead:
             self.grpc_port, self.server = None, None
         else:
             grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-            self.grpc_port, self.server = initialize_grpc_port_and_server()
+            self.grpc_port, self.server = initialize_grpc_port_and_server(grpc_ip)
             logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
