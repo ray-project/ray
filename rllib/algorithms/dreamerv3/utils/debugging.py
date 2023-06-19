@@ -3,7 +3,10 @@ import numpy as np
 from PIL import Image, ImageDraw
 
 from gymnasium.envs.classic_control.cartpole import CartPoleEnv
-import tensorflow as tf
+
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class CartPoleDebug(CartPoleEnv):

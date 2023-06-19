@@ -7,7 +7,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 D. Hafner, T. Lillicrap, M. Norouzi, J. Ba
 https://arxiv.org/pdf/2010.02193.pdf
 """
-import tensorflow as tf
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class RewardPredictorLayer(tf.keras.layers.Layer):

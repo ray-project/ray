@@ -8,10 +8,12 @@ from typing import Optional
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+
+_, tf, _ = try_import_tf()
+tfp = try_import_tfp()
 
 
 class ActorNetwork(tf.keras.Model):

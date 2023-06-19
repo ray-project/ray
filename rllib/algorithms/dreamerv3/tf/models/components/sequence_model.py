@@ -6,10 +6,12 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
-import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class SequenceModel(tf.keras.Model):

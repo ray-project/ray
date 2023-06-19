@@ -5,9 +5,10 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import tensorflow as tf
-
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class CNNAtari(tf.keras.Model):

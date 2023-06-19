@@ -4,12 +4,14 @@ D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
 
-import tensorflow as tf
-
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
     RepresentationLayer,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+
+_, tf, _ = try_import_tf()
+tfp = try_import_tfp()
 
 
 class DisagreeNetworks(tf.keras.Model):

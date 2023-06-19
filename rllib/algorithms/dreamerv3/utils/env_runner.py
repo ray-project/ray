@@ -14,7 +14,6 @@ from typing import List, Tuple
 import gymnasium as gym
 import numpy as np
 from supersuit.generic_wrappers import resize_v1
-import tensorflow as tf
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -25,8 +24,11 @@ from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.numpy import one_hot
+
+_, tf, _ = try_import_tf()
 
 
 class DreamerV3EnvRunner(EnvRunner):

@@ -7,14 +7,15 @@ import re
 
 import gymnasium as gym
 import numpy as np
-import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.disagree_networks import DisagreeNetworks
 from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
 from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
 from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
-
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import inverse_symlog
+
+_, tf, _ = try_import_tf()
 
 
 class DreamerModel(tf.keras.Model):

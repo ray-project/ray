@@ -9,13 +9,14 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
-import tensorflow as tf
-import tensorflow_probability as tfp
-
 from ray.rllib.algorithms.dreamerv3.utils import (
     get_num_z_categoricals,
     get_num_z_classes,
 )
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+
+_, tf, _ = try_import_tf()
+tfp = try_import_tfp()
 
 
 class RepresentationLayer(tf.keras.layers.Layer):

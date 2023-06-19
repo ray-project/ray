@@ -9,12 +9,13 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
-import tensorflow as tf
-
 from ray.rllib.algorithms.dreamerv3.utils import (
     get_dense_hidden_units,
     get_num_dense_layers,
 )
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class MLP(tf.keras.Model):
