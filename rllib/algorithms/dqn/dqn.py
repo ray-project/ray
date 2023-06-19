@@ -37,9 +37,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-)
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,

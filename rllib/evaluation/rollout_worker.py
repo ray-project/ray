@@ -69,11 +69,7 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
