@@ -291,10 +291,10 @@ class StreamingObjectRefGenerator:
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
-        ref = core_worker.peek_object_ref_stream(
+        expected_ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         ready, unready = ray.wait(
-            [ref], timeout=timeout_s, fetch_local=False)
+            [expected_ref], timeout=timeout_s, fetch_local=False)
         if len(unready) > 0:
             return ObjectRef.nil()
 

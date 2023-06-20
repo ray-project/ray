@@ -152,6 +152,8 @@ class ObjectRefStream {
   const TaskID generator_task_id_;
 
   /// The item_index -> object reference ids.
+  /// TODO(swang): A contiguous range of indices is reserved for streaming
+  /// return IDs, so this and refs_written_to_stream_ can be removed.
   absl::flat_hash_map<int64_t, ObjectID> item_index_to_refs_;
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.

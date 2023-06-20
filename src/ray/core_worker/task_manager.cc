@@ -142,8 +142,8 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
 }
 
 ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
-  RAY_CHECK(generator_index < 100 * 1000 * 1000);
-  // 2 for a single return from a generator task.
+  RAY_CHECK_LT(generator_index < RayConfig::instance().max_num_generator_returns());
+  // Index 1 is reserved for the first task return from a generator task itself.
   return ObjectID::FromIndex(generator_task_id_, 2 + generator_index);
 }
 
