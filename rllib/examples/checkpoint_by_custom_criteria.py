@@ -36,7 +36,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("CartPole-v1")
         # Run with tracing enabled for tf2.
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         # Run 3 trials.
         .training(
             lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341

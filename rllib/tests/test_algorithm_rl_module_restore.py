@@ -63,9 +63,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         """Test if we can train a PPO algorithm with a checkpointed MARL module e2e."""
         config = self.get_ppo_config()
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
-        for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
             module_class = PPO_MODULES[fw]
@@ -107,9 +105,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         """Test if we can train a PPO algorithm with a cpkt MARL and RL module e2e."""
         config = self.get_ppo_config()
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
-        for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
             module_class = PPO_MODULES[fw]
@@ -193,9 +189,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             .resources(**scaling_config)
         )
         env = gym.make("CartPole-v1")
-        for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             # create a marl_module to load and save it to a checkpoint directory
             module_class = PPO_MODULES[fw]
             module_spec = SingleAgentRLModuleSpec(
@@ -248,9 +242,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         num_agents = 3
         config = self.get_ppo_config(num_agents=num_agents)
         env = MultiAgentCartPole({"num_agents": num_agents})
-        for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=["tf2", "torch"]):
             # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
             module_class = PPO_MODULES[fw]

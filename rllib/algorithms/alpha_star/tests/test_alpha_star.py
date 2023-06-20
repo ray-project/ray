@@ -54,7 +54,7 @@ class TestAlphaStar(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             config.policies = None
             algo = config.build()
             for i in range(num_iterations):

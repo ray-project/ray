@@ -138,7 +138,7 @@ def get_learner_group(
     env: "gym.Env",
     scaling_config: LearnerGroupScalingConfig,
     is_multi_agent: bool = False,
-    eager_tracing: bool = False,
+    eager_tracing: bool = True,
 ) -> LearnerGroup:
     """Construct a learner_group for testing.
 

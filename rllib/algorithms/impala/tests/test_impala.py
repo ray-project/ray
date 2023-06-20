@@ -40,7 +40,7 @@ class TestIMPALA(unittest.TestCase):
         )
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             for lstm in [False, True]:
                 config.num_aggregation_workers = 0 if not lstm else 1
                 config.model["use_lstm"] = lstm

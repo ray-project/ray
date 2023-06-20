@@ -116,7 +116,6 @@ class TestAPPOTfLearner(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
-            .framework(eager_tracing=True)
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)
             .rollouts(

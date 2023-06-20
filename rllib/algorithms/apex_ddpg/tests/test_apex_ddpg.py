@@ -33,7 +33,7 @@ class TestApexDDPG(unittest.TestCase):
 
         num_iterations = 1
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build()
 
             # Test per-worker scale distribution.

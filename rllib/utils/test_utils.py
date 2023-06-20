@@ -64,7 +64,6 @@ def framework_iterator(
     config: Optional["AlgorithmConfig"] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
-    with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
 ) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
@@ -81,8 +80,6 @@ def framework_iterator(
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
-        with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
@@ -135,33 +132,14 @@ def framework_iterator(
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
-        # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw == "tf2" and with_eager_tracing:
-            for tracing in [True, False]:
-                if isinstance(config, dict):
-                    config["eager_tracing"] = tracing
-                else:
-                    config.framework(eager_tracing=tracing)
-                print(f"framework={fw} (eager-tracing={tracing})")
-                time_started = time.time()
-                yield fw if session is False else (fw, sess)
-                if time_iterations is not None:
-                    time_total = time.time() - time_started
-                    time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                    print(f".. took {time_total}sec")
-                if isinstance(config, dict):
-                    config["eager_tracing"] = False
-                else:
-                    config.framework(eager_tracing=False)
         # Yield current framework + tf-session (if necessary).
-        else:
-            print(f"framework={fw}")
-            time_started = time.time()
-            yield fw if session is False else (fw, sess)
-            if time_iterations is not None:
-                time_total = time.time() - time_started
-                time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                print(f".. took {time_total}sec")
+        print(f"framework={fw}")
+        time_started = time.time()
+        yield fw if session is False else (fw, sess)
+        if time_iterations is not None:
+            time_total = time.time() - time_started
+            time_iterations[fw] = time_total
+            print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
         if eager_ctx:

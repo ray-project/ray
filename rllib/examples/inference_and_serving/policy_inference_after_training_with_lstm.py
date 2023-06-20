@@ -27,12 +27,6 @@ parser.add_argument(
     help="The DL framework specifier.",
 )
 parser.add_argument(
-    "--eager-tracing",
-    action="store_true",
-    help="Use tf eager tracing to speed up execution in tf2.x. Only supported"
-    " for `framework=tf2`.",
-)
-parser.add_argument(
     "--prev-action",
     action="store_true",
     help="Feed most recent action to the LSTM as part of its input.",
@@ -83,7 +77,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
-        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .framework(args.framework)
         .training(
             model={
                 "use_lstm": True,

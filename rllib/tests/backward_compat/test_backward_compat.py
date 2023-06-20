@@ -42,7 +42,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         # gym version conflict (gym==0.23.x not compatible with gym==0.26.x)).
         for v in []:  # "0.1"
             v = version.Version(v)
-            for fw in framework_iterator(with_eager_tracing=True):
+            for fw in framework_iterator():
                 path_to_checkpoint = os.path.join(
                     rllib_dir,
                     "tests",

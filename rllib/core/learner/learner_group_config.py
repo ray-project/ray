@@ -55,7 +55,7 @@ class LearnerGroupConfig:
         self.local_gpu_idx = 0
 
         # `self.framework()`
-        self.eager_tracing = False
+        self.eager_tracing = True
         self.torch_compile_cfg = None
 
     def validate(self) -> None:

@@ -83,7 +83,7 @@ if __name__ == "__main__":
             "CartPole-v1" if args.run not in ["DDPG", "TD3"] else "Pendulum-v1"
         )
         # Run with tracing enabled for tf2.
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         # Setting up a custom logger config.
         # ----------------------------------
         # The following are different examples of custom logging setups:

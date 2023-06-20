@@ -22,7 +22,6 @@ config = (
         model={"fcnet_activation": "relu"},
         vf_clip_param=10.0,
     )
-    .framework(eager_tracing=True)
 )
 
 stop = {

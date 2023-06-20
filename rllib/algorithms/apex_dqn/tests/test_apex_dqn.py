@@ -64,7 +64,7 @@ class TestApexDQN(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build()
 
             # Test per-worker epsilon distribution.
