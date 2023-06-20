@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
