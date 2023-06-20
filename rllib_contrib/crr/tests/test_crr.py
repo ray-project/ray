@@ -27,7 +27,7 @@ class TestCRR(unittest.TestCase):
             .framework("torch")
             .offline_data(
                 input_=[
-                    "s3://air-example-data/rllib/pendulum/large.json",
+                    "s3://anonymous@air-example-data/rllib/pendulum/large.json",
                 ],
                 actions_in_input_normalized=True,
             )
