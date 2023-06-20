@@ -48,12 +48,7 @@ RUN sudo apt-get update \
         requirements*.txt \
     && sudo apt-get clean
 
-RUN wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz ./
-RUN mkdir $HOME/.mujoco
-RUN tar -zxf mujoco210-linux-x86_64.tar.gz -C $HOME/.mujoco
-
 ENV MUJOCO_GL=osmesa
-ENV LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$HOME/.mujoco/mujoco210/bin
 
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
