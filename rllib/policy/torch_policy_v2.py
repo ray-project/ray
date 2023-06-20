@@ -1201,6 +1201,7 @@ class TorchPolicyV2(Policy):
 
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
+                fwd_out = self.maybe_remove_time_dimension(fwd_out)
 
                 # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
                 # Create a distribution object.
@@ -1209,7 +1210,6 @@ class TorchPolicyV2(Policy):
                     dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     action_dist_class = self.model.get_exploration_action_dist_cls()
                     # For recurrent models, we need to remove the time dimension.
-                fwd_out = self.maybe_remove_time_dimension(fwd_out)
                 action_dist = action_dist_class.from_logits(dist_inputs)
 
                 # If `forward_exploration()` returned actions, use them here as-is.
