@@ -223,16 +223,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
     VF_PREDS:              .   .   .   .   .
     VALUES_BOOTSTRAPPED:   0   0   0   0   X
 
-    Then in the loss, we can now shift VALUES_BOOTSTRAPPED by one to the right ->
-    T:                     8   9  10  11  12  13 <- next timestep
-    VF_PREDS:              .   .   .   .   . 0.0 <- fill right side ts (13) with 0.0
-    VALUES_BOOTSTRAPPED: 0.0   0   0   0   0   X <- fill left side ts (8) with 0.0
-
-    Then add the two columns together to yield the correct value estimates for each
-    timestep.
-    T:                   8   9  10  11  12  13 <- next (bootstrapped) timestep
-    RESULTING VALUES:    .   .   .   .   . 0+X
-
     Args:
         sample_batch: The SampleBatch (single trajectory) for which to compute the
             bootstrap value at the end. This SampleBatch will be altered in place
