@@ -1902,7 +1902,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
 
-
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));

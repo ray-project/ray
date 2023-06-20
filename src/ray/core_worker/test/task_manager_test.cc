@@ -147,7 +147,9 @@ class TaskManagerTest : public ::testing::Test {
     ASSERT_EQ(manager_.total_lineage_footprint_bytes_, 0);
   }
 
-  void CompletePendingStreamingTask(const TaskSpecification &spec, const rpc::Address &caller_address, int64_t num_streaming_generator_returns) {
+  void CompletePendingStreamingTask(const TaskSpecification &spec,
+                                    const rpc::Address &caller_address,
+                                    int64_t num_streaming_generator_returns) {
     rpc::PushTaskReply reply;
     for (size_t i = 0; i < spec.NumReturns(); i++) {
       const auto return_id = spec.ReturnId(i);
@@ -1201,7 +1203,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamCreateDelete) {
    * Test create and deletion of stream works.
    * CREATE EXISTS (true) DELETE EXISTS (false)
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1223,7 +1226,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDeletedStreamIgnored) {
    * Test that when DELETE is called, all subsequent Writes are ignored.
    * CREATE DELETE WRITE READ
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1250,7 +1254,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
    * Test the basic cases (write -> read).
    * CREATE WRITE, WRITE, WRITEEoF, READ, READ, KeyERROR DELETE
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1302,7 +1307,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
    * Test the basic cases, but write and read are mixed up.
    * CREATE WRITE READ WRITE READ WRITEEoF KeyError DELETE
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1347,7 +1353,8 @@ TEST_F(TaskManagerTest, TestObjectRefEndOfStream) {
    * Test that after writing EoF, write/read doesn't work.
    * CREATE WRITE WRITEEoF, WRITE(verify no op) DELETE
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1391,7 +1398,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamIndexDiscarded) {
    * Test that when the ObjectRefStream is already written
    * the WRITE will be ignored.
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1436,7 +1444,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamReadIgnoredWhenNothingWritten) {
    * Test read will return Nil if nothing was written.
    * CREATE READ (no op) WRITE READ (working) READ (no op)
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", 0);
@@ -1478,7 +1487,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamEndtoEnd) {
    */
   // Submit a task.
   rpc::Address caller_address;
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
   manager_.MarkDependenciesResolved(spec.TaskId());
@@ -1553,7 +1563,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelCleanReferences) {
   // Submit a task so that generator ID will be available
   // to the reference counter.
   rpc::Address caller_address;
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
   manager_.MarkDependenciesResolved(spec.TaskId());
@@ -1633,7 +1644,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamOutofOrder) {
   /**
    * Test the case where the task return RPC is received out of order
    */
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   rpc::Address caller_address;
   manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
@@ -1683,7 +1695,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamDelOutOfOrder) {
    */
   // Submit a generator task.
   rpc::Address caller_address;
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
   manager_.AddPendingTask(caller_address, spec, "", /*num_retries=*/0);
   manager_.MarkDependenciesResolved(spec.TaskId());
@@ -1730,7 +1743,8 @@ TEST_F(TaskManagerTest, TestObjectRefStreamTemporarilyOwnGeneratorReturnRefIfNee
    * Test TemporarilyOwnGeneratorReturnRefIfNeeded
    */
   rpc::Address caller_address;
-  auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
   auto generator_id = spec.ReturnId(0);
 
   /**

@@ -142,7 +142,7 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
 }
 
 ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
-  RAY_CHECK_LT(generator_index < RayConfig::instance().max_num_generator_returns());
+  RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
   // Index 1 is reserved for the first task return from a generator task itself.
   return ObjectID::FromIndex(generator_task_id_, 2 + generator_index);
 }
@@ -221,7 +221,8 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     if (spec.IsStreamingGenerator()) {
       const auto generator_id = spec.ReturnId(0);
       RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
-      auto inserted = object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+      auto inserted =
+          object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
       RAY_CHECK(inserted.second);
     }
 
