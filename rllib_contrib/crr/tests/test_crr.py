@@ -26,9 +26,13 @@ class TestCRR(unittest.TestCase):
             .environment(env="Pendulum-v1", clip_actions=True)
             .framework("torch")
             .offline_data(
-                input_=[
-                    "s3://anonymous@air-example-data/rllib/pendulum/large.json",
-                ],
+                input_="dataset",
+                input_config={
+                    "format": "json",
+                    "paths": [
+                        "s3://anonymous@air-example-data/rllib/pendulum/large.json"
+                    ],
+                },
                 actions_in_input_normalized=True,
             )
             .training(
