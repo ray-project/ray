@@ -15,7 +15,7 @@ Debugging Statistics
 You can view debug stats for your Dataset executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
 These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     import time
@@ -24,16 +24,19 @@ These stats can be used to understand the performance of your Dataset workload a
         time.sleep(.0001)
         return x
 
-    ds = ray.data.range(10000)
-    ds = ds.map(lambda x: str(x + 1))
-    ds = ds.map(pause)
+    ds = (
+        ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+        .map(lambda x: x)
+        .map(pause)
+    )
 
-    for x in ds.iter_batches():
+    for batch in ds.iter_batches():
         pass
 
     print(ds.stats())
 
-.. code-block::
+.. testoutput::
+    :options: +MOCK
 
     Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s
     * Remote wall time: 101.55ms min, 331.39ms max, 135.24ms mean, 2.16s total
@@ -108,6 +111,8 @@ avoid loading unnecessary data (projection pushdown).
 For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
 just two of the five columns of Iris dataset.
 
+.. _parquet_row_pruning:
+
 Parquet Row Pruning
 ~~~~~~~~~~~~~~~~~~~
 
@@ -173,15 +178,14 @@ To try out push-based shuffle, set the environment variable ``RAY_DATA_PUSH_BASE
 You can also specify the shuffle implementation during program execution by
 setting the ``DataContext.use_push_based_shuffle`` flag:
 
-.. code-block:: python
+.. testcode::
 
-    import ray.data
+    import ray
 
     ctx = ray.data.DataContext.get_current()
     ctx.use_push_based_shuffle = True
 
-    n = 1000
-    parallelism=10
-    ds = ray.data.range(n, parallelism=parallelism)
-    print(ds.random_shuffle().take(10))
-    # [954, 405, 434, 501, 956, 762, 488, 920, 657, 834]
+    ds = (
+        ray.data.range(1000)
+        .random_shuffle()
+    )

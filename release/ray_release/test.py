@@ -2,11 +2,12 @@ import enum
 import os
 import json
 import time
-from typing import Optional, List
+from typing import Optional, List, Dict
 from dataclasses import dataclass
 
 import boto3
 from botocore.exceptions import ClientError
+from github import Repository
 
 from ray_release.result import (
     ResultStatus,
@@ -23,6 +24,18 @@ DEFAULT_PYTHON_VERSION = tuple(
 DATAPLANE_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
+
+
+def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
+    env_dict = {}
+    for env in env_list:
+        # an env can be "a=b" or just "a"
+        eq_pos = env.find("=")
+        if eq_pos < 0:
+            env_dict[env] = os.environ.get(env, "")
+        else:
+            env_dict[env[:eq_pos]] = env[eq_pos + 1 :]
+    return env_dict
 
 
 class TestState(enum.Enum):
@@ -79,10 +92,29 @@ class Test(dict):
         super().__init__(*args, **kwargs)
         self.test_results = None
 
+    def is_jailed_with_open_issue(self, ray_github: Repository) -> bool:
+        """
+        Returns whether this test is jailed with open issue.
+        """
+        # is jailed
+        state = self.get_state()
+        if state != TestState.JAILED:
+            return False
+
+        # has open issue
+        issue_number = self.get(self.KEY_GITHUB_ISSUE_NUMBER)
+        if issue_number is None:
+            return False
+        issue = ray_github.get_issue(issue_number)
+        return issue.state == "open"
+
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.
         """
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false":
+            # Do not run BYOD tests on PRs
+            return False
         return self["cluster"].get("byod") is not None
 
     def get_byod_type(self) -> Optional[str]:
@@ -100,6 +132,22 @@ class Test(dict):
         if not self.is_byod_cluster():
             return []
         return self["cluster"]["byod"].get("pre_run_cmds", [])
+
+    def get_byod_runtime_env(self) -> Dict[str, str]:
+        """
+        Returns the runtime environment variables for the BYOD cluster.
+        """
+        if not self.is_byod_cluster():
+            return {}
+        return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+
+    def get_byod_pips(self) -> List[str]:
+        """
+        Returns the list of pips for the BYOD cluster.
+        """
+        if not self.is_byod_cluster():
+            return []
+        return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:
         """
@@ -160,8 +208,11 @@ class Test(dict):
             "COMMIT_TO_TEST",
             os.environ["BUILDKITE_COMMIT"],
         )
+        branch = os.environ.get(
+            "BRANCH_TO_TEST",
+            os.environ["BUILDKITE_BRANCH"],
+        )
         ray_version = commit[:6]
-        branch = os.environ.get("BUILDKITE_BRANCH", "")
         assert branch == "master" or branch.startswith(
             "releases/"
         ), f"Invalid branch name {branch}"

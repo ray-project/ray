@@ -304,21 +304,6 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// generator task.
   void DelObjectRefStream(const ObjectID &generator_id);
 
-  /// Create the object ref stream.
-  /// If the object ref stream is not created by this API,
-  /// all object ref stream operation will be no-op.
-  ///
-  /// Once the stream is created, it has to be deleted
-  /// by DelObjectRefStream when it is not used anymore.
-  /// Once you generate a stream, it is the caller's responsibility
-  /// to call DelObjectRefStream.
-  ///
-  /// The API is not idempotent.
-  ///
-  /// \param[in] generator_id The object ref id of the streaming
-  /// generator task.
-  void CreateObjectRefStream(const ObjectID &generator_id);
-
   /// Return true if the object ref stream exists.
   ///
   /// \param[in] generator_id The object ref id of the streaming
@@ -329,8 +314,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// object stream of a generator_id.
   /// This API always return immediately.
   ///
-  /// The caller should ensure the ObjectRefStream is already created
-  /// via CreateObjectRefStream.
+  /// The caller should ensure the ObjectRefStream is already
+  /// created, by calling AddPendingTask.
   /// If it is called after the stream hasn't been created or deleted
   /// it will panic.
   ///

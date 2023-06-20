@@ -76,19 +76,6 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
 ObjectID ObjectRefStream::PeekNextItem() { return GetObjectRefAtIndex(next_index_); }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
-  // Write to a stream if the object ID is not consumed yet.
-  auto last_consumed_index = next_index_ - 1;
-  if (item_index_to_refs_.find(last_consumed_index) != item_index_to_refs_.end()) {
-    // Object ID from the generator task always increment. I.e., the first
-    // return has a lower ObjectID bytes than the second return.
-    // If the last conusumed object ID's index is lower than a given ObjectID,
-    // it means the given ref is not consumed yet, meaning we should
-    // write to a stream.
-    auto not_consumed_yet =
-        item_index_to_refs_[last_consumed_index].ObjectIndex() < object_id.ObjectIndex();
-    return not_consumed_yet;
-  }
-
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     temporarily_owned_refs_.insert(object_id);
     return true;
@@ -228,11 +215,22 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 
   {
     absl::MutexLock lock(&mu_);
+
+    // If it is a generator task, create an object ref stream.
+    // The language frontend is responsible for calling DeleteObjectRefStream.
+    if (spec.IsStreamingGenerator()) {
+      const auto generator_id = spec.ReturnId(0);
+      RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
+      auto inserted = object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+      RAY_CHECK(inserted.second);
+    }
+
     auto inserted = submissible_tasks_.try_emplace(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
     num_pending_tasks_++;
   }
+
   RecordTaskStatusEvent(spec.AttemptNumber(),
                         spec,
                         rpc::TaskStatus::PENDING_ARGS_AVAIL,
@@ -430,16 +428,6 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
-void TaskManager::CreateObjectRefStream(const ObjectID &generator_id) {
-  RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
-  absl::MutexLock lock(&mu_);
-  auto it = object_ref_streams_.find(generator_id);
-  RAY_CHECK(it == object_ref_streams_.end())
-      << "CreateObjectRefStream can be called only once. The caller of the API should "
-         "guarantee the API is not called twice.";
-  object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
-}
-
 void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
   std::vector<ObjectID> object_ids_unconsumed;
@@ -459,6 +447,7 @@ void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
   // When calling RemoveLocalReference, we shouldn't hold a lock.
   for (const auto &object_id : object_ids_unconsumed) {
     std::vector<ObjectID> deleted;
+    RAY_LOG(INFO) << "Removing unconsume streaming ref " << object_id;
     reference_counter_->RemoveLocalReference(object_id, &deleted);
   }
 }
@@ -545,8 +534,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       if (it->second.spec.AttemptNumber() > attempt_number) {
-        // It is a stale report from the previous task attempt.
-        // Ignore it.
+        // Generator task reports can arrive at any time. If the first attempt
+        // fails, we may receive a report from the first executor after the
+        // second attempt has started. In this case, we should ignore the first
+        // attempt.
         return false;
       }
     }
@@ -604,6 +595,7 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &objec
 
   // We shouldn't hold a lock when calling refernece counter API.
   if (inserted_to_stream) {
+    RAY_LOG(INFO) << "Added streaming ref " << object_id;
     reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
     return true;
   }
@@ -678,13 +670,16 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
       }
 
-      // Handles streaming generator returns.
       if (spec.IsStreamingGenerator()) {
-        // Update the task spec accordingly since the first execution is finished.
+        // Upon the first complete execution, set the number of streaming
+        // generator returns.
         auto num_streaming_generator_returns =
             reply.streaming_generator_return_ids_size();
         if (num_streaming_generator_returns > 0) {
           spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
+          RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+                         << " has " << spec.NumStreamingGeneratorReturns()
+                         << " return objects.";
           for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
             if (return_id_info.is_plasma_object()) {
               it->second.reconstructable_return_ids.insert(
@@ -742,23 +737,27 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
   }
 
   // If it is a streaming generator, mark the end of stream since the task is finished.
-  // We handle this logic here because lock shouldn't be held while calling
+  // We handle this logic here because the lock shouldn't be held while calling
   // HandleTaskReturn.
   if (spec.IsStreamingGenerator()) {
-    // The return object for a generator task is always contains a generator id.
     const auto generator_id = ObjectID::FromBinary(reply.return_objects(0).object_id());
     if (first_execution) {
       ObjectID last_ref_in_stream;
       MarkEndOfStream(generator_id, reply.streaming_generator_return_ids_size());
     } else {
-      // end of stream should have been already marked
+      // The end of the stream should already have been marked on the first
+      // successful execution.
       if (is_application_error) {
-        // It means the task has reexeucted, but in the n+ execution, it fails with
-        // an application error. In this case, we should fail all the rest of
-        // known streaming generator returns.
+        // It means the task was re-executed but failed with an application
+        // error. In this case, we should fail the rest of known streaming
+        // generator returns with the same error.
+        RAY_LOG(DEBUG) << "Streaming generator task " << spec.TaskId()
+                       << " failed with application error, failing "
+                       << spec.NumStreamingGeneratorReturns() << " return objects.";
+        RAY_CHECK_EQ(reply.return_objects_size(), 1);
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-          RAY_CHECK_EQ(reply.return_objects_size(), 1);
+          RAY_LOG(DEBUG) << "Failing streamed object " << generator_return_id;
           const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
                            return_object,
