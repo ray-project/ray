@@ -18,7 +18,10 @@ from ray import cloudpickle
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray._private.async_compat import sync_to_async
-from ray._private.utils import get_or_create_event_loop
+from ray._private.utils import (
+    get_or_create_event_loop,
+    run_background_task,
+)
 
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -33,6 +36,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -498,6 +502,18 @@ class RayServeReplica:
             )
             self.metrics_pusher.start()
 
+        # Periodically set the gauge metrics to avoid stale values.
+        run_background_task(self._update_metrics_loop())
+
+    async def _update_metrics_loop(self):
+        while True:
+            request_stats = self._get_handle_request_stats()
+            num_running_requests = request_stats["running"]
+            num_pending_requests = request_stats["pending"]
+            self.num_pending_items.set(num_pending_requests)
+            self.num_processing_items.set(num_running_requests)
+            await asyncio.sleep(RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S)
+
     async def check_health(self):
         await self.user_health_check()
 
@@ -671,12 +687,6 @@ class RayServeReplica:
         request_kwargs: Dict[str, Any],
     ) -> Any:
         async with self.rwlock.reader_lock:
-            request_stats = self._get_handle_request_stats()
-            num_running_requests = request_stats["running"]
-            num_pending_requests = request_stats["pending"]
-            self.num_pending_items.set(num_pending_requests)
-            self.num_processing_items.set(num_running_requests)
-
             # Set request context variables for subsequent handle so that
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
