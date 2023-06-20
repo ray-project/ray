@@ -11,6 +11,7 @@ from typing import (
     Optional,
     overload,
     Tuple,
+    Type,
     TypeVar,
     AsyncGenerator,
     Iterable,
@@ -242,6 +243,33 @@ class _BatchQueue:
         self._handle_batch_task.cancel()
 
 
+def _validate_max_batch_size(max_batch_size):
+    if not isinstance(max_batch_size, int):
+        if isinstance(max_batch_size, float) and max_batch_size.is_integer():
+            max_batch_size = int(max_batch_size)
+        else:
+            raise TypeError(
+                f"max_batch_size must be integer >= 1, got {max_batch_size}"
+            )
+
+    if max_batch_size < 1:
+        raise ValueError(
+            f"max_batch_size must be an integer >= 1, got {max_batch_size}"
+        )
+
+
+def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
+    if not isinstance(batch_wait_timeout_s, (float, int)):
+        raise TypeError(
+            "batch_wait_timeout_s must be a float >= 0, " f"got {batch_wait_timeout_s}"
+        )
+
+    if batch_wait_timeout_s < 0:
+        raise ValueError(
+            "batch_wait_timeout_s must be a float >= 0, " f"got {batch_wait_timeout_s}"
+        )
+
+
 T = TypeVar("T")
 R = TypeVar("R")
 F = TypeVar("F", bound=Callable[[List[T]], List[R]])
@@ -257,7 +285,8 @@ def batch(func: F) -> G:
 # "Decorator factory" use case (called with arguments).
 @overload
 def batch(
-    max_batch_size: int = 10, batch_wait_timeout_s: float = 0.0
+    max_batch_size: int = 10,
+    batch_wait_timeout_s: float = 0.0,
 ) -> Callable[[F], G]:
     pass
 
@@ -267,6 +296,8 @@ def batch(
     _func: Optional[Callable] = None,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
+    *,
+    batch_queue_cls: Type[_BatchQueue] = _BatchQueue,
 ):
     """Converts a function to asynchronously handle batches.
 
@@ -306,6 +337,7 @@ def batch(
             one call to the underlying function.
         batch_wait_timeout_s: the maximum duration to wait for
             `max_batch_size` elements before running the current batch.
+        batch_queue_cls: the class to use for the underlying batch queue.
     """
     # `_func` will be None in the case when the decorator is parametrized.
     # See the comment at the end of this function for a detailed explanation.
@@ -318,20 +350,8 @@ def batch(
         if not iscoroutinefunction(_func):
             raise TypeError("Functions decorated with @serve.batch must be 'async def'")
 
-    if not isinstance(max_batch_size, int):
-        if isinstance(max_batch_size, float) and max_batch_size.is_integer():
-            max_batch_size = int(max_batch_size)
-        else:
-            raise TypeError("max_batch_size must be integer >= 1")
-
-    if max_batch_size < 1:
-        raise ValueError("max_batch_size must be an integer >= 1")
-
-    if not isinstance(batch_wait_timeout_s, (float, int)):
-        raise TypeError("batch_wait_timeout_s must be a float >= 0")
-
-    if batch_wait_timeout_s < 0:
-        raise ValueError("batch_wait_timeout_s must be a float >= 0")
+    _validate_max_batch_size(max_batch_size)
+    _validate_batch_wait_timeout_s(batch_wait_timeout_s)
 
     def _batch_decorator(_func):
         async def batch_handler_generator(
@@ -368,10 +388,30 @@ def batch(
             # runs, we just get a reference to the attribute.
             batch_queue_attr = f"__serve_batch_queue_{_func.__name__}"
             if not hasattr(batch_queue_object, batch_queue_attr):
-                batch_queue = _BatchQueue(max_batch_size, batch_wait_timeout_s, _func)
+                batch_queue = batch_queue_cls(
+                    max_batch_size, batch_wait_timeout_s, _func
+                )
                 setattr(batch_queue_object, batch_queue_attr, batch_queue)
             else:
                 batch_queue = getattr(batch_queue_object, batch_queue_attr)
+
+            # Magic batch_queue_object attributes that can be used to change the
+            # batch queue attributes on the fly.
+            # This is purposefully undocumented for now while we figure out
+            # the best API.
+            if hasattr(batch_queue_object, "_ray_serve_max_batch_size"):
+                new_max_batch_size = getattr(
+                    batch_queue_object, "_ray_serve_max_batch_size"
+                )
+                _validate_max_batch_size(new_max_batch_size)
+                batch_queue.max_batch_size = new_max_batch_size
+
+            if hasattr(batch_queue_object, "_ray_serve_batch_wait_timeout_s"):
+                new_batch_wait_timeout_s = getattr(
+                    batch_queue_object, "_ray_serve_batch_wait_timeout_s"
+                )
+                _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
+                batch_queue.timeout_s = new_batch_wait_timeout_s
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
