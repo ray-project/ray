@@ -183,6 +183,11 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
+    "workflows/api/doc/ray.workflow.*",
+    "serve/api/doc/ray.serve.*",
+    "ray-references/api/ray-observability/state/doc/ray.*",
+    "ray-observability/reference/doc/ray.*",
+    "cluster/running-applications/doc/ray.*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -356,6 +361,13 @@ nb_render_priority = {
 
 
 def setup(app):
+    # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
+    # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
+    # warnings when we build the documentation.
+    import doctest
+
+    doctest.register_optionflag("MOCK")
+
     app.connect("html-page-context", update_context)
 
     # Custom CSS
