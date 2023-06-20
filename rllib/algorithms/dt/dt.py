@@ -5,7 +5,7 @@ from typing import List, Optional, Type, Tuple, Dict, Any, Union
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from rllib_dt.dt.segmentation_buffer import MultiAgentSegmentationBuffer
+from ray.rllib.algorithms.dt.segmentation_buffer import MultiAgentSegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
@@ -305,7 +305,7 @@ class DT(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from rllib_dt.dt.dt_torch_policy import DTTorchPolicy
+            from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 
             return DTTorchPolicy
         else:

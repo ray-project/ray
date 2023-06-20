@@ -5,7 +5,7 @@ import numpy as np
 import tree
 from gymnasium.spaces import Box, Discrete
 
-from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
+from rllib_dt.dt.dt_torch_model import DTTorchModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.mingpt import configure_gpt_optimizer
