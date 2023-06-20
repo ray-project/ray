@@ -31,7 +31,7 @@ For detailed benchmarks, checkout [this google doc](https://docs.google.com/spre
 ```
 
 ### Some meta level comments
-1. The performance improvement depends on many factors including the neural network architecture used, the batch size during sampling, the backend, the mode, the torch version, and many other things. The best way to optimize this is to first get the non-compiled workload learning and then do a hyper-parameter tuning on torch compile parameters on different hardwares.
+1. The performance improvement depends on many factors, including the neural network architecture used, the batch size during sampling, the backend, the mode, the torch version, and many other things. The best way to optimize this is to first get the non-compiled workload learning and then do a hyper-parameter tuning on torch compile parameters on different hardware.
 
 2. For CPU inference use the recommended inference only backends: `ipex` and `onnxrt`.
 
