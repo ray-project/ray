@@ -1,7 +1,7 @@
 import pytest
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, PropertyMock
 
 from ray.exceptions import RayTaskError
 
@@ -179,6 +179,67 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
         lambda *args, **kwargs: None,
     )
     yield application_state, deployment_state_manager
+
+
+@patch.object(
+    ApplicationState, "target_deployments", PropertyMock(return_value=["a", "b", "c"])
+)
+class TestDetermineAppStatus:
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_running(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+        ]
+        assert app_state._determine_app_status() == (ApplicationStatus.RUNNING, "")
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_stay_running(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        app_state._status = ApplicationStatus.RUNNING
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+        ]
+        assert app_state._determine_app_status() == (ApplicationStatus.RUNNING, "")
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_deploying(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo("a", DeploymentStatus.UPDATING),
+            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("c", DeploymentStatus.HEALTHY),
+        ]
+        assert app_state._determine_app_status() == (ApplicationStatus.DEPLOYING, "")
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_deploy_failed(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo("a", DeploymentStatus.UPDATING),
+            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("c", DeploymentStatus.UNHEALTHY),
+        ]
+        status, error_msg = app_state._determine_app_status()
+        assert status == ApplicationStatus.DEPLOY_FAILED
+        assert error_msg
+
+    @patch.object(ApplicationState, "get_deployments_statuses")
+    def test_unhealthy(self, get_deployments_statuses, mocked_application_state):
+        app_state, _ = mocked_application_state
+        app_state._status = ApplicationStatus.RUNNING
+        get_deployments_statuses.return_value = [
+            DeploymentStatusInfo("a", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("b", DeploymentStatus.HEALTHY),
+            DeploymentStatusInfo("c", DeploymentStatus.UNHEALTHY),
+        ]
+        status, error_msg = app_state._determine_app_status()
+        assert status == ApplicationStatus.UNHEALTHY
+        assert error_msg
 
 
 def test_deploy_and_delete_app(mocked_application_state):
