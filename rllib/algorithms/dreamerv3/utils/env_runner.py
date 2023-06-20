@@ -13,7 +13,6 @@ from typing import List, Tuple
 
 import gymnasium as gym
 import numpy as np
-from supersuit.generic_wrappers import resize_v1
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -27,6 +26,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
 from ray.rllib.utils.numpy import one_hot
+
+try:
+    from supersuit.generic_wrappers import resize_v1
+except ImportError:
+    resize_v1 = None
 
 _, tf, _ = try_import_tf()
 
@@ -45,6 +49,12 @@ class DreamerV3EnvRunner(EnvRunner):
             config: The config to use to setup this EnvRunner.
         """
         super().__init__(config=config)
+
+        if not resize_v1:
+            raise RuntimeError(
+                "DreamerV3EnvRunner requires `supersuit` to be installed. Install with "
+                "`pip install supersuit`"
+            )
 
         # Create the gym.vector.Env object.
         # Atari env.
