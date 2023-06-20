@@ -23,7 +23,11 @@ class TestA3C(unittest.TestCase):
 
     def test_a3c_compilation(self):
         """Test whether an A3C can be built with both frameworks."""
-        config = A3CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+        config = (
+            A3CConfig()
+            .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
+            .framework(eager_tracing=False)
+        )
 
         num_iterations = 2
 
@@ -64,6 +68,7 @@ class TestA3C(unittest.TestCase):
         config.reporting(
             min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=20
         )
+        config.framework(eager_tracing=False)
 
         def _step_n_times(trainer, n: int):
             """Step trainer n times.
