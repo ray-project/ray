@@ -81,11 +81,30 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service) {
+Status GcsClient::Connect(instrumented_io_context &io_service,
+                          const ClusterID &cluster_id) {
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
+
+  if (cluster_id.IsNil()) {
+    rpc::GetClusterIdReply reply;
+    gcs_rpc_client_->GetClusterId(
+        rpc::GetClusterIdRequest(),
+        [this, &io_service](const Status &status, const rpc::GetClusterIdReply &reply) {
+          RAY_CHECK(status.ok()) << "Failed to get Cluster ID! Status: " << status;
+          auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
+          RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
+          client_call_manager_->SetClusterId(cluster_id);
+          io_service.stop();
+        });
+    // Run the IO service here to make the above call synchronous.
+    io_service.run();
+    io_service.restart();
+  } else {
+    client_call_manager_->SetClusterId(cluster_id);
+  }
 
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
