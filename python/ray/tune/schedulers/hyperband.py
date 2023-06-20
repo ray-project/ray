@@ -251,15 +251,15 @@ class HyperBandScheduler(FIFOScheduler):
                 bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
-            if bracket.is_being_processed:
-                logger.debug("Bracket is currently being processed.")
-                return TrialScheduler.NOOP
-
             bracket.is_being_processed = True
 
             good, bad = bracket.successive_halving(self._metric, self._metric_op)
 
-            logger.debug(f"Processing {len(good)} good and {len(bad)} bad trials.")
+            logger.debug(
+                f"Processing {len(good)} good and {len(bad)} bad trials in "
+                f"bracket {bracket}.\n"
+                f"Good: {good}\nBad: {bad}"
+            )
 
             # kill bad trials
             self._num_stopped += len(bad)
@@ -307,7 +307,7 @@ class HyperBandScheduler(FIFOScheduler):
         not finished."""
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
-        if not bracket.finished():
+        if not bracket.finished() and not bracket.is_being_processed:
             logger.debug(f"Processing bracket after trial {trial} removed")
             self._process_bracket(trial_runner, bracket)
 
