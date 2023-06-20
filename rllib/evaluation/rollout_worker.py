@@ -63,7 +63,6 @@ from ray.rllib.policy.sample_batch import (
     concat_samples,
 )
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
-from ray.rllib.policy.sample_batch_v2 import concat_samples as concat_samples_v2
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
@@ -729,10 +728,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             )
             batches.append(batch)
 
-        if self.config.get("_enable_rl_module_api", False):
-            batch = concat_samples_v2(batches)
-        else:
-            batch = concat_samples(batches)
+        batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
 

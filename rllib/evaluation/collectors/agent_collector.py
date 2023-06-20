@@ -9,7 +9,6 @@ from gymnasium.spaces import Space
 
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.policy.sample_batch_v2 import SampleBatchV2
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.spaces.space_utils import (
     flatten_to_single_ndarray,
@@ -591,10 +590,7 @@ class AgentCollector:
 
         # Due to possible batch-repeats > 1, columns in the resulting batch
         # may not all have the same batch size.
-        if self._enable_rl_module_api:
-            batch = SampleBatchV2(batch_data, is_training=self.training)
-        else:
-            batch = SampleBatch(batch_data, is_training=self.training)
+        batch = SampleBatch(batch_data, is_training=self.training)
 
         # Adjust the seq-lens array depending on the incoming agent sequences.
         if self.is_policy_recurrent:

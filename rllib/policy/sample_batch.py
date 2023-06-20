@@ -222,6 +222,20 @@ class SampleBatch(dict):
         # by column name (str) via e.g. self["some-col"].
         dict.__init__(self, *args, **kwargs)
 
+        # Indicates whether, for this batch, sequence lengths should be slices by
+        # their index in the batch or by their index as a sequence.
+        # This is useful if a batch contains tensors of shape (B, T, ...), where each
+        # index of B indicates one sequence. In this case, when slicing the batch,
+        # we want one sequence to be slices out per index in B (
+        # `_slice_seq_lens_by_batch_index=True`. However, if the padded batch
+        # contains tensors of shape (B*T, ...), where each index of B*T indicates
+        # one timestep, we want one sequence to be sliced per T steps in B*T (
+        # `self._slice_seq_lens_in_B=False`).
+        # ._slice_seq_lens_in_B = True is only meant to be used for batches that we
+        # feed into Learner._update(), all other places in RLlib are not expected to
+        # need this.
+        self._slice_seq_lens_in_B = False
+
         self.accessed_keys = set()
         self.added_keys = set()
         self.deleted_keys = set()
@@ -656,6 +670,40 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
 
+    def _batch_slice(self, slice_: slice) -> "SampleBatch":
+        """Helper method to handle SampleBatch slicing using a slice object.
+
+        The returned SampleBatch uses the same underlying data object as
+        `self`, so changing the slice will also change `self`.
+
+        Note that only zero or positive bounds are allowed for both start
+        and stop values. The slice step must be 1 (or None, which is the
+        same).
+
+        Args:
+            slice_: The python slice object to slice by.
+
+        Returns:
+            A new SampleBatch, however "linking" into the same data
+            (sliced) as self.
+        """
+        start = slice_.start or 0
+        stop = slice_.stop or len(self[SampleBatch.SEQ_LENS])
+        # If stop goes beyond the length of this batch -> Make it go till the
+        # end only (including last item).
+        # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
+        if stop > len(self):
+            stop = len(self)
+        assert start >= 0 and stop >= 0 and slice_.step in [1, None]
+
+        data = tree.map_structure(lambda value: value[start:stop], self)
+        return SampleBatch(
+            data,
+            _is_training=self.is_training,
+            _time_major=self.time_major,
+            _num_grad_updates=self.num_grad_updates,
+        )
+
     @PublicAPI
     def timeslices(
         self,
@@ -1032,6 +1080,9 @@ class SampleBatch(dict):
             A new SampleBatch, however "linking" into the same data
             (sliced) as self.
         """
+        if self._slice_seq_lens_in_B:
+            return self._batch_slice(slice_)
+
         start = slice_.start or 0
         stop = slice_.stop or len(self)
         # If stop goes beyond the length of this batch -> Make it go till the

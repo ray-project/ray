@@ -12,7 +12,6 @@ from ray.rllib.evaluation.episode import Episode
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch, concat_samples
-from ray.rllib.policy.sample_batch_v2 import concat_samples as concat_samples_v2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -90,10 +89,7 @@ class _PolicyCollector:
                 this policy.
         """
         # Create batch from our buffers.
-        if self.policy.config.get("_enable_rl_module_api", False):
-            batch = concat_samples_v2(self.batches)
-        else:
-            batch = concat_samples(self.batches)
+        batch = concat_samples(self.batches)
         # Clear batches for future samples.
         self.batches = []
         # Reset agent steps to 0.
