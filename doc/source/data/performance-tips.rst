@@ -3,128 +3,20 @@
 Performance Tips and Tuning
 ===========================
 
-Monitoring your application
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Optimizing transforms
+---------------------
 
-View the Ray dashboard to monitor your application and troubleshoot issues. To learn
-more about the Ray dashboard, read :ref:`Ray Dashboard <observability-getting-started>`.
-
-Debugging Statistics
-~~~~~~~~~~~~~~~~~~~~
-
-You can view debug stats for your Dataset executions via :meth:`ds.stats() <ray.data.Dataset.stats>`.
-These stats can be used to understand the performance of your Dataset workload and can help you debug problematic bottlenecks. Note that both execution and iterator statistics are available:
-
-.. testcode::
-
-    import ray
-    import time
-
-    def pause(x):
-        time.sleep(.0001)
-        return x
-
-    ds = (
-        ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
-        .map(lambda x: x)
-        .map(pause)
-    )
-
-    for batch in ds.iter_batches():
-        pass
-
-    print(ds.stats())
-
-.. testoutput::
-    :options: +MOCK
-
-    Stage 1 ReadRange->Map->Map: 16/16 blocks executed in 0.37s
-    * Remote wall time: 101.55ms min, 331.39ms max, 135.24ms mean, 2.16s total
-    * Remote cpu time: 7.42ms min, 15.88ms max, 11.01ms mean, 176.15ms total
-    * Peak heap memory usage (MiB): 157.18 min, 157.73 max, 157 mean
-    * Output num rows: 625 min, 625 max, 625 mean, 10000 total
-    * Output size bytes: 3658 min, 4392 max, 4321 mean, 69150 total
-    * Tasks per node: 16 min, 16 max, 16 mean; 1 nodes used
-    * Extra metrics: {'obj_store_mem_alloc': 3658, 'obj_store_mem_freed': 5000, 'obj_store_mem_peak': 40000}
-
-    Dataset iterator time breakdown:
-    * Total time user code is blocked: 551.67ms
-    * Total time in user code: 144.97us
-    * Total time overall: 1.01s
-    * Num blocks local: 0
-    * Num blocks remote: 0
-    * Num blocks unknown location: 16
-    * Batch iteration time breakdown (summed across prefetch threads):
-        * In ray.get(): 75.68us min, 220.26us max, 131.89us avg, 2.11ms total
-        * In batch creation: 326.58us min, 1.37ms max, 644.86us avg, 25.79ms total
-        * In batch formatting: 101.81us min, 898.73us max, 172.38us avg, 6.9ms total
-
-Batching Transforms
+Batching transforms
 ~~~~~~~~~~~~~~~~~~~
 
 Mapping individual records using :meth:`.map(fn) <ray.data.Dataset.map>` can be quite slow.
-Instead, consider using :meth:`.map_batches(batch_fn, batch_format="pandas") <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
-perform vectorized pandas operations.
+Instead, consider using :meth:`.map_batches(batch_fn) <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
+perform vectorized operations.
 
-.. _data_format_overheads:
+Optimizing reads
+----------------
 
-Format Overheads
-~~~~~~~~~~~~~~~~
-
-Converting between the internal block types (Arrow, Pandas)
-and the requested batch format (``"numpy"``, ``"pandas"``, ``"pyarrow"``)
-may incur data copies; which conversions cause data copying is given in the below table:
-
-
-.. list-table:: Data Format Conversion Costs
-   :header-rows: 1
-   :stub-columns: 1
-
-   * - Block Type x Batch Format
-     - ``"pandas"``
-     - ``"numpy"``
-     - ``"pyarrow"``
-     - ``None``
-   * - Pandas Block
-     - Zero-copy
-     - Copy*
-     - Copy*
-     - Zero-copy
-   * - Arrow Block
-     - Copy*
-     - Zero-copy*
-     - Zero-copy
-     - Zero-copy
-
-.. note::
-  \* No copies occur when converting between Arrow, Pandas, and NumPy formats for columns
-  represented as ndarrays (except for bool arrays).
-
-
-Parquet Column Pruning
-~~~~~~~~~~~~~~~~~~~~~~
-
-Current Dataset will read all Parquet columns into memory.
-If you only need a subset of the columns, make sure to specify the list of columns
-explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
-avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
-just two of the five columns of Iris dataset.
-
-.. _parquet_row_pruning:
-
-Parquet Row Pruning
-~~~~~~~~~~~~~~~~~~~
-
-Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
-which will be applied at the file scan so only rows that match the filter predicate
-will be returned.
-For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
-(where ``pyarrow`` has to be imported)
-to read rows with sepal.length greater than 5.0.
-This can be used in conjunction with column pruning when appropriate to get the benefits of both.
-
-Tuning Read Parallelism
+Tuning read parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray Data automatically selects the read ``parallelism`` according to the following procedure:
@@ -137,16 +29,69 @@ By default, Ray Data automatically selects the read ``parallelism`` according to
 Occasionally, it is advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
 For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
 
-Tuning Read Resources
+Tuning read resources
 ~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
 For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
+Parquet column pruning
+~~~~~~~~~~~~~~~~~~~~~~
+
+Current Dataset will read all Parquet columns into memory.
+If you only need a subset of the columns, make sure to specify the list of columns
+explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
+avoid loading unnecessary data (projection pushdown).
+For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
+just two of the five columns of Iris dataset.
+
+.. _parquet_row_pruning:
+
+Parquet row pruning
+~~~~~~~~~~~~~~~~~~~
+
+Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
+which will be applied at the file scan so only rows that match the filter predicate
+will be returned.
+For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
+(where ``pyarrow`` has to be imported)
+to read rows with sepal.length greater than 5.0.
+This can be used in conjunction with column pruning when appropriate to get the benefits of both.
+
+Optimizing shuffles
+-------------------
+
+When should I use global per-epoch shuffling?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Global per-epoch shuffling should only be used if your model is sensitive to the
+randomness of the training data. There is
+`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ for all
+gradient-descent-based model trainers benefiting from improved (global) shuffle quality,
+and we've found that this is particular pronounced for tabular data/models in practice.
+However, the more global your shuffle is, the expensive the shuffling operation, and
+this compounds when doing distributed data-parallel training on a multi-node cluster due
+to data transfer costs, and this cost can be prohibitive when using very large datasets.
+
+The best route for determining the best tradeoff between preprocessing time + cost and
+per-epoch shuffle quality is to measure the precision gain per training step for your
+particular model under different shuffling policies:
+
+* no shuffling,
+* local (per-shard) limited-memory shuffle buffer,
+* local (per-shard) shuffling,
+* windowed (pseudo-global) shuffling, and
+* fully global shuffling.
+
+From the perspective of keeping preprocessing time in check, as long as your data
+loading + shuffling throughput is higher than your training throughput, your GPU should
+be saturated, so we like to recommend users with shuffle-sensitive models to push their
+shuffle quality higher until this threshold is hit.
+
 .. _shuffle_performance_tips:
 
-Enabling Push-Based Shuffle
+Enabling push-based shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
@@ -189,3 +134,79 @@ setting the ``DataContext.use_push_based_shuffle`` flag:
         ray.data.range(1000)
         .random_shuffle()
     )
+
+Configuring execution
+---------------------
+
+Configuring resources and locality
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
+
+You may want to customize these limits in the following scenarios:
+- If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
+- If you want to fine-tune the memory limit to maximize performance.
+- For data loading into training jobs, you may want to set the object store memory to a low value (e.g., 2GB) to limit resource usage.
+
+Execution options can be configured via the global DataContext. The options will be applied for future jobs launched in the process:
+
+.. code-block::
+
+   ctx = ray.data.DataContext.get_current()
+   ctx.execution_options.resource_limits.cpu = 10
+   ctx.execution_options.resource_limits.gpu = 5
+   ctx.execution_options.resource_limits.object_store_memory = 10e9
+
+
+Locality with output (ML ingest use case)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block::
+
+   ctx.execution_options.locality_with_output = True
+
+Setting this to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This can be useful if you know you'll be consuming the output data directly on the consumer node (i.e., for ML training ingest). However, this may incur a performance penalty for other use cases.
+
+Reproducibility
+---------------
+
+Deterministic execution
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block::
+
+   # By default, this is set to False.
+   ctx.execution_options.preserve_order = True
+
+To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to False.
+
+.. _datasets_pg:
+
+Ray Data and placement groups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
+:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy will schedule these tasks and actors outside any present
+placement group. If you want to force Ray Data to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Ray Data), you can set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
+
+This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Ray Data run outside placement groups as documented in the :ref:`Ray Data and Other Libraries <datasets_tune>` section.
+
+.. _datasets_tune:
+
+Ray Data and Tune
+-----------------
+
+When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune will try to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
+
+To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials. This can be done using the ``max_concurrent_trials`` Tune option.
+
+.. literalinclude:: ./doc_code/key_concepts.py
+  :language: python
+  :start-after: __resource_allocation_1_begin__
+  :end-before: __resource_allocation_1_end__
+
+Monitoring your application
+---------------------------
+
+View the Ray dashboard to monitor your application and troubleshoot issues. To learn
+more about the Ray dashboard, read :ref:`Ray Dashboard <observability-getting-started>`.

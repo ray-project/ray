@@ -1,8 +1,70 @@
 .. _datasets_scheduling:
 
-============================================
-Scheduling, Execution, and Memory Management
-============================================
+==================
+Ray Data Internals
+==================
+
+.. _dataset_concept:
+
+Datasets and blocks
+===================
+
+A :class:`Dataset <ray.data.Dataset>` operates over a sequence of Ray object references
+to :term:`blocks <Block>`. Each block contains a disjoint subset of rows, and Ray Data
+loads and transforms these blocks in parallel.
+
+The following figure visualizes a dataset with three blocks, each holding 1000 rows.
+
+.. image:: images/dataset-arch.svg
+
+..
+  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+
+Operations
+==========
+
+Reading files
+-------------
+
+Ray Data uses :ref:`Ray tasks <task-key-concept>` to read files in parallel. Each read
+task reads one or more files and produces an output block:
+
+.. image:: images/dataset-read.svg
+   :align: center
+
+..
+  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+
+For more information on loading data, see :ref:`Loading data <loading_data>`.
+
+Transforming data
+-----------------
+
+Ray Data uses either :ref:`Ray tasks <task-key-concept>` or
+:ref:`Ray actors <actor-key-concept>` to transform blocks. By default, it uses tasks.
+
+.. image:: images/dataset-map.svg
+   :align: center
+..
+  https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
+
+For more information on transforming data, see
+:ref:`Transforming data <transforming_data>`.
+
+Shuffling data
+--------------
+
+When you call :meth:`~ray.data.Dataset.random_shuffle`,
+:meth:`~ray.data.Dataset.sort`, or :meth:`~ray.data.Dataset.groupby`, Ray Data shuffles
+blocks in a map-reduce style: map tasks partition blocks by value and then reduce tasks
+merge co-partitioned blocks.
+
+.. note::
+
+    Shuffles materialize :class:`Datasets <ray.data.Dataset>` in memory. In other
+    words, shuffle execution isn't streamed through memory.
+
+For an in-depth guide on shuffle performance, see :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
 
 Scheduling
 ==========
@@ -12,31 +74,6 @@ Ray Data uses Ray core for execution, and hence is subject to the same schedulin
 * The ``SPREAD`` scheduling strategy is used to ensure data blocks are evenly balanced across the cluster.
 * Retries of application-level exceptions are enabled to handle transient errors from remote datasources.
 * Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
-
-.. _datasets_tune:
-
-Ray Data and Tune
-~~~~~~~~~~~~~~~~~
-
-When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune will try to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
-
-To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials. This can be done using the ``max_concurrent_trials`` Tune option.
-
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_1_begin__
-  :end-before: __resource_allocation_1_end__
-
-.. _datasets_pg:
-
-Ray Data and Placement Groups
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
-:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy will schedule these tasks and actors outside any present
-placement group. If you want to force Ray Data to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Ray Data), you can set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
-
-This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Ray Data run outside placement groups as documented in the :ref:`Ray Data and Other Libraries <datasets_tune>` section.
 
 .. _dataset_execution:
 
@@ -135,61 +172,17 @@ These lines are only shown when verbose progress reporting is enabled. The `acti
 
     Avoid returning large outputs from the final operation of a pipeline you are iterating over, since the consumer process will be a serial bottleneck.
 
-Configuring Resources and Locality
-----------------------------------
+Fault tolerance
+---------------
 
-By default, the CPU and GPU limits are set to the cluster size, and the object store memory limit conservatively to 1/4 of the total object store size to avoid the possibility of disk spilling.
+Ray Data performs *lineage reconstruction* to recover data. If an application error or
+system failure occurs, Ray Data recreates blocks by re-executing tasks.
 
-You may want to customize these limits in the following scenarios:
-- If running multiple concurrent jobs on the cluster, setting lower limits can avoid resource contention between the jobs.
-- If you want to fine-tune the memory limit to maximize performance.
-- For data loading into training jobs, you may want to set the object store memory to a low value (e.g., 2GB) to limit resource usage.
+.. note::
 
-Execution options can be configured via the global DataContext. The options will be applied for future jobs launched in the process:
+    Fault tolerance isn't supported if the process that created the
+    :class:`~ray.data.Dataset` dies.
 
-.. code-block::
-
-   ctx = ray.data.DataContext.get_current()
-   ctx.execution_options.resource_limits.cpu = 10
-   ctx.execution_options.resource_limits.gpu = 5
-   ctx.execution_options.resource_limits.object_store_memory = 10e9
-
-Deterministic Execution
------------------------
-
-.. code-block::
-
-   # By default, this is set to False.
-   ctx.execution_options.preserve_order = True
-
-To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to False.
-
-Actor Locality Optimization (ML inference use case)
----------------------------------------------------
-
-.. code-block::
-
-   # By default, this is set to True already.
-   ctx.execution_options.actor_locality_enabled = True
-
-The actor locality optimization (if you're using actor pools) tries to schedule objects that are already local to an actor's node to the same actor. This reduces network traffic across nodes. When actor locality is enabled, you'll see a report in the progress output of the hit rate:
-
-.. code-block::
-
-   MapBatches(Model): 0 active, 0 queued, 0 actors [992 locality hits, 8 misses]: 100%|██████████| 1000/1000 [00:59<00:00, 16.84it/s]
-
-Locality with Output (ML ingest use case)
------------------------------------------
-
-.. code-block::
-
-   ctx.execution_options.locality_with_output = True
-
-Setting this to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This can be useful if you know you'll be consuming the output data directly on the consumer node (i.e., for ML training ingest). However, this may incur a performance penalty for other use cases.
-
-Scalability
------------
-We expect the data streaming backend to scale to tens of thousands of files / blocks and up to hundreds of terabytes of data. Please report if you experience performance degradation at these scales, we would be very interested to investigate!
 
 .. _datasets_stage_fusion:
 
@@ -239,21 +232,3 @@ Ray Data uses the Ray object store to store data blocks, which means it inherits
 * Object Spilling: Since Ray Data uses the Ray object store to store data blocks, any blocks that can't fit into object store memory are automatically spilled to disk. The objects are automatically reloaded when needed by downstream compute tasks:
 * Locality Scheduling: Ray will preferentially schedule compute tasks on nodes that already have a local copy of the object, reducing the need to transfer objects between nodes in the cluster.
 * Reference Counting: Dataset blocks are kept alive by object store reference counting as long as there is any Dataset that references them. To free memory, delete any Python references to the Dataset object.
-
-Block Data Formats
-~~~~~~~~~~~~~~~~~~
-
-In order to optimize conversion costs, Ray Data can hold tabular data in-memory
-as either `Arrow Tables <https://arrow.apache.org/docs/python/generated/pyarrow.Table.html>`__
-or `Pandas DataFrames <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html>`__.
-
-Different ways of creating Ray Data leads to a different starting internal format:
-
-* Reading tabular files (Parquet, CSV, JSON) creates Arrow blocks initially.
-* Converting from Pandas, Dask, Modin, and Mars creates Pandas blocks initially.
-* Reading NumPy files or converting from NumPy ndarrays creates Arrow blocks.
-* Reading TFRecord file creates Arrow blocks.
-* Reading MongoDB creates Arrow blocks.
-
-However, this internal format is not exposed to the user. Ray Data converts between formats
-as needed internally depending on the specified ``batch_format`` of transformations.

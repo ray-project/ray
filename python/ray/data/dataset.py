@@ -922,7 +922,7 @@ class Dataset:
         * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
         * ``shuffle=True`` - performs a full distributed shuffle
 
-        .. image:: images/dataset-shuffle.svg
+        .. image:: /data/images/dataset-shuffle.svg
             :align: center
 
         ..

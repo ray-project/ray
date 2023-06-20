@@ -94,11 +94,10 @@ parts:
           - file: data/overview
             title: Overview
           - file: data/getting-started
-          - file: data/key-concepts
           - file: data/user-guide
           - file: data/examples/index
-          - file: data/faq
           - file: data/api/api
+          - file: data/data-internals
 
       - file: train/train
         title: Ray Train

@@ -68,22 +68,6 @@ Learn more
 
     .. grid-item-card::
 
-        **Key Concepts**
-        ^^^
-
-        Understand the key concepts behind Ray Data.
-        Learn what :ref:`Datasets <dataset_concept>` are and how they are executed in Ray Data.
-
-        +++
-        .. button-ref:: data_key_concepts
-            :color: primary
-            :outline:
-            :expand:
-
-            Learn Key Concepts
-
-    .. grid-item-card::
-
         **Examples**
         ^^^
 
@@ -96,21 +80,6 @@ Learn more
             :expand:
 
             Ray Data Examples
-
-    .. grid-item-card::
-
-        **Ray Data FAQ**
-        ^^^
-
-        Find answers to commonly asked questions in our detailed FAQ.
-
-        +++
-        .. button-ref:: data_faq
-            :color: primary
-            :outline:
-            :expand:
-
-            Ray Data FAQ
 
     .. grid-item-card::
 
