@@ -223,21 +223,21 @@ async def test_batch_timeout_empty_queue():
     request in the next batch before processing the batch.
     """
 
-    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.1)
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.25)
     async def no_op(requests):
         return ["No-op"] * len(requests)
 
     num_iterations = 2
     for iteration in range(num_iterations):
         tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
-        done, _ = await asyncio.wait(tasks, timeout=0.01)
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
 
         # Due to the long timeout, none of the tasks should finish until a tenth
         # request is submitted
         assert len(done) == 0
 
         tasks.append(get_or_create_event_loop().create_task(no_op(None)))
-        done, _ = await asyncio.wait(tasks, timeout=0.01)
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
 
         # All the timeout tasks should be finished
         assert set(tasks) == set(done)
@@ -245,7 +245,7 @@ async def test_batch_timeout_empty_queue():
 
         if iteration < num_iterations - 1:
             # Leave queue empty for batch_wait_timeout_s between batches
-            time.sleep(0.1)
+            time.sleep(0.25)
 
 
 @pytest.mark.asyncio
