@@ -31,7 +31,7 @@ class TestDQN(unittest.TestCase):
             .training(num_steps_sampled_before_learning_starts=0)
         )
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             # Double-dueling DQN.
             print("Double-dueling")
             trainer = config.build()
@@ -70,7 +70,7 @@ class TestDQN(unittest.TestCase):
             .training(num_steps_sampled_before_learning_starts=0)
         )
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             # Double-dueling DQN.
             print("Double-dueling")
             trainer = config.build()

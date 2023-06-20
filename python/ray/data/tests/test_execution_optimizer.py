@@ -1004,12 +1004,6 @@ def test_from_dask_e2e(ray_start_regular_shared, enable_optimizer):
     _check_usage_record(["FromPandas"])
 
 
-# We are currently testing with modin 0.12.1, which uses stale Ray core
-# APIs. Upgrading to a later version will also update pandas, and that upgrade
-# will break other tests. We skip modin until we can resolve the issues of the
-# pandas upgrade.
-# Todo: upgrade modin + pandas
-@pytest.mark.skip("Needs modin + pandas upgrade")
 @pytest.mark.skipif(sys.version_info < (3, 8), reason="requires python3.8 or higher")
 def test_from_modin_e2e(ray_start_regular_shared, enable_optimizer):
     import modin.pandas as mopd

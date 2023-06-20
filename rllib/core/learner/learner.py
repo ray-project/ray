@@ -96,7 +96,7 @@ class FrameworkHyperparameters:
             Module in Torch.
     """
 
-    eager_tracing: bool = False
+    eager_tracing: bool = True
     torch_compile_cfg: Optional["TorchCompileConfig"] = None
 
 
