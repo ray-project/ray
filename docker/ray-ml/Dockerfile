@@ -16,6 +16,8 @@ RUN sudo apt-get update \
     && sudo apt-get install -y gcc \
         cmake \
         libgtk2.0-dev \
+        libgl1-mesa-glx \
+        libosmesa6 \
         zlib1g-dev \
         libgl1-mesa-dev \
         unzip \

@@ -303,10 +303,10 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
+        self.auto_wrap_old_gym_envs = True
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
-        self.is_atari = None
-        self.auto_wrap_old_gym_envs = True
+        self._is_atari = None
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -718,28 +718,6 @@ class AlgorithmConfig(_Config):
         #  of themselves? This way, users won't even be able to alter those values
         #  directly anymore.
 
-    def _detect_atari_env(self) -> bool:
-        """Returns whether this configured env is an Atari env or not.
-
-        Returns:
-            True, if specified env is an Atari env, False otherwise.
-        """
-        # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-        # or "ALE/Breakout-v5".
-        # We do NOT attempt to auto-detect Atari env for other specified types like
-        # a callable, to avoid running heavy logics in validate().
-        # For these cases, users can explicitly set `environment(atari=True)`.
-        if not type(self.env) == str:
-            return False
-
-        try:
-            env = gym.make(self.env)
-        except gym.error.NameNotFound:
-            # Not an Atari env if this is not a gym env.
-            return False
-
-        return is_atari(env)
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
         """Validates all values in this config."""
@@ -984,10 +962,6 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
-
-        # Detect if specified env is an Atari env.
-        if self.is_atari is None:
-            self.is_atari = self._detect_atari_env()
 
         if self.input_ == "sampler" and self.off_policy_estimation_methods:
             raise ValueError(
@@ -1365,7 +1339,7 @@ class AlgorithmConfig(_Config):
             disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
-                this during config validation.
+                this.
             auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
                 the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
                 dict). If True, RLlib will automatically wrap the given gym env class
@@ -1402,7 +1376,7 @@ class AlgorithmConfig(_Config):
         if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
-            self.is_atari = is_atari
+            self._is_atari = is_atari
         if auto_wrap_old_gym_envs is not NotProvided:
             self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
 
@@ -2316,6 +2290,8 @@ class AlgorithmConfig(_Config):
                 In case there are more than this many episodes collected in a single
                 training iteration, use all of these episodes for metrics computation,
                 meaning don't ever cut any "excess" episodes.
+                Set this to 1 to disable smoothing and to always report only the most
+                recently collected episode's return.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
@@ -2641,6 +2617,31 @@ class AlgorithmConfig(_Config):
         `.get_default_learner_class()` method.
         """
         return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if not type(self.env) == str:
+                return False
+            try:
+                env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
