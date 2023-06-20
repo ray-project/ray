@@ -241,6 +241,26 @@ class MaxAndSkipEnv(gym.Wrapper):
 
 
 @PublicAPI
+class ResizeImage(gym.ObservationWrapper):
+    def __init__(self, env, width, height):
+        """Resizes the image observations into the given width x height format.
+
+        Thereby leaving the color channel(s) (if any) as-is.
+        """
+        super().__init__(env)
+        self.width = width
+        self.height = height
+        new_shape = list(env.observation_space.shape)
+        new_shape[0], new_shape[1] = self.width, self.height
+        self.observation_space = spaces.Box(
+            low=0, high=255, shape=new_shape, dtype=np.uint8
+        )
+
+    def observation(self, frame):
+        return resize(frame, height=self.height, width=self.width)
+
+
+@PublicAPI
 class WarpFrame(gym.ObservationWrapper):
     def __init__(self, env, dim):
         """Warp frames to the specified size (dim x dim)."""
