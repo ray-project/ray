@@ -1,4 +1,5 @@
-# Experimental Direct Ingress
+(serve-direct-ingress)=
+# Experimental gRPC Ingress
 
 In the 2.1, Serve provides an alpha version of [gRPC](https://grpc.io/) ingress.
 
@@ -32,7 +33,7 @@ service PredictAPIsService {
 Take a look at the following code samples for using `DefaultgRPCDriver` in Ray Serve.
 
 To implement the Serve, your class needs to inherit `ray.serve.drivers.DefaultgRPCDriver`.
-```{literalinclude} ../serve/doc_code/direct_ingress.py
+```{literalinclude} ../doc_code//direct_ingress.py
 :start-after: __begin_server__
 :end-before: __end_server__
 :language: python
@@ -41,7 +42,7 @@ To implement the Serve, your class needs to inherit `ray.serve.drivers.DefaultgR
 Client:
 You can use Serve's built-in gRPC client to send query to the model.
 
-```{literalinclude} ../serve/doc_code/direct_ingress.py
+```{literalinclude} ../doc_code//direct_ingress.py
 :start-after: __begin_client__
 :end-before: __end_client__
 :language: python
@@ -101,7 +102,7 @@ After the code is generated, you can implement the business logic for gRPC serve
 * Add the `@serve.deployment(is_driver_deployment=True)` decorator.
 
 Server:
-```{literalinclude} ../serve/doc_code/direct_ingress_with_customized_schema.py
+```{literalinclude} ../doc_code//direct_ingress_with_customized_schema.py
 :start-after: __begin_server__
 :end-before: __end_server__
 :language: python
@@ -109,7 +110,7 @@ Server:
 
 Client:
 You can directly use the client code to play it!
-```{literalinclude} ../serve/doc_code/direct_ingress_with_customized_schema.py
+```{literalinclude} ../doc_code//direct_ingress_with_customized_schema.py
 :start-after: __begin_client__
 :end-before: __end_client__
 :language: python
