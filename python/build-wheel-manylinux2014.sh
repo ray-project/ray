@@ -42,10 +42,9 @@ nvm use "$NODE_VERSION"
 # Install bazelisk via npm.
 npm install -g @bazel/bazelisk
 ln -s "$(which bazelisk)" /usr/local/bin/bazel
-cat > ~/.bazelrc << EOF
-build --config=ci
-build --announce_rc
-EOF
+
+echo "build --config=ci" > ~/.bazelrc
+echo "build --announce_rc" >> ~/.bazelrc
 
 ########## Starts building here. ##########
 
@@ -55,6 +54,11 @@ EOF
 git config --global --add safe.directory /ray
 
 echo "--- Build java parts"
+
+JAVA_BIN="$(readlink -f "$(command -v java)")"
+echo "java_bin path ${JAVA_BIN}"
+export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
   bazel build //java:ray_java_pkg
   unset RAY_INSTALL_JAVA
