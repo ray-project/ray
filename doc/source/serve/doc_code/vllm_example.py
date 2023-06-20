@@ -56,7 +56,7 @@ class VLLMPredictDeployment:
             prompt = request_output.prompt
             text_outputs = [prompt + output.text for output in request_output.outputs]
             ret = {"text": text_outputs}
-            yield (json.dumps(ret) + "\0").encode("utf-8")
+            yield (json.dumps(ret) + "\n").encode("utf-8")
 
     async def abort_request(self, request_id) -> None:
         await self.engine.abort(request_id)
@@ -105,7 +105,8 @@ def send_sample_request():
     prompt = "How do I cook fried rice?"
     sample_input = {"prompt": prompt, "stream": True}
     output = requests.post("http://localhost:8000/", json=sample_input)
-    print(output.json())
+    for line in output.iter_lines():
+        print(line.decode("utf-8"))
 
 
 if __name__ == "__main__":
