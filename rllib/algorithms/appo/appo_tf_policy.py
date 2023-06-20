@@ -164,18 +164,6 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             )
             bootstrap_value = bootstrap_values_time_major[-1]
 
-            ## See docstring of:
-            ## `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for
-            ## details on the following computation to yield correct t=1 to T+1
-            ## trajectories, with T being the rollout length (max trajectory len).
-            #shape = tf.shape(values_time_major)
-            #B = shape[1]
-            #values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
-            #bootstrap_values_time_major = tf.concat(
-            #    [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
-            #)
-            #values_time_major += bootstrap_values_time_major
-
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
                 mask = tf.sequence_mask(train_batch[SampleBatch.SEQ_LENS], max_seq_len)
@@ -383,9 +371,9 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             episode: Optional["Episode"] = None,
         ):
             # Call super's postprocess_trajectory first.
-            #sample_batch = super().postprocess_trajectory(
+            # sample_batch = super().postprocess_trajectory(
             #    sample_batch, other_agent_batches, episode
-            #)
+            # )
 
             if not self.config["vtrace"]:
                 sample_batch = compute_gae_for_sample_batch(

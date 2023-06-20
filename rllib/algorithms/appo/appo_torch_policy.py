@@ -161,17 +161,6 @@ class APPOTorchPolicy(
         bootstrap_values_time_major = _make_time_major(
             train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
         )
-
-        # See docstring of:
-        # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for details
-        # on the following computation to yield correct t=1 to T+1 trajectories,
-        # with T being the rollout length (max trajectory len).
-        #_, B = values_time_major.shape
-        #values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
-        #bootstrap_values_time_major = torch.cat(
-        #    [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
-        #)
-        #values_time_major += bootstrap_values_time_major
         bootstrap_value = bootstrap_values_time_major[-1]
 
         if self.is_recurrent():
@@ -386,9 +375,9 @@ class APPOTorchPolicy(
         episode: Optional["Episode"] = None,
     ):
         # Call super's postprocess_trajectory first.
-        #sample_batch = super().postprocess_trajectory(
+        # sample_batch = super().postprocess_trajectory(
         #    sample_batch, other_agent_batches, episode
-        #)
+        # )
 
         # Do all post-processing always with no_grad().
         # Not using this here will introduce a memory leak
