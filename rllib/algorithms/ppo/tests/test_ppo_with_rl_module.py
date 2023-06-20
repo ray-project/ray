@@ -101,7 +101,7 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for fw in framework_iterator(
-            config, frameworks=("torch"), with_eager_tracing=True
+            config, frameworks=("tf2", "torch"), with_eager_tracing=True
         ):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:

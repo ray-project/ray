@@ -900,6 +900,8 @@ class EagerTFPolicyV2(Policy):
         input_dict = NestedDict(input_dict)
 
         fwd_out = self.model.forward_exploration(input_dict)
+        # For recurrent models, we need to remove the time dimension.
+        fwd_out = self.maybe_remove_time_dimension(fwd_out)
 
         # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
         # Create a distribution object.
