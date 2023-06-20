@@ -132,7 +132,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6,
-                                  std::placeholders::_7);
+                                  std::placeholders::_7,
+                                  std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -225,8 +226,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 
   // Initialize the task state event buffer.
   auto task_event_gcs_client = std::make_unique<gcs::GcsClient>(options_.gcs_options);
-  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
-      std::move(task_event_gcs_client), worker_context_.GetCurrentJobID());
+  task_event_buffer_ =
+      std::make_unique<worker::TaskEventBufferImpl>(std::move(task_event_gcs_client));
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -1694,53 +1695,6 @@ Status CoreWorker::PushError(const JobID &job_id,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
-                                  const std::shared_ptr<RayObject> &obj,
-                                  std::function<void()> callback) {
-  if (!obj->IsInPlasmaError()) {
-    RAY_LOG(ERROR) << "Cannot spill inlined object " << object_id;
-    callback();
-    return;
-  }
-
-  // Find the raylet that hosts the primary copy of the object.
-  bool owned_by_us = false;
-  NodeID pinned_at;
-  bool spilled = false;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
-      object_id, &owned_by_us, &pinned_at, &spilled));
-  RAY_CHECK(owned_by_us);
-  if (spilled) {
-    // The object has already been spilled.
-    return;
-  }
-  auto node = gcs_client_->Nodes().Get(pinned_at);
-  if (pinned_at.IsNil() || !node) {
-    RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
-    callback();
-    return;
-  }
-
-  // Ask the raylet to spill the object.
-  RAY_LOG(DEBUG) << "Sending spill request to raylet for object " << object_id;
-  auto raylet_client = std::make_shared<raylet::RayletClient>(
-      rpc::NodeManagerWorkerClient::make(node->node_manager_address(),
-                                         node->node_manager_port(),
-                                         *client_call_manager_));
-  raylet_client->RequestObjectSpillage(
-      object_id,
-      [object_id, callback](const Status &status,
-                            const rpc::RequestObjectSpillageReply &reply) {
-        if (!status.ok() || !reply.success()) {
-          RAY_LOG(ERROR) << "Failed to spill object " << object_id
-                         << ", raylet unreachable or object could not be spilled.";
-        }
-        // TODO(Clark): Provide spilled URL and spilled node ID to callback so it can
-        // added them to the reference.
-        callback();
-      });
-}
-
 json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
@@ -1947,6 +1901,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+
+    // If it is a generator task, create a object ref stream.
+    // The language frontend is responsible for calling DeleteObjectRefStream.
+    if (task_spec.IsStreamingGenerator()) {
+      CreateObjectRefStream(task_spec.ReturnId(0));
+    }
+
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -2272,6 +2233,13 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+
+    // If it is a generator task, create a object ref stream.
+    // The language frontend is responsible for calling DeleteObjectRefStream.
+    if (task_spec.IsStreamingGenerator()) {
+      CreateObjectRefStream(task_spec.ReturnId(0));
+    }
+
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   task_returns = std::move(returned_refs);
@@ -2555,6 +2523,7 @@ Status CoreWorker::ExecuteTask(
     const std::shared_ptr<ResourceMappingType> &resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
@@ -2682,6 +2651,7 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       dynamic_return_objects,
+      streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
       application_error,
@@ -2856,10 +2826,10 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address) {
-  const auto &task_spec = worker_context_.GetCurrentTask();
-  const auto return_id =
-      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
+ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                             const TaskID &task_id,
+                                             std::optional<ObjectIDIndexType> put_index) {
+  const auto return_id = worker_context_.GetGeneratorReturnId(task_id, put_index);
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
   reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
@@ -2870,6 +2840,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
+    uint64_t attempt_number,
     bool finished) {
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << " finished: " << finished << ", id: " << dynamic_return_object.first;
@@ -2878,6 +2849,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_item_index(item_index);
   request.set_finished(finished);
   request.set_generator_id(generator_id.Binary());
+  request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {
@@ -2947,10 +2919,12 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   std::string application_error = "";
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
                          resource_ids,
                          &return_objects,
                          &dynamic_return_objects,
+                         &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
                          &application_error));
@@ -3286,10 +3260,9 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
     if (task_manager_->ObjectRefStreamExists(generator_id)) {
-      // It is possible this reference will leak if the ObjectRefStream is
-      // deleted or the corresponding object ID is not reported via
-      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, generator_id);
     }
@@ -3425,12 +3398,10 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    RAY_CHECK(!generator_id->IsNil());
     if (task_manager_->ObjectRefStreamExists(*generator_id)) {
-      // It is possible this reference will leak if the ObjectRefStream is
-      // deleted or the corresponding object ID is not reported via
-      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, *generator_id);
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, *generator_id);
     } else {
       reference_counter_->AddDynamicReturn(object_id, *generator_id);
     }
@@ -3462,10 +3433,10 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
     if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
-      // It is possible this reference will leak if the ObjectRefStream is
-      // deleted or the corresponding object ID is not reported via
-      // HandleReportGeneratorItemReturns. TODO(sang): Handle the edge case.
-      reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, maybe_generator_id);
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id,
+                                                              maybe_generator_id);
     } else {
       // The task is a generator and may not have finished yet. Add the internal
       // ObjectID so that we can update its location.

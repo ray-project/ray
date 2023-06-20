@@ -479,7 +479,7 @@ def test_deploy_application(serve_instance):
 
     @serve.deployment
     class Model1:
-        def __call__(self):
+        def __call__(self, *args):
             return "got model1"
 
     app = FastAPI()
@@ -828,6 +828,23 @@ class TestAppBuilder:
             call_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
+
+
+def test_no_slash_route_prefix(serve_instance):
+    """Test serve run with no slash route_prefix.
+
+    This test ensure when serve runs with no prefix slash in route_prefix, it will throw
+    good error message.
+    """
+
+    @serve.deployment
+    def f():
+        pass
+
+    with pytest.raises(
+        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
+    ):
+        serve.run(f.bind(), route_prefix="no_slash")
 
 
 if __name__ == "__main__":

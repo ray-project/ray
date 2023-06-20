@@ -1,8 +1,8 @@
 import copy
 import importlib
 import inspect
+import logging
 import os
-import pickle
 import random
 import string
 import time
@@ -27,7 +27,6 @@ import numpy as np
 import pydantic
 import pydantic.json
 import requests
-import logging
 
 import ray
 import ray.util.serialization_addons
@@ -38,7 +37,6 @@ from ray.serve._private.constants import (
     RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.http_util import HTTPRequestWrapper, build_starlette_request
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -78,17 +76,6 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def parse_request_item(request_item):
-    if len(request_item.args) == 1:
-        arg = request_item.args[0]
-        if request_item.metadata.http_arg_is_pickled:
-            assert isinstance(arg, bytes)
-            arg: HTTPRequestWrapper = pickle.loads(arg)
-            return (build_starlette_request(arg.scope, arg.body),), {}
-
-    return request_item.args, request_item.kwargs
 
 
 class _ServeCustomEncoders:
@@ -206,11 +193,11 @@ def compute_iterable_delta(old: Iterable, new: Iterable) -> Tuple[set, set, set]
     """Given two iterables, return the entries that's (added, removed, updated).
 
     Usage:
-        >>> from ray.serve.utils import compute_iterable_delta
+        >>> from ray.serve._private.utils import compute_iterable_delta
         >>> old = {"a", "b"}
         >>> new = {"a", "d"}
         >>> compute_iterable_delta(old, new)
-        ({"d"}, {"b"}, {"a"})
+        ({'d'}, {'b'}, {'a'})
     """
     old_keys, new_keys = set(old), set(new)
     added_keys = new_keys - old_keys
@@ -223,11 +210,11 @@ def compute_dict_delta(old_dict, new_dict) -> Tuple[dict, dict, dict]:
     """Given two dicts, return the entries that's (added, removed, updated).
 
     Usage:
-        >>> from ray.serve.utils import compute_dict_delta
+        >>> from ray.serve._private.utils import compute_dict_delta
         >>> old = {"a": 1, "b": 2}
         >>> new = {"a": 3, "d": 4}
         >>> compute_dict_delta(old, new)
-        ({"d": 4}, {"b": 2}, {"a": 3})
+        ({'d': 4}, {'b': 2}, {'a': 3})
     """
     added_keys, removed_keys, updated_keys = compute_iterable_delta(
         old_dict.keys(), new_dict.keys()
@@ -419,7 +406,7 @@ def require_packages(packages: List[str]):
     """Decorator making sure function run in specified environments
 
     Examples:
-        >>> from ray.serve.utils import require_packages
+        >>> from ray.serve._private.utils import require_packages
         >>> @require_packages(["numpy", "package_a"]) # doctest: +SKIP
         ... def func(): # doctest: +SKIP
         ...     import numpy as np # doctest: +SKIP

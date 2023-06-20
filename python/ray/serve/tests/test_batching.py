@@ -1,9 +1,15 @@
-import asyncio
-
+import time
 import pytest
+import asyncio
+import requests
+from typing import List
+from functools import partial
+from starlette.responses import StreamingResponse
+from concurrent.futures.thread import ThreadPoolExecutor
 
 import ray
 from ray import serve
+from ray.serve.exceptions import RayServeException
 from ray._private.utils import get_or_create_event_loop
 
 
@@ -34,6 +40,44 @@ def test_batching(serve_instance):
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
     assert max(counter_result) < 20
+
+
+def test_batching_magic_attributes(serve_instance):
+    @serve.deployment
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+            self.batch_sizes = set()
+
+        @property
+        def _ray_serve_max_batch_size(self):
+            return self.count + 1
+
+        @property
+        def _ray_serve_batch_wait_timeout_s(self):
+            return 1
+
+        @serve.batch
+        async def handle_batch(self, requests):
+            self.count += 1
+            batch_size = len(requests)
+            self.batch_sizes.add(batch_size)
+            return [batch_size] * batch_size
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    handle = serve.run(BatchingExample.bind())
+
+    future_list = []
+    for _ in range(21):
+        f = handle.remote(1)
+        future_list.append(f)
+
+    counter_result = ray.get(future_list)
+    # batch size is increased by 1 with each call
+    # 1+2+3+4+5+6 == 21
+    assert set(counter_result) == {1, 2, 3, 4, 5, 6}
 
 
 def test_batching_exception(serve_instance):
@@ -210,6 +254,39 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 
 
 @pytest.mark.asyncio
+async def test_batch_timeout_empty_queue():
+    """Check that Serve waits when creating batches.
+
+    Serve should wait a full batch_wait_timeout_s after receiving the first
+    request in the next batch before processing the batch.
+    """
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.25)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
+
+    num_iterations = 2
+    for iteration in range(num_iterations):
+        tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
+
+        # Due to the long timeout, none of the tasks should finish until a tenth
+        # request is submitted
+        assert len(done) == 0
+
+        tasks.append(get_or_create_event_loop().create_task(no_op(None)))
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
+
+        # All the timeout tasks should be finished
+        assert set(tasks) == set(done)
+        assert all(t.result() == "No-op" for t in tasks)
+
+        if iteration < num_iterations - 1:
+            # Leave queue empty for batch_wait_timeout_s between batches
+            time.sleep(0.25)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
@@ -289,6 +366,148 @@ async def test_batch_args_kwargs(mode, use_class):
 
     result = await asyncio.gather(*coros)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
+@pytest.mark.parametrize("use_class", [True, False])
+@pytest.mark.parametrize("generator_length", [0, 2, 5])
+async def test_batch_generator_basic(mode, use_class, generator_length):
+    if use_class:
+
+        class MultipleArgs:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, key1, key2):
+                for gen_idx in range(generator_length):
+                    yield [(gen_idx, key1[i], key2[i]) for i in range(len(key1))]
+
+        instance = MultipleArgs()
+        func = instance.method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def func(key1, key2):
+            for gen_idx in range(generator_length):
+                yield [(gen_idx, key1[i], key2[i]) for i in range(len(key1))]
+
+    if mode == "args":
+        generators = [func("hi1", "hi2"), func("hi3", "hi4")]
+    elif mode == "kwargs":
+        generators = [func(key1="hi1", key2="hi2"), func(key1="hi3", key2="hi4")]
+    elif mode == "mixed":
+        generators = [func("hi1", key2="hi2"), func("hi3", key2="hi4")]
+    elif mode == "out-of-order":
+        generators = [func(key2="hi2", key1="hi1"), func(key2="hi4", key1="hi3")]
+
+    results = [
+        [result async for result in generators[0]],
+        [result async for result in generators[1]],
+    ]
+
+    assert results == [
+        [(gen_idx, "hi1", "hi2") for gen_idx in range(generator_length)],
+        [(gen_idx, "hi3", "hi4") for gen_idx in range(generator_length)],
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("error_type", ["runtime_error", "mismatched_lengths"])
+async def test_batch_generator_exceptions(error_type):
+    GENERATOR_LENGTH = 5
+    ERROR_IDX = 2
+    ERROR_MSG = "Testing error"
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def func(key1, key2):
+        for gen_idx in range(GENERATOR_LENGTH):
+            results = [(gen_idx, key1[i], key2[i]) for i in range(len(key1))]
+            if gen_idx == ERROR_IDX:
+                if error_type == "runtime_error":
+                    raise RuntimeError(ERROR_MSG)
+                elif error_type == "mismatched_lengths":
+                    yield results * 2
+            yield results
+
+    generators = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    for generator in generators:
+        for _ in range(ERROR_IDX):
+            await generator.__anext__()
+
+        if error_type == "runtime_error":
+            with pytest.raises(RuntimeError, match=ERROR_MSG):
+                await generator.__anext__()
+        elif error_type == "mismatched_lengths":
+            with pytest.raises(RayServeException):
+                await generator.__anext__()
+
+        with pytest.raises(StopAsyncIteration):
+            await generator.__anext__()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stop_token", [StopAsyncIteration, StopIteration])
+async def test_batch_generator_early_termination(stop_token):
+    NUM_CALLERS = 4
+
+    event = asyncio.Event()
+
+    @serve.batch(max_batch_size=NUM_CALLERS, batch_wait_timeout_s=1000)
+    async def sequential_terminator(ids: List[int]):
+        """Terminates callers one-after-another in order of call."""
+
+        for num_finished_callers in range(1, NUM_CALLERS + 1):
+            event.clear()
+            responses = [stop_token for _ in range(num_finished_callers)]
+            responses += [ids[idx] for idx in range(num_finished_callers, NUM_CALLERS)]
+            yield responses
+            await event.wait()
+
+    ids = list(range(NUM_CALLERS))
+    generators = [sequential_terminator(id) for id in ids]
+    for id, generator in zip(ids, generators):
+        async for result in generator:
+            assert result == id
+
+        # Each terminated caller frees the sequential_terminator to process
+        # another iteration.
+        event.set()
+
+
+@pytest.mark.asyncio
+async def test_batch_generator_streaming_response_integration_test(serve_instance):
+    NUM_YIELDS = 10
+
+    @serve.deployment
+    class Textgen:
+        @serve.batch(max_batch_size=4, batch_wait_timeout_s=1000)
+        async def batch_handler(self, prompts: List[str]):
+            for _ in range(NUM_YIELDS):
+                # Check that the batch handler can yield unhashable types
+                prompt_responses = [{"value": prompt} for prompt in prompts]
+                yield prompt_responses
+
+        async def value_extractor(self, prompt_responses):
+            async for prompt_response in prompt_responses:
+                yield prompt_response["value"]
+
+        async def __call__(self, request):
+            prompt = request.query_params["prompt"]
+            response_values = self.value_extractor(self.batch_handler(prompt))
+            return StreamingResponse(response_values)
+
+    serve.run(Textgen.bind())
+
+    prompt_prefix = "hola"
+    url = f"http://localhost:8000/?prompt={prompt_prefix}"
+    with ThreadPoolExecutor() as pool:
+        futs = [pool.submit(partial(requests.get, url + str(idx))) for idx in range(4)]
+        responses = [fut.result() for fut in futs]
+
+    for idx, response in enumerate(responses):
+        assert response.status_code == 200
+        assert response.text == "".join([prompt_prefix + str(idx)] * NUM_YIELDS)
 
 
 if __name__ == "__main__":

@@ -371,16 +371,20 @@ class ImpalaConfig(AlgorithmConfig):
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
 
-        # Check `entropy_coeff` for correctness.
-        if self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
         # Entropy coeff schedule checking.
         if self._enable_learner_api:
+            if self.entropy_coeff_schedule is not None:
+                raise ValueError(
+                    "`entropy_coeff_schedule` is deprecated and must be None! Use the "
+                    "`entropy_coeff` setting to setup a schedule."
+                )
             Scheduler.validate(
-                self.entropy_coeff_schedule,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
+                fixed_value_or_schedule=self.entropy_coeff,
+                setting_name="entropy_coeff",
+                description="entropy coefficient",
             )
+        elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -398,10 +402,7 @@ class ImpalaConfig(AlgorithmConfig):
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
         if self._separate_vf_optimizer is True:
-            # Only supported to tf so far.
-            # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
-            #  models to return separate sets of weights in order to create
-            #  the different torch optimizers).
+            # Only supported in tf on the old API stack.
             if self.framework_str not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
@@ -850,13 +851,20 @@ class Impala(Algorithm):
                     }
                 ]
             else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
+                if cf.num_gpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "GPU": cf.num_gpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
 
             bundles += trainer_bundle
 
@@ -956,21 +964,30 @@ class Impala(Algorithm):
             blocking = self.config.num_learner_workers == 0
             results = []
             for batch in batches:
-                result = self.learner_group.update(
-                    batch,
-                    reduce_fn=_reduce_impala_results,
-                    block=blocking,
-                    num_iters=self.config.num_sgd_iter,
-                    minibatch_size=self.config.minibatch_size,
-                )
-                if result:
-                    self._counters[NUM_ENV_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                if blocking:
+                    result = self.learner_group.update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+                    results = [result]
+                else:
+                    results = self.learner_group.async_update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+
+                for r in results:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
                         NUM_ENV_STEPS_TRAINED
                     )
-                    self._counters[NUM_AGENT_STEPS_TRAINED] += result[ALL_MODULES].pop(
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
                         NUM_AGENT_STEPS_TRAINED
                     )
-                    results.append(result)
+
             self._counters.update(self.learner_group.get_in_queue_stats())
             # If there are results, reduce-mean over each individual value and return.
             if results:

@@ -122,7 +122,10 @@ def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
     return args_dict
 
 
-@click.group(help="CLI for managing Serve applications on a Ray cluster.")
+@click.group(
+    help="CLI for managing Serve applications on a Ray cluster.",
+    context_settings=dict(help_option_names=["-h", "--help"]),
+)
 def cli():
     pass
 
@@ -406,8 +409,26 @@ def run(
             import_attr(import_path), args_dict
         )
 
-    # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
+    # Only initialize ray if it has not happened yet.
+    if not ray.is_initialized():
+        # Setting the runtime_env here will set defaults for the deployments.
+        ray.init(
+            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        )
+    elif (
+        address is not None
+        and address != "auto"
+        and address != ray.get_runtime_context().gcs_address
+    ):
+        # Warning users the address they passed is different from the existing ray
+        # instance.
+        ray_address = ray.get_runtime_context().gcs_address
+        cli_logger.warning(
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+
     client = _private_api.serve_start(
         detached=True,
         http_options={"host": host, "port": port, "location": "EveryNode"},
@@ -490,18 +511,18 @@ def config(address: str, name: Optional[str]):
                     sort_keys=False,
                 )
                 for app in serve_details.applications.values()
+                if app.deployed_app_config is not None
             ),
             end="",
         )
     # Fetch a specific app config by name.
     else:
-        if name not in serve_details.applications:
-            config = ServeApplicationSchema.get_empty_schema_dict()
+        app = serve_details.applications.get(name)
+        if app is None or app.deployed_app_config is None:
+            print(f'No config has been deployed for application "{name}".')
         else:
-            config = serve_details.applications.get(name).deployed_app_config.dict(
-                exclude_unset=True
-            )
-        print(yaml.safe_dump(config, sort_keys=False), end="")
+            config = app.deployed_app_config.dict(exclude_unset=True)
+            print(yaml.safe_dump(config, sort_keys=False), end="")
 
 
 @cli.command(

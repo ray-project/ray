@@ -1,7 +1,9 @@
+import asyncio
 import pytest
 import numpy as np
 import sys
 import time
+import threading
 import gc
 
 from unittest.mock import patch, Mock
@@ -9,9 +11,20 @@ from unittest.mock import patch, Mock
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.experimental.state.api import list_objects
-from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEoFError
+from ray._raylet import StreamingObjectRefGenerator, ObjectRefStreamEneOfStreamError
 from ray.cloudpickle import dumps
 from ray.exceptions import WorkerCrashedError
+
+RECONSTRUCTION_CONFIG = {
+    "health_check_failure_threshold": 10,
+    "health_check_period_ms": 100,
+    "health_check_timeout_ms": 100,
+    "health_check_initial_delay_ms": 0,
+    "max_direct_call_object_size": 100,
+    "task_retry_delay_ms": 100,
+    "object_timeout_milliseconds": 200,
+    "fetch_warn_timeout_milliseconds": 1000,
+}
 
 
 class MockedWorker:
@@ -45,34 +58,62 @@ def test_streaming_object_ref_generator_basic_unit(mocked_worker):
         generator_ref = ray.ObjectRef.from_random()
         generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
         c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-        c.create_object_ref_stream.assert_called()
 
         # Test when there's no new ref, it returns a nil.
         mocked_ray_wait.return_value = [], [generator_ref]
-        ref = generator._next(timeout_s=0)
+        ref = generator._next_sync(timeout_s=0)
         assert ref.is_nil()
 
         # When the new ref is available, next should return it.
         for _ in range(3):
             new_ref = ray.ObjectRef.from_random()
             c.try_read_next_object_ref_stream.return_value = new_ref
-            ref = generator._next(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0)
             assert new_ref == ref
 
         # When try_read_next_object_ref_stream raises a
-        # ObjectRefStreamEoFError, it should raise a stop iteration.
-        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEoFError(
+        # ObjectRefStreamEneOfStreamError, it should raise a stop iteration.
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEneOfStreamError(
             ""
         )  # noqa
         with pytest.raises(StopIteration):
-            ref = generator._next(timeout_s=0)
-
+            ref = generator._next_sync(timeout_s=0)
         # Make sure we cannot serialize the generator.
         with pytest.raises(TypeError):
             dumps(generator)
 
         del generator
         c.delete_object_ref_stream.assert_called()
+
+
+def test_streaming_generator_bad_exception_not_failing(shutdown_only, capsys):
+    """This test verifies when a return value cannot be stored
+        e.g., because it holds a lock) if it handles failures gracefully.
+
+    Previously, when it happens, there was a check failure. This verifies
+    the check failure doesn't happen anymore.
+    """
+    ray.init()
+
+    class UnserializableException(Exception):
+        def __init__(self):
+            self.lock = threading.Lock()
+
+    @ray.remote
+    def f():
+        raise UnserializableException
+        yield 1  # noqa
+
+    for ref in f.options(num_returns="streaming").remote():
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(ref)
+    captured = capsys.readouterr()
+    lines = captured.err.strip().split("\n")
+
+    # Verify check failure doesn't happen because we handle the error
+    # properly.
+    for line in lines:
+        assert "Check failed:" not in line
 
 
 def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
@@ -91,19 +132,17 @@ def test_streaming_object_ref_generator_task_failed_unit(mocked_worker):
             mocked_ray_get.side_effect = WorkerCrashedError()
 
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next(timeout_s=0)
+            ref = generator._next_sync(timeout_s=0)
             # If the generator task fails by a systsem error,
             # meaning the ref will raise an exception
             # it should be returned.
-            print(ref)
-            print(generator_ref)
             assert ref == generator_ref
 
             # Once exception is raised, it should always
             # raise stopIteration regardless of what
             # the ref contains now.
             with pytest.raises(StopIteration):
-                ref = generator._next(timeout_s=0)
+                ref = generator._next_sync(timeout_s=0)
 
 
 def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
@@ -128,14 +167,83 @@ def test_streaming_object_ref_generator_network_failed_unit(mocked_worker):
             # unexpected_network_failure_timeout_s second,
             # it should fail.
             c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
-            ref = generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+            ref = generator._next_sync(
+                timeout_s=0, unexpected_network_failure_timeout_s=1
+            )
             assert ref == ray.ObjectRef.nil()
             time.sleep(1)
             with pytest.raises(AssertionError):
-                generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+                generator._next_sync(
+                    timeout_s=0, unexpected_network_failure_timeout_s=1
+                )
             # After that StopIteration should be raised.
             with pytest.raises(StopIteration):
-                generator._next(timeout_s=0, unexpected_network_failure_timeout_s=1)
+                generator._next_sync(
+                    timeout_s=0, unexpected_network_failure_timeout_s=1
+                )
+
+
+@pytest.mark.asyncio
+async def test_streaming_object_ref_generator_unit_async(mocked_worker):
+    """
+    Verify the basic case:
+    create a generator -> read values -> nothing more to read -> delete.
+    """
+    with patch("ray.wait") as mocked_ray_wait:
+        c = mocked_worker.core_worker
+        generator_ref = ray.ObjectRef.from_random()
+        generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+        c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
+
+        # Test when there's no new ref, it returns a nil.
+        mocked_ray_wait.return_value = [], [generator_ref]
+        ref = await generator._next_async(timeout_s=0)
+        assert ref.is_nil()
+
+        # When the new ref is available, next should return it.
+        for _ in range(3):
+            new_ref = ray.ObjectRef.from_random()
+            c.try_read_next_object_ref_stream.return_value = new_ref
+            ref = await generator._next_async(timeout_s=0)
+            assert new_ref == ref
+
+        # When try_read_next_object_ref_stream raises a
+        # ObjectRefStreamEneOfStreamError, it should raise a stop iteration.
+        c.try_read_next_object_ref_stream.side_effect = ObjectRefStreamEneOfStreamError(
+            ""
+        )  # noqa
+        with pytest.raises(StopAsyncIteration):
+            ref = await generator._next_async(timeout_s=0)
+
+
+@pytest.mark.asyncio
+async def test_async_ref_generator_task_failed_unit(mocked_worker):
+    """
+    Verify when a task is failed by a system error,
+    the generator ref is returned.
+    """
+    with patch("ray.get") as mocked_ray_get:
+        with patch("ray.wait") as mocked_ray_wait:
+            c = mocked_worker.core_worker
+            generator_ref = ray.ObjectRef.from_random()
+            generator = StreamingObjectRefGenerator(generator_ref, mocked_worker)
+
+            # Simulate the worker failure happens.
+            mocked_ray_wait.return_value = [generator_ref], []
+            mocked_ray_get.side_effect = WorkerCrashedError()
+
+            c.try_read_next_object_ref_stream.return_value = ray.ObjectRef.nil()
+            ref = await generator._next_async(timeout_s=0)
+            # If the generator task fails by a systsem error,
+            # meaning the ref will raise an exception
+            # it should be returned.
+            assert ref == generator_ref
+
+            # Once exception is raised, it should always
+            # raise stopIteration regardless of what
+            # the ref contains now.
+            with pytest.raises(StopAsyncIteration):
+                ref = await generator._next_async(timeout_s=0)
 
 
 def test_generator_basic(shutdown_only):
@@ -166,11 +274,10 @@ def test_generator_basic(shutdown_only):
             yield i
 
     gen = f.options(num_returns="streaming").remote()
-    ray.get(next(gen))
-    ray.get(next(gen))
+    print(ray.get(next(gen)))
+    print(ray.get(next(gen)))
     with pytest.raises(ray.exceptions.RayTaskError) as e:
-        ray.get(next(gen))
-    print(str(e.value))
+        print(ray.get(next(gen)))
     with pytest.raises(StopIteration):
         ray.get(next(gen))
     with pytest.raises(StopIteration):
@@ -187,11 +294,10 @@ def test_generator_basic(shutdown_only):
 
         def f(self):
             for i in range(5):
-                time.sleep(0.1)
+                time.sleep(1)
                 yield i
 
     a = A.remote()
-    i = 0
     gen = a.f.options(num_returns="streaming").remote()
     i = 0
     for ref in gen:
@@ -212,37 +318,37 @@ def test_generator_basic(shutdown_only):
             next(gen)
 
     """Retry exceptions"""
-    # TODO(sang): Enable it once retry is supported.
-    # @ray.remote
-    # class Actor:
-    #     def __init__(self):
-    #         self.should_kill = True
 
-    #     def should_kill(self):
-    #         return self.should_kill
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            self.should_kill = True
 
-    #     async def set(self, wait_s):
-    #         await asyncio.sleep(wait_s)
-    #         self.should_kill = False
+        def should_kill(self):
+            return self.should_kill
 
-    # @ray.remote(retry_exceptions=[ValueError], max_retries=10)
-    # def f(a):
-    #     for i in range(5):
-    #         should_kill = ray.get(a.should_kill.remote())
-    #         if i == 3 and should_kill:
-    #             raise ValueError
-    #         yield i
+        async def set(self, wait_s):
+            await asyncio.sleep(wait_s)
+            self.should_kill = False
 
-    # a = Actor.remote()
-    # gen = f.options(num_returns="streaming").remote(a)
-    # assert ray.get(next(gen)) == 0
-    # assert ray.get(next(gen)) == 1
-    # assert ray.get(next(gen)) == 2
-    # a.set.remote(3)
-    # assert ray.get(next(gen)) == 3
-    # assert ray.get(next(gen)) == 4
-    # with pytest.raises(StopIteration):
-    #     ray.get(next(gen))
+    @ray.remote(retry_exceptions=[ValueError], max_retries=10)
+    def f(a):
+        for i in range(5):
+            should_kill = ray.get(a.should_kill.remote())
+            if i == 3 and should_kill:
+                raise ValueError
+            yield i
+
+    a = Actor.remote()
+    gen = f.options(num_returns="streaming").remote(a)
+    assert ray.get(next(gen)) == 0
+    assert ray.get(next(gen)) == 1
+    assert ray.get(next(gen)) == 2
+    a.set.remote(3)
+    assert ray.get(next(gen)) == 3
+    assert ray.get(next(gen)) == 4
+    with pytest.raises(StopIteration):
+        ray.get(next(gen))
 
     """Cancel"""
 
@@ -267,7 +373,6 @@ def test_generator_streaming_no_leak_upon_failures(
     monkeypatch, shutdown_only, crash_type
 ):
     with monkeypatch.context() as m:
-        # defer for 10s for the second node.
         m.setenv(
             "RAY_testing_asio_delay_us",
             "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=100000:1000000",
@@ -368,6 +473,7 @@ def test_generator_streaming(shutdown_only, use_actors, store_in_plasma):
 
 
 def test_generator_dist_chain(ray_start_cluster):
+    """E2E test to verify chain of generator works properly."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
     ray.init()
@@ -399,7 +505,420 @@ def test_generator_dist_chain(ray_start_cluster):
 
     for ref in chain_actor_4.get_data.options(num_returns="streaming").remote():
         assert np.array_equal(np.ones(5 * 1024 * 1024), ray.get(ref))
+        print("getting the next data")
         del ref
+
+
+def test_generator_slow_pinning_requests(monkeypatch, shutdown_only):
+    """
+    Verify when the Object pinning request from the raylet
+    is reported slowly, there's no refernece leak.
+    """
+    with monkeypatch.context() as m:
+        m.setenv(
+            "RAY_testing_asio_delay_us",
+            "CoreWorkerService.grpc_server.PubsubLongPolling=1000000:1000000",
+        )
+
+        @ray.remote
+        def f():
+            yield np.ones(5 * 1024 * 1024)
+
+        for ref in f.options(num_returns="streaming").remote():
+            del ref
+
+        print(list_objects())
+
+
+@pytest.mark.parametrize("store_in_plasma", [False, True])
+def test_actor_streaming_generator(shutdown_only, store_in_plasma):
+    """Test actor/async actor with sync/async generator interfaces."""
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def f(self, ref):
+            for i in range(3):
+                yield i
+
+        async def async_f(self, ref):
+            for i in range(3):
+                await asyncio.sleep(0.1)
+                yield i
+
+        def g(self):
+            return 3
+
+    a = Actor.remote()
+    if store_in_plasma:
+        arr = np.random.rand(5 * 1024 * 1024)
+    else:
+        arr = 3
+
+    def verify_sync_task_executor():
+        generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        # Verify it works with next.
+        assert isinstance(generator, StreamingObjectRefGenerator)
+        assert ray.get(next(generator)) == 0
+        assert ray.get(next(generator)) == 1
+        assert ray.get(next(generator)) == 2
+        with pytest.raises(StopIteration):
+            ray.get(next(generator))
+
+        # Verify it works with for.
+        generator = a.f.options(num_returns="streaming").remote(ray.put(3))
+        for index, ref in enumerate(generator):
+            assert index == ray.get(ref)
+
+    def verify_async_task_executor():
+        # Verify it works with next.
+        generator = a.async_f.options(num_returns="streaming").remote(ray.put(arr))
+        assert isinstance(generator, StreamingObjectRefGenerator)
+        assert ray.get(next(generator)) == 0
+        assert ray.get(next(generator)) == 1
+        assert ray.get(next(generator)) == 2
+
+        # Verify it works with for.
+        generator = a.f.options(num_returns="streaming").remote(ray.put(3))
+        for index, ref in enumerate(generator):
+            assert index == ray.get(ref)
+
+    async def verify_sync_task_async_generator():
+        # Verify anext
+        async_generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        assert isinstance(async_generator, StreamingObjectRefGenerator)
+        for expected in range(3):
+            ref = await async_generator.__anext__()
+            assert await ref == expected
+        with pytest.raises(StopAsyncIteration):
+            await async_generator.__anext__()
+
+        # Verify async for.
+        async_generator = a.f.options(num_returns="streaming").remote(ray.put(arr))
+        expected = 0
+        async for ref in async_generator:
+            value = await ref
+            assert value == value
+            expected += 1
+
+    async def verify_async_task_async_generator():
+        async_generator = a.async_f.options(num_returns="streaming").remote(
+            ray.put(arr)
+        )
+        assert isinstance(async_generator, StreamingObjectRefGenerator)
+        for expected in range(3):
+            ref = await async_generator.__anext__()
+            assert await ref == expected
+        with pytest.raises(StopAsyncIteration):
+            await async_generator.__anext__()
+
+        # Verify async for.
+        async_generator = a.async_f.options(num_returns="streaming").remote(
+            ray.put(arr)
+        )
+        expected = 0
+        async for value in async_generator:
+            value = await ref
+            assert value == value
+            expected += 1
+
+    verify_sync_task_executor()
+    verify_async_task_executor()
+    asyncio.run(verify_sync_task_async_generator())
+    asyncio.run(verify_async_task_async_generator())
+
+
+def test_streaming_generator_exception(shutdown_only):
+    # Verify the exceptions are correctly raised.
+    # Also verify the followup next will raise StopIteration.
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise ValueError
+            yield 1  # noqa
+
+        async def async_f(self):
+            raise ValueError
+            yield 1  # noqa
+
+    a = Actor.remote()
+    g = a.f.options(num_returns="streaming").remote()
+    with pytest.raises(ValueError):
+        ray.get(next(g))
+
+    with pytest.raises(StopIteration):
+        ray.get(next(g))
+
+    with pytest.raises(StopIteration):
+        ray.get(next(g))
+
+    g = a.async_f.options(num_returns="streaming").remote()
+    with pytest.raises(ValueError):
+        ray.get(next(g))
+
+    with pytest.raises(StopIteration):
+        ray.get(next(g))
+
+    with pytest.raises(StopIteration):
+        ray.get(next(g))
+
+
+def test_threaded_actor_generator(shutdown_only):
+    ray.init()
+
+    @ray.remote(max_concurrency=10)
+    class Actor:
+        def f(self):
+            for i in range(30):
+                time.sleep(0.1)
+                yield np.ones(1024 * 1024) * i
+
+    @ray.remote(max_concurrency=20)
+    class AsyncActor:
+        async def f(self):
+            for i in range(30):
+                await asyncio.sleep(0.1)
+                yield np.ones(1024 * 1024) * i
+
+    async def main():
+        a = Actor.remote()
+        asy = AsyncActor.remote()
+
+        async def run():
+            i = 0
+            async for ref in a.f.options(num_returns="streaming").remote():
+                val = ray.get(ref)
+                print(val)
+                print(ref)
+                assert np.array_equal(val, np.ones(1024 * 1024) * i)
+                i += 1
+                del ref
+
+        async def run2():
+            i = 0
+            async for ref in asy.f.options(num_returns="streaming").remote():
+                val = await ref
+                print(ref)
+                print(val)
+                assert np.array_equal(val, np.ones(1024 * 1024) * i), ref
+                i += 1
+                del ref
+
+        coroutines = [run() for _ in range(10)]
+        coroutines = [run2() for _ in range(20)]
+
+        await asyncio.gather(*coroutines)
+
+    asyncio.run(main())
+
+
+def test_generator_dist_gather(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, object_store_memory=1 * 1024 * 1024 * 1024)
+    ray.init()
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self, child=None):
+            self.child = child
+
+        def get_data(self):
+            for _ in range(10):
+                time.sleep(0.1)
+                yield np.ones(5 * 1024 * 1024)
+
+    async def all_gather():
+        actor = Actor.remote()
+        async for ref in actor.get_data.options(num_returns="streaming").remote():
+            val = await ref
+            assert np.array_equal(np.ones(5 * 1024 * 1024), val)
+            del ref
+
+    async def main():
+        await asyncio.gather(all_gather(), all_gather(), all_gather(), all_gather())
+
+    asyncio.run(main())
+    summary = ray._private.internal_api.memory_summary(stats_only=True)
+    print(summary)
+
+
+def test_reconstruction(ray_start_cluster):
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=RECONSTRUCTION_CONFIG,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_returns="streaming", max_retries=2)
+    def dynamic_generator(num_returns):
+        for i in range(num_returns):
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def fetch(x):
+        return x[0]
+
+    # Test recovery of all dynamic objects through re-execution.
+    gen = ray.get(dynamic_generator.remote(10))
+    refs = []
+
+    for i in range(5):
+        refs.append(next(gen))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i, ref in enumerate(refs):
+        print("first trial.")
+        print("fetching ", i)
+        assert ray.get(fetch.remote(ref)) == i
+
+    # Try second retry.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i in range(4):
+        refs.append(next(gen))
+
+    for i, ref in enumerate(refs):
+        print("second trial")
+        print("fetching ", i)
+        assert ray.get(fetch.remote(ref)) == i
+
+    # third retry should fail.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i in range(1):
+        refs.append(next(gen))
+
+    for i, ref in enumerate(refs):
+        print("third trial")
+        print("fetching ", i)
+        with pytest.raises(ray.exceptions.RayTaskError) as e:
+            ray.get(fetch.remote(ref))
+        assert "the maximum number of task retries has been exceeded" in str(e.value)
+
+
+@pytest.mark.parametrize("failure_type", ["exception", "crash"])
+def test_reconstruction_retry_failed(ray_start_cluster, failure_type):
+    """Test the streaming generator retry fails in the second retry."""
+    cluster = ray_start_cluster
+    # Head node with no resources.
+    cluster.add_node(
+        num_cpus=0,
+        _system_config=RECONSTRUCTION_CONFIG,
+        enable_object_reconstruction=True,
+    )
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=0)
+    class SignalActor:
+        def __init__(self):
+            self.crash = False
+
+        def set(self):
+            self.crash = True
+
+        def get(self):
+            return self.crash
+
+    signal = SignalActor.remote()
+    ray.get(signal.get.remote())
+
+    # Node to place the initial object.
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_returns="streaming")
+    def dynamic_generator(num_returns, signal_actor):
+        for i in range(num_returns):
+            if i == 3:
+                should_crash = ray.get(signal_actor.get.remote())
+                if should_crash:
+                    if failure_type == "exception":
+                        raise Exception
+                    else:
+                        sys.exit(5)
+            time.sleep(1)
+            yield np.ones(1_000_000, dtype=np.int8) * i
+
+    @ray.remote
+    def fetch(x):
+        return x[0]
+
+    gen = ray.get(dynamic_generator.remote(10, signal))
+    refs = []
+
+    for i in range(5):
+        refs.append(next(gen))
+
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    for i, ref in enumerate(refs):
+        print("first trial.")
+        print("fetching ", i)
+        assert ray.get(fetch.remote(ref)) == i
+
+    # Try second retry.
+    cluster.remove_node(node_to_kill, allow_graceful=False)
+    node_to_kill = cluster.add_node(num_cpus=1, object_store_memory=10**8)
+
+    signal.set.remote()
+
+    for ref in gen:
+        refs.append(ref)
+
+    for i, ref in enumerate(refs):
+        print("second trial")
+        print("fetching ", i)
+        print(ref)
+        if i < 3:
+            assert ray.get(fetch.remote(ref)) == i
+        else:
+            with pytest.raises(ray.exceptions.RayTaskError) as e:
+                assert ray.get(fetch.remote(ref)) == i
+                assert "The worker died" in str(e.value)
+
+
+def test_generator_max_returns(monkeypatch, shutdown_only):
+    """
+    Test when generator returns more than system limit values
+    (100 million by default), it fails a task.
+    """
+    with monkeypatch.context() as m:
+        # defer for 10s for the second node.
+        m.setenv(
+            "RAY_max_num_generator_returns",
+            "2",
+        )
+
+        @ray.remote(num_returns="streaming")
+        def generator_task():
+            for _ in range(3):
+                yield 1
+
+        @ray.remote
+        def driver():
+            gen = generator_task.remote()
+            for ref in gen:
+                assert ray.get(ref) == 1
+
+        with pytest.raises(ray.exceptions.RayTaskError):
+            ray.get(driver.remote())
 
 
 if __name__ == "__main__":

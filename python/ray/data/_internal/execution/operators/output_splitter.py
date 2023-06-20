@@ -1,17 +1,17 @@
 import math
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
 
-from ray.data.block import Block, BlockMetadata, BlockAccessor
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    PhysicalOperator,
     ExecutionOptions,
     ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
 )
+from ray.data._internal.execution.util import locality_string
+from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import StatsDict
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 

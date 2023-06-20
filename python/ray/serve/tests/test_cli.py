@@ -1,29 +1,31 @@
+from copy import deepcopy
+import click
 import os
+import re
 import signal
 import subprocess
 import sys
 import time
 import json
-from tempfile import NamedTemporaryFile
-from typing import List
-
-import click
 from pydantic import BaseModel
 import pytest
 import requests
+from tempfile import NamedTemporaryFile
+from typing import List, Pattern
 import yaml
 
 import ray
-from ray import serve
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
+from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 from ray._private.test_utils import wait_for_condition
-from ray.serve.schema import ServeApplicationSchema
-from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
+
+from ray import serve
 from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
-from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
 from ray.serve._private.constants import (
+    SERVE_NAMESPACE,
+    MULTI_APP_MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
@@ -418,9 +420,7 @@ def test_config(ray_start_stop):
 
     # Check that `serve config` works even if no Serve app is running
     info_response = subprocess.check_output(["serve", "config"])
-    info = yaml.safe_load(info_response)
-
-    assert ServeApplicationSchema.get_empty_schema_dict() == info
+    assert "No config has been deployed" in info_response.decode("utf-8")
 
     config_file_name = os.path.join(
         os.path.dirname(__file__), "test_config_files", "basic_graph.yaml"
@@ -461,6 +461,90 @@ def test_config_multi_app(ray_start_stop):
 
     assert config["applications"][0] == fetched_configs[0]
     assert config["applications"][1] == fetched_configs[1]
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_cli_without_config_deploy(ray_start_stop):
+    """Deploys application with serve.run instead of a config, and check that cli
+    still works as expected.
+    """
+
+    @serve.deployment
+    def fn():
+        return "hi"
+
+    serve.run(fn.bind())
+
+    def check_cli():
+        info_response = subprocess.check_output(["serve", "config"])
+        status_response = subprocess.check_output(["serve", "status"])
+        fetched_status = yaml.safe_load(status_response)
+
+        return (
+            "No config has been deployed" in info_response.decode("utf-8")
+            and fetched_status["app_status"]["status"] == "RUNNING"
+            and fetched_status["deployment_statuses"][0]["status"] == "HEALTHY"
+        )
+
+    wait_for_condition(check_cli)
+    serve.shutdown()
+    ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_config_with_deleting_app(ray_start_stop):
+    """Test that even if one or more apps is deleting, serve config still works"""
+
+    config_json1 = {
+        "applications": [
+            {
+                "name": "app1",
+                "route_prefix": "/app1",
+                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
+            },
+            {
+                "name": "app2",
+                "route_prefix": "/app2",
+                "import_path": "ray.serve.tests.test_config_files.delete_blocked.app",
+            },
+        ]
+    }
+    config_json2 = deepcopy(config_json1)
+    del config_json2["applications"][1]
+
+    def check_cli(expected_configs: List, expected_statuses: int):
+        info_response = subprocess.check_output(["serve", "config"])
+        status_response = subprocess.check_output(["serve", "status"])
+        fetched_configs = list(yaml.safe_load_all(info_response))
+        fetched_statuses = list(yaml.safe_load_all(status_response))
+
+        return (
+            len([s for s in fetched_statuses if s["app_status"]["status"] == "RUNNING"])
+            == expected_statuses
+            and fetched_configs == expected_configs
+        )
+
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        tmp.write(yaml.safe_dump(config_json1))
+        tmp.flush()
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        print("Deployed config with app1 and app2.")
+
+    wait_for_condition(
+        check_cli, expected_configs=config_json1["applications"], expected_statuses=2
+    )
+    print("`serve status` and `serve config` are returning expected responses.")
+
+    with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
+        tmp.write(yaml.safe_dump(config_json2))
+        tmp.flush()
+        subprocess.check_output(["serve", "deploy", tmp.name])
+        print("Redeployed config with app2 removed.")
+
+    wait_for_condition(
+        check_cli, expected_configs=config_json2["applications"], expected_statuses=1
+    )
+    print("`serve status` and `serve config` are returning expected responses.")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -707,8 +791,7 @@ def test_shutdown(ray_start_stop):
 
         # `serve config` and `serve status` should print non-empty schemas
         config_response = subprocess.check_output(["serve", "config"])
-        config = yaml.safe_load(config_response)
-        assert ServeApplicationSchema.get_empty_schema_dict() != config
+        yaml.safe_load(config_response)
 
         status_response = subprocess.check_output(["serve", "status"])
         status = yaml.safe_load(status_response)
@@ -718,16 +801,18 @@ def test_shutdown(ray_start_stop):
         print("Deleting Serve app.")
         subprocess.check_output(["serve", "shutdown", "-y"])
 
-        # `serve config` and `serve status` should print empty schemas
+        # `serve config` and `serve status` should print messages indicating
+        # nothing is deployed
         def serve_config_empty():
             config_response = subprocess.check_output(["serve", "config"])
-            config = yaml.safe_load(config_response)
-            return ServeApplicationSchema.get_empty_schema_dict() == config
+            return "No config has been deployed" in config_response.decode("utf-8")
 
         def serve_status_empty():
             status_response = subprocess.check_output(["serve", "status"])
-            status = yaml.safe_load(status_response)
-            return "There are no applications running on this cluster." == status
+            return (
+                "There are no applications running on this cluster"
+                in status_response.decode("utf-8")
+            )
 
         wait_for_condition(serve_config_empty)
         wait_for_condition(serve_status_empty)
@@ -1232,6 +1317,104 @@ def test_idempotence_after_controller_death(ray_start_stop, use_command: bool):
     )
     serve.shutdown()
     ray.shutdown()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+class TestRayReinitialization:
+    @pytest.fixture
+    def import_file_name(self) -> str:
+        return "ray.serve.tests.test_config_files.ray_already_initialized:app"
+
+    @pytest.fixture
+    def pattern(self) -> Pattern:
+        return re.compile(r"Connecting to existing Ray cluster at address: (.*)\.\.\.")
+
+    @pytest.fixture
+    def ansi_escape(self) -> Pattern:
+        return re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+
+    def test_run_without_address(self, import_file_name, ray_start_stop):
+        """Test serve run with ray already initialized and run without address argument.
+
+        When the imported file already initialized a ray instance and serve doesn't run
+        with address argument, then serve does not reinitialize another ray instance and
+        cause error.
+        """
+        p = subprocess.Popen(["serve", "run", import_file_name])
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
+    def test_run_with_address_same_address(self, import_file_name, ray_start_stop):
+        """Test serve run with ray already initialized and run with address argument
+        that has the same address as existing ray instance.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument same as the ray instance, then serve does not reinitialize
+        another ray instance and cause error.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=127.0.0.1:6379", import_file_name]
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+
+    def test_run_with_address_different_address(
+        self, import_file_name, pattern, ansi_escape, ray_start_stop
+    ):
+        """Test serve run with ray already initialized and run with address argument
+        that has the different address as existing ray instance.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument different as the ray instance, then serve does not reinitialize
+        another ray instance and cause error and logs warning to the user.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=ray://123.45.67.89:50005", import_file_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+        process_output, _ = p.communicate()
+        logs = process_output.decode("utf-8").strip()
+        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
+        expected_warning_message = (
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+        assert expected_warning_message in logs
+
+    def test_run_with_auto_address(
+        self, import_file_name, pattern, ansi_escape, ray_start_stop
+    ):
+        """Test serve run with ray already initialized and run with "auto" address
+        argument.
+
+        When the imported file already initialized a ray instance and serve runs with
+        address argument same as the ray instance, then serve does not reinitialize
+        another ray instance and cause error.
+        """
+        p = subprocess.Popen(
+            ["serve", "run", "--address=auto", import_file_name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        wait_for_condition(lambda: ping_endpoint("") == "foobar", timeout=10)
+        p.send_signal(signal.SIGINT)
+        p.wait()
+        process_output, _ = p.communicate()
+        logs = process_output.decode("utf-8").strip()
+        ray_address = ansi_escape.sub("", pattern.search(logs).group(1))
+        expected_warning_message = (
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+        assert expected_warning_message not in logs
 
 
 if __name__ == "__main__":

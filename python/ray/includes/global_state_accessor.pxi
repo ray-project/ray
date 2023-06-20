@@ -1,7 +1,8 @@
 from ray.includes.common cimport (
     CGcsClientOptions,
     CGcsNodeState,
-    PythonGetResourcesTotal
+    PythonGetResourcesTotal,
+    PythonGetNodeLabels
 )
 
 from ray.includes.unique_ids cimport (
@@ -83,6 +84,9 @@ cdef class GlobalStateAccessor:
                 if node_info["Alive"]
                 else {}
             )
+            c_labels = PythonGetNodeLabels(c_node_info)
+            node_info["Labels"] = \
+                {key.decode(): value.decode() for key, value in c_labels}
             results.append(node_info)
         return results
 

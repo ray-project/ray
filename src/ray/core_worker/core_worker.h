@@ -370,14 +370,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void CreateObjectRefStream(const ObjectID &generator_id);
 
   /// Read the next index of a ObjectRefStream of generator_id.
+  /// This API always return immediately.
   ///
   /// \param[in] generator_id The object ref id of the streaming
   /// generator task.
   /// \param[out] object_ref_out The ObjectReference
   /// that the caller can convert to its own ObjectRef.
   /// The current process is always the owner of the
-  /// generated ObjectReference.
-  /// \return Status RayKeyError if the stream reaches to EoF.
+  /// generated ObjectReference. It will be Nil() if there's
+  /// no next item.
+  /// \return Status ObjectRefEndOfStream if the stream reaches to EoF.
   /// OK otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
@@ -762,6 +764,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that created a generator_id.
   /// \param[in] item_index The index of the task return. It is used to reorder the
   /// report from the caller side.
+  /// \param[in] attempt_number The number of time the current task is retried.
+  /// 0 means it is the first attempt.
   /// \param[in] finished True indicates there's going to be no more intermediate
   /// task return. When finished is provided dynamic_return_object's key must be
   /// pair<nil, empty_pointer>
@@ -770,6 +774,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
+      uint64_t attempt_number,
       bool finished);
 
   /// Implements gRPC server handler.
@@ -1025,11 +1030,27 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// object to the task caller and have the resulting ObjectRef be owned by
   /// the caller. This is in contrast to static allocation, where the caller
   /// decides at task invocation time how many returns the task should have.
+  ///
+  /// NOTE: Normally task_id and put_index it not necessary to be specified
+  /// because we can obtain them from the global worker context. However,
+  /// when the async actor uses this API, it cannot find the correct
+  /// worker context due to the implementation limitation.
+  /// In this case, the caller is responsible for providing the correct
+  /// task ID and index.
+  /// See https://github.com/ray-project/ray/issues/10324 for the further details.
+  ///
   /// \param[in] owner_address The address of the owner who will own this
   /// dynamically generated object.
-  ///
-  /// \param[out] The ObjectID that the caller should use to store the object.
-  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address);
+  /// \param[in] task_id The task id of the dynamically generated return ID.
+  /// If Nil() is specified, it will deduce the Task ID from the current
+  /// worker context.
+  /// \param[in] put_index The equivalent of the return value of
+  /// WorkerContext::GetNextPutIndex.
+  /// If std::nullopt is specified, it will deduce the put index from the
+  /// current worker context.
+  ObjectID AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                   const TaskID &task_id = TaskID::Nil(),
+                                   std::optional<ObjectIDIndexType> put_index = -1);
 
   /// Get a handle to an actor.
   ///
@@ -1381,6 +1402,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
       std::string *application_error);
@@ -1497,12 +1519,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       return false;
     }
   }
-
-  /// Request the spillage of an object that we own from the primary that hosts
-  /// the primary copy to spill.
-  void SpillOwnedObject(const ObjectID &object_id,
-                        const std::shared_ptr<RayObject> &obj,
-                        std::function<void()> callback);
 
   const CoreWorkerOptions options_;
 
