@@ -1,0 +1,207 @@
+import ray
+from collections import defaultdict
+from ray._raylet import GcsClient
+from ray.serve._private.utils import get_all_node_ids
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+
+class SpreadDeploymentSchedulingStrategy:
+    pass
+
+
+class DriverDeploymentSchedulingStrategy:
+    pass
+
+
+class DeploymentScheduler:
+    def __init__(self, gcs_client=None):
+        self._deployments = {}
+        # Replicas that are pending to be scheduled.
+        self._pending_replicas = defaultdict(dict)
+        # Replicas that are being scheduled.
+        # The underlying actors are submitted.
+        self._launching_replicas = defaultdict(dict)
+        # Replicas that are recovering.
+        # We don't know where those replicas are running.
+        self._recovering_replicas = defaultdict(set)
+        # Replicas that are running.
+        # We know where those replicas are running.
+        self._running_replicas = defaultdict(dict)
+
+        if gcs_client:
+            self._gcs_client = gcs_client
+        else:
+            self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+    def add_deployment(self, deployment_name, scheduling_strategy):
+        assert deployment_name not in self._pending_replicas
+        assert deployment_name not in self._launching_replicas
+        assert deployment_name not in self._recovering_replicas
+        assert deployment_name not in self._running_replicas
+        self._deployments[deployment_name] = scheduling_strategy
+
+    def remove_deployment(self, deployment_name):
+        assert not self._pending_replicas[deployment_name]
+        del self._pending_replicas[deployment_name]
+
+        assert not self._launching_replicas[deployment_name]
+        del self._launching_replicas[deployment_name]
+
+        assert not self._recovering_replicas[deployment_name]
+        del self._recovering_replicas[deployment_name]
+
+        assert not self._running_replicas[deployment_name]
+        del self._running_replicas[deployment_name]
+
+        del self._deployments[deployment_name]
+
+    def schedule_replica(
+        self,
+        deployment_name,
+        replica_name,
+        actor_def,
+        actor_resources,
+        actor_options,
+        actor_init_args,
+        on_scheduled,
+    ):
+        self._pending_replicas[deployment_name][replica_name] = (
+            actor_def,
+            actor_resources,
+            actor_options,
+            actor_init_args,
+            on_scheduled,
+        )
+
+    def on_replica_stopping(self, deployment_name, replica_name):
+        self._pending_replicas[deployment_name].pop(replica_name, None)
+        self._launching_replicas[deployment_name].pop(replica_name, None)
+        self._recovering_replicas[deployment_name].discard(replica_name)
+        self._running_replicas[deployment_name].pop(replica_name, None)
+
+    def on_replica_running(self, deployment_name, replica_name, node_id):
+        assert replica_name not in self._pending_replicas[deployment_name]
+
+        self._launching_replicas[deployment_name].pop(replica_name, None)
+        self._recovering_replicas[deployment_name].discard(replica_name)
+
+        self._running_replicas[deployment_name][replica_name] = node_id
+
+    def on_replica_recovering(self, deployment_name, replica_name):
+        assert replica_name not in self._pending_replicas[deployment_name]
+        assert replica_name not in self._launching_replicas[deployment_name]
+        assert replica_name not in self._running_replicas[deployment_name]
+
+        self._recovering_replicas[deployment_name].add(replica_name)
+
+    def get_replicas_to_stop(self, deployment_name, max_num_to_stop):
+        """Prioritize replicas that have fewest copies on a node.
+
+        This algorithm helps to scale down more intelligently because it can
+        relinquish node faster. Note that this algorithm doesn't consider other
+        deployments or other actors on the same node. See more at
+        https://github.com/ray-project/ray/issues/20599.
+        """
+        replicas_to_stop = set()
+
+        pending_launching_recovering_replicas = set().union(
+            self._pending_replicas[deployment_name].keys(),
+            self._launching_replicas[deployment_name].keys(),
+            self._recovering_replicas[deployment_name],
+        )
+        for (
+            pending_launching_recovering_replica
+        ) in pending_launching_recovering_replicas:
+            if len(replicas_to_stop) == max_num_to_stop:
+                return replicas_to_stop
+            else:
+                replicas_to_stop.add(pending_launching_recovering_replica)
+
+        node_to_running_replicas = defaultdict(set)
+        for running_replica, node_id in self._running_replicas[deployment_name].items():
+            node_to_running_replicas[node_id].add(running_replica)
+        for running_replicas in sorted(
+            node_to_running_replicas.values(), key=lambda lst: len(lst)
+        ):
+            for running_replica in running_replicas:
+                if len(replicas_to_stop) == max_num_to_stop:
+                    return replicas_to_stop
+                else:
+                    replicas_to_stop.add(running_replica)
+
+        return replicas_to_stop
+
+    def schedule(self):
+        for deployment_name, pending_replicas in self._pending_replicas.items():
+            if not pending_replicas:
+                return
+
+            deployment_scheduling_strategy = self._deployments[deployment_name]
+            if isinstance(
+                deployment_scheduling_strategy, SpreadDeploymentSchedulingStrategy
+            ):
+                self._schedule_spread_deployment(deployment_name)
+            else:
+                assert isinstance(
+                    deployment_scheduling_strategy, DriverDeploymentSchedulingStrategy
+                )
+                self._schedule_driver_deployment(deployment_name)
+
+    def _schedule_spread_deployment(self, deployment_name):
+        for pending_replica_name in self._pending_replicas[deployment_name].keys():
+            (
+                actor_def,
+                actor_resources,
+                actor_options,
+                actor_init_args,
+                on_scheduled,
+            ) = self._pending_replicas[deployment_name][pending_replica_name]
+
+            actor_handle = actor_def.options(
+                scheduling_strategy="SPREAD",
+                **actor_options,
+            ).remote(*actor_init_args)
+            del self._pending_replicas[deployment_name][pending_replica_name]
+            self._launching_replicas[deployment_name][pending_replica_name] = None
+            on_scheduled(actor_handle)
+
+    def _schedule_driver_deployment(self, deployment_name):
+        if self._recovering_replicas[deployment_name]:
+            # Wait until recovering is done before scheduling new replicas
+            # so that we can make sure we don't schedule two replicas on the same node.
+            return
+
+        all_nodes = {node_id for node_id, _ in get_all_node_ids(self._gcs_client)}
+        scheduled_nodes = set()
+        for node_id in self._launching_replicas[deployment_name].values():
+            assert node_id is not None
+            scheduled_nodes.add(node_id)
+        for node_id in self._running_replicas[deployment_name].values():
+            assert node_id is not None
+            scheduled_nodes.add(node_id)
+        unscheduled_nodes = all_nodes - scheduled_nodes
+
+        for pending_replica_name in self._pending_replicas[deployment_name].keys():
+            if not unscheduled_nodes:
+                return
+
+            (
+                actor_def,
+                actor_resources,
+                actor_options,
+                actor_init_args,
+                on_scheduled,
+            ) = self._pending_replicas[deployment_name][pending_replica_name]
+
+            target_node_id = unscheduled_nodes.pop()
+            actor_handle = actor_def.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    target_node_id, soft=False
+                )
+                ** actor_options,
+            ).remote(*actor_init_args)
+            del self._pending_replicas[deployment_name][pending_replica_name]
+            self._launching_replicas[deployment_name][
+                pending_replica_name
+            ] = target_node_id
+            on_scheduled(actor_handle)
