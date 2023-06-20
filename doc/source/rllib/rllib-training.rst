@@ -523,41 +523,23 @@ themselves or inside your environments.
 Debugging RLlib Experiments
 ---------------------------
 
-Gym Monitor
-~~~~~~~~~~~
-
-The ``"monitor": true`` config can be used to save Gym episode videos to the result dir. For example:
-
-.. code-block:: bash
-
-    rllib train --env=PongDeterministic-v4 \
-        --run=A2C --config '{"num_workers": 2, "monitor": true}'
-
-    # videos will be saved in the ~/ray_results/<experiment> dir, for example
-    openaigym.video.0.31401.video000000.meta.json
-    openaigym.video.0.31401.video000000.mp4
-    openaigym.video.0.31403.video000000.meta.json
-    openaigym.video.0.31403.video000000.mp4
-
-Eager Mode
+Tensorflow Eager Mode
 ~~~~~~~~~~
 
-Policies built with ``build_tf_policy`` (most of the reference algorithms are)
-can be run in eager mode by setting the
+Algorithms with a TensorFlow implementation can be run in eager mode by setting the
 ``"framework": "tf2"`` / ``"eager_tracing": true`` config options or using
 ``rllib train --config '{"framework": "tf2"}' [--trace]``.
-This will tell RLlib to execute the model forward pass, action distribution,
-loss, and stats functions in eager mode.
+This will tell RLlib to run TensorFlow operations in eager mode.
 
 Eager mode makes debugging much easier, since you can now use line-by-line
 debugging with breakpoints or Python ``print()`` to inspect
 intermediate tensor values.
 However, eager can be slower than graph mode unless tracing is enabled.
 
-Using PyTorch
+PyTorch
 ~~~~~~~~~~~~~
 
-Algorithms that have an implemented TorchPolicy, will allow you to run
+Algorithms with a PyTorch implementation will allow you to run
 `rllib train` using the command line ``--framework=torch`` flag.
 Algorithms that do not have a torch version yet will complain with an error in
 this case.
