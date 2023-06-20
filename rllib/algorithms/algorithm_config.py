@@ -303,10 +303,8 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
-        # Whether this env is an atari env (for atari-specific preprocessing).
-        # If not specified, we will try to auto-detect this.
-        self.is_atari = None
         self.auto_wrap_old_gym_envs = True
+        self._is_atari = None
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -316,6 +314,8 @@ class AlgorithmConfig(_Config):
         self.create_env_on_local_worker = False
         self.sample_async = False
         self.enable_connectors = True
+        self.update_worker_filter_stats = True
+        self.use_worker_filter_stats = True
         self.rollout_fragment_length = 200
         self.batch_mode = "truncate_episodes"
         self.remote_worker_envs = False
@@ -323,7 +323,6 @@ class AlgorithmConfig(_Config):
         self.validate_workers_after_construction = True
         self.preprocessor_pref = "deepmind"
         self.observation_filter = "NoFilter"
-        self.synchronize_filters = True
         self.compress_observations = False
         self.enable_tf1_exec_eagerly = False
         self.sampler_perf_stats_ema_coef = None
@@ -462,6 +461,7 @@ class AlgorithmConfig(_Config):
         self.input_evaluation = DEPRECATED_VALUE
         self.policy_map_cache = DEPRECATED_VALUE
         self.worker_cls = DEPRECATED_VALUE
+        self.synchronize_filters = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
         self.buffer_size = DEPRECATED_VALUE
@@ -477,9 +477,6 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_reporting = DEPRECATED_VALUE
         self.min_train_timesteps_per_reporting = DEPRECATED_VALUE
         self.min_sample_timesteps_per_reporting = DEPRECATED_VALUE
-        self.horizon = DEPRECATED_VALUE
-        self.soft_horizon = DEPRECATED_VALUE
-        self.no_done_at_end = DEPRECATED_VALUE
 
     def to_dict(self) -> AlgorithmConfigDict:
         """Converts all settings into a legacy config dict for backward compatibility.
@@ -718,31 +715,6 @@ class AlgorithmConfig(_Config):
         # TODO: Flip out all set/dict/list values into frozen versions
         #  of themselves? This way, users won't even be able to alter those values
         #  directly anymore.
-
-    def _detect_atari_env(self) -> bool:
-        """Returns whether this configured env is an Atari env or not.
-
-        Returns:
-            True, if specified env is an Atari env, False otherwise.
-        """
-        # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-        # or "ALE/Breakout-v5".
-        # We do NOT attempt to auto-detect Atari env for other specified types like
-        # a callable, to avoid running heavy logics in validate().
-        # For these cases, users can explicitly set `environment(atari=True)`.
-        if not type(self.env) == str:
-            return False
-
-        try:
-            if self.env.startswith("ALE/"):
-                env = gym.make("GymV26Environment-v0", env_id=self.env)
-            else:
-                env = gym.make(self.env)
-        except gym.error.NameNotFound:
-            # Not an Atari env if this is not a gym env.
-            return False
-
-        return is_atari(env)
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
@@ -988,10 +960,6 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
-
-        # Detect if specified env is an Atari env.
-        if self.is_atari is None:
-            self.is_atari = self._detect_atari_env()
 
         if self.input_ == "sampler" and self.off_policy_estimation_methods:
             raise ValueError(
@@ -1369,7 +1337,7 @@ class AlgorithmConfig(_Config):
             disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
-                this during config validation.
+                this.
             auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
                 the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
                 dict). If True, RLlib will automatically wrap the given gym env class
@@ -1406,7 +1374,7 @@ class AlgorithmConfig(_Config):
         if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
-            self.is_atari = is_atari
+            self._is_atari = is_atari
         if auto_wrap_old_gym_envs is not NotProvided:
             self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
 
@@ -1422,6 +1390,8 @@ class AlgorithmConfig(_Config):
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,
         sample_async: Optional[bool] = NotProvided,
         enable_connectors: Optional[bool] = NotProvided,
+        use_worker_filter_stats: Optional[bool] = NotProvided,
+        update_worker_filter_stats: Optional[bool] = NotProvided,
         rollout_fragment_length: Optional[Union[int, str]] = NotProvided,
         batch_mode: Optional[str] = NotProvided,
         remote_worker_envs: Optional[bool] = NotProvided,
@@ -1429,19 +1399,16 @@ class AlgorithmConfig(_Config):
         validate_workers_after_construction: Optional[bool] = NotProvided,
         preprocessor_pref: Optional[str] = NotProvided,
         observation_filter: Optional[str] = NotProvided,
-        synchronize_filter: Optional[bool] = NotProvided,
         compress_observations: Optional[bool] = NotProvided,
         enable_tf1_exec_eagerly: Optional[bool] = NotProvided,
         sampler_perf_stats_ema_coef: Optional[float] = NotProvided,
-        horizon=DEPRECATED_VALUE,
-        soft_horizon=DEPRECATED_VALUE,
-        no_done_at_end=DEPRECATED_VALUE,
         ignore_worker_failures=DEPRECATED_VALUE,
         recreate_failed_workers=DEPRECATED_VALUE,
         restart_failed_sub_environments=DEPRECATED_VALUE,
         num_consecutive_worker_failures_tolerance=DEPRECATED_VALUE,
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
+        synchronize_filter=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1470,6 +1437,14 @@ class AlgorithmConfig(_Config):
             enable_connectors: Use connector based environment runner, so that all
                 preprocessing of obs and postprocessing of actions are done in agent
                 and action connectors.
+            use_worker_filter_stats: Whether to use the workers in the WorkerSet to
+                update the central filters (held by the local worker). If False, stats
+                from the workers will not be used and discarded.
+            update_worker_filter_stats: Whether to push filter updates from the central
+                filters (held by the local worker) to the remote workers' filters.
+                Setting this to True might be useful within the evaluation config in
+                order to disable the usage of evaluation trajectories for synching
+                the central filter (used for training).
             rollout_fragment_length: Divide episodes into fragments of this many steps
                 each during rollouts. Trajectories of this size are collected from
                 rollout workers and combined into a larger batch of `train_batch_size`
@@ -1523,7 +1498,6 @@ class AlgorithmConfig(_Config):
                 environment.
             observation_filter: Element-wise observation filter, either "NoFilter"
                 or "MeanStdFilter".
-            synchronize_filter: Whether to synchronize the statistics of remote filters.
             compress_observations: Whether to LZ4 compress individual observations
                 in the SampleBatches collected during rollouts.
             enable_tf1_exec_eagerly: Explicitly tells the rollout worker to enable
@@ -1552,6 +1526,10 @@ class AlgorithmConfig(_Config):
             self.sample_async = sample_async
         if enable_connectors is not NotProvided:
             self.enable_connectors = enable_connectors
+        if use_worker_filter_stats is not NotProvided:
+            self.use_worker_filter_stats = use_worker_filter_stats
+        if update_worker_filter_stats is not NotProvided:
+            self.update_worker_filter_stats = update_worker_filter_stats
         if rollout_fragment_length is not NotProvided:
             self.rollout_fragment_length = rollout_fragment_length
         if batch_mode is not NotProvided:
@@ -1578,26 +1556,13 @@ class AlgorithmConfig(_Config):
             self.sampler_perf_stats_ema_coef = sampler_perf_stats_ema_coef
 
         # Deprecated settings.
-        if horizon != DEPRECATED_VALUE:
+        if synchronize_filter != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.rollouts(horizon=..)",
-                new="You should wrap your gymnasium.Env with a "
-                "gymnasium.wrappers.TimeLimit wrapper.",
-                error=True,
+                old="AlgorithmConfig.rollouts(synchronize_filter=..)",
+                new="AlgorithmConfig.rollouts(update_worker_filter_stats=..)",
+                error=False,
             )
-        if soft_horizon != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(soft_horizon=..)",
-                new="Your gymnasium.Env.step() should handle soft resets internally.",
-                error=True,
-            )
-        if no_done_at_end != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rollouts(no_done_at_end=..)",
-                new="Your gymnasium.Env.step() should return a truncated=True flag",
-                error=True,
-            )
-
+            self.update_worker_filter_stats = synchronize_filter
         if ignore_worker_failures != DEPRECATED_VALUE:
             deprecation_warning(
                 old="ignore_worker_failures is deprecated, and will soon be a no-op",
@@ -2151,7 +2116,7 @@ class AlgorithmConfig(_Config):
                 utility. For example, to override your learning rate and (PPO) lambda
                 setting just for a single RLModule with your MultiAgentRLModule, do:
                 config.multi_agent(algorithm_config_overrides_per_module={
-                    "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
                 })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
@@ -2323,6 +2288,8 @@ class AlgorithmConfig(_Config):
                 In case there are more than this many episodes collected in a single
                 training iteration, use all of these episodes for metrics computation,
                 meaning don't ever cut any "excess" episodes.
+                Set this to 1 to disable smoothing and to always report only the most
+                recently collected episode's return.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
@@ -2648,6 +2615,34 @@ class AlgorithmConfig(_Config):
         `.get_default_learner_class()` method.
         """
         return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if not type(self.env) == str:
+                return False
+            try:
+                if self.env.startswith("ALE/"):
+                    env = gym.make("GymV26Environment-v0", env_id=self.env)
+                else:
+                    env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.

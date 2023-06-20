@@ -1182,7 +1182,9 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        extra_fetches = None
+        extra_fetches = dist_inputs = logp = None
+
+        # New API stack: `self.model` is-a RLModule.
         if isinstance(self.model, RLModule):
             # For recurrent models, we need to add a time dimension.
             if not seq_lens:
@@ -1198,31 +1200,66 @@ class TorchPolicyV2(Policy):
                 del input_dict[SampleBatch.SEQ_LENS]
 
             if explore:
-                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
-                # For recurrent models, we need to remove the time dimension.
+
+                # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+                # Create a distribution object.
+                action_dist = None
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                    dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    action_dist_class = self.model.get_exploration_action_dist_cls()
+                    # For recurrent models, we need to remove the time dimension.
                 fwd_out = self.maybe_remove_time_dimension(fwd_out)
-                action_dist = action_dist_class.from_logits(
-                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-                )
-                actions = action_dist.sample()
-                logp = action_dist.logp(actions)
+                action_dist = action_dist_class.from_logits(dist_inputs)
+
+                # If `forward_exploration()` returned actions, use them here as-is.
+                if SampleBatch.ACTIONS in fwd_out:
+                    actions = fwd_out[SampleBatch.ACTIONS]
+                # Otherwise, sample actions from the distribution.
+                else:
+                    if action_dist is None:
+                        raise KeyError(
+                            "Your RLModule's `forward_exploration()` method must return"
+                            f" a dict with either the {SampleBatch.ACTIONS} key or the "
+                            f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                        )
+                    actions = action_dist.sample()
+
+                # Compute action-logp and action-prob from distribution and add to
+                # `extra_fetches`, if possible.
+                if action_dist is not None:
+                    logp = action_dist.logp(actions)
             else:
-                action_dist_class = self.model.get_inference_action_dist_cls()
                 fwd_out = self.model.forward_inference(input_dict)
                 # For recurrent models, we need to remove the time dimension.
                 fwd_out = self.maybe_remove_time_dimension(fwd_out)
-                action_dist = action_dist_class.from_logits(
-                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-                )
-                action_dist = action_dist.to_deterministic()
-                actions = action_dist.sample()
-                logp = None
+
+                # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+                # Create a distribution object.
+                action_dist = None
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                    dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    action_dist_class = self.model.get_inference_action_dist_cls()
+                    action_dist = action_dist_class.from_logits(dist_inputs)
+                    action_dist = action_dist.to_deterministic()
+
+                # If `forward_inference()` returned actions, use them here as-is.
+                if SampleBatch.ACTIONS in fwd_out:
+                    actions = fwd_out[SampleBatch.ACTIONS]
+                # Otherwise, sample actions from the distribution.
+                else:
+                    if action_dist is None:
+                        raise KeyError(
+                            "Your RLModule's `forward_inference()` method must return"
+                            f" a dict with either the {SampleBatch.ACTIONS} key or the "
+                            f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                        )
+                    actions = action_dist.sample()
 
             # Anything but actions and state_out is an extra fetch.
             state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
-            dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+
         elif is_overridden(self.action_sampler_fn):
             action_dist = None
             actions, logp, dist_inputs, state_out = self.action_sampler_fn(
