@@ -1,29 +1,24 @@
 import logging
 import math
-from typing import List, Optional, Type, Tuple, Dict, Any, Union
+from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from rllib_dt.dt.segmentation_buffer import MultiAgentSegmentationBuffer
+from ray.rllib.algorithms.dt.segmentation_buffer import MultiAgentSegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update
-from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.annotations import PublicAPI, override
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
+    NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     SAMPLE_TIMER,
-    NUM_AGENT_STEPS_TRAINED,
 )
-from ray.rllib.utils.typing import (
-    ResultDict,
-    TensorStructType,
-    PolicyID,
-    TensorType,
-)
+from ray.rllib.utils.typing import PolicyID, ResultDict, TensorStructType, TensorType
 
 logger = logging.getLogger(__name__)
 
@@ -305,7 +300,7 @@ class DT(Algorithm):
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
         if config["framework"] == "torch":
-            from rllib_dt.dt.dt_torch_policy import DTTorchPolicy
+            from ray.rllib.algorithms.dt.dt_torch_policy import DTTorchPolicy
 
             return DTTorchPolicy
         else:

@@ -1,42 +1,32 @@
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Type, Union
+
 import gymnasium as gym
 import numpy as np
-
-from typing import (
-    Dict,
-    List,
-    Tuple,
-    Type,
-    Union,
-    Optional,
-    Any,
-    TYPE_CHECKING,
-)
-
 import tree
-from gymnasium.spaces import Discrete, Box
+from gymnasium.spaces import Box, Discrete
 
-from rllib_dt.dt.dt_torch_model import DTTorchModel
+from ray.rllib.algorithms.dt.dt_torch_model import DTTorchModel
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.mingpt import configure_gpt_optimizer
 from ray.rllib.models.torch.torch_action_dist import (
-    TorchDistributionWrapper,
     TorchCategorical,
     TorchDeterministic,
+    TorchDistributionWrapper,
 )
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_mixins import LearningRateSchedule
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI, override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.annotations import override, PublicAPI, DeveloperAPI
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.torch_utils import apply_grad_clipping
 from ray.rllib.utils.typing import (
-    TrainerConfigDict,
-    TensorType,
-    TensorStructType,
     TensorShape,
+    TensorStructType,
+    TensorType,
+    TrainerConfigDict,
 )
 
 if TYPE_CHECKING:
