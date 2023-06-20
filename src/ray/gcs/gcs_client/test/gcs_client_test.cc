@@ -142,11 +142,14 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
       grpc::ClientContext context;
+      StampContext(context);
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
       rpc::CheckAliveReply reply;
       auto status = stub->CheckAlive(&context, request, &reply);
-      if (!status.ok()) {
+      // If it is in memory, we don't have the new token until we connect again.
+      if (!((!in_memory && status.ok()) ||
+            (in_memory && GrpcStatusToRayStatus(status).IsAuthError()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -869,6 +872,7 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
 
   // Restart GCS.
   RestartGcsServer();
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
 
   // Get information of nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
@@ -965,6 +969,7 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
 
   // Restart GCS.
   RestartGcsServer();
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
 
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
@@ -987,9 +992,23 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   }
 }
 
+TEST_P(GcsClientTest, TestGcsAuth) {
+  // Restart GCS.
+  RestartGcsServer();
+  auto node_info = Mocker::GenNodeInfo();
+
+  // EXPECT_FALSE(RegisterNode(*node_info));
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+  EXPECT_TRUE(RegisterNode(*node_info));
+}
+
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
   // Restart GCS.
   RestartGcsServer();
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+  }
 
   // Simulate the scenario of node dead.
   int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();

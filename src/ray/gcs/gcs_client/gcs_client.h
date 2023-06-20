@@ -82,6 +82,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   /// \param instrumented_io_context IO execution service.
+  /// \param cluster_id Optional cluster ID to provide to the client.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service,

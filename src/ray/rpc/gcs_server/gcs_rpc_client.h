@@ -87,11 +87,12 @@ class Executor {
 /// The priority of timeout is each call > handler > whole service
 /// (the lower priority timeout is overwritten by the higher priority timeout).
 /// \param SPECS The cpp method spec. For example, override.
+/// \param IS_INSECURE Whether to attach a cluster_id token to the metadata of the call.
 ///
 /// Currently, SyncMETHOD will copy the reply additionally.
 /// TODO(sang): Fix it.
-#define VOID_GCS_RPC_CLIENT_METHOD(                                                      \
-    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS)                              \
+#define _VOID_GCS_RPC_CLIENT_METHOD(                                                     \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, IS_INSECURE)                 \
   void METHOD(const METHOD##Request &request,                                            \
               const ClientCallback<METHOD##Reply> &callback,                             \
               const int64_t timeout_ms = method_timeout_ms) SPECS {                      \
@@ -148,12 +149,13 @@ class Executor {
     };                                                                                   \
     auto operation =                                                                     \
         [request, operation_callback, timeout_ms](GcsRpcClient *gcs_rpc_client) {        \
-          RAY_UNUSED(INVOKE_RPC_CALL(SERVICE,                                            \
-                                     METHOD,                                             \
-                                     request,                                            \
-                                     operation_callback,                                 \
-                                     gcs_rpc_client->grpc_client,                        \
-                                     timeout_ms));                                       \
+          RAY_UNUSED(_INVOKE_RPC_CALL(SERVICE,                                           \
+                                      METHOD,                                            \
+                                      request,                                           \
+                                      operation_callback,                                \
+                                      gcs_rpc_client->grpc_client,                       \
+                                      timeout_ms,                                        \
+                                      IS_INSECURE));                                     \
         };                                                                               \
     executor->Execute(std::move(operation));                                             \
   }                                                                                      \
@@ -170,6 +172,16 @@ class Executor {
         timeout_ms);                                                                     \
     return promise.get_future().get();                                                   \
   }
+
+#define VOID_GCS_RPC_CLIENT_METHOD(                         \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
+  _VOID_GCS_RPC_CLIENT_METHOD(                              \
+      SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, false)
+
+#define VOID_GCS_RPC_CLIENT_METHOD_NO_AUTH(                 \
+    SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS) \
+  _VOID_GCS_RPC_CLIENT_METHOD(                              \
+      SERVICE, METHOD, grpc_client, method_timeout_ms, SPECS, true)
 
 /// Client used for communicating with gcs server.
 class GcsRpcClient {
@@ -189,7 +201,7 @@ class GcsRpcClient {
  public:
   /// Constructor. GcsRpcClient is not thread safe.
   ///
-  /// \param[in] address Address of gcs server.
+  // \param[in] address Address of gcs server.
   /// \param[in] port Port of the gcs server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
   /// \param[in] gcs_service_failure_detected The function is used to redo subscription
