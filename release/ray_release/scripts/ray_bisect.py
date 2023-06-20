@@ -1,4 +1,5 @@
 import click
+import copy
 import subprocess
 import os
 import json
@@ -43,12 +44,20 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "flakiness. Commit passes only when it passes on all runs"
     ),
 )
+@click.option(
+    "--is-full-test",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Use the full, non-smoke version of the test"),
+)
 def main(
     test_name: str,
     passing_commit: str,
     failing_commit: str,
     concurrency: int = 1,
     run_per_commit: int = 1,
+    is_full_test: bool = False,
 ) -> None:
     if concurrency <= 0:
         raise ValueError(
@@ -56,7 +65,7 @@ def main(
         )
     test = _get_test(test_name)
     pre_sanity_check = _sanity_check(
-        test, passing_commit, failing_commit, run_per_commit
+        test, passing_commit, failing_commit, run_per_commit, is_full_test
     )
     if not pre_sanity_check:
         logger.info(
@@ -65,7 +74,9 @@ def main(
         )
         return
     commit_lists = _get_commit_lists(passing_commit, failing_commit)
-    blamed_commit = _bisect(test, commit_lists, concurrency, run_per_commit)
+    blamed_commit = _bisect(
+        test, commit_lists, concurrency, run_per_commit, is_full_test
+    )
     logger.info(f"Blamed commit found for test {test_name}: {blamed_commit}")
     # TODO(can): this env var is used as a feature flag, in case we need to turn this
     # off quickly. We should remove this when the new db reporter is stable.
@@ -79,6 +90,7 @@ def _bisect(
     commit_list: List[str],
     concurrency: int,
     run_per_commit: int,
+    is_full_test: bool = False,
 ) -> str:
     while len(commit_list) > 2:
         logger.info(
@@ -92,7 +104,9 @@ def _bisect(
             # on the previously run revision
             idx = min(max(idx, 1), len(commit_list) - 2)
             idx_to_commit[idx] = commit_list[idx]
-        outcomes = _run_test(test, set(idx_to_commit.values()), run_per_commit)
+        outcomes = _run_test(
+            test, set(idx_to_commit.values()), run_per_commit, is_full_test
+        )
         passing_idx = 0
         failing_idx = len(commit_list) - 1
         for idx, commit in idx_to_commit.items():
@@ -108,7 +122,11 @@ def _bisect(
 
 
 def _sanity_check(
-    test: Test, passing_revision: str, failing_revision: str, run_per_commit: int
+    test: Test,
+    passing_revision: str,
+    failing_revision: str,
+    run_per_commit: int,
+    is_full_test: bool = False,
 ) -> bool:
     """
     Sanity check that the test indeed passes on the passing revision, and fails on the
@@ -118,22 +136,26 @@ def _sanity_check(
         f"Sanity check passing revision: {passing_revision}"
         f" and failing revision: {failing_revision}"
     )
-    outcomes = _run_test(test, [passing_revision, failing_revision], run_per_commit)
+    outcomes = _run_test(
+        test, [passing_revision, failing_revision], run_per_commit, is_full_test
+    )
     if any(map(lambda x: x != "passed", outcomes[passing_revision].values())):
         return False
     return any(map(lambda x: x != "passed", outcomes[failing_revision].values()))
 
 
 def _run_test(
-    test: Test, commits: Set[str], run_per_commit: int
+    test: Test, commits: Set[str], run_per_commit: int, is_full_test: bool
 ) -> Dict[str, Dict[int, str]]:
     logger.info(f'Running test {test["name"]} on commits {commits}')
     for commit in commits:
-        _trigger_test_run(test, commit, run_per_commit)
+        _trigger_test_run(test, commit, run_per_commit, is_full_test)
     return _obtain_test_result(commits, run_per_commit)
 
 
-def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
+def _trigger_test_run(
+    test: Test, commit: str, run_per_commit: int, is_full_test: bool
+) -> None:
     python_version = DEFAULT_PYTHON_VERSION
     if "python" in test:
         python_version = parse_python_version(test["python"])
@@ -147,8 +169,9 @@ def _trigger_test_run(test: Test, commit: str, run_per_commit: int) -> None:
         )
     for run in range(run_per_commit):
         step = get_step(
-            test,
+            copy.deepcopy(test),  # avoid mutating the original test
             ray_wheels=ray_wheels_url,
+            smoke_test=not is_full_test,
             env={
                 "RAY_COMMIT_OF_WHEEL": commit,
             },
