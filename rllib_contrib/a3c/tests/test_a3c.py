@@ -23,16 +23,13 @@ class TestA3C(unittest.TestCase):
 
     def test_a3c_compilation(self):
         """Test whether an A3C can be built with both frameworks."""
-        config = (
-            A3CConfig()
-            .rollouts(num_rollout_workers=2, num_envs_per_worker=2)
-            .framework(eager_tracing=False)
-        )
+        config = A3CConfig().rollouts(num_rollout_workers=2, num_envs_per_worker=2)
 
         num_iterations = 2
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
+            config.eager_tracing = False
             for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("env={}".format(env))
                 config.model["use_lstm"] = env == "CartPole-v1"
@@ -68,7 +65,6 @@ class TestA3C(unittest.TestCase):
         config.reporting(
             min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=20
         )
-        config.framework(eager_tracing=False)
 
         def _step_n_times(trainer, n: int):
             """Step trainer n times.
@@ -84,6 +80,7 @@ class TestA3C(unittest.TestCase):
 
         # Test against all frameworks.
         for _ in framework_iterator(config):
+            config.eager_tracing = False
             algo = config.build(env="CartPole-v1")
 
             coeff = _step_n_times(algo, 1)  # 20 timesteps
