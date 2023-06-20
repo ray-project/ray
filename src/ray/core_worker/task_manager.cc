@@ -500,8 +500,10 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     auto it = submissible_tasks_.find(task_id);
     if (it != submissible_tasks_.end()) {
       if (it->second.spec.AttemptNumber() > attempt_number) {
-        // It is a stale report from the previous task attempt.
-        // Ignore it.
+        // Generator task reports can arrive at any time. If the first attempt
+        // fails, we may receive a report from the first executor after the
+        // second attempt has started. In this case, we should ignore the first
+        // attempt.
         return false;
       }
     }
