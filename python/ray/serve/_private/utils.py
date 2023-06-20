@@ -654,16 +654,14 @@ def call_function_from_import_path(import_path: str) -> Any:
         The result of the function call.
     """
     try:
-        proxy_callback = import_attr(import_path)
+        callback_func = import_attr(import_path)
     except Exception as e:
         raise ValueError(f"The import path {import_path} cannot be imported: {e}")
 
-    if not callable(proxy_callback):
+    if not callable(callback_func):
         raise TypeError(f"The import path {import_path} is not callable.")
 
-    logger.info(f"Calling function {import_path}")
-
     try:
-        return proxy_callback()
+        return callback_func()
     except Exception as e:
         raise RuntimeError(f"The function {import_path} raised an exception: {e}")

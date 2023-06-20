@@ -27,6 +27,7 @@ from ray.serve._private.http_util import (
     receive_http_body,
     Response,
     set_socket_reuse_port,
+    validate_http_proxy_callback_return,
 )
 from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
 from ray.serve._private.constants import (
@@ -617,29 +618,15 @@ class HTTPProxyActor:
             http_middlewares = []
 
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
-            middlewares = call_function_from_import_path(
-                RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+            logger.info(
+                f"Calling user-provided callback from import path {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
             )
-            if middlewares is None:
-                middlewares = []
-            if not isinstance(middlewares, list):
-                raise ValueError(
-                    f"HTTP proxy callback {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
-                    "must return a list of Starlette middlewares."
+            middlewares = validate_http_proxy_callback_return(
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
                 )
-            else:
-                # All middlewares must be Starlette middlewares.
-                # https://www.starlette.io/middleware/#using-pure-asgi-middleware
-                for middleware in middlewares:
-                    if not issubclass(
-                        type(middleware), starlette.middleware.Middleware
-                    ):
-                        raise ValueError(
-                            "HTTP proxy callback "
-                            f"{RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH} "
-                            f"must return a list of Starlette middlewares, "
-                            f"instead got {type(middleware)} type item in the list."
-                        )
+            )
+
             http_middlewares.extend(middlewares)
 
         self.host = host
