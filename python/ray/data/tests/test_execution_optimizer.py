@@ -792,7 +792,7 @@ def test_write_fusion(ray_start_regular_shared, enable_optimizer, tmp_path):
 def test_write_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
     datasource = ParquetDatasource()
-    read_op = Read(datasource, [])
+    read_op = Read(datasource, [], 0)
     op = Write(
         read_op,
         datasource,
