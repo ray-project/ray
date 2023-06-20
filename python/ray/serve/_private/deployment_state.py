@@ -1290,7 +1290,13 @@ class DeploymentState:
         logger.info(f"Deploying new version of deployment {self._name}.")
 
     def _set_target_state_autoscaling(self, num_replicas: int) -> None:
-        """Update the target number of replicas based on an autoscaling decision."""
+        """Update the target number of replicas based on an autoscaling decision.
+        
+        This differs from _set_target_state because we are updating the
+        target number of replicas base on an autoscaling decision and
+        not a redeployment. This only changes the target num_replicas,
+        and doesn't change the current deployment status.
+        """
 
         new_info = copy(self._target_state.info)
         new_info.set_autoscaled_num_replicas(num_replicas)
