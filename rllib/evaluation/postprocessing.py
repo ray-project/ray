@@ -120,7 +120,7 @@ def compute_advantages(
 
     if rewards is None:
         rewards = rollout[SampleBatch.REWARDS]
-    if vf_preds is None and not use_critic:
+    if vf_preds is None and use_critic:
         vf_preds = rollout[SampleBatch.VF_PREDS]
 
     if use_gae:
