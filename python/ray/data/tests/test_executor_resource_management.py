@@ -210,7 +210,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared):
     assert usage.object_store_memory == pytest.approx(2560, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
-    op.inputs_done()
+    op.all_inputs_done()
 
     # Wait until tasks are done.
     work_refs = op.get_work_refs()
@@ -294,7 +294,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert usage.object_store_memory == pytest.approx(3200, rel=0.5), usage
 
     # Indicate that no more inputs will arrive.
-    op.inputs_done()
+    op.all_inputs_done()
 
     # Wait until tasks are done.
     work_refs = op.get_work_refs()

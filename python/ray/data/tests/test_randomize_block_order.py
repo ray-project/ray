@@ -1,7 +1,9 @@
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import (

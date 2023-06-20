@@ -230,10 +230,10 @@ class ActorPoolMapOperator(MapOperator):
         # For either a completed task or ready worker, we try to dispatch queued tasks.
         self._dispatch_tasks()
 
-    def inputs_done(self):
+    def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
-        super().inputs_done()
+        super().all_inputs_done()
 
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
