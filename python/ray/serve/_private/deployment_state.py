@@ -498,6 +498,10 @@ class ActorReplicaWrapper:
                 self._actor_handle.initialize_and_get_metadata.remote()
             )
 
+        self._deployment_scheduler.on_replica_recovering(
+            self._deployment_name, self._replica_tag
+        )
+
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
         Check if current replica has started by making ray API calls on
@@ -537,6 +541,10 @@ class ActorReplicaWrapper:
                 "the replica will be stopped."
             )
             return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+
+        self._deployment_scheduler.on_replica_running(
+            self._deployment_name, self._replica_tag, self._node_id
+        )
 
         # Check whether relica initialization has completed.
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
@@ -594,6 +602,10 @@ class ActorReplicaWrapper:
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted
             pass
+
+        self._deployment_scheduler.on_replica_stopping(
+            self._deployment_name, self._replica_tag
+        )
 
         return self.graceful_shutdown_timeout_s
 
@@ -1194,9 +1206,6 @@ class DeploymentState:
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
-            self._deployment_scheduler.on_replica_recovering(
-                replica_name.deployment_tag, replica_name.replica_tag
-            )
             logger.debug(
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
                 f"deployment: {self._name}."
@@ -1686,9 +1695,6 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
-                self._deployment_scheduler.on_replica_running(
-                    replica.deployment_name, replica.replica_tag, replica.actor_node_id
-                )
                 transitioned_to_running = True
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully "
@@ -1708,13 +1714,6 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
-                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
-                    self._deployment_scheduler.on_replica_running(
-                        replica.deployment_name,
-                        replica.replica_tag,
-                        replica.actor_node_id,
-                    )
-
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -1751,9 +1750,6 @@ class DeploymentState:
         """
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
-        self._deployment_scheduler.on_replica_stopping(
-            replica.deployment_name, replica.replica_tag
-        )
         self.health_check_gauge.set(
             0,
             tags={

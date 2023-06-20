@@ -148,7 +148,9 @@ class DeploymentScheduler:
                 self._schedule_driver_deployment(deployment_name)
 
     def _schedule_spread_deployment(self, deployment_name):
-        for pending_replica_name in list(self._pending_replicas[deployment_name].keys()):
+        for pending_replica_name in list(
+            self._pending_replicas[deployment_name].keys()
+        ):
             (
                 actor_def,
                 actor_resources,
@@ -181,7 +183,9 @@ class DeploymentScheduler:
             scheduled_nodes.add(node_id)
         unscheduled_nodes = all_nodes - scheduled_nodes
 
-        for pending_replica_name in list(self._pending_replicas[deployment_name].keys()):
+        for pending_replica_name in list(
+            self._pending_replicas[deployment_name].keys()
+        ):
             if not unscheduled_nodes:
                 return
 

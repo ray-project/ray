@@ -1,4 +1,3 @@
-from dataclasses import dataclass
 import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
@@ -16,6 +15,7 @@ from ray.serve._private.common import (
     ReplicaName,
     ReplicaState,
 )
+from ray.serve._private.deployment_scheduler import DeploymentScheduler
 from ray.serve._private.deployment_state import (
     ActorReplicaWrapper,
     DeploymentState,
@@ -26,7 +26,6 @@ from ray.serve._private.deployment_state import (
     ReplicaStartupStatus,
     ReplicaStateContainer,
     VersionedReplica,
-    rank_replicas_for_stopping,
 )
 from ray.serve._private.constants import (
     DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
@@ -37,7 +36,6 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import get_random_letters
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class FakeRemoteFunction:
@@ -72,7 +70,7 @@ class MockReplicaActorWrapper:
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        scheduling_strategy="SPREAD",
+        deployment_scheduler: DeploymentScheduler,
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
@@ -97,7 +95,6 @@ class MockReplicaActorWrapper:
         # Returned by the health check.
         self.healthy = True
         self._is_cross_language = False
-        self._scheduling_strategy = scheduling_strategy
         self._actor_handle = MockActorHandle()
 
     @property
@@ -146,8 +143,6 @@ class MockReplicaActorWrapper:
 
     @property
     def node_id(self) -> Optional[str]:
-        if isinstance(self._scheduling_strategy, NodeAffinitySchedulingStrategy):
-            return self._scheduling_strategy.node_id
         if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
         return None
@@ -2545,26 +2540,6 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     deployment_state_manager.update()
     check_counts(deployment_state, total=0)
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
-
-
-def test_stopping_replicas_ranking():
-    @dataclass
-    class MockReplica:
-        actor_node_id: str
-
-    def compare(before, after):
-        before_replicas = [MockReplica(item) for item in before]
-        after_replicas = [MockReplica(item) for item in after]
-        result_replicas = rank_replicas_for_stopping(before_replicas)
-        assert result_replicas == after_replicas
-
-    compare(
-        [None, 1, None], [None, None, 1]
-    )  # replicas not allocated should be stopped first
-    compare(
-        [3, 3, 3, 2, 2, 1], [1, 2, 2, 3, 3, 3]
-    )  # prefer to stop dangling replicas first
-    compare([2, 2, 3, 3], [2, 2, 3, 3])  # if equal, ordering should be kept
 
 
 @pytest.mark.parametrize("mock_deployment_state", [True, False], indirect=True)
