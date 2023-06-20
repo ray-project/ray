@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <atomic>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
@@ -154,6 +156,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Initialize KV service.
+  void InitKVService();
+
   /// Initialize function manager.
   void InitFunctionManager();
 
@@ -181,6 +186,11 @@ class GcsServer {
 
   /// Collect stats from each module.
   void RecordMetrics() const;
+
+  /// Get server token if persisted, otherwise generate
+  /// a new one and persist as necessary.
+  /// Expected to be idempotent while server is up.
+  void CacheAndSetClusterId();
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();

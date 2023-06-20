@@ -30,10 +30,21 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(
     std::shared_ptr<GcsPublisher> gcs_publisher,
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
+    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+    const ClusterID &cluster_id)
     : gcs_publisher_(std::move(gcs_publisher)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      raylet_client_pool_(std::move(raylet_client_pool)) {}
+      raylet_client_pool_(std::move(raylet_client_pool)),
+      cluster_id_(cluster_id) {}
+
+// Note: ServerCall will populate the cluster_id.
+void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
+                                        rpc::GetClusterIdReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Registering GCS client!";
+  reply->set_cluster_id(cluster_id_.Binary());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
 
 void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
