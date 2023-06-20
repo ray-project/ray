@@ -1,16 +1,13 @@
 import sys
 import pytest
 from unittest import mock
-from typing import List, Set, Dict
+from typing import List, Dict
 
 from ray_release.scripts.ray_bisect import _bisect, _obtain_test_result, _sanity_check
-from ray_release.test import Test
 
 
 def test_sanity_check():
-    def _mock_run_test(
-        test: Test, commit: Set[str], run_per_commit: int
-    ) -> Dict[str, Dict[int, str]]:
+    def _mock_run_test(*args, **kwawrgs) -> Dict[str, Dict[int, str]]:
         return {
             "passing_revision": {0: "passed", 1: "passed"},
             "failing_revision": {0: "failed", 1: "failed"},
@@ -81,9 +78,7 @@ def test_bisect():
 
     for output, input in test_cases.items():
 
-        def _mock_run_test(
-            test: Test, commit: List[str], rerun_per_commit
-        ) -> Dict[str, str]:
+        def _mock_run_test(*args, **kwawrgs) -> Dict[str, str]:
             return input
 
         with mock.patch(
