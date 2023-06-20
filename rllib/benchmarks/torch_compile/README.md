@@ -54,7 +54,7 @@ config.framework(
 )
 ```
 
-This benchmark script runs PPO algorithm with default model architecture for Atari-Breakout game. It will run the training for `n` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedups values means a slow down when you compile the module. 
+This benchmark script runs PPO algorithm with the default model architecture for Atari-Breakout game. It will run the training for `n` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module. 
 
 To run the the benchmark script you need a ray cluster comprise of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this is not accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
 
