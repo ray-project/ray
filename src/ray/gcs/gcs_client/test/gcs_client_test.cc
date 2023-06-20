@@ -949,7 +949,7 @@ TEST_P(GcsClientTest, DISABLED_TestGetActorPerf) {
 
 TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   // Restart doesn't work with in memory storage
-  if (RayConfig::instance().gcs_storage() == "memory") {
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
     return;
   }
   // Register actors and the actors will be destroyed.
