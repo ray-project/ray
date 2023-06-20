@@ -5,13 +5,12 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
+import tensorflow as tf
+
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.reward_predictor_layer import (
     RewardPredictorLayer,
 )
-from ray.rllib.utils.framework import try_import_tf
-
-_, tf, _ = try_import_tf()
 
 
 class RewardPredictor(tf.keras.Model):
@@ -23,7 +22,7 @@ class RewardPredictor(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        model_dimension: Optional[str] = "XS",
         num_buckets: int = 255,
         lower_bound: float = -20.0,
         upper_bound: float = 20.0,
@@ -31,7 +30,7 @@ class RewardPredictor(tf.keras.Model):
         """Initializes a RewardPredictor instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
                 Determines the exact size of the underlying MLP.
             num_buckets: The number of buckets to create. Note that the number of
                 possible symlog'd outcomes from the used distribution is
@@ -52,7 +51,7 @@ class RewardPredictor(tf.keras.Model):
         super().__init__(name="reward_predictor")
 
         self.mlp = MLP(
-            model_size=model_size,
+            model_dimension=model_dimension,
             output_layer_size=None,
         )
         self.reward_layer = RewardPredictorLayer(
