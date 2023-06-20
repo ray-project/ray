@@ -48,6 +48,8 @@ RUN sudo apt-get update \
         requirements*.txt \
     && sudo apt-get clean
 
+ENV MUJOCO_GL=osmesa
+
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 # Make sure tfp is installed correctly and matches tf version.
