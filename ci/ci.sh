@@ -261,19 +261,16 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0
-  local flush_logs=0
+  local TEST_WHEEL_RESULT=0
 
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
-  fi
+  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
 
-  if [[ 0 -ne "${flush_logs}" ]]; then
+  if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
 
-  return "${result}"
+  return "${TEST_WHEEL_RESULT}"
 }
 
 install_npm_project() {
@@ -309,6 +306,9 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
+  _bazel_build_protobuf
+  install_ray
+
   (
     cd "${WORKSPACE_DIR}"/doc
     if [ "${OSTYPE}" = msys ]; then
@@ -416,6 +416,8 @@ validate_wheels_commit_str() {
 }
 
 build_wheels_and_jars() {
+  _bazel_build_before_install
+
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
@@ -732,23 +734,15 @@ init() {
 }
 
 build() {
-  if [ "${LINT-}" != 1 ]; then
-    _bazel_build_before_install
-  else
-    _bazel_build_protobuf
-  fi
-
-  if [[ "${NEED_WHEELS}" != "true" ]]; then
-    install_ray
-    if [ "${LINT-}" = 1 ]; then
-      # Try generating Sphinx documentation. To do this, we need to install Ray first.
-      build_sphinx_docs
-    fi
-  fi
-
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
+  if [[ "${NEED_WHEELS}" == "1" ]]; then
     build_wheels_and_jars
+    return
   fi
+
+  # Build and install ray into the system.
+  # For building the wheel, see build_wheels_and_jars.
+  _bazel_build_before_install
+  install_ray
 }
 
 run_minimal_test() {

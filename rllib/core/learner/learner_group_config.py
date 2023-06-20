@@ -55,7 +55,7 @@ class LearnerGroupConfig:
         self.local_gpu_idx = 0
 
         # `self.framework()`
-        self.eager_tracing = False
+        self.eager_tracing = True
         self.torch_compile = False
         self.torch_compile_cfg = None
         self.torch_compile_what_to_compile = None

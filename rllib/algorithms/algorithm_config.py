@@ -4,6 +4,7 @@ import math
 import os
 import sys
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Container,
@@ -12,7 +13,6 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
@@ -21,10 +21,7 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
-from ray.rllib.core.learner.learner_group_config import (
-    LearnerGroupConfig,
-    ModuleSpec,
-)
+from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
@@ -32,7 +29,6 @@ from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
-from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import MODEL_DEFAULTS
@@ -40,16 +36,16 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
     ExperimentalAPI,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.from_config import from_config, NotProvided
+from ray.rllib.utils.from_config import NotProvided, from_config
 from ray.rllib.utils.gym import (
     convert_old_gym_space_to_gymnasium_space,
     try_import_gymnasium_and_gym,
@@ -57,10 +53,11 @@ from ray.rllib.utils.gym import (
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
-    deserialize_type,
     NOT_SERIALIZABLE,
+    deserialize_type,
     serialize_type,
 )
+from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -261,7 +258,7 @@ class AlgorithmConfig(_Config):
 
         # `self.framework()`
         self.framework_str = "torch"
-        self.eager_tracing = False
+        self.eager_tracing = True
         self.eager_max_retraces = 20
         self.tf_session_args = {
             # note: overridden by `local_tf_session_args`
@@ -313,6 +310,7 @@ class AlgorithmConfig(_Config):
         # If not specified, we will try to auto-detect this.
         self.is_atari = None
         self.auto_wrap_old_gym_envs = True
+        self.action_mask_key = "action_mask"
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -1244,8 +1242,8 @@ class AlgorithmConfig(_Config):
         """Sets the config's DL framework settings.
 
         Args:
-            framework: tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
-                (eager or traced, if eager_tracing=True); torch: PyTorch
+            framework: torch: PyTorch; tf2: TensorFlow 2.x (eager execution or traced
+                if eager_tracing=True); tf: TensorFlow (static-graph);
             eager_tracing: Enable tracing in eager mode. This greatly improves
                 performance (speedup ~2x), but makes it slightly harder to debug
                 since Python code won't be evaluated after the initial eager pass.
@@ -1340,6 +1338,7 @@ class AlgorithmConfig(_Config):
         disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
+        action_mask_key: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1391,6 +1390,9 @@ class AlgorithmConfig(_Config):
                 (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
                 descriptive error on which steps to perform to upgrade to gymnasium
                 (or to switch this flag to True).
+             action_mask_key: If observation is a dictionary, expect the value by
+                the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
+                array of zeros and ones). Defaults to "action_mask".
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1423,6 +1425,8 @@ class AlgorithmConfig(_Config):
             self.is_atari = is_atari
         if auto_wrap_old_gym_envs is not NotProvided:
             self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
+        if action_mask_key is not NotProvided:
+            self.action_mask_key = action_mask_key
 
         return self
 

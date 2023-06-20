@@ -37,10 +37,7 @@ class TestLearner(unittest.TestCase):
     def test_end_to_end_update(self):
 
         for fw in framework_iterator(frameworks=("torch", "tf2")):
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner = get_learner(
-                framework=fw, framework_hps=framework_hps, env=self.ENV
-            )
+            learner = get_learner(framework=fw, env=self.ENV)
             reader = get_cartpole_dataset_reader(batch_size=512)
 
             min_loss = float("inf")
@@ -64,10 +61,7 @@ class TestLearner(unittest.TestCase):
         the weights is all ones.
         """
         for fw in framework_iterator(frameworks=("torch", "tf2")):
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
-            learner = get_learner(
-                framework=fw, framework_hps=framework_hps, env=self.ENV
-            )
+            learner = get_learner(framework=fw, env=self.ENV)
 
             params = learner.get_parameters(learner.module[DEFAULT_POLICY_ID])
 
@@ -99,10 +93,8 @@ class TestLearner(unittest.TestCase):
                 grad_clip_by="value",
             )
 
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
             learner = get_learner(
                 framework=fw,
-                framework_hps=framework_hps,
                 env=self.ENV,
                 learner_hps=hps,
             )
@@ -125,10 +117,8 @@ class TestLearner(unittest.TestCase):
             # Clip by norm.
             hps.grad_clip = 1.0
             hps.grad_clip_by = "norm"
-            framework_hps = FrameworkHyperparameters(eager_tracing=True)
             learner = get_learner(
                 framework=fw,
-                framework_hps=framework_hps,
                 env=self.ENV,
                 learner_hps=hps,
             )
