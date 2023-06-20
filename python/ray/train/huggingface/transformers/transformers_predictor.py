@@ -34,12 +34,12 @@ except ImportError:
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 try:
+    from transformers import PreTrainedModel, TFPreTrainedModel
     from transformers.pipelines import Pipeline
     from transformers.pipelines import pipeline as pipeline_factory
     from transformers.pipelines.table_question_answering import (
         TableQuestionAnsweringPipeline,
     )
-    from transformers.models import PreTrainedModel, TFPreTrainedModel
 except ImportError as e:
     TRANSFORMERS_IMPORT_ERROR = e
 
