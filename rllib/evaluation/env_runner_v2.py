@@ -184,7 +184,7 @@ def _build_multi_agent_batch(
             seq_lens = batch.get(SampleBatch.SEQ_LENS)
             pad_batch_to_sequences_of_same_size(
                 batch=batch,
-                max_seq_len=policy.max_seq_len,
+                max_seq_len=policy.config["model"]["max_seq_len"],
                 shuffle=False,
                 batch_divisibility_req=policy.batch_divisibility_req,
                 view_requirements=policy.view_requirements,

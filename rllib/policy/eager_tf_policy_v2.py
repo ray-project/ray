@@ -171,10 +171,10 @@ class EagerTFPolicyV2(Policy):
 
             def fold_mapping(item):
                 item = tf.convert_to_tensor(item)
-                size = tf.size(item)
-                b_dim, t_dim = list(size[:2])
-                other_dims = size[2:]
-                return item.reshape([b_dim * t_dim] + other_dims)
+                shape = tf.shape(item)
+                b_dim, t_dim = list(shape)[:2]
+                other_dims = shape[2:]
+                return tf.reshape(item, (int(b_dim * t_dim),) + tuple(other_dims))
 
             for k, v in input_dict.items():
                 if k not in (STATE_IN, STATE_OUT):
