@@ -116,31 +116,28 @@ class TestAPPO(unittest.TestCase):
             )
         )
 
-        def _step_n_times(algo, n: int):
+        def _step_n_times(algo, n):
             for _ in range(n):
                 results = algo.train()
                 print(algo.workers.local_worker().global_vars)
                 print(results)
-            return (
-                results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
-                    "entropy_coeff"
-                ],
-                results["num_env_steps_sampled"],
-            )
+
+            coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+                "entropy_coeff"
+            ]
+            old_val = 0
+            for ts, val in config.entropy_coeff_schedule:
+                if results["num_env_steps_sampled"] < ts:
+                    self.assertLessEqual(coeff, old_val)
+                    self.assertGreaterEqual(coeff, val)
+                    break
+                old_val = val
 
         for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")
 
-            coeff, num_env_steps_sampled = _step_n_times(algo, 5)  # ~100 timesteps
-            if num_env_steps_sampled > 300:
-                self.assertLessEqual(coeff, 0.001)
-                self.assertGreaterEqual(coeff, 0.0001)
-            else:
-                self.assertLessEqual(coeff, 0.01)
-                self.assertGreaterEqual(coeff, 0.001)
-
-            coeff, num_env_steps_sampled = _step_n_times(algo, 20)  # ~400 timesteps
-            self.assertLessEqual(coeff, 0.0005)
+            _step_n_times(algo, 5)  # ~100 timesteps
+            _step_n_times(algo, 20)  # ~400 timesteps
 
             algo.stop()
 
