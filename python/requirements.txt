@@ -43,6 +43,7 @@ gpustat>=1.0.0
 urllib3
 opentelemetry-sdk
 fastapi
+gymnasium==0.28.1
 virtualenv<20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
@@ -54,7 +55,6 @@ prometheus_client>=0.7.1
 requests
 pandas
 tensorboardX>=1.9
-gymnasium==0.26.3
 grpcio<=1.50.0,>=1.42.0  # ray client
 aiohttp>=3.7
 starlette
