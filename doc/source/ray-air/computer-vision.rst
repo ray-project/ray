@@ -38,7 +38,7 @@ Reading image data
             :end-before: __read_images1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         encode the class names as integer targets.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -98,7 +98,7 @@ Reading image data
             :end-before: __read_tfrecords1_stop__
             :dedent:
 
-        Then, apply a :ref:`user-defined function <transform_datasets_writing_udfs>` to
+        Then, apply a :ref:`user-defined function <transforming_data>` to
         decode the raw image bytes.
 
         .. literalinclude:: ./doc_code/computer_vision.py
@@ -260,8 +260,7 @@ image datasets.
             :end-before: __torch_batch_predictor_stop__
             :dedent:
 
-        For more in-depth examples, read :doc:`/ray-air/examples/pytorch_resnet_batch_prediction`
-        and :ref:`Using Predictors for Inference <air-predictors>`.
+        For more in-depth examples, read :ref:`Using Predictors for Inference <air-predictors>`.
 
     .. tab-item:: TensorFlow
 

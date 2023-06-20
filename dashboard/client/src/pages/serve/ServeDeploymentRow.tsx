@@ -33,6 +33,10 @@ const useStyles = makeStyles((theme) =>
       fontSize: "1.5em",
       verticalAlign: "middle",
     },
+    statusMessage: {
+      maxWidth: 400,
+      display: "inline-flex",
+    },
   }),
 );
 
@@ -100,6 +104,7 @@ export const ServeDeploymentRow = ({
         <TableCell align="center">
           {message ? (
             <CodeDialogButtonWithPreview
+              className={classes.statusMessage}
               title="Message details"
               code={message}
             />

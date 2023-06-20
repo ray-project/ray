@@ -1,9 +1,0 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py39") }}
-env_vars: {}
-debian_packages:
-  - curl
-
-post_build_cmds:
-  # Install Ray
-  - pip3 uninstall -y ray || true && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
-  - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}

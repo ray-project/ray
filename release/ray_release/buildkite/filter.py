@@ -1,9 +1,11 @@
 import re
+import copy
 from collections import defaultdict
 from typing import List, Optional, Tuple, Dict, Any
 
 from ray_release.buildkite.settings import Frequency, get_frequency
-from ray_release.config import Test
+from ray_release.test import Test
+from ray_release.test_automation.state_machine import TestStateMachine
 
 
 def _unflattened_lookup(lookup: Dict, flat_key: str, delimiter: str = "/") -> Any:
@@ -36,8 +38,13 @@ def filter_tests(
                 break
         if attr_mismatch:
             continue
-        if not run_jailed_tests and test.get("jailed", False):
-            continue
+        if not run_jailed_tests:
+            if test.get("jailed", False):
+                continue
+            clone_test = copy.deepcopy(test)
+            clone_test.update_from_s3()
+            if clone_test.is_jailed_with_open_issue(TestStateMachine.get_ray_repo()):
+                continue
 
         test_frequency = get_frequency(test["frequency"])
 

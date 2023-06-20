@@ -79,8 +79,8 @@ def test_publish_error_to_driver(ray_start_regular, error_pubsub):
     errors = get_error_message(
         error_pubsub, 1, ray_constants.DASHBOARD_AGENT_DIED_ERROR
     )
-    assert errors[0].type == ray_constants.DASHBOARD_AGENT_DIED_ERROR
-    assert errors[0].error_message == error_message
+    assert errors[0]["type"] == ray_constants.DASHBOARD_AGENT_DIED_ERROR
+    assert errors[0]["error_message"] == error_message
 
 
 def test_get_throws_quickly_when_found_exception(ray_start_regular):
@@ -124,36 +124,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     ray.get(signal2.send.remote())
 
 
-def test_failed_function_to_run(ray_start_2_cpus, error_pubsub):
-    p = error_pubsub
-
-    def f(worker):
-        if ray._private.worker.global_worker.mode == ray.WORKER_MODE:
-            raise Exception("Function to run failed.")
-
-    ray._private.worker.global_worker.run_function_on_all_workers(f)
-
-    @ray.remote
-    class Actor:
-        def foo(self):
-            pass
-
-    # Functions scheduled through run_function_on_all_workers only
-    # executes on workers binded with current driver's job_id.
-    # Since the 2 prestarted workers lazily bind to job_id until the first
-    # task/actor executed, we need to schedule two actors to trigger
-    # prestart functions.
-    actors = [Actor.remote() for _ in range(2)]
-    ray.get([actor.foo.remote() for actor in actors])
-
-    # Check that the error message is in the task info.
-    errors = get_error_message(p, 2, ray_constants.FUNCTION_TO_RUN_PUSH_ERROR)
-    assert len(errors) == 2
-    assert errors[0].type == ray_constants.FUNCTION_TO_RUN_PUSH_ERROR
-    assert "Function to run failed." in errors[0].error_message
-    assert "Function to run failed." in errors[1].error_message
-
-
 def test_failed_actor_init(ray_start_regular, error_pubsub):
     p = error_pubsub
     error_message1 = "actor constructor failed"
@@ -172,8 +142,8 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
     # Make sure that we get errors from a failed constructor.
     errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0].error_message
+    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
+    assert error_message1 in errors[0]["error_message"]
 
     # Incoming methods will get the exception in creation task
     with pytest.raises(ray.exceptions.RayActorError) as e:
@@ -199,8 +169,8 @@ def test_failed_actor_method(ray_start_regular, error_pubsub):
     a.fail_method.remote()
     errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.TASK_PUSH_ERROR
-    assert error_message2 in errors[0].error_message
+    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
+    assert error_message2 in errors[0]["error_message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):
@@ -254,7 +224,7 @@ def test_worker_raising_exception(ray_start_regular, error_pubsub):
     f.remote()
     errors = get_error_message(p, 1, ray_constants.WORKER_CRASH_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.WORKER_CRASH_PUSH_ERROR
+    assert errors[0]["type"] == ray_constants.WORKER_CRASH_PUSH_ERROR
 
 
 def test_worker_dying(ray_start_regular, error_pubsub):
@@ -270,8 +240,8 @@ def test_worker_dying(ray_start_regular, error_pubsub):
 
     errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.WORKER_DIED_PUSH_ERROR
-    assert "died or was killed while executing" in errors[0].error_message
+    assert errors[0]["type"] == ray_constants.WORKER_DIED_PUSH_ERROR
+    assert "died or was killed while executing" in errors[0]["error_message"]
 
 
 def test_actor_worker_dying(ray_start_regular, error_pubsub):
@@ -294,7 +264,7 @@ def test_actor_worker_dying(ray_start_regular, error_pubsub):
         ray.get(consume.remote(obj))
     errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.WORKER_DIED_PUSH_ERROR
+    assert errors[0]["type"] == ray_constants.WORKER_DIED_PUSH_ERROR
 
 
 def test_actor_worker_dying_future_tasks(ray_start_regular, error_pubsub):
@@ -320,7 +290,7 @@ def test_actor_worker_dying_future_tasks(ray_start_regular, error_pubsub):
 
     errors = get_error_message(p, 1, ray_constants.WORKER_DIED_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.WORKER_DIED_PUSH_ERROR
+    assert errors[0]["type"] == ray_constants.WORKER_DIED_PUSH_ERROR
 
 
 def test_actor_worker_dying_nothing_in_progress(ray_start_regular):
@@ -421,7 +391,7 @@ def test_put_error1(ray_start_object_store_memory, error_pubsub):
     # Make sure we receive the correct error message.
     errors = get_error_message(p, 1, ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
+    assert errors[0]["type"] == ray_constants.PUT_RECONSTRUCTION_PUSH_ERROR
 
 
 @pytest.mark.skip("This test does not work yet.")
@@ -501,7 +471,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     # Make sure that a warning is generated.
     errors = get_error_message(p, 1, ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
+    assert errors[0]["type"] == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
     @ray.remote
     class Foo:
@@ -513,7 +483,7 @@ def test_export_large_objects(ray_start_regular, error_pubsub):
     # Make sure that a warning is generated.
     errors = get_error_message(p, 1, ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR)
     assert len(errors) == 1
-    assert errors[0].type == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
+    assert errors[0]["type"] == ray_constants.PICKLING_LARGE_OBJECT_PUSH_ERROR
 
 
 @pytest.mark.parametrize("sync", [True, False])
@@ -539,7 +509,7 @@ def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
     a = Foo.remote()
     [a.f.remote() for _ in range(50000)]
     errors = get_error_message(p, 4, ray_constants.EXCESS_QUEUEING_WARNING)
-    msgs = [e.error_message for e in errors]
+    msgs = [e["error_message"] for e in errors]
     assert "Warning: More than 5000 tasks are pending submission to actor" in msgs[0]
     assert "Warning: More than 10000 tasks are pending submission to actor" in msgs[1]
     assert "Warning: More than 20000 tasks are pending submission to actor" in msgs[2]

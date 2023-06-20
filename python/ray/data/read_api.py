@@ -12,42 +12,36 @@ from typing import (
     Union,
 )
 
-
 import numpy as np
 
 import ray
+from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrowRefs,
-    FromHuggingFace,
+from ray.data._internal.logical.operators.from_operators import (
+    FromArrow,
+    FromItems,
+    FromNumpy,
+    FromPandas,
 )
-from ray.data._internal.logical.operators.from_items_operator import FromItems
-from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromDask,
-    FromMars,
-    FromModin,
-    FromPandasRefs,
-)
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
-    pandas_df_to_arrow_block,
-    ndarray_to_block,
+    _lazy_import_pyarrow_dataset,
     get_table_block_metadata,
+    ndarray_to_block,
+    pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
+from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -55,20 +49,20 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    SQLDatasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
+    MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    MongoDatasource,
     ReadTask,
+    SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
     WebDatasetDatasource,
@@ -83,7 +77,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import dask
@@ -92,8 +85,8 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
-    import pyspark
     import pymongoarrow.api
+    import pyspark
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -193,7 +186,7 @@ def from_items(
             )
         )
 
-    from_items_op = FromItems(items, detected_parallelism)
+    from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
@@ -253,11 +246,6 @@ def range_table(n: int, *, parallelism: int = -1) -> Dataset:
         block_format="arrow",
         column_name="value",
     )
-
-
-@Deprecated
-def range_arrow(*args, **kwargs):
-    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
 
 
 @PublicAPI
@@ -343,11 +331,8 @@ def read_datasource(
         )
         local_uri = True
 
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     force_local = False
     cur_pg = ray.util.get_current_placement_group()
@@ -436,9 +421,9 @@ def read_datasource(
         owned_by_consumer=False,
     )
 
-    # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
-    # LazyBlockList code path.
-    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
+    # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
+    # after removing LazyBlockList code path.
+    read_op = Read(datasource, read_tasks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -571,6 +556,28 @@ def read_parquet(
               variety: string
            }
         )
+
+        The Parquet reader also supports projection and filter pushdown, allowing column
+        selection and row filtering to be pushed down to the file scan.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            # Create a Dataset by reading a Parquet file, pushing column selection and
+            # row filtering down to the file scan.
+            ds = ray.data.read_parquet(
+                "example://iris.parquet",
+                columns=["sepal.length", "variety"],
+                filter=pa.dataset.field("sepal.length") > 5.0,
+            )
+
+            ds.show(2)
+
+        .. testoutput::
+
+            {'sepal.length': 5.1, 'variety': 'Setosa'}
+            {'sepal.length': 5.4, 'variety': 'Setosa'}
 
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
@@ -1405,7 +1412,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+        :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
 
@@ -1494,9 +1501,6 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
     ds = from_pandas_refs(
         [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
     )
-    logical_plan = LogicalPlan(FromDask(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1513,10 +1517,6 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
     import mars.dataframe as md
 
     ds: Dataset = md.to_ray_dataset(df)
-
-    logical_plan = LogicalPlan(FromMars(ds.dataframe))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1534,10 +1534,6 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
 
     parts = unwrap_partitions(df, axis=0)
     ds = from_pandas_refs(parts)
-
-    logical_plan = LogicalPlan(FromModin(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1596,15 +1592,15 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
-    logical_plan = LogicalPlan(FromPandasRefs(dfs))
     context = DataContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+                DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1617,10 +1613,11 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1679,13 +1676,12 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    from_numpy_refs_op = FromNumpyRefs(ndarrays)
-    logical_plan = LogicalPlan(from_numpy_refs_op)
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1735,12 +1731,12 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrowRefs(tables))
+    logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1783,7 +1779,6 @@ def from_huggingface(
     Example:
 
     .. doctest::
-        :options: +ELLIPSIS
 
         >>> import ray
         >>> import datasets
@@ -1823,10 +1818,12 @@ def from_huggingface(
     import datasets
 
     def convert(ds: "datasets.Dataset") -> Dataset:
-        ray_ds = from_arrow(ds.data.table)
-        logical_plan = LogicalPlan(FromHuggingFace(ds))
-        ray_ds._logical_plan = logical_plan
-        ray_ds._plan.link_logical_plan(logical_plan)
+        # To get the resulting Arrow table from a Hugging Face Dataset after
+        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # we create a copy of the Arrow table, which applies the indices
+        # mapping from the transformations.
+        hf_ds_arrow = ds.with_format("arrow")
+        ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):

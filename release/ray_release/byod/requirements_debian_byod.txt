@@ -1,0 +1,8 @@
+apt-transport-https 
+ca-certificates 
+curl
+htop
+gnupg
+google-cloud-sdk
+libjemalloc-dev
+unzip

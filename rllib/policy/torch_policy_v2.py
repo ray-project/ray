@@ -622,20 +622,35 @@ class TorchPolicyV2(Policy):
                 if self.config.get("_enable_rl_module_api", False):
                     if in_training:
                         output = self.model.forward_train(input_dict)
+                        action_dist_cls = self.model.get_train_action_dist_cls()
+                        if action_dist_cls is None:
+                            raise ValueError(
+                                "The RLModules must provide an appropriate action "
+                                "distribution class for training if is_eval_mode is "
+                                "False."
+                            )
                     else:
-                        self.model.eval()
                         output = self.model.forward_exploration(input_dict)
+                        action_dist_cls = self.model.get_exploration_action_dist_cls()
+                        if action_dist_cls is None:
+                            raise ValueError(
+                                "The RLModules must provide an appropriate action "
+                                "distribution class for exploration if is_eval_mode is "
+                                "True."
+                            )
 
-                    action_dist = output.get(SampleBatch.ACTION_DIST)
-
-                    if action_dist is None:
+                    action_dist_inputs = output.get(
+                        SampleBatch.ACTION_DIST_INPUTS, None
+                    )
+                    if action_dist_inputs is None:
                         raise ValueError(
-                            "The model output must contain the key "
-                            "`SampleBatch.ACTION_DIST` when using the RL module API."
-                            "Make sure if is_eval_mode is True the forward_exploration "
-                            "returns this key, and if it is False the forward_train "
-                            "returns this key."
+                            "The RLModules must provide inputs to create the action "
+                            "distribution. These should be part of the output of the "
+                            "appropriate forward method under the key "
+                            "SampleBatch.ACTION_DIST_INPUTS."
                         )
+
+                    action_dist = action_dist_cls.from_logits(action_dist_inputs)
                 else:
                     dist_class = self.dist_class
                     dist_inputs, _ = self.model(input_dict, state_batches, seq_lens)
@@ -1112,30 +1127,57 @@ class TorchPolicyV2(Policy):
         if self.model:
             self.model.eval()
 
-        extra_fetches = None
+        extra_fetches = dist_inputs = logp = None
+
+        # New API stack: `self.model` is-a RLModule.
         if isinstance(self.model, RLModule):
             if explore:
-                action_dist_class = self.model.get_exploration_action_dist_cls()
                 fwd_out = self.model.forward_exploration(input_dict)
-                action_dist = action_dist_class.from_logits(
-                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-                )
-                actions = action_dist.sample()
-                logp = action_dist.logp(actions)
+
+                # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+                # Create a distribution object.
+                action_dist = None
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                    dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    action_dist_class = self.model.get_exploration_action_dist_cls()
+                    action_dist = action_dist_class.from_logits(dist_inputs)
+
+                # If `forward_exploration()` returned actions, use them here as-is.
+                if SampleBatch.ACTIONS in fwd_out:
+                    actions = fwd_out[SampleBatch.ACTIONS]
+                # Otherwise, sample actions from the distribution.
+                else:
+                    assert action_dist
+                    actions = action_dist.sample()
+
+                # Compute action-logp and action-prob from distribution and add to
+                # `extra_fetches`, if possible.
+                if action_dist is not None:
+                    logp = action_dist.logp(actions)
             else:
-                action_dist_class = self.model.get_inference_action_dist_cls()
                 fwd_out = self.model.forward_inference(input_dict)
-                action_dist = action_dist_class.from_logits(
-                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-                )
-                action_dist = action_dist.to_deterministic()
-                actions = action_dist.sample()
-                logp = None
+
+                # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+                # Create a distribution object.
+                action_dist = None
+                if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+                    dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                    action_dist_class = self.model.get_inference_action_dist_cls()
+                    action_dist = action_dist_class.from_logits(dist_inputs)
+                    action_dist = action_dist.to_deterministic()
+
+                # If `forward_inference()` returned actions, use them here as-is.
+                if SampleBatch.ACTIONS in fwd_out:
+                    actions = fwd_out[SampleBatch.ACTIONS]
+                # Otherwise, sample actions from the distribution.
+                else:
+                    assert action_dist
+                    actions = action_dist.sample()
 
             # Anything but actions and state_out is an extra fetch.
             state_out = fwd_out.pop(STATE_OUT, {})
             extra_fetches = fwd_out
-            dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+
         elif is_overridden(self.action_sampler_fn):
             action_dist = None
             actions, logp, dist_inputs, state_out = self.action_sampler_fn(

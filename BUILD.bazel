@@ -107,6 +107,7 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":autoscaler_cc_grpc",
         ":gcs_service_cc_grpc",
         ":grpc_common_lib",
         ":pubsub_lib",
@@ -286,6 +287,25 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":monitor_cc_grpc",
+    ],
+)
+
+cc_grpc_library(
+    name = "autoscaler_cc_grpc",
+    srcs = ["//src/ray/protobuf:autoscaler_proto"],
+    grpc_only = True,
+    deps = [
+        "//src/ray/protobuf:autoscaler_cc_proto",
+        "//src/ray/protobuf:instance_manager_cc_proto",
+    ],
+)
+
+cc_library(
+    name = "autoscaler_rpc",
+    copts = COPTS,
+    visibility = ["//visibility:public"],
+    deps = [
+        ":autoscaler_cc_grpc",
     ],
 )
 
@@ -530,6 +550,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":agent_manager_rpc",
+        ":autoscaler_rpc",
         ":gcs",
         ":gcs_pub_sub_lib",
         ":gcs_service_cc_grpc",
@@ -2156,6 +2177,23 @@ cc_test(
 )
 
 cc_test(
+    name = "gcs_autoscaler_state_manager_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_autoscaler_state_manager_test.cc",
+    ],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "gcs_resource_manager_test",
     size = "small",
     srcs = [
@@ -2901,6 +2939,13 @@ alias(
 )
 
 filegroup(
+    name = "experimental_py_proto",
+    srcs = [
+        "//src/ray/protobuf:autoscaler_py_proto",
+    ],
+)
+
+filegroup(
     name = "all_py_proto",
     srcs = [
         "//src/ray/protobuf:agent_manager_py_proto",
@@ -2952,6 +2997,12 @@ copy_to_workspace(
 )
 
 copy_to_workspace(
+    name = "cp_experimental_py_proto",
+    srcs = [":experimental_py_proto"],
+    dstdir = "python/ray/core/generated/experimental",
+)
+
+copy_to_workspace(
     name = "cp_serve_py_proto",
     srcs = [":serve_py_proto"],
     dstdir = "python/ray/serve/generated",
@@ -2983,13 +3034,18 @@ genrule(
     srcs = [
         ":cp_all_py_proto",
         ":cp_serve_py_proto",
+        ":cp_experimental_py_proto",
     ],
     outs = ["install_py_proto.out"],
     cmd = """
         # NOTE(hchen): Protobuf doesn't allow specifying Python package name. So we use this `sed`
         # command to change the import path in the generated file.
         # shellcheck disable=SC2006
-        files=(`ls python/ray/core/generated/*_pb2*.py` `ls python/ray/serve/generated/*_pb2*.py`)
+        files=(
+            `ls python/ray/core/generated/*_pb2*.py` \
+            `ls python/ray/serve/generated/*_pb2*.py` \
+            `ls python/ray/core/generated/experimental/*_pb2*.py` \
+            )
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
         # TODO(sang): Build our own proto instead of creating a new proto for opencensus separately.
         # https://github.com/ray-project/ray/issues/31358

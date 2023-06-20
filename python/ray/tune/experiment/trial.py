@@ -16,7 +16,6 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
-from ray._private.dict import unflatten_dict
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
@@ -994,7 +993,7 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = unflatten_dict(self.restoring_from.metrics)
+        self.last_result = self.restoring_from.metrics
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0

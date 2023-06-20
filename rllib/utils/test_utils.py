@@ -35,7 +35,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.typing import PartialAlgorithmConfigDict, ResultDict
+from ray.rllib.utils.typing import ResultDict
 from ray.rllib.utils.error import UnsupportedSpaceException
 
 
@@ -64,7 +64,6 @@ def framework_iterator(
     config: Optional["AlgorithmConfig"] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
-    with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
 ) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
@@ -81,8 +80,6 @@ def framework_iterator(
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
-        with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
@@ -135,33 +132,14 @@ def framework_iterator(
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
-        # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw == "tf2" and with_eager_tracing:
-            for tracing in [True, False]:
-                if isinstance(config, dict):
-                    config["eager_tracing"] = tracing
-                else:
-                    config.framework(eager_tracing=tracing)
-                print(f"framework={fw} (eager-tracing={tracing})")
-                time_started = time.time()
-                yield fw if session is False else (fw, sess)
-                if time_iterations is not None:
-                    time_total = time.time() - time_started
-                    time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                    print(f".. took {time_total}sec")
-                if isinstance(config, dict):
-                    config["eager_tracing"] = False
-                else:
-                    config.framework(eager_tracing=False)
         # Yield current framework + tf-session (if necessary).
-        else:
-            print(f"framework={fw}")
-            time_started = time.time()
-            yield fw if session is False else (fw, sess)
-            if time_iterations is not None:
-                time_total = time.time() - time_started
-                time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                print(f".. took {time_total}sec")
+        print(f"framework={fw}")
+        time_started = time.time()
+        yield fw if session is False else (fw, sess)
+        if time_iterations is not None:
+            time_total = time.time() - time_started
+            time_iterations[fw] = time_total
+            print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
         if eager_ctx:
@@ -618,7 +596,7 @@ def check_off_policyness(
     return off_policy_ness
 
 
-def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict:
+def check_train_results(train_results: ResultDict):
     """Checks proper structure of a Algorithm.train() returned dict.
 
     Args:
@@ -670,7 +648,7 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
 
     is_multi_agent = (
         AlgorithmConfig()
-        .update_from_dict(train_results["config"]["multiagent"])
+        .update_from_dict({"policies": train_results["config"]["policies"]})
         .is_multi_agent()
     )
 
@@ -702,9 +680,11 @@ def check_train_results(train_results: PartialAlgorithmConfigDict) -> ResultDict
         if pid == "__all__":
             continue
 
-        # Make sure each policy has the LEARNER_STATS_KEY under it.
-        assert LEARNER_STATS_KEY in policy_stats
-        learner_stats = policy_stats[LEARNER_STATS_KEY]
+        # On the new API stack, policy has no LEARNER_STATS_KEY under it anymore.
+        if LEARNER_STATS_KEY in policy_stats:
+            learner_stats = policy_stats[LEARNER_STATS_KEY]
+        else:
+            learner_stats = policy_stats
         for key, value in learner_stats.items():
             # Min- and max-stats should be single values.
             if key.startswith("min_") or key.startswith("max_"):
@@ -1145,10 +1125,18 @@ def check_reproducibilty(
             check(results1["hist_stats"], results2["hist_stats"])
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            check(
-                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            )
+            # As well as training behavior (minibatch sequence during SGD
+            # iterations).
+            if algo_config._enable_learner_api:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                )
+            else:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                )
 
 
 def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
@@ -1204,7 +1192,7 @@ class ModelChecker:
         # We will pass an observation filled with this one random value through
         # all DL networks (after they have been set to fixed-weights) to compare
         # the computed outputs.
-        self.random_fill_input_value = np.random.uniform(-0.1, 0.1)
+        self.random_fill_input_value = np.random.uniform(-0.01, 0.01)
 
         # Dict of models to check against each other.
         self.models = {}
@@ -1257,7 +1245,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self, rtol=None):
+    def check(self):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -1269,7 +1257,7 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(v, self.output_values[main_key], rtol=rtol or 0.002)
+            check(v, self.output_values[main_key], atol=0.0005)
 
 
 def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
@@ -1399,7 +1387,7 @@ def check_supported_spaces(
     config: "AlgorithmConfig",
     train: bool = True,
     check_bounds: bool = False,
-    frameworks: List = None,
+    frameworks: Optional[Tuple[str]] = None,
     use_gpu: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
@@ -1478,8 +1466,7 @@ def check_supported_spaces(
         "dict",
     ]
 
-    # TODO(Artur): Add back tf2 once we CNNs there
-    rlmodule_supported_frameworks = {"torch"}
+    rlmodule_supported_frameworks = ("torch", "tf2")
 
     # The action spaces that we test RLModules with
     rlmodule_supported_action_spaces = ["discrete", "continuous"]
@@ -1572,12 +1559,15 @@ def check_supported_spaces(
             algo.stop()
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
+    if not frameworks:
+        frameworks = ("tf2", "tf", "torch")
+
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
-        frameworks = frameworks.intersection(rlmodule_supported_frameworks)
+        frameworks = tuple(
+            fw for fw in frameworks if fw in rlmodule_supported_frameworks
+        )
 
-    if not frameworks:
-        frameworks = ["tf2", "torch", "tf"]
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)
     for _ in framework_iterator(config, frameworks=frameworks):

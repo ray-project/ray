@@ -165,9 +165,57 @@ class RAY_EXPORT PythonGcsPublisher {
   int gcs_port_;
 };
 
-/// Construct the arguments for synchronous gRPC clients
-/// (the ones wrapped in Python)
-grpc::ChannelArguments PythonGrpcChannelArguments();
+// This client is only supposed to be used from Cython / Python
+class RAY_EXPORT PythonGcsSubscriber {
+ public:
+  explicit PythonGcsSubscriber(const std::string &gcs_address,
+                               int gcs_port,
+                               rpc::ChannelType channel_type,
+                               const std::string &subscriber_id,
+                               const std::string &worker_id);
+
+  /// Register a subscription for the subscriber's channel type.
+  ///
+  /// Before the registration, published messages in the channel
+  /// will not be saved for the subscriber.
+  Status Subscribe();
+
+  /// Polls for new error message.
+  /// Both key_id and data are out parameters.
+  Status PollError(std::string *key_id, int64_t timeout_ms, rpc::ErrorTableData *data);
+
+  /// Polls for new log messages.
+  Status PollLogs(std::string *key_id, int64_t timeout_ms, rpc::LogBatch *data);
+
+  /// Polls for actor messages.
+  Status PollActor(std::string *key_id, int64_t timeout_ms, rpc::ActorTableData *data);
+
+  /// Closes the subscriber and its active subscription.
+  Status Close();
+
+  int64_t last_batch_size();
+
+ private:
+  Status DoPoll(int64_t timeout_ms, rpc::PubMessage *message);
+
+  mutable absl::Mutex mu_;
+
+  std::unique_ptr<rpc::InternalPubSubGcsService::Stub> pubsub_stub_;
+  std::shared_ptr<grpc::Channel> channel_;
+  const rpc::ChannelType channel_type_;
+  const std::string subscriber_id_;
+  std::string publisher_id_;
+  const std::string worker_id_;
+  int64_t max_processed_sequence_id_ GUARDED_BY(mu_);
+  int64_t last_batch_size_ GUARDED_BY(mu_);
+  std::deque<rpc::PubMessage> queue_ GUARDED_BY(mu_);
+  bool closed_ GUARDED_BY(mu_);
+  std::shared_ptr<grpc::ClientContext> current_polling_context_ GUARDED_BY(mu_);
+};
+
+/// Get the .lines() attribute of a LogBatch as a std::vector
+/// (this is needed so it can be wrapped in Cython)
+std::vector<std::string> PythonGetLogBatchLines(const rpc::LogBatch &log_batch);
 
 }  // namespace gcs
 }  // namespace ray

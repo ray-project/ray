@@ -15,15 +15,15 @@ NODE_VERSION="14"
 
 # Python version key, interpreter version code, numpy tuples.
 PYTHON_NUMPYS=(
-  "3.7 cp37-cp37m 1.14.5"
-  "3.8 cp38-cp38 1.14.5"
-  "3.9 cp39-cp39 1.19.3"
-  "3.10 cp310-cp310 1.22.0"
-  "3.11 cp311-cp311 1.22.0"
+  "py37 cp37-cp37m 1.14.5"
+  "py38 cp38-cp38 1.14.5"
+  "py39 cp39-cp39 1.19.3"
+  "py310 cp310-cp310 1.22.0"
+  "py311 cp311-cp311 1.22.0"
 )
 
 yum -y install unzip zip sudo
-yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel xz
+yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
 yum -y install openssl
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
@@ -38,12 +38,6 @@ echo "java_bin path ${JAVA_BIN}"
 export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 
 /ray/ci/env/install-bazel.sh
-# Put bazel into the PATH if building Bazel from source
-# export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
-
-# If converting down to manylinux2010, the following configuration should
-# be set for bazel
-#echo "build --config=manylinux2010" >> /root/.bazelrc
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
@@ -104,11 +98,11 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
     fi
 
     # build ray wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
+    PATH="/opt/python/${PYTHON}/bin:$PATH" \
     "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
 
     # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
+    PATH="/opt/python/${PYTHON}/bin:$PATH" \
     RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
 
     # In the future, run auditwheel here.
@@ -129,3 +123,7 @@ done
 
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+
+if [ "${BUILD_JAR-}" == "1" ]; then
+  ./java/build-jar-multiplatform.sh linux
+fi
