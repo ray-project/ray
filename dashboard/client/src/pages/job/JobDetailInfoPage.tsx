@@ -153,7 +153,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           },
         },
         {
-          label: "Runtime environemnt",
+          label: "Runtime environment",
           ...(job.runtime_env
             ? {
                 content: (
