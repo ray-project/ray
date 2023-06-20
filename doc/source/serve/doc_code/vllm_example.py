@@ -78,7 +78,7 @@ class VLLMPredictDeployment:
         if stream:
             background_tasks = BackgroundTasks()
             # Abort the request if the client disconnects.
-            background_tasks.add_task(self.abort_request)
+            background_tasks.add_task(self.abort_request, request_id)
             return StreamingResponse(
                 self.stream_results(results_generator), background=background_tasks
             )
@@ -103,12 +103,19 @@ def send_sample_request():
     import requests
 
     prompt = "How do I cook fried rice?"
-    sample_input = {"prompt": prompt}
+    sample_input = {"prompt": prompt, "stream": True}
     output = requests.post("http://localhost:8000/", json=sample_input)
     print(output.json())
 
 
 if __name__ == "__main__":
+    # To run this example, you need install vllm which requires
+    # OS: Linux
+    # Python: 3.8 or higher
+    # CUDA: 11.0 – 11.8
+    # GPU: compute capability 7.0 or higher (e.g., V100, T4, RTX20xx, A100, L4, etc.)
+    # see https://vllm.readthedocs.io/en/latest/getting_started/installation.html
+    # for more details.
     deployment = VLLMPredictDeployment.bind(model="facebook/opt-125m")
     serve.run(deployment)
     send_sample_request()
