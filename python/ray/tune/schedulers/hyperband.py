@@ -12,7 +12,6 @@ from ray.tune.error import TuneError
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 # Implementation notes:

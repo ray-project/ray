@@ -43,7 +43,6 @@ from ray.util.debug import log_once
 
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
 
 
 @DeveloperAPI
