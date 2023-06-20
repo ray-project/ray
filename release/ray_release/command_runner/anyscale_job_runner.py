@@ -3,7 +3,7 @@ import os
 import re
 import tempfile
 import shlex
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, List
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.command_runner.job_runner import JobRunner
@@ -63,7 +63,7 @@ class AnyscaleJobRunner(JobRunner):
         self.last_command_scd_id = None
         self.path_in_bucket = join_cloud_storage_paths(
             "working_dirs",
-            self.cluster_manager.test_name.replace(" ", "_"),
+            self.cluster_manager.test.get_name().replace(" ", "_"),
             generate_tmp_cloud_storage_path(),
         )
         # The root cloud storage bucket path. result, metric, artifact files
@@ -203,6 +203,7 @@ class AnyscaleJobRunner(JobRunner):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
+        pip: Optional[List[str]] = None,
     ) -> float:
         prepare_command_strs = []
         prepare_command_timeouts = []
@@ -222,13 +223,12 @@ class AnyscaleJobRunner(JobRunner):
         )
 
         full_env = self.get_full_command_env(env)
-        env_str = _get_env_str(full_env)
 
         no_raise_on_timeout_str = (
             " --test-no-raise-on-timeout" if not raise_on_timeout else ""
         )
         full_command = (
-            f"{env_str}python anyscale_job_wrapper.py '{command}' "
+            f"python anyscale_job_wrapper.py '{command}' "
             f"--test-workload-timeout {timeout}{no_raise_on_timeout_str} "
             "--results-cloud-storage-uri "
             f"'{join_cloud_storage_paths(self.upload_path, self._RESULT_OUTPUT_JSON)}' "
@@ -263,6 +263,7 @@ class AnyscaleJobRunner(JobRunner):
             working_dir=".",
             upload_path=self.upload_path,
             timeout=int(timeout),
+            pip=pip,
         )
         try:
             error = self.job_manager.last_job_result.state.error

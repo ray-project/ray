@@ -1,10 +1,12 @@
 from abc import ABCMeta, abstractmethod
 import math
+from typing import List
 
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+import logging
 
-from typing import List
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def calculate_desired_num_replicas(

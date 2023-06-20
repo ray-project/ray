@@ -4,7 +4,6 @@ from typing import Dict, List, Optional, Union
 import numpy as np
 import torch
 
-from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.train._internal.dl_predictor import TensorDtype
 from ray.train.torch.torch_predictor import TorchPredictor
 from ray.util.annotations import PublicAPI
@@ -97,44 +96,24 @@ class TorchDetectionPredictor(TorchPredictor):
             torch.as_tensor(image, dtype=dtype).to(self.device) for image in images
         ]
         outputs = self.call_model(inputs)
-        outputs = _convert_outputs_to_ndarray_batch(outputs)
+        outputs = _convert_outputs_to_batch(outputs)
         outputs = {"pred_" + key: value for key, value in outputs.items()}
 
         return outputs
 
 
-def _convert_outputs_to_ndarray_batch(
+def _convert_outputs_to_batch(
     outputs: List[Dict[str, torch.Tensor]],
-) -> Dict[str, np.ndarray]:
+) -> Dict[str, List[torch.Tensor]]:
     """Batch detection model outputs.
 
     TorchVision detection models return `List[Dict[Tensor]]`. Each `Dict` contain
     'boxes', 'labels, and 'scores'.
 
-    >>> import torch
-    >>> from torchvision import models
-    >>> model = models.detection.fasterrcnn_resnet50_fpn_v2()
-    >>> model.eval()  # doctest: +ELLIPSIS
-    FasterRCNN(...)
-    >>> outputs = model(torch.zeros((2, 3, 32, 32)))
-    >>> len(outputs)
-    2
-    >>> outputs[0].keys()
-    dict_keys(['boxes', 'labels', 'scores'])
-
-    This function batches values and returns a `Dict[str, np.ndarray]`.
-
-    >>> from ray.train.torch.torch_detection_predictor import _convert_outputs_to_ndarray_batch
-    >>> batch = _convert_outputs_to_ndarray_batch(outputs)
-    >>> batch.keys()
-    dict_keys(['boxes', 'labels', 'scores'])
-    >>> batch["boxes"].shape
-    (2,)
+    This function batches values and returns a `Dict[str, List[Tensor]]`.
     """  # noqa: E501
     batch = collections.defaultdict(list)
     for output in outputs:
         for key, value in output.items():
-            batch[key].append(value.cpu().detach().numpy())
-    for key, value in batch.items():
-        batch[key] = create_ragged_ndarray(value)
+            batch[key].append(value.cpu().detach())
     return batch

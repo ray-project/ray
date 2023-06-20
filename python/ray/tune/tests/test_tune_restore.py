@@ -18,6 +18,7 @@ import ray
 from ray import tune
 from ray._private.test_utils import recursive_fnmatch, run_string_as_driver
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.config import CheckpointConfig
 from ray.exceptions import RayTaskError
 from ray.rllib import _register_all
 from ray.tune import TuneError
@@ -39,7 +40,7 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name=test_name,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             storage_path=tmpdir,
             config={
                 "env": "CartPole-v0",
@@ -62,7 +63,7 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},  # train one more iteration.
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             restore=self.checkpoint_path,  # Restore the checkpoint
             config={
                 "env": "CartPole-v0",
@@ -77,8 +78,10 @@ class TuneRestoreTest(unittest.TestCase):
             "PG",
             name="TuneRestoreTest",
             stop={"training_iteration": 2},
-            checkpoint_freq=1,
-            keep_checkpoints_num=1,
+            checkpoint_config=CheckpointConfig(
+                num_to_keep=1,
+                checkpoint_frequency=1,
+            ),
             restore=self.checkpoint_path,
             config={
                 "env": "CartPole-v0",
@@ -114,6 +117,8 @@ def _run(local_dir, driver_semaphore, trainer_semaphore):
 
 
 class TuneInterruptionTest(unittest.TestCase):
+    # Todo(krfricke): Investigate and fix on CI
+    @unittest.skip("Spawn seems to have a malfunction on Python 3.8 CI")
     def testExperimentInterrupted(self):
         local_dir = tempfile.mkdtemp()
         # Unix platforms may default to "fork", which is problematic with

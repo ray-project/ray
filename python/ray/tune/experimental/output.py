@@ -1,5 +1,15 @@
 import sys
-from typing import Any, Collection, Dict, Iterable, List, Optional, Tuple, TYPE_CHECKING
+from typing import (
+    Any,
+    Collection,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Tuple,
+    Union,
+    TYPE_CHECKING,
+)
 
 import contextlib
 import collections
@@ -14,6 +24,10 @@ import os
 import pandas as pd
 import textwrap
 import time
+
+from ray.air._internal.usage import AirEntrypoint
+from ray.tune.search.sample import Domain
+from ray.tune.utils.log import Verbosity
 
 try:
     import rich
@@ -31,6 +45,7 @@ from ray._private.thirdparty.tabulate.tabulate import (
     DataRow,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.callback import Callback
 from ray.tune.result import (
     AUTO_RESULT_KEYS,
@@ -39,7 +54,6 @@ from ray.tune.result import (
     MEAN_LOSS,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -86,14 +100,42 @@ class AirVerbosity(IntEnum):
     DEFAULT = 1
     VERBOSE = 2
 
+    def __repr__(self):
+        return str(self.value)
+
 
 IS_NOTEBOOK = ray.widgets.util.in_notebook()
 
 
-def get_air_verbosity() -> Optional[AirVerbosity]:
-    verbosity = os.environ.get("AIR_VERBOSITY", None)
-    if verbosity:
-        return AirVerbosity(int(verbosity)) if verbosity else None
+def get_air_verbosity(
+    verbose: Union[int, AirVerbosity, Verbosity]
+) -> Optional[AirVerbosity]:
+    if os.environ.get("RAY_AIR_NEW_OUTPUT", "1") == "0":
+        return None
+
+    if isinstance(verbose, AirVerbosity):
+        return verbose
+
+    verbose_int = verbose if isinstance(verbose, int) else verbose.value
+
+    # Verbosity 2 and 3 both map to AirVerbosity 2
+    verbose_int = min(2, verbose_int)
+
+    return AirVerbosity(verbose_int)
+
+
+def _infer_params(config: Dict[str, Any]) -> List[str]:
+    params = []
+    flat_config = flatten_dict(config)
+    for key, val in flat_config.items():
+        if isinstance(val, Domain):
+            params.append(key)
+        # Grid search is a special named field. Because we flattened
+        # the whole config, we look it up per string
+        if key.endswith("/grid_search"):
+            # Truncate `/grid_search`
+            params.append(key[:-12])
+    return params
 
 
 def _get_time_str(start_time: float, current_time: float) -> Tuple[str, str]:
@@ -141,6 +183,10 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
     for t in trials:
         trials_by_state[t.status].append(t)
     return trials_by_state
+
+
+def _get_trials_with_error(trials: List[Trial]) -> List[Trial]:
+    return [t for t in trials if t.error_file]
 
 
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
@@ -240,17 +286,31 @@ def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
     return result
 
 
-def _get_trial_info(trial: Trial, metric_keys: List[str]) -> List[str]:
+def _get_trial_info(
+    trial: Trial, param_keys: List[str], metric_keys: List[str]
+) -> List[str]:
     """Returns the following information about a trial:
 
     name | status | metrics...
 
     Args:
         trial: Trial to get information for.
+        param_keys: Names of parameters to include.
         metric_keys: Names of metrics to include.
     """
     result = trial.last_result
     trial_info = [str(trial), trial.status]
+
+    # params
+    trial_info.extend(
+        [
+            _max_len(
+                unflattened_lookup(param, trial.config, default=None),
+            )
+            for param in param_keys
+        ]
+    )
+    # metrics
     trial_info.extend(
         [
             _max_len(
@@ -265,6 +325,7 @@ def _get_trial_info(trial: Trial, metric_keys: List[str]) -> List[str]:
 def _get_trial_table_data_per_status(
     status: str,
     trials: List[Trial],
+    param_keys: List[str],
     metric_keys: List[str],
     force_max_rows: bool = False,
 ) -> Optional[_PerStatusTrialTableData]:
@@ -273,6 +334,7 @@ def _get_trial_table_data_per_status(
     Args:
         status: The trial status of interest.
         trials: all the trials of that status.
+        param_keys: *Ordered* list of parameters to be displayed in the table.
         metric_keys: *Ordered* list of metrics to be displayed in the table.
             Including both default and user defined.
         force_max_rows: Whether or not to enforce a max row number for this status.
@@ -293,23 +355,27 @@ def _get_trial_table_data_per_status(
             remaining = len(trials) - max_row
             more_info = f"{remaining} more {status}"
             break
-        trial_infos.append(_get_trial_info(t, metric_keys))
+        trial_infos.append(_get_trial_info(t, param_keys, metric_keys))
     return _PerStatusTrialTableData(trial_infos, more_info)
 
 
 def _get_trial_table_data(
     trials: List[Trial],
+    param_keys: List[str],
     metric_keys: List[str],
     all_rows: bool = False,
+    wrap_headers: bool = False,
 ) -> _TrialTableData:
     """Generate a table showing the current progress of tuning trials.
 
     Args:
         trials: List of trials for which progress is to be shown.
+        param_keys: Ordered list of parameters to be displayed in the table.
         metric_keys: Ordered list of metrics to be displayed in the table.
             Including both default and user defined.
             Will only be shown if at least one trial is having the key.
         all_rows: Force to show all rows.
+        wrap_headers: If True, header columns can be wrapped with ``\n``.
 
     Returns:
         Trial table data, including header and trial table per each status.
@@ -331,20 +397,30 @@ def _get_trial_table_data(
 
     # get header from metric keys
     formatted_metric_columns = [
-        _max_len(k, max_len=max_column_length, wrap=True) for k in metric_keys
+        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in metric_keys
     ]
+
+    formatted_param_columns = [
+        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in param_keys
+    ]
+
+    metric_header = [
+        DEFAULT_COLUMNS[metric] if metric in DEFAULT_COLUMNS else formatted
+        for metric, formatted in zip(metric_keys, formatted_metric_columns)
+    ]
+
+    param_header = formatted_param_columns
+
     # Map to the abbreviated version if necessary.
-    header = ["Trial name", "status"] + [
-        DEFAULT_COLUMNS[key] if key in DEFAULT_COLUMNS else key
-        for key in formatted_metric_columns
-    ]
+    header = ["Trial name", "status"] + param_header + metric_header
 
     trial_data = list()
     for t_status in ORDER:
         trial_data_per_status = _get_trial_table_data_per_status(
             t_status,
             trials_by_state[t_status],
-            metric_keys=formatted_metric_columns,
+            param_keys=param_keys,
+            metric_keys=metric_keys,
             force_max_rows=not all_rows and len(trials) > max_trial_num_to_show,
         )
         if trial_data_per_status:
@@ -416,17 +492,31 @@ def _get_dict_as_table_data(
         return upper + lower
 
 
-# Copied/adjusted from tabulate
-AIR_TABULATE_TABLEFMT = TableFormat(
-    lineabove=Line("╭", "─", "─", "╮"),
-    linebelowheader=Line("├", "─", "─", "┤"),
-    linebetweenrows=None,
-    linebelow=Line("╰", "─", "─", "╯"),
-    headerrow=DataRow("│", " ", "│"),
-    datarow=DataRow("│", " ", "│"),
-    padding=1,
-    with_header_hide=None,
-)
+if sys.stdout and sys.stdout.encoding and sys.stdout.encoding.startswith("utf"):
+    # Copied/adjusted from tabulate
+    AIR_TABULATE_TABLEFMT = TableFormat(
+        lineabove=Line("╭", "─", "─", "╮"),
+        linebelowheader=Line("├", "─", "─", "┤"),
+        linebetweenrows=None,
+        linebelow=Line("╰", "─", "─", "╯"),
+        headerrow=DataRow("│", " ", "│"),
+        datarow=DataRow("│", " ", "│"),
+        padding=1,
+        with_header_hide=None,
+    )
+else:
+    # For non-utf output, use ascii-compatible characters.
+    # This prevents errors e.g. when legacy windows encoding is used.
+    AIR_TABULATE_TABLEFMT = TableFormat(
+        lineabove=Line("+", "-", "-", "+"),
+        linebelowheader=Line("+", "-", "-", "+"),
+        linebetweenrows=None,
+        linebelow=Line("+", "-", "-", "+"),
+        headerrow=DataRow("|", " ", "|"),
+        datarow=DataRow("|", " ", "|"),
+        padding=1,
+        with_header_hide=None,
+    )
 
 
 def _print_dict_as_table(
@@ -516,27 +606,46 @@ class ProgressReporter:
 def _detect_reporter(
     verbosity: AirVerbosity,
     num_samples: int,
+    entrypoint: Optional[AirEntrypoint] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
+    config: Optional[Dict] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
-    rich_enabled = "ENABLE_RICH" in os.environ
-    if num_samples and num_samples > 1:
+    rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
+    if entrypoint in {
+        AirEntrypoint.TUNE_RUN,
+        AirEntrypoint.TUNE_RUN_EXPERIMENTS,
+        AirEntrypoint.TUNER,
+    }:
         if rich_enabled:
             if not rich:
                 raise ImportError("Please run `pip install rich`. ")
-            reporter = TuneRichReporter(verbosity, num_samples, metric, mode)
+            reporter = TuneRichReporter(
+                verbosity,
+                num_samples=num_samples,
+                metric=metric,
+                mode=mode,
+                config=config,
+            )
         else:
-            reporter = TuneTerminalReporter(verbosity, num_samples, metric, mode)
+            reporter = TuneTerminalReporter(
+                verbosity,
+                num_samples=num_samples,
+                metric=metric,
+                mode=mode,
+                config=config,
+            )
     else:
         if rich_enabled:
-            logger.warning("`ENABLE_RICH` is only effective with Tune usecase.")
+            logger.warning("`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase.")
         reporter = TrainReporter(verbosity)
     return reporter
 
 
 class TuneReporterBase(ProgressReporter):
     _heartbeat_threshold = AirVerbosity.DEFAULT
+    _wrap_headers = False
 
     def __init__(
         self,
@@ -544,12 +653,14 @@ class TuneReporterBase(ProgressReporter):
         num_samples: int,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
+        config: Optional[Dict] = None,
     ):
         self._num_samples = num_samples
         self._metric = metric
         self._mode = mode
         # will be populated when first result comes in.
         self._inferred_metric = None
+        self._inferred_params = _infer_params(config)
         super(TuneReporterBase, self).__init__(verbosity=verbosity)
 
     def _get_overall_trial_progress_str(self, trials):
@@ -586,7 +697,11 @@ class TuneReporterBase(ProgressReporter):
         all_metrics = list(DEFAULT_COLUMNS.keys()) + self._inferred_metric
 
         trial_table_data = _get_trial_table_data(
-            trials, all_metrics, all_rows=force_full_output
+            trials,
+            param_keys=self._inferred_params,
+            metric_keys=all_metrics,
+            all_rows=force_full_output,
+            wrap_headers=self._wrap_headers,
         )
         return result, trial_table_data
 
@@ -643,7 +758,7 @@ class TuneTerminalReporter(TuneReporterBase):
         # now print the table using Tabulate
         more_infos = []
         all_data = []
-        header = table_data.header
+        fail_header = table_data.header
         for sub_table in table_data.data:
             all_data.extend(sub_table.trial_infos)
             if sub_table.more_info:
@@ -652,7 +767,7 @@ class TuneTerminalReporter(TuneReporterBase):
         print(
             tabulate(
                 all_data,
-                headers=header,
+                headers=fail_header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
@@ -661,16 +776,52 @@ class TuneTerminalReporter(TuneReporterBase):
             print(", ".join(more_infos))
         print()
 
+        trials_with_error = _get_trials_with_error(trials)
+        if not trials_with_error:
+            return
+
+        print(f"Number of errored trials: {len(trials_with_error)}")
+        fail_header = ["Trial name", "# failures", "error file"]
+        fail_table_data = [
+            [
+                str(trial),
+                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                trial.error_file,
+            ]
+            for trial in trials_with_error
+        ]
+        print(
+            tabulate(
+                fail_table_data,
+                headers=fail_header,
+                tablefmt=AIR_TABULATE_TABLEFMT,
+                showindex=False,
+                colalign=("left", "right", "left"),
+            )
+        )
+        if any(trial.status == Trial.TERMINATED for trial in trials_with_error):
+            print("* The trial terminated successfully after retrying.")
+        print()
+
 
 class TuneRichReporter(TuneReporterBase):
+    _wrap_headers = True
+
     def __init__(
         self,
         verbosity: AirVerbosity,
         num_samples: int,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
+        config: Optional[Dict] = None,
     ):
-        super().__init__(verbosity, num_samples, metric, mode)
+        super().__init__(
+            verbosity=verbosity,
+            num_samples=num_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
+        )
         self._live = None
 
     # since sticky table, we can afford to do that more often.

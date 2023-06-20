@@ -1,28 +1,28 @@
 import collections
 from dataclasses import dataclass
-from typing import Dict, Any, Iterator, Callable, List, Tuple, Union, Optional
+from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
-from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
-    ExecutionResources,
     ExecutionOptions,
-    PhysicalOperator,
-    TaskContext,
+    ExecutionResources,
     NodeIdStr,
+    PhysicalOperator,
+    RefBundle,
+    TaskContext,
 )
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
     _map_task,
     _TaskState,
 )
+from ray.data._internal.execution.util import locality_string
+from ray.data.block import Block, BlockMetadata, _CallableClassProtocol
+from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
 
 logger = DatasetLogger(__name__)
 
@@ -93,6 +93,9 @@ class ActorPoolMapOperator(MapOperator):
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
         self._next_task_idx = 0
+
+    def get_init_fn(self) -> Callable[[], None]:
+        return self._init_fn
 
     def internal_queue_size(self) -> int:
         return len(self._bundle_queue)
@@ -227,10 +230,10 @@ class ActorPoolMapOperator(MapOperator):
         # For either a completed task or ready worker, we try to dispatch queued tasks.
         self._dispatch_tasks()
 
-    def inputs_done(self):
+    def all_inputs_done(self):
         # Call base implementation to handle any leftover bundles. This may or may not
         # trigger task dispatch.
-        super().inputs_done()
+        super().all_inputs_done()
 
         # Mark inputs as done so future task dispatch will kill all inactive workers
         # once the bundle queue is exhausted.
@@ -345,10 +348,7 @@ class ActorPoolMapOperator(MapOperator):
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
             ctx = DataContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                ray_remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
         # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).

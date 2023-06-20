@@ -80,10 +80,10 @@ What should I not use Ray Data for?
 
 Ray Data is not meant to be used for generic ETL pipelines (like Spark) or
 scalable data science (like Dask, Modin, or Mars). However, each of these frameworks
-are :ref:`runnable on Ray <data_integrations>`, and Datasets integrates tightly with
+are runnable on Ray, and Datasets integrates tightly with
 these frameworks, allowing for efficient exchange of distributed data partitions often
 with zero-copy. Check out the
-:ref:`dataset creation feature guide <dataset_from_in_memory_data_distributed>` to learn
+:ref:`dataset creation feature guide <loading_datasets_from_distributed_df>` to learn
 more about these integrations.
 
 Datasets is specifically targeting
@@ -327,6 +327,7 @@ just need to be aware of ``Dict[str, Any]`` (non-batched data records) and
 * There is no more special interpretation of single-column schema containing just ``__value__`` as a column.
 * The default batch format is ``numpy`` instead of ``default`` (pandas).
 * ``schema()`` returns a unified Schema class instead of ``Union[pyarrow.lib.Schema, type]``.
+* When lists of array-like objects are returned from map batches, they will be converted into a contiguous numpy array, rather than treated as a list of objects.
 
 **Datasource behavior changes**:
 

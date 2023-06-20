@@ -26,6 +26,20 @@ namespace gcs {
 
 void GcsPlacementGroup::UpdateState(
     rpc::PlacementGroupTableData::PlacementGroupState state) {
+  if (placement_group_table_data_.state() ==
+          rpc::PlacementGroupTableData_PlacementGroupState_PENDING &&
+      state == rpc::PlacementGroupTableData_PlacementGroupState_CREATED) {
+    placement_group_table_data_.set_placement_group_final_bundle_placement_timestamp_ms(
+        current_sys_time_ms());
+
+    double duration_s =
+        (placement_group_table_data_
+             .placement_group_final_bundle_placement_timestamp_ms() -
+         placement_group_table_data_.placement_group_creation_timestamp_ms()) /
+        1000;
+    stats::STATS_scheduler_placement_time_s.Record(duration_s,
+                                                   {{"WorkloadType", "PlacementGroup"}});
+  }
   placement_group_table_data_.set_state(state);
   RefreshMetrics();
 }
@@ -411,12 +425,12 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       JobID::FromBinary(request.placement_group_spec().creator_job_id());
   auto placement_group = std::make_shared<GcsPlacementGroup>(
       request, get_ray_namespace_(job_id), placement_group_state_counter_);
-  RAY_LOG(DEBUG) << "Registering placement group, " << placement_group->DebugString();
+  RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(placement_group,
                          [reply, send_reply_callback, placement_group](Status status) {
                            if (status.ok()) {
-                             RAY_LOG(DEBUG) << "Finished registering placement group, "
-                                            << placement_group->DebugString();
+                             RAY_LOG(INFO) << "Finished registering placement group, "
+                                           << placement_group->DebugString();
                            } else {
                              RAY_LOG(INFO) << "Failed to register placement group, "
                                            << placement_group->DebugString()
@@ -735,10 +749,15 @@ void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg
   }
 }
 
+absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+GcsPlacementGroupManager::GetBundlesOnNode(const NodeID &node_id) const {
+  return gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
+}
+
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node " << node_id
                 << " failed, rescheduling the placement groups on the dead node.";
-  auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
+  auto bundles = gcs_placement_group_scheduler_->GetAndRemoveBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);
     if (iter != registered_placement_groups_.end()) {
@@ -828,7 +847,9 @@ void GcsPlacementGroupManager::Tick() {
   // added as a safety check. https://github.com/ray-project/ray/pull/18419
   SchedulePendingPlacementGroups();
   execute_after(
-      io_context_, [this] { Tick(); }, 1000 /* milliseconds */);
+      io_context_,
+      [this] { Tick(); },
+      std::chrono::milliseconds(1000) /* milliseconds */);
 }
 
 void GcsPlacementGroupManager::UpdatePlacementGroupLoad() {

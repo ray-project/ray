@@ -7,13 +7,16 @@ import queue
 import random
 from typing import Callable, List, Optional, Set, Tuple, Type, Union
 
+import numpy as np
+import tree  # pip install dm_tree
+
 import ray
 from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala_learner import (
-    ImpalaHyperparameters,
+    ImpalaLearnerHyperparameters,
     _reduce_impala_results,
 )
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
@@ -368,16 +371,20 @@ class ImpalaConfig(AlgorithmConfig):
                 "num_data_loader_buffers", "num_multi_gpu_tower_stacks", error=True
             )
 
-        # Check `entropy_coeff` for correctness.
-        if self.entropy_coeff < 0.0:
-            raise ValueError("`entropy_coeff` must be >= 0.0!")
         # Entropy coeff schedule checking.
         if self._enable_learner_api:
+            if self.entropy_coeff_schedule is not None:
+                raise ValueError(
+                    "`entropy_coeff_schedule` is deprecated and must be None! Use the "
+                    "`entropy_coeff` setting to setup a schedule."
+                )
             Scheduler.validate(
-                self.entropy_coeff_schedule,
-                "entropy_coeff_schedule",
-                "entropy coefficient",
+                fixed_value_or_schedule=self.entropy_coeff,
+                setting_name="entropy_coeff",
+                description="entropy coefficient",
             )
+        elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
+            raise ValueError("`entropy_coeff` must be >= 0.0")
 
         # Check whether worker to aggregation-worker ratio makes sense.
         if self.num_aggregation_workers > self.num_rollout_workers:
@@ -395,10 +402,7 @@ class ImpalaConfig(AlgorithmConfig):
         # If two separate optimizers/loss terms used for tf, must also set
         # `_tf_policy_handles_more_than_one_loss` to True.
         if self._separate_vf_optimizer is True:
-            # Only supported to tf so far.
-            # TODO(sven): Need to change APPO|IMPALATorchPolicies (and the
-            #  models to return separate sets of weights in order to create
-            #  the different torch optimizers).
+            # Only supported in tf on the old API stack.
             if self.framework_str not in ["tf", "tf2"]:
                 raise ValueError(
                     "`_separate_vf_optimizer` only supported to tf so far!"
@@ -424,9 +428,9 @@ class ImpalaConfig(AlgorithmConfig):
                 )
 
     @override(AlgorithmConfig)
-    def get_learner_hyperparameters(self) -> ImpalaHyperparameters:
+    def get_learner_hyperparameters(self) -> ImpalaLearnerHyperparameters:
         base_hps = super().get_learner_hyperparameters()
-        learner_hps = ImpalaHyperparameters(
+        learner_hps = ImpalaLearnerHyperparameters(
             rollout_frag_or_episode_len=self.get_rollout_fragment_length(),
             discount_factor=self.gamma,
             entropy_coeff=self.entropy_coeff,
@@ -443,7 +447,7 @@ class ImpalaConfig(AlgorithmConfig):
             learner_hps.recurrent_seq_len is None
         ), (
             "One of `rollout_frag_or_episode_len` or `recurrent_seq_len` must be not "
-            "None in ImpalaHyperparameters!"
+            "None in ImpalaLearnerHyperparameters!"
         )
         return learner_hps
 
@@ -478,7 +482,10 @@ class ImpalaConfig(AlgorithmConfig):
 
             return ImpalaTfLearner
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
@@ -497,7 +504,10 @@ class ImpalaConfig(AlgorithmConfig):
                 module_class=PPOTorchRLModule, catalog_class=PPOCatalog
             )
         else:
-            raise ValueError(f"The framework {self.framework_str} is not supported.")
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use either 'torch' or 'tf2'."
+            )
 
 
 def make_learner_thread(local_worker, config):
@@ -841,13 +851,20 @@ class Impala(Algorithm):
                     }
                 ]
             else:
-                trainer_bundle = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
-                ]
+                if cf.num_gpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "GPU": cf.num_gpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
+                elif cf.num_cpus_per_learner_worker:
+                    trainer_bundle = [
+                        {
+                            "CPU": cf.num_cpus_per_learner_worker,
+                        }
+                        for _ in range(cf.num_learner_workers)
+                    ]
 
             bundles += trainer_bundle
 
@@ -938,35 +955,48 @@ class Impala(Algorithm):
             Aggregated results from the learner group after an update is completed.
 
         """
-        result = {}
-        # There are batches on the queue -> Send them to the learner group.
+        # There are batches on the queue -> Send them all to the learner group.
         if self.batches_to_place_on_learner:
-            batch = self.batches_to_place_on_learner.pop(0)
+            batches = self.batches_to_place_on_learner[:]
+            self.batches_to_place_on_learner.clear()
             # If there are no learner workers and learning is directly on the driver
             # Then we can't do async updates, so we need to block.
             blocking = self.config.num_learner_workers == 0
-            lg_results = self.learner_group.update(
-                batch,
-                reduce_fn=_reduce_impala_results,
-                block=blocking,
-                num_iters=self.config.num_sgd_iter,
-                minibatch_size=self.config.minibatch_size,
-            )
-        # Nothing on the queue -> Don't send requests to learner group.
-        else:
-            lg_results = None
+            results = []
+            for batch in batches:
+                if blocking:
+                    result = self.learner_group.update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
+                    results = [result]
+                else:
+                    results = self.learner_group.async_update(
+                        batch,
+                        reduce_fn=_reduce_impala_results,
+                        num_iters=self.config.num_sgd_iter,
+                        minibatch_size=self.config.minibatch_size,
+                    )
 
-        if lg_results:
-            self._counters[NUM_ENV_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
-                NUM_ENV_STEPS_TRAINED
-            )
-            self._counters[NUM_AGENT_STEPS_TRAINED] += lg_results[ALL_MODULES].pop(
-                NUM_AGENT_STEPS_TRAINED
-            )
+                for r in results:
+                    self._counters[NUM_ENV_STEPS_TRAINED] += r[ALL_MODULES].pop(
+                        NUM_ENV_STEPS_TRAINED
+                    )
+                    self._counters[NUM_AGENT_STEPS_TRAINED] += r[ALL_MODULES].pop(
+                        NUM_AGENT_STEPS_TRAINED
+                    )
+
             self._counters.update(self.learner_group.get_in_queue_stats())
-            result = lg_results
+            # If there are results, reduce-mean over each individual value and return.
+            if results:
+                return tree.map_structure(lambda *x: np.mean(x), *results)
 
-        return result
+        # Nothing on the queue -> Don't send requests to learner group
+        # or no results ready (from previous `self.learner_group.update()` calls) for
+        # reducing.
+        return {}
 
     def place_processed_samples_on_learner_thread_queue(self) -> None:
         """Place processed samples on the learner queue for training.
@@ -1214,7 +1244,7 @@ class Impala(Algorithm):
         """Returns the kwargs to `LearnerGroup.additional_update()`.
 
         Should be overridden by subclasses to specify wanted/needed kwargs for
-        their own implementation of `Learner.additional_update_per_module()`.
+        their own implementation of `Learner.additional_update_for_module()`.
         """
         return {}
 

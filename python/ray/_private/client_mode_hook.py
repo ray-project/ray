@@ -87,10 +87,14 @@ def client_mode_hook(func: callable):
             as a decorator.
     """
 
+    from ray.util.client import ray
+
     @wraps(func)
     def wrapper(*args, **kwargs):
-        from ray.util.client import ray
-
+        # NOTE(hchen): DO NOT use "import" inside this function.
+        # Because when it's called within a `__del__` method, this error
+        # will be raised (see #35114):
+        # ImportError: sys.meta_path is None, Python is likely shutting down.
         if client_mode_should_convert():
             # Legacy code
             # we only convert init function if RAY_CLIENT_MODE=1

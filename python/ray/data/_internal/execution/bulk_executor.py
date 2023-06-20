@@ -1,18 +1,18 @@
-from typing import Dict, List, Iterator, Optional
+from typing import Dict, Iterator, List, Optional
 
 import ray
-from ray.data.context import DataContext
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -62,7 +62,7 @@ class BulkExecutor(Executor):
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                op.inputs_done()
+                op.all_inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()

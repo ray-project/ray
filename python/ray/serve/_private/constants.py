@@ -62,10 +62,23 @@ DEFAULT_LATENCY_BUCKET_MS = [
     50,
     100,
     200,
+    300,
+    400,
     500,
     1000,
     2000,
+    # 5 seconds
     5000,
+    # 10 seconds
+    10000,
+    # 60 seconds
+    60000,
+    # 2min
+    120000,
+    # 5 min
+    300000,
+    # 10 min
+    600000,
 ]
 
 #: Name of deployment health check method implemented by user.
@@ -91,9 +104,19 @@ DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
+DEFAULT_MAX_CONCURRENT_QUERIES = 100
 
 # HTTP Proxy health check period
-PROXY_HEALTH_CHECK_PERIOD_S = 10
+PROXY_HEALTH_CHECK_PERIOD_S = (
+    float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", "10")) or 10
+)
+PROXY_READY_CHECK_TIMEOUT_S = (
+    float(os.environ.get("RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S", "5")) or 5
+)
+
+#: Number of times in a row that a HTTP proxy must fail the health check before
+#: being marked unhealthy.
+PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
 #: Number of times in a row that a replica must fail the health check before
 #: being marked unhealthy.
@@ -111,12 +134,6 @@ HANDLE_METRIC_PUSH_INTERVAL_S = 10
 # Timeout for GCS internal KV service
 RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or None
 
-# Don't pin controller on the headnode
-# By default it's true.
-RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE = (
-    os.environ.get("RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE") != "0"
-)
-
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
 
@@ -126,6 +143,9 @@ SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
 # Maximum duration to wait until broadcasting a long poll update if there are
 # still replicas in the RECOVERING state.
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
+
+# Minimum duration to wait until broadcasting model IDs.
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
 
 
 class ServeHandleType(str, Enum):
@@ -146,4 +166,38 @@ SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY = "SERVE_EXPERIMENTAL_DISABLE_HTTP_PROXY"
 MULTI_APP_MIGRATION_MESSAGE = (
     "Please see the documentation for ServeDeploySchema for more details on multi-app "
     "config files."
+)
+
+# Jsonify the log messages
+RAY_SERVE_ENABLE_JSON_LOGGING = os.environ.get("RAY_SERVE_ENABLE_JSON_LOGGING") == "1"
+# Logging format attributes
+SERVE_LOG_REQUEST_ID = "request_id"
+SERVE_LOG_ROUTE = "route"
+SERVE_LOG_APPLICATION = "application"
+SERVE_LOG_DEPLOYMENT = "deployment"
+SERVE_LOG_REPLICA = "replica"
+SERVE_LOG_COMPONENT = "component_name"
+SERVE_LOG_COMPONENT_ID = "component_id"
+SERVE_LOG_MESSAGE = "message"
+# This is a reserved for python logging module attribute, it should not be changed.
+SERVE_LOG_LEVEL_NAME = "levelname"
+SERVE_LOG_TIME = "asctime"
+
+# Logging format with record key to format string dict
+SERVE_LOG_RECORD_FORMAT = {
+    SERVE_LOG_REQUEST_ID: "%(request_id)s",
+    SERVE_LOG_ROUTE: "%(route)s",
+    SERVE_LOG_APPLICATION: "%(application)s",
+    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_LEVEL_NAME: "%(levelname)s",
+    SERVE_LOG_TIME: "%(asctime)s",
+}
+
+# Serve HTTP request header key for routing requests.
+SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# Feature flag to enable StreamingResponse support.
+# When turned on, *all* HTTP responses will use Ray streaming object refs.
+RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
+    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
 )
