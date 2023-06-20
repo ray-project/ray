@@ -28,6 +28,9 @@
 #include "ray/util/util.h"
 
 namespace ray {
+
+class GcsClientTest;
+class GcsClientTest_TestCheckAlive_Test;
 namespace rpc {
 
 /// Represents an outgoing gRPC request.
@@ -194,7 +197,7 @@ class ClientCallManager {
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : cluster_id_(ClusterID::Nil()),
+      : cluster_id_(cluster_id),
         main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -277,6 +280,9 @@ class ClientCallManager {
 
   /// Get the main service of this rpc.
   instrumented_io_context &GetMainService() { return main_service_; }
+
+  friend class ray::GcsClientTest;
+  FRIEND_TEST(ray::GcsClientTest, TestCheckAlive);
 
  private:
   /// This function runs in a background thread. It keeps polling events from the
