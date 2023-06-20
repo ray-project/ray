@@ -948,7 +948,7 @@ class Dataset:
 
         Returns:
             The repartitioned dataset.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
 
