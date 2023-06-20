@@ -1,0 +1,49 @@
+-r requirements_dl.txt
+
+aim
+ax-platform[mysql]
+bayesian-optimization
+comet-ml
+ConfigSpace
+dragonfly-opt
+flaml
+freezegun
+# Requires decord which is unavailable for arm64
+gluoncv; platform_machine != "arm64"
+gpy
+
+# Requires libtorrent which is unavailable for arm64
+autorom[accept-rom-license]; platform_machine != "arm64"
+h5py
+hpbandster
+HEBO
+hyperopt
+jupyterlab
+lightgbm
+matplotlib
+mlflow
+# Unavailable for arm64 in more recent versions
+mxnet; platform_machine != "arm64"
+nevergrad
+optuna
+# For HEBO compatibility
+pymoo
+pytest-remotedata
+lightning-bolts
+pytorch-lightning
+fairscale
+s3fs
+shortuuid
+scikit-optimize
+sigopt
+timm
+transformers
+wandb
+xgboost
+zoopt
+
+# We need to pin scipy because Dragonfly/Bayesopt tests will time out otherwise.
+# This is likely because of a subdependency or API change. We may have to
+# upgrade dragonfly/bayesopt in sync.
+# Todo (krfricke): Upgrade
+scipy

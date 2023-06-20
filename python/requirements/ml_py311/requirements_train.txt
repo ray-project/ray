@@ -1,0 +1,23 @@
+# TODO(train-team): Remove this once Ray Train is deprecated.
+
+-r requirements_dl.txt
+
+mlflow
+tensorboardX
+
+# Dependencies for Hugging Face examples & tests:
+# `python/ray/train/examples/transformers/transformers_example.py`
+# `python/ray/air/examples/huggingface/huggingface_basic_language_modeling_example.py`
+# `python/ray/train/tests/test_accelerate_trainer_gpu.py`
+# `python/ray/air/tests/test_huggingface_trainer.py`
+
+# We need transformers>=4.19.0 for HuggingFaceTrainer to work (not available on py 3.6)
+# If changing the version here, also change it in HuggingFaceTrainer docstring
+transformers
+# We need accelerate>=0.17.0 for AccelerateTrainer to work (not available on py 3.6)
+# If changing the version here, also change it in AccelerateTrainer docstring
+accelerate
+# Tracking issue: https://github.com/ray-project/ray/issues/34399
+deepspeed
+datasets
+sentencepiece

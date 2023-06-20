@@ -46,7 +46,7 @@ PY_MATRIX = {
 }
 
 # Versions for which we build the ray-ml image
-ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
+ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310", "py311"}
 
 BASE_IMAGES = {
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
@@ -366,6 +366,8 @@ def build_for_all_versions(
     tagged_names = []
     for py_version in py_versions:
         for image_type in image_types:
+            if image_name == "ray-ml":
+                prep_ray_ml(py_version)
             tagged_name = _build_docker_image(
                 image_name,
                 py_version=py_version,
@@ -419,20 +421,25 @@ def build_or_pull_base_images(
         return False
 
 
-def prep_ray_ml():
+def prep_ray_ml(py_version: str):
     root_dir = _get_root_dir()
 
     requirements_files = [
         "python/requirements.txt",
     ]
+    requirement_path = (
+        "python/requirements/ml/"
+        if py_version != "py311"
+        else "python/requirements/ml_py311/"
+    )
     ml_requirements_files = [
-        "python/requirements/ml/requirements_ml_docker.txt",
-        "python/requirements/ml/requirements_dl.txt",
-        "python/requirements/ml/requirements_tune.txt",
-        "python/requirements/ml/requirements_rllib.txt",
-        "python/requirements/ml/requirements_train.txt",
-        "python/requirements/ml/requirements_upstream.txt",
-        "python/requirements/ml/requirements_no_deps.txt",
+        f"{requirement_path}requirements_ml_docker.txt",
+        f"{requirement_path}requirements_dl.txt",
+        f"{requirement_path}requirements_tune.txt",
+        f"{requirement_path}requirements_rllib.txt",
+        f"{requirement_path}requirements_train.txt",
+        f"{requirement_path}requirements_upstream.txt",
+        f"{requirement_path}requirements_no_deps.txt",
     ]
     # We don't need these in the ml docker image
     ignore_requirements = [
@@ -443,7 +450,7 @@ def prep_ray_ml():
     for file_on_disk in files_on_disk:
         rel = os.path.relpath(file_on_disk, start=root_dir)
         print(rel)
-        if not rel.startswith("python/requirements/ml"):
+        if not rel.startswith(requirement_path):
             continue
         elif rel not in ml_requirements_files and rel not in ignore_requirements:
             raise RuntimeError(
@@ -911,7 +918,6 @@ def main(
             ]
 
             if len(ml_image_types) > 0:
-                prep_ray_ml()
                 all_tagged_images += build_for_all_versions(
                     "ray-ml",
                     ml_py_versions,
