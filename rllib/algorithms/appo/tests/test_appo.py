@@ -116,28 +116,31 @@ class TestAPPO(unittest.TestCase):
             )
         )
 
-        def _step_n_times(algo, n):
+        def _step_n_times(algo, n: int):
+            """Step Algorithm n times.
+
+            Returns:
+                learning rate at the end of the execution.
+            """
             for _ in range(n):
                 results = algo.train()
                 print(algo.workers.local_worker().global_vars)
                 print(results)
-
-            coeff = results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
+            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "entropy_coeff"
             ]
-            old_val = 0
-            for ts, val in config.entropy_coeff_schedule:
-                if results["num_env_steps_sampled"] < ts:
-                    self.assertLessEqual(coeff, old_val)
-                    self.assertGreaterEqual(coeff, val)
-                    break
-                old_val = val
 
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             algo = config.build(env="CartPole-v1")
 
-            _step_n_times(algo, 5)  # ~100 timesteps
-            _step_n_times(algo, 20)  # ~400 timesteps
+            coeff = _step_n_times(algo, 10)  # 200 timesteps
+            # Should be close to the starting coeff of 0.01.
+            self.assertLessEqual(coeff, 0.01)
+            self.assertGreaterEqual(coeff, 0.001)
+
+            coeff = _step_n_times(algo, 20)  # 400 timesteps
+            # Should have annealed to the final coeff of 0.0001.
+            self.assertLessEqual(coeff, 0.001)
 
             algo.stop()
 
