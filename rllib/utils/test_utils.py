@@ -347,8 +347,6 @@ def check_compute_single_action(
         state_in = None
         if include_state:
             state_in = model.get_initial_state()
-            # TODO (Kourosh): Why do we have this logic? If state_in is None doesn't
-            # that mean the policy does not need any input states already?
             if not state_in:
                 state_in = []
                 i = 0

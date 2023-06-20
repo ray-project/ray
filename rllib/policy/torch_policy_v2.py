@@ -1189,13 +1189,17 @@ class TorchPolicyV2(Policy):
 
         # New API stack: `self.model` is-a RLModule.
         if isinstance(self.model, RLModule):
-            # For recurrent models, we need to add a time dimension.
-            if not seq_lens:
-                # In order to calculate the batch size ad hoc, we need a sample batch.
-                if not isinstance(input_dict, SampleBatch):
-                    input_dict = SampleBatch(input_dict)
-                seq_lens = np.array([1] * len(input_dict))
-            input_dict = self.maybe_add_time_dimension(input_dict, seq_lens=seq_lens)
+            if self.model.is_recurrent():
+                # For recurrent models, we need to add a time dimension.
+                if not seq_lens:
+                    # In order to calculate the batch size ad hoc, we need a sample
+                    # batch.
+                    if not isinstance(input_dict, SampleBatch):
+                        input_dict = SampleBatch(input_dict)
+                    seq_lens = np.array([1] * len(input_dict))
+                input_dict = self.maybe_add_time_dimension(
+                    input_dict, seq_lens=seq_lens
+                )
             input_dict = convert_to_torch_tensor(input_dict, device=self.device)
 
             # Batches going into the RL Module should not have seq_lens.
@@ -1204,6 +1208,7 @@ class TorchPolicyV2(Policy):
 
             if explore:
                 fwd_out = self.model.forward_exploration(input_dict)
+                # For recurrent models, we need to remove the time dimension.
                 fwd_out = self.maybe_remove_time_dimension(fwd_out)
 
                 # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
@@ -1212,7 +1217,7 @@ class TorchPolicyV2(Policy):
                 if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
                     dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     action_dist_class = self.model.get_exploration_action_dist_cls()
-                    # For recurrent models, we need to remove the time dimension.
+
                 action_dist = action_dist_class.from_logits(dist_inputs)
 
                 # If `forward_exploration()` returned actions, use them here as-is.

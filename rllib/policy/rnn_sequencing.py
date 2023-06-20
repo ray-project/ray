@@ -366,7 +366,7 @@ def chop_into_sequences(
             length = len(seq_lens) * max_seq_len
             if f.dtype == object or f.dtype.type is np.str_:
                 # This is the usual case for INFOS
-                f_pad = [{}] * length
+                f_pad = [None] * length
             else:
                 # Make sure type doesn't change.
                 f_pad = np.zeros((length,) + np.shape(f)[1:], dtype=f.dtype)

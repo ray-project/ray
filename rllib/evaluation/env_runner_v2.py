@@ -186,8 +186,8 @@ def _build_multi_agent_batch(
                 batch=batch,
                 max_seq_len=policy.config["model"]["max_seq_len"],
                 shuffle=False,
-                batch_divisibility_req=policy.batch_divisibility_req,
-                view_requirements=policy.view_requirements,
+                batch_divisibility_req=getattr(policy, "batch_divisibility_req", 1),
+                view_requirements=getattr(policy, "view_requirements", None),
                 _enable_rl_module_api=True,
             )
             batch = policy.maybe_add_time_dimension(
