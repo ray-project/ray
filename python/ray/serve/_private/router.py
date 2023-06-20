@@ -151,6 +151,9 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                     chosen_replica_id = replica_id
                     lowest_queue_len = queue_len
 
+        for task in pending:
+            task.cancel()
+
         if chosen_replica_id is None:
             print("No available replicas.")
             return None
