@@ -831,6 +831,3 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
-
-// If runtime_env v2 is enabled.
-RAY_CONFIG(bool, enable_runtime_env_v2, false)

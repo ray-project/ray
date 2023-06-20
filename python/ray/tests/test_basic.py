@@ -152,7 +152,7 @@ def test_omp_threads_set(ray_start_cluster, monkeypatch):
     import os
 
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2, _system_config={"enable_runtime_env_v2": True})
+    cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
 
     @ray.remote
