@@ -2,10 +2,11 @@ import logging
 import math
 from typing import Any, Dict, List, Optional, Tuple, Type, Union
 
+from rllib_dt.dt.segmentation_buffer import MultiAgentSegmentationBuffer
+
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from rllib_dt.dt.segmentation_buffer import MultiAgentSegmentationBuffer
 from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
