@@ -2840,6 +2840,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
+    uint64_t attempt_number,
     bool finished) {
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << " finished: " << finished << ", id: " << dynamic_return_object.first;
@@ -2848,6 +2849,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_item_index(item_index);
   request.set_finished(finished);
   request.set_generator_id(generator_id.Binary());
+  request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {

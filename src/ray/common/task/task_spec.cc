@@ -219,7 +219,7 @@ size_t TaskSpecification::NumStreamingGeneratorReturns() const {
   return message_->num_streaming_generator_returns();
 }
 
-ObjectID TaskSpecification::StreamingGeneratorReturnId(uint32_t generator_index) const {
+ObjectID TaskSpecification::StreamingGeneratorReturnId(size_t generator_index) const {
   // Streaming generator task has only 1 return ID.
   RAY_CHECK_EQ(NumReturns(), 1UL);
   RAY_CHECK_LT(generator_index, RayConfig::instance().max_num_generator_returns());
