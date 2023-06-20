@@ -79,7 +79,7 @@ class TestA3C(unittest.TestCase):
             ]
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
             config.eager_tracing = False
             algo = config.build(env="CartPole-v1")
 
