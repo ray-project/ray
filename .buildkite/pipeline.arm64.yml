@@ -46,6 +46,7 @@
     - py38
     - py39
     - py310
+    - py311
 
 - label: ":mechanical_arm: :docker: Build Images: {{matrix}} [aarch64] cu117/cu118"
   conditions: ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_DOCKER_AFFECTED", "RAY_CI_CORE_CPP_AFFECTED"]
@@ -61,3 +62,4 @@
     - py38
     - py39
     - py310
+    - py311
