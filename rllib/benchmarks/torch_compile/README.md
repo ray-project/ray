@@ -24,7 +24,7 @@ For the benchmarking metric, we compute the inverse of the time it takes to run 
 | A100     | 2.1.0 nightly  | 156.66      | inductor + reduce-overhead|
 
 
-For detailed benchmarks checkout [this google doc](https://docs.google.com/spreadsheets/d/1O7_vfGRLV7JfsClXO6stTg8snxghDRRHYBrR3f47T94/edit#gid=0). Here is the benchmarking code: [./run_inference_bm.py](./run_inference_bm.py). You can run the benchmark yourself as well:
+For detailed benchmarks, checkout [this google doc](https://docs.google.com/spreadsheets/d/1O7_vfGRLV7JfsClXO6stTg8snxghDRRHYBrR3f47T94/edit#gid=0). Here is the benchmarking code: [./run_inference_bm.py](./run_inference_bm.py). You can run the benchmark yourself as well:
 
 ```bash
 ./run_all_inference_bms.sh -bs <batch_size> --backend <dynamo_backend> --mode <dynamo_mode>
