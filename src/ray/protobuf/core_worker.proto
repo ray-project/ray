@@ -402,6 +402,9 @@ message ReportGeneratorItemReturnsRequest {
   // The object ref id of the executor task that
   // generates intermediate results.
   bytes generator_id = 5;
+  // A count of the number of times this task has been attempted so far. 0
+  // means this is the first execution.
+  uint64 attempt_number = 6;
 }
 
 message ReportGeneratorItemReturnsReply {}
