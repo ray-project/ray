@@ -27,7 +27,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
@@ -88,14 +87,12 @@ from ray.data._internal.util import (
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
-    STRICT_MODE_EXPLANATION,
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
     DataBatch,
-    StrictModeError,
     T,
     U,
     UserDefinedFunction,
@@ -244,9 +241,6 @@ class Dataset:
         """
         assert isinstance(plan, ExecutionPlan), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
-
-        if ray.util.log_once("strict_mode_explanation"):
-            logger.warning(STRICT_MODE_EXPLANATION)
 
         self._plan = plan
         self._uuid = uuid4().hex
@@ -2207,15 +2201,11 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        ctx = DataContext.get_current()
         base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
-        if ctx.strict_mode:
-            if base_schema:
-                return Schema(base_schema)
-            else:
-                return None
+        if base_schema:
+            return Schema(base_schema)
         else:
-            return base_schema
+            return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -2664,13 +2654,11 @@ class Dataset:
                 write each dataset block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-        context = DataContext.get_current()
-        if context.strict_mode and not column:
-            raise StrictModeError(
+        if column is None:
+            raise ValueError(
                 "In Ray 2.5, the column must be specified "
                 "(e.g., `write_numpy(column='data')`)."
             )
-        column = column or TENSOR_COLUMN_NAME
 
         self.write_datasource(
             NumpyDatasource(),
@@ -4205,58 +4193,11 @@ class Dataset:
 
     @Deprecated(message="The batch format is no longer exposed as a public API.")
     def default_batch_format(self) -> Type:
-        context = DataContext.get_current()
-        if context.strict_mode:
-            raise StrictModeError("default_batch_format() is not allowed in Ray 2.5")
-
-        import pandas as pd
-        import pyarrow as pa
-
-        schema = self.schema()
-        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
-
-        if isinstance(schema, type):
-            return list
-
-        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
-            if schema.names == [TENSOR_COLUMN_NAME]:
-                return np.ndarray
-            return pd.DataFrame
+        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
 
     @Deprecated(message="The dataset format is no longer exposed as a public API.")
     def dataset_format(self) -> BlockFormat:
-        context = DataContext.get_current()
-        if context.strict_mode:
-            raise StrictModeError("dataset_format() is not allowed in Ray 2.5")
-
-        if context.use_streaming_executor:
-            raise DeprecationWarning(
-                "`dataset_format` is deprecated for streaming execution. To use "
-                "`dataset_format`, you must explicitly enable bulk execution by "
-                "setting `use_streaming_executor` to False in the `DataContext`"
-            )
-
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset."
-            )
-
-        try:
-            import pyarrow as pa
-
-            if isinstance(schema, pa.Schema):
-                return BlockFormat.ARROW
-        except ModuleNotFoundError:
-            pass
-        from ray.data._internal.pandas_block import PandasBlockSchema
-
-        if isinstance(schema, PandasBlockSchema):
-            return BlockFormat.PANDAS
-        return BlockFormat.SIMPLE
+        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
