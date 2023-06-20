@@ -870,12 +870,7 @@ class EagerTFPolicyV2(Policy):
             actions = fwd_out[SampleBatch.ACTIONS]
         # Otherwise, sample actions from the distribution.
         else:
-            if action_dist is None:
-                raise KeyError(
-                    "Your RLModule's `forward_exploration()` method must return a dict"
-                    f"with either the {SampleBatch.ACTIONS} key or the "
-                    f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
-                )
+            assert action_dist
             actions = action_dist.sample()
 
         # Anything but action_dist and state_out is an extra fetch
@@ -931,12 +926,7 @@ class EagerTFPolicyV2(Policy):
             actions = fwd_out[SampleBatch.ACTIONS]
         # Otherwise, sample actions from the distribution.
         else:
-            if action_dist is None:
-                raise KeyError(
-                    "Your RLModule's `forward_inference()` method must return a dict"
-                    f"with either the {SampleBatch.ACTIONS} key or the "
-                    f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
-                )
+            assert action_dist
             actions = action_dist.sample()
 
         # Anything but action_dist and state_out is an extra fetch
