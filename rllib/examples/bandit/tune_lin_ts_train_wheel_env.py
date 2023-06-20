@@ -43,11 +43,7 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=2)
 
-    config = (
-        BanditLinTSConfig()
-        .environment(WheelBanditEnv)
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
-    )
+    config = BanditLinTSConfig().environment(WheelBanditEnv).framework(args.framework)
 
     # Actual env steps per `train()` call will be
     # 10 * `min_sample_timesteps_per_iteration` (100 by default) = 1,000
