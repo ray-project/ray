@@ -16,7 +16,9 @@ filegroup(
 py_test_run_all_notebooks(
     size = "large",
     include = ["*.ipynb"],
-    exclude = [],
+    # FIXME: https://github.com/ray-project/ray/issues/36618 and
+    # https://github.com/ray-project/ray/issues/36619
+    exclude = ["ocr_example.ipynb", "nyc_taxi_Basic_processing.ipynb"],
     data = ["//doc/source/data/examples:data_examples"],
     tags = ["exclusive", "team:ml"]
 )
