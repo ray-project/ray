@@ -37,7 +37,7 @@ GRPC_CHANNEL_OPTIONS = (
 )
 
 
-def initialize_grpc_port_and_server(grpc_ip):
+def initialize_grpc_port_and_server(grpc_ip, grpc_port):
     try:
         from grpc import aio as aiogrpc
     except ImportError:
@@ -146,7 +146,7 @@ class DashboardHead:
             self.grpc_port, self.server = None, None
         else:
             grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-            self.grpc_port, self.server = initialize_grpc_port_and_server(grpc_ip)
+            self.grpc_port, self.server = initialize_grpc_port_and_server(grpc_ip, grpc_port)
             logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
