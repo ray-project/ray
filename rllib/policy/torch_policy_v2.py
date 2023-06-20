@@ -1217,8 +1217,7 @@ class TorchPolicyV2(Policy):
                 if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
                     dist_inputs = fwd_out[SampleBatch.ACTION_DIST_INPUTS]
                     action_dist_class = self.model.get_exploration_action_dist_cls()
-
-                action_dist = action_dist_class.from_logits(dist_inputs)
+                    action_dist = action_dist_class.from_logits(dist_inputs)
 
                 # If `forward_exploration()` returned actions, use them here as-is.
                 if SampleBatch.ACTIONS in fwd_out:
