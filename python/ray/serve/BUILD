@@ -605,7 +605,7 @@ py_test(
     name = "test_gradio",
     size = "small",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "py37"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -613,7 +613,7 @@ py_test(
     name = "test_gradio_visualization",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "py37"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 

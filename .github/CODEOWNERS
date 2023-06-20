@@ -44,11 +44,9 @@
 # Formatting tool
 /ci/lint/format.sh @richardliaw @ericl @edoakes
 
-# Docker image build script.
-/ci/build/build-docker-images.py @amogkam @krfricke @gvspraveen @alanwguo @ray-project/ray-core
-
-# Dockerfiles
-/ci/docker/base.gpu.Dockerfile @gvspraveen @alanwguo
+# Docker image and build scripts.
+/ci/build/build-docker-images.py @krfricke @ray-project/ray-core @aslonnie @can-anyscale
+/ci/docker @aslonnie @can-anyscale @krfricke
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core

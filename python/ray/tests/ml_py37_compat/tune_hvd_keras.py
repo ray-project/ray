@@ -1,3 +1,5 @@
+from packaging.version import Version
+
 import ray
 from ray import tune
 from ray.air import ScalingConfig, session
@@ -38,7 +40,11 @@ def keras_train_loop(config):
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     with strategy.scope():
         # Model building/compiling need to be within `strategy.scope()`.
-        optimizer = tf.keras.optimizers.SGD(learning_rate=lr * hvd.size())
+        if Version(tf.__version__) >= Version("2.9.0"):
+            optimizer = tf.keras.optimizers.legacy.SGD(learning_rate=lr * hvd.size())
+        else:
+            optimizer = tf.keras.optimizers.SGD(learning_rate=lr * hvd.size())
+
         optimizer = hvd.DistributedOptimizer(optimizer)
 
         multi_worker_model = create_keras_model(num_features)
