@@ -9,14 +9,13 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
+import tensorflow as tf
+import tensorflow_probability as tfp
+
 from ray.rllib.algorithms.dreamerv3.utils import (
     get_num_z_categoricals,
     get_num_z_classes,
 )
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
 
 
 class RepresentationLayer(tf.keras.layers.Layer):
@@ -30,26 +29,26 @@ class RepresentationLayer(tf.keras.layers.Layer):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        model_dimension: Optional[str] = "XS",
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
         """Initializes a RepresentationLayer instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different parameters.
             num_categoricals: Overrides the number of categoricals used in the z-states.
-                In [1], 32 is used for any model size.
+                In [1], 32 is used for any model dimension.
             num_classes_per_categorical: Overrides the number of classes within each
                 categorical used for the z-states. In [1], 32 is used for any model
                 dimension.
         """
         self.num_categoricals = get_num_z_categoricals(
-            model_size, override=num_categoricals
+            model_dimension, override=num_categoricals
         )
         self.num_classes_per_categorical = get_num_z_classes(
-            model_size, override=num_classes_per_categorical
+            model_dimension, override=num_classes_per_categorical
         )
 
         super().__init__(

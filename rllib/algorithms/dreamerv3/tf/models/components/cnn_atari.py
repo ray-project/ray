@@ -5,10 +5,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
-from ray.rllib.utils.framework import try_import_tf
+import tensorflow as tf
 
-_, tf, _ = try_import_tf()
+from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
 
 
 class CNNAtari(tf.keras.Model):
@@ -17,13 +16,13 @@ class CNNAtari(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        model_dimension: Optional[str] = "XS",
         cnn_multiplier: Optional[int] = None,
     ):
         """Initializes a CNNAtari instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
                 the number of filters with each CNN layer. Starting with
@@ -33,7 +32,7 @@ class CNNAtari(tf.keras.Model):
         """
         super().__init__(name="image_encoder")
 
-        cnn_multiplier = get_cnn_multiplier(model_size, override=cnn_multiplier)
+        cnn_multiplier = get_cnn_multiplier(model_dimension, override=cnn_multiplier)
 
         # See appendix C in [1]:
         # "We use a similar network architecture but employ layer normalization and

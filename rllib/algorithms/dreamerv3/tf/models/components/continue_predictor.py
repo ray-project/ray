@@ -5,11 +5,10 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+import tensorflow as tf
+import tensorflow_probability as tfp
 
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
+from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 
 
 class ContinuePredictor(tf.keras.Model):
@@ -24,15 +23,15 @@ class ContinuePredictor(tf.keras.Model):
     terminal.
     """
 
-    def __init__(self, *, model_size: Optional[str] = "XS"):
+    def __init__(self, *, model_dimension: Optional[str] = "XS"):
         """Initializes a ContinuePredictor instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
                 Determines the exact size of the underlying MLP.
         """
         super().__init__(name="continue_predictor")
-        self.mlp = MLP(model_size=model_size, output_layer_size=1)
+        self.mlp = MLP(model_dimension=model_dimension, output_layer_size=1)
 
     def call(self, h, z, return_distribution=False):
         """Performs a forward pass through the continue predictor.

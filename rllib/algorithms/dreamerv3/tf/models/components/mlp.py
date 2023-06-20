@@ -9,13 +9,12 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from typing import Optional
 
+import tensorflow as tf
+
 from ray.rllib.algorithms.dreamerv3.utils import (
     get_dense_hidden_units,
     get_num_dense_layers,
 )
-from ray.rllib.utils.framework import try_import_tf
-
-_, tf, _ = try_import_tf()
 
 
 class MLP(tf.keras.Model):
@@ -23,13 +22,13 @@ class MLP(tf.keras.Model):
 
     MLP=multi-layer perceptron.
 
-    See Appendix B in [1] for the MLP sizes depending on the given `model_size`.
+    See Appendix B in [1] for the MLP sizes depending on the given `model_dimension`.
     """
 
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        model_dimension: Optional[str] = "XS",
         num_dense_layers: Optional[int] = None,
         dense_hidden_units: Optional[int] = None,
         output_layer_size=None,
@@ -39,12 +38,12 @@ class MLP(tf.keras.Model):
         """Initializes an MLP instance.
 
         Args:
-            model_size: The "Model Size" used according to [1] Appendinx B.
+            model_dimension: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
             num_dense_layers: The number of hidden layers in the MLP. If None,
-                will use `model_size` and appendix B to figure out this value.
+                will use `model_dimension` and appendix B to figure out this value.
             dense_hidden_units: The number of nodes in each hidden layer. If None,
-                will use `model_size` and appendix B to figure out this value.
+                will use `model_dimension` and appendix B to figure out this value.
             output_layer_size: The size of an optional linear (no activation) output
                 layer. If None, no output layer will be added on top of the MLP dense
                 stack.
@@ -53,9 +52,11 @@ class MLP(tf.keras.Model):
         """
         super().__init__(name=name or "mlp")
 
-        num_dense_layers = get_num_dense_layers(model_size, override=num_dense_layers)
+        num_dense_layers = get_num_dense_layers(
+            model_dimension, override=num_dense_layers
+        )
         dense_hidden_units = get_dense_hidden_units(
-            model_size, override=dense_hidden_units
+            model_dimension, override=dense_hidden_units
         )
 
         self.dense_layers = []

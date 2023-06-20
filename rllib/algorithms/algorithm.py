@@ -706,19 +706,7 @@ class Algorithm(Trainable):
             #  the two we need to loop through the policy modules and create a simple
             #  MARLModule from the RLModule within each policy.
             local_worker = self.workers.local_worker()
-            policy_dict, _ = self.config.get_multi_agent_setup(
-                env=local_worker.env,
-                spaces=getattr(local_worker, "spaces", None),
-            )
-            # TODO (Sven): Unify the inference of the MARLModuleSpec. Right now,
-            #  we get this from the RolloutWorker's `marl_module_spec` property.
-            #  However, this is hacky (information leak) and should not remain this
-            #  way. For other EnvRunner classes (that don't have this property),
-            #  Algorithm should infer this itself.
-            if hasattr(local_worker, "marl_module_spec"):
-                module_spec = local_worker.marl_module_spec
-            else:
-                module_spec = self.config.get_marl_module_spec(policy_dict=policy_dict)
+            module_spec = local_worker.marl_module_spec
             learner_group_config = self.config.get_learner_group_config(module_spec)
             self.learner_group = learner_group_config.build()
 
@@ -883,7 +871,7 @@ class Algorithm(Trainable):
         # Sync weights to the evaluation WorkerSet.
         if self.evaluation_workers is not None:
             self.evaluation_workers.sync_weights(
-                from_worker_or_learner_group=self.workers.local_worker()
+                from_worker_or_trainer=self.workers.local_worker()
             )
             self._sync_filters_if_needed(
                 central_worker=self.workers.local_worker(),
@@ -1421,7 +1409,7 @@ class Algorithm(Trainable):
             if self.config._enable_learner_api:
                 from_worker_or_trainer = self.learner_group
             self.workers.sync_weights(
-                from_worker_or_learner_group=from_worker_or_trainer,
+                from_worker_or_trainer=from_worker_or_trainer,
                 policies=list(train_results.keys()),
                 global_vars=global_vars,
             )
