@@ -166,12 +166,13 @@ class APPOTorchPolicy(
         # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for details
         # on the following computation to yield correct t=1 to T+1 trajectories,
         # with T being the rollout length (max trajectory len).
-        _, B = values_time_major.shape
-        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
-        bootstrap_values_time_major = torch.cat(
-            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
-        )
-        values_time_major += bootstrap_values_time_major
+        #_, B = values_time_major.shape
+        #values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
+        #bootstrap_values_time_major = torch.cat(
+        #    [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
+        #)
+        #values_time_major += bootstrap_values_time_major
+        bootstrap_value = bootstrap_values_time_major[-1]
 
         if self.is_recurrent():
             max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
@@ -225,8 +226,8 @@ class APPOTorchPolicy(
                 discounts=(1.0 - _make_time_major(dones).float())
                 * self.config["gamma"],
                 rewards=_make_time_major(rewards),
-                values=values_time_major[:-1],
-                bootstrap_value=values_time_major[-1],
+                values=values_time_major,
+                bootstrap_value=bootstrap_value,
                 dist_class=TorchCategorical if is_multidiscrete else dist_class,
                 model=model,
                 clip_rho_threshold=self.config["vtrace_clip_rho_threshold"],
@@ -260,7 +261,7 @@ class APPOTorchPolicy(
 
             # The value function loss.
             value_targets = vtrace_returns.vs.to(values_time_major.device)
-            delta = values_time_major[:-1] - value_targets
+            delta = values_time_major - value_targets
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
@@ -292,7 +293,7 @@ class APPOTorchPolicy(
 
             # The value function loss.
             value_targets = _make_time_major(train_batch[Postprocessing.VALUE_TARGETS])
-            delta = values_time_major[:-1] - value_targets
+            delta = values_time_major - value_targets
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
@@ -319,7 +320,7 @@ class APPOTorchPolicy(
         model.tower_stats["value_targets"] = value_targets
         model.tower_stats["vf_explained_var"] = explained_variance(
             torch.reshape(value_targets, [-1]),
-            torch.reshape(values_time_major[:-1], [-1]),
+            torch.reshape(values_time_major, [-1]),
         )
 
         return total_loss
@@ -385,9 +386,9 @@ class APPOTorchPolicy(
         episode: Optional["Episode"] = None,
     ):
         # Call super's postprocess_trajectory first.
-        sample_batch = super().postprocess_trajectory(
-            sample_batch, other_agent_batches, episode
-        )
+        #sample_batch = super().postprocess_trajectory(
+        #    sample_batch, other_agent_batches, episode
+        #)
 
         # Do all post-processing always with no_grad().
         # Not using this here will introduce a memory leak

@@ -276,12 +276,13 @@ class ImpalaTorchPolicy(
         # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for details
         # on the following computation to yield correct t=1 to T+1 trajectories,
         # with T being the rollout length (max trajectory len).
-        _, B = values_time_major.shape
-        values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
-        bootstrap_values_time_major = torch.cat(
-            [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
-        )
-        values_time_major += bootstrap_values_time_major
+        #_, B = values_time_major.shape
+        #values_time_major = torch.cat([values_time_major, torch.zeros((1, B))], dim=0)
+        #bootstrap_values_time_major = torch.cat(
+        #    [torch.zeros((1, B)), bootstrap_values_time_major], dim=0
+        #)
+        #values_time_major += bootstrap_values_time_major
+        bootstrap_value = bootstrap_values_time_major[-1]
 
         if self.is_recurrent():
             max_seq_len = torch.max(train_batch[SampleBatch.SEQ_LENS])
@@ -304,8 +305,8 @@ class ImpalaTorchPolicy(
             target_logits=_make_time_major(unpacked_outputs),
             discount=self.config["gamma"],
             rewards=_make_time_major(rewards),
-            values=values_time_major[:-1],
-            bootstrap_value=values_time_major[-1],
+            values=values_time_major,
+            bootstrap_value=bootstrap_value,
             dist_class=TorchCategorical if is_multidiscrete else dist_class,
             model=model,
             valid_mask=_make_time_major(mask),
@@ -364,9 +365,9 @@ class ImpalaTorchPolicy(
         episode: Optional["Episode"] = None,
     ):
         # Call super's postprocess_trajectory first.
-        sample_batch = super().postprocess_trajectory(
-            sample_batch, other_agent_batches, episode
-        )
+        #sample_batch = super().postprocess_trajectory(
+        #    sample_batch, other_agent_batches, episode
+        #)
 
         if self.config["vtrace"]:
             # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need

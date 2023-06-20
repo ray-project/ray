@@ -162,17 +162,19 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             bootstrap_values_time_major = make_time_major(
                 train_batch[SampleBatch.VALUES_BOOTSTRAPPED]
             )
-            # See docstring of:
-            # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for
-            # details on the following computation to yield correct t=1 to T+1
-            # trajectories, with T being the rollout length (max trajectory len).
-            shape = tf.shape(values_time_major)
-            B = shape[1]
-            values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
-            bootstrap_values_time_major = tf.concat(
-                [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
-            )
-            values_time_major += bootstrap_values_time_major
+            bootstrap_value = bootstrap_values_time_major[-1]
+
+            ## See docstring of:
+            ## `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for
+            ## details on the following computation to yield correct t=1 to T+1
+            ## trajectories, with T being the rollout length (max trajectory len).
+            #shape = tf.shape(values_time_major)
+            #B = shape[1]
+            #values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
+            #bootstrap_values_time_major = tf.concat(
+            #    [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
+            #)
+            #values_time_major += bootstrap_values_time_major
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
@@ -223,8 +225,8 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                         )
                         * self.config["gamma"],
                         rewards=make_time_major(rewards),
-                        values=values_time_major[:-1],
-                        bootstrap_value=values_time_major[-1],
+                        values=values_time_major,
+                        bootstrap_value=bootstrap_value,
                         dist_class=Categorical if is_multidiscrete else dist_class,
                         model=model,
                         clip_rho_threshold=tf.cast(
@@ -266,7 +268,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
 
                 # The value function loss.
                 value_targets = vtrace_returns.vs
-                delta = values_time_major[:-1] - value_targets
+                delta = values_time_major - value_targets
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.
@@ -305,7 +307,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
                 value_targets = make_time_major(
                     train_batch[Postprocessing.VALUE_TARGETS]
                 )
-                delta = values_time_major[:-1] - value_targets
+                delta = values_time_major - value_targets
                 mean_vf_loss = 0.5 * reduce_mean_valid(tf.math.square(delta))
 
                 # The entropy loss.
@@ -381,9 +383,9 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             episode: Optional["Episode"] = None,
         ):
             # Call super's postprocess_trajectory first.
-            sample_batch = super().postprocess_trajectory(
-                sample_batch, other_agent_batches, episode
-            )
+            #sample_batch = super().postprocess_trajectory(
+            #    sample_batch, other_agent_batches, episode
+            #)
 
             if not self.config["vtrace"]:
                 sample_batch = compute_gae_for_sample_batch(

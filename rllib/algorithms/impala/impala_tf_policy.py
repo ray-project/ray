@@ -359,13 +359,14 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             # `ray.rllib.evaluation.postprocessing.compute_bootstrap_value()` for
             # details on the following computation to yield correct t=1 to T+1
             # trajectories, with T being the rollout length (max trajectory len).
-            shape = tf.shape(values_time_major)
-            B = shape[1]
-            values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
-            bootstrap_values_time_major = tf.concat(
-                [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
-            )
-            values_time_major += bootstrap_values_time_major
+            #shape = tf.shape(values_time_major)
+            #B = shape[1]
+            #values_time_major = tf.concat([values_time_major, tf.zeros((1, B))], axis=0)
+            #bootstrap_values_time_major = tf.concat(
+            #    [tf.zeros((1, B)), bootstrap_values_time_major], axis=0
+            #)
+            #values_time_major += bootstrap_values_time_major
+            bootstrap_value = bootstrap_values_time_major[-1]
 
             if self.is_recurrent():
                 max_seq_len = tf.reduce_max(train_batch[SampleBatch.SEQ_LENS])
@@ -390,8 +391,8 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
                 target_logits=make_time_major(unpacked_outputs),
                 discount=self.config["gamma"],
                 rewards=make_time_major(rewards),
-                values=values_time_major[:-1],
-                bootstrap_value=values_time_major[-1],
+                values=values_time_major,
+                bootstrap_value=bootstrap_value,
                 dist_class=Categorical if is_multidiscrete else dist_class,
                 model=model,
                 valid_mask=make_time_major(mask),
@@ -436,9 +437,9 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             episode: Optional["Episode"] = None,
         ):
             # Call super's postprocess_trajectory first.
-            sample_batch = super().postprocess_trajectory(
-                sample_batch, other_agent_batches, episode
-            )
+            #sample_batch = super().postprocess_trajectory(
+            #    sample_batch, other_agent_batches, episode
+            #)
 
             if self.config["vtrace"]:
                 # Add the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need
