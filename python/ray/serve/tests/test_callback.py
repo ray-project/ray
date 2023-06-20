@@ -227,7 +227,8 @@ def test_http_proxy_calllback_failures(ray_instance, capsys):
 
     captured = capsys.readouterr()
     assert "this is from raise_error_callback" in captured.err
-    # Error message printed when http proxy in STARTING state and not able to be started.
+    # Error message printed when http proxy in STARTING state and not
+    # able to be started.
     assert (
         "Unexpected error occurred when checking readiness of HTTP Proxy"
         in captured.err

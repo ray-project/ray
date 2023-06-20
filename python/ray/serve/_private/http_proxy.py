@@ -619,7 +619,8 @@ class HTTPProxyActor:
 
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
-                f"Calling user-provided callback from import path {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+                "Calling user-provided callback from import path "
+                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
             )
             middlewares = validate_http_proxy_callback_return(
                 call_function_from_import_path(

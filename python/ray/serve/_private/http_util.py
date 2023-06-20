@@ -452,7 +452,7 @@ def validate_http_proxy_callback_return(
         middlewares = []
     if not isinstance(middlewares, list):
         raise ValueError(
-            f"HTTP proxy callback must return a list of Starlette middlewares."
+            "HTTP proxy callback must return a list of Starlette middlewares."
         )
     else:
         # All middlewares must be Starlette middlewares.

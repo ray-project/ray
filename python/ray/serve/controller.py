@@ -117,7 +117,8 @@ class ServeController:
         )
         if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
             logger.info(
-                f"Calling user-provided callback from import path {RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH}."
+                "Calling user-provided callback from import path "
+                f"{RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH}."
             )
             call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
