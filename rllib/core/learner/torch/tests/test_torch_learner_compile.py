@@ -35,8 +35,8 @@ class TestLearner(unittest.TestCase):
         env = gym.make("CartPole-v1")
         is_multi_agents = [False, True]
         what_to_compiles = [
-            TorchCompileWhatToCompile.forward_train,
-            TorchCompileWhatToCompile.complete_update,
+            TorchCompileWhatToCompile.FORWARD_TRAIN,
+            TorchCompileWhatToCompile.COMPLETE_UPDATE,
         ]
 
         for is_multi_agent, what_to_compile in itertools.product(

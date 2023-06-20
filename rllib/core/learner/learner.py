@@ -84,15 +84,27 @@ LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
 class TorchCompileWhatToCompile(str, Enum):
-    """Enumerates schemes of what parts of the TorchLearner can be compiled."""
+    """Enumerates schemes of what parts of the TorchLearner can be compiled.
+
+    This can be either the entire update step of the learner or only the forward
+    methods (and therein the forward_train method) of the RLModule.
+
+    .. note::
+        - torch.compiled code can become slow on graph breaks or even raise
+            errors on unsupported operations. Empirically, compiling
+            `forward_train` should introduce little graph breaks, raise no
+            errors but result in a speedup comparable to compiling the
+            complete update.
+        - Using `complete_update` is experimental and may result in errors.
+    """
 
     # Compile the entire update step of the learner.
     # This includes the forward pass of the RLModule, the loss computation, and the
     # optimizer step.
-    complete_update = "complete_update"
+    COMPLETE_UPDATE = "complete_update"
     # Only compile the forward methods (and therein the forward_train method) of the
     # RLModule.
-    forward_train = "forward_train"
+    FORWARD_TRAIN = "forward_train"
 
 
 @dataclass
@@ -126,14 +138,14 @@ class FrameworkHyperparameters:
 
     eager_tracing: bool = False
     torch_compile: bool = False
-    what_to_compile: str = TorchCompileWhatToCompile.forward_train
+    what_to_compile: str = TorchCompileWhatToCompile.FORWARD_TRAIN
     torch_compile_cfg: Optional["TorchCompileConfig"] = None
 
     def validate(self):
         if self.torch_compile:
             if self.what_to_compile not in [
-                TorchCompileWhatToCompile.forward_train,
-                TorchCompileWhatToCompile.complete_update,
+                TorchCompileWhatToCompile.FORWARD_TRAIN,
+                TorchCompileWhatToCompile.COMPLETE_UPDATE,
             ]:
                 raise ValueError(
                     f"what_to_compile must be one of ["

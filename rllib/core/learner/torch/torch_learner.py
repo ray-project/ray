@@ -85,7 +85,7 @@ class TorchLearner(Learner):
         if self._framework_hyperparameters.torch_compile:
             if (
                 self._framework_hyperparameters.what_to_compile
-                == TorchCompileWhatToCompile.complete_update
+                == TorchCompileWhatToCompile.COMPLETE_UPDATE
             ):
                 self._torch_compile_complete_update = True
                 self._compiled_update_initialized = False
