@@ -303,10 +303,10 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self.disable_env_checking = False
-        self.auto_wrap_old_gym_envs = True
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
         self._is_atari = None
+        self.auto_wrap_old_gym_envs = True
 
         # `self.rollouts()`
         self.env_runner_cls = None
