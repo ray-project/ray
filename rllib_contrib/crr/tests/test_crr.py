@@ -1,14 +1,11 @@
 import unittest
 
-import ray
-from ray.rllib.algorithms.crr import CRRConfig
-from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.test_utils import (
-    check_compute_single_action,
-    check_train_results,
-)
+from rllib_crr.crr import CRRConfig
 
-tf1, tf, tfv = try_import_tf()
+import ray
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.test_utils import check_compute_single_action, check_train_results
+
 torch, _ = try_import_torch()
 
 
@@ -79,7 +76,8 @@ class TestCRR(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
