@@ -66,7 +66,7 @@ transform datasets. Ray executes transformations in parallel for performance.
 .. testoutput::
 
     MaterializedDataset(
-       num_blocks=1,
+       num_blocks=...,
        num_rows=150,
        schema={
           sepal length (cm): double,
