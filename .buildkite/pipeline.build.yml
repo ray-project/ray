@@ -9,8 +9,6 @@
   instance_size: medium
   commands:
     - export RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0 RAY_SERVE_ENABLE_NEW_ROUTING=0 && ./java/test.sh
-
-- label: ":serverless: Dashboard Tests"
   conditions:
     [
         "RAY_CI_DASHBOARD_AFFECTED",
