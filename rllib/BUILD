@@ -129,8 +129,8 @@ doctest(
 # --------------------------------------------------------------------
 py_test(
     name = "torch_compile_inference_bm",
-    main = "rllib/benchmarks/torch_compile/run_inference_bm.py",
-    tags = ["team:rllib", "exclusive", "benchmark", "torch_only"],
+    main = "benchmarks/torch_compile/run_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_only_benchmark"],
     size = "small",
     srcs = ["rllib/benchmarks/torch_compile/run_inference_bm.py"],
     args = ["--smoke-test"]
@@ -138,8 +138,8 @@ py_test(
 
 py_test(
     name = "torch_compile_ppo_with_inference",
-    main = "rllib/benchmarks/torch_compile/run_ppo_with_inference_bm.py",
-    tags = ["team:rllib", "exclusive", "benchmark", "torch_only"],
+    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_only_benchmark"],
     size = "small",
     srcs = ["rllib/benchmarks/torch_compile/run_ppo_with_inference.py"],
     args = ["--smoke-test"]

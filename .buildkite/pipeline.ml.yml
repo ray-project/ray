@@ -58,7 +58,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=benchmark,torch_only
+      --test_tag_filters=torch_only_benchmark
       rllib/...
 
 - label: ":brain: RLlib: Learning tests TF2-static-graph"
