@@ -41,7 +41,7 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
-#include "ray/util/util.h"
+// #include "ray/util/util.h"
 
 #ifdef __APPLE__
 extern char **environ;

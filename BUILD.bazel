@@ -379,7 +379,7 @@ ray_cc_library(
         "//src/ray/util:util",
         "//src/ray/protobuf:common_cc_proto",
         "@msgpack",
-    ],
+    ]
 )
 
 ray_cc_library(
@@ -413,6 +413,7 @@ ray_cc_library(
     copts = PLASMA_COPTS,
     linkopts = PLASMA_LINKOPTS,
     deps = [
+        "//src/ray/util:counter_map",
         ":plasma_client",
         ":stats_lib",
     ],
@@ -450,6 +451,7 @@ cc_grpc_library(
 ray_cc_library(
     name = "ray_common",
     deps = [
+        ":aligned_alloc",
         ":node_manager_fbs",
         ":ray_syncer_cc_grpc",
         ":stats_metric",
@@ -476,7 +478,8 @@ ray_cc_binary(
     srcs = ["src/ray/raylet/main.cc"],
     visibility = ["//java:__subpackages__"],
     deps = [
-        "//src/ray/util:util",
+        "//src/ray/util:memory",
+        "//src/ray/util:ordered_set",
         ":raylet_lib",
         "@com_github_gflags_gflags//:gflags",
     ],
@@ -530,6 +533,8 @@ ray_cc_library(
         ":scheduler",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:throttler",
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
@@ -703,13 +708,15 @@ ray_cc_library(
         ":plasma_client",
         ":pubsub_lib",
         ":ray_common",
-        "//src/ray/util:util",
         ":runtime_env_rpc",
         ":scheduler",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util:ordered_set",
+        "//src/ray/util:sample",
+        "//src/ray/util:throttler",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "@boost//:asio",
         "@boost//:beast",
@@ -776,11 +783,12 @@ ray_cc_library(
         ":gcs_client_lib",
         ":plasma_client",
         ":ray_common",
-        "//src/ray/util:util",
         ":raylet_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
+        "//src/ray/util:counter_map",
+        "//src/ray/util:exponential_backoff",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/cleanup",
@@ -1881,6 +1889,7 @@ ray_cc_library(
         ":ray_common",
         ":redis_store_client",
         "//src/ray/protobuf:usage_cc_proto",
+        "//src/ray/util:sequencer",
     ],
 )
 
@@ -2361,7 +2370,7 @@ pyx_library(
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
-        "//src/ray/util:util",
+        "//src/ray/util:memory",
     ],
 )
 
