@@ -59,13 +59,13 @@ class ZipOperator(PhysicalOperator):
         else:
             self._right_buffer.append(refs)
 
-    def inputs_done(self) -> None:
+    def all_inputs_done(self) -> None:
         self._output_buffer, self._stats = self._zip(
             self._left_buffer, self._right_buffer
         )
         self._left_buffer.clear()
         self._right_buffer.clear()
-        super().inputs_done()
+        super().all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
