@@ -204,11 +204,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.columns.tolist()
-            should_be_single_ndarray = self.is_tensor_wrapper()
+            should_be_single_ndarray = False
         elif isinstance(columns, list):
-            should_be_single_ndarray = (
-                columns == self._table.columns.tolist() and self.is_tensor_wrapper()
-            )
+            should_be_single_ndarray = False
         else:
             columns = [columns]
             should_be_single_ndarray = True

@@ -241,11 +241,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if columns is None:
             columns = self._table.column_names
-            should_be_single_ndarray = self.is_tensor_wrapper()
+            should_be_single_ndarray = False
         elif isinstance(columns, list):
-            should_be_single_ndarray = (
-                columns == self._table_column_names and self.is_tensor_wrapper()
-            )
+            should_be_single_ndarray = False
         else:
             columns = [columns]
             should_be_single_ndarray = True
