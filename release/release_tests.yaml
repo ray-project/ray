@@ -692,7 +692,6 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  jailed: true
 
   frequency: nightly
   python: "3.8"
@@ -725,7 +724,6 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  jailed: true
 
   frequency: nightly
   python: "3.8"
@@ -758,7 +756,6 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  jailed: true
 
   frequency: nightly
   team: data
@@ -4811,7 +4808,6 @@
   working_dir: nightly_tests
 
   stable: false 
-  jailed: true
 
   python: "3.8"
   frequency: nightly
@@ -5064,7 +5060,6 @@
   working_dir: air_tests
 
   stable: false
-  jailed: true
 
   frequency: nightly
   team: core
