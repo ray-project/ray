@@ -261,19 +261,16 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0
-  local flush_logs=0
+  local TEST_WHEEL_RESULT=0
 
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
-  fi
+  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
 
-  if [[ 0 -ne "${flush_logs}" ]]; then
+  if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
 
-  return "${result}"
+  return "${TEST_WHEEL_RESULT}"
 }
 
 install_npm_project() {
