@@ -13,7 +13,7 @@ from typing import List, Tuple
 
 import gymnasium as gym
 import numpy as np
-from supersuit.generic_wrappers import resize_v1
+#from supersuit.generic_wrappers import resize_v1
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
