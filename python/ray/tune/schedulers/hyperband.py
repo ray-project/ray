@@ -12,6 +12,7 @@ from ray.tune.error import TuneError
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 # Implementation notes:
@@ -226,6 +227,7 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
+        logger.debug(f"Processing bracket after trial {trial} result")
         action = self._process_bracket(trial_runner, bracket)
         logger.debug(
             f"{action} for {trial} on "
@@ -250,18 +252,30 @@ class HyperBandScheduler(FIFOScheduler):
                 bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
+            if bracket.is_being_processed:
+                logger.debug("Bracket is currently being processed.")
+                return TrialScheduler.NOOP
+
+            bracket.is_being_processed = True
+
             good, bad = bracket.successive_halving(self._metric, self._metric_op)
+
+            logger.debug(f"Processing {len(good)} good and {len(bad)} bad trials.")
+
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
                 if t.status == Trial.PAUSED:
+                    logger.debug(f"Stopping other trial {str(t)}")
                     trial_runner.stop_trial(t)
                 elif t.status == Trial.RUNNING:
+                    logger.debug(f"Stopping current trial {str(t)}")
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
                     raise TuneError(
-                        f"Trial with unexpected bad status " f"encountered: {t.status}"
+                        f"Trial with unexpected bad status encountered: "
+                        f"{str(t)} is {t.status}"
                     )
 
             # ready the good trials - if trial is too far ahead, don't continue
@@ -274,9 +288,11 @@ class HyperBandScheduler(FIFOScheduler):
                         "If you encounter this, please file an issue on the Ray Github."
                     )
                     if t.status == Trial.PAUSED:
+                        logger.debug(f"Unpausing trial {str(t)}")
                         self._unpause_trial(trial_runner, t)
                         trial_runner._set_trial_status(t, Trial.PENDING)
                     elif t.status == Trial.RUNNING:
+                        logger.debug(f"Continuing current trial {str(t)}")
                         action = TrialScheduler.CONTINUE
                     # else: PENDING trial (from a previous unpause) should stay as is.
         return action
@@ -293,6 +309,7 @@ class HyperBandScheduler(FIFOScheduler):
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
         if not bracket.finished():
+            logger.debug(f"Processing bracket after trial {trial} removed")
             self._process_bracket(trial_runner, bracket)
 
     def on_trial_complete(
@@ -395,6 +412,7 @@ class _Bracket:
         self._total_work = self._calculate_total_work(self._n0, self._r0, s)
         self._completed_progress = 0
         self.stop_last_trials = stop_last_trials
+        self.is_being_processed = False
 
     def add_trial(self, trial: Trial):
         """Add trial to bracket assuming bracket is not filled.
