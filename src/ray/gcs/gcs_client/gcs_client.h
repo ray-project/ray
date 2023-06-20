@@ -33,6 +33,7 @@
 #include "ray/util/logging.h"
 
 namespace ray {
+
 namespace gcs {
 
 /// \class GcsClientOptions
@@ -79,6 +80,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
+  /// \param instrumented_io_context IO execution service.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service);

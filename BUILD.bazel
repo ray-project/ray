@@ -33,11 +33,18 @@ config_setting(
 # GRPC common lib.
 cc_library(
     name = "grpc_common_lib",
-    srcs = glob([
-        "src/ray/rpc/*.cc",
-    ]),
+    srcs = [
+        "src/ray/rpc/common.cc",
+        "src/ray/rpc/grpc_server.cc",
+        "src/ray/rpc/server_call.cc",
+    ],
     hdrs = glob([
-        "src/ray/rpc/*.h",
+        "src/ray/rpc/client_call.h",
+        "src/ray/rpc/common.h",
+        "src/ray/rpc/grpc_client.h",
+        "src/ray/rpc/grpc_server.h",
+        "src/ray/rpc/metrics_agent_client.h",
+        "src/ray/rpc/server_call.h",
         "src/ray/raylet_client/*.h",
     ]),
     copts = COPTS,

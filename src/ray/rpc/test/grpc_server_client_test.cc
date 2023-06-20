@@ -84,7 +84,8 @@ class TestGrpcService : public GrpcService {
 
   void InitServerCallFactories(
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories) override {
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id) override {
     RPC_SERVICE_HANDLER(TestService, Ping, /*max_active_rpcs=*/1);
     RPC_SERVICE_HANDLER(TestService, PingTimeout, /*max_active_rpcs=*/1);
   }
@@ -107,7 +108,7 @@ class TestGrpcServerClientFixture : public ::testing::Test {
     });
     test_service_.reset(new TestGrpcService(handler_io_service_, test_service_handler_));
     grpc_server_.reset(new GrpcServer("test", 0, true));
-    grpc_server_->RegisterService(*test_service_);
+    grpc_server_->RegisterService(*test_service_, false);
     grpc_server_->Run();
 
     // Wait until server starts listening.
