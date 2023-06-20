@@ -64,7 +64,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
         config = self.get_ppo_config()
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
         for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
+            config, frameworks=["tf2", "torch"]
         ):
             # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
@@ -108,7 +108,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
         config = self.get_ppo_config()
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
         for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
+            config, frameworks=["tf2", "torch"]
         ):
             # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
@@ -194,7 +194,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
         )
         env = gym.make("CartPole-v1")
         for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
+            config, frameworks=["tf2", "torch"]
         ):
             # create a marl_module to load and save it to a checkpoint directory
             module_class = PPO_MODULES[fw]
@@ -249,7 +249,7 @@ class TestE2ERLModuleLoad(unittest.TestCase):
         config = self.get_ppo_config(num_agents=num_agents)
         env = MultiAgentCartPole({"num_agents": num_agents})
         for fw in framework_iterator(
-            config, frameworks=["tf2", "torch"], with_eager_tracing=True
+            config, frameworks=["tf2", "torch"]
         ):
             # create a marl_module to load and save it to a checkpoint directory
             module_specs = {}
