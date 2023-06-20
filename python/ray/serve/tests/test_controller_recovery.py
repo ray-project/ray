@@ -4,11 +4,10 @@ import sys
 import time
 import pytest
 from collections import defaultdict
-from ray._private.test_utils import wait_for_condition
 
 import ray
 from ray.exceptions import RayTaskError
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.util.state import list_actors
 
 

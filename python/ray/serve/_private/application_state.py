@@ -135,7 +135,9 @@ class ApplicationState:
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
     ):
-        logger.info(f"Recovering target state for app {self._name} from checkpoint.")
+        logger.info(
+            f"Recovering target state for application '{self._name}' from checkpoint."
+        )
         self._set_target_state(
             checkpoint_data.deployment_infos, checkpoint_data.deleting
         )
