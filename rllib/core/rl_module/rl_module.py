@@ -424,6 +424,7 @@ class RLModule(abc.ABC):
         else:
             return True
 
+    @OverrideToImplementCustomLogic
     def update_default_view_requirements(
         self, defaults: ViewRequirementsDict
     ) -> Mapping[str, ViewRequirement]:
@@ -440,11 +441,10 @@ class RLModule(abc.ABC):
         Returns:
             The updated view requirements.
         """
-        # get the initial state in numpy format, infer the state from it, and create
-        # appropriate view requirements.
-        init_state = convert_to_numpy(self.get_initial_state())
-
-        if init_state:
+        if self.is_recurrent():
+            # get the initial state in numpy format, infer the state from it, and create
+            # appropriate view requirements.
+            init_state = convert_to_numpy(self.get_initial_state())
             init_state = tree.map_structure(lambda x: x[None], init_state)
             space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
             max_seq_len = self.config.model_config_dict["max_seq_len"]

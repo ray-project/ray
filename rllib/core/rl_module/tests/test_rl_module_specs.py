@@ -39,7 +39,6 @@ class TestRLModuleSpecs(unittest.TestCase):
                 observation_space=env.observation_space,
                 action_space=env.action_space,
                 model_config_dict={"fcnet_hiddens": [64]},
-                framework="torch" if module_class == DiscreteBCTorchModule else "tf",
             )
 
             module = spec.build()
@@ -56,9 +55,6 @@ class TestRLModuleSpecs(unittest.TestCase):
                     observation_space=env.observation_space,
                     action_space=env.action_space,
                     model_config_dict={"fcnet_hiddens": [32 * (i + 1)]},
-                    framework="torch"
-                    if module_class == DiscreteBCTorchModule
-                    else "tf",
                 )
 
             spec = MultiAgentRLModuleSpec(module_specs=module_specs)

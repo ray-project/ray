@@ -575,7 +575,7 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
 
 
 @PublicAPI
-def get_fold_unfold_batch_and_time(b_dim: int, t_dim: int):
+def get_fold_unfold_b_t_dims(b_dim: int, t_dim: int):
     """Produces two functions to fold/unfold any torch.Tensors in a struct.
 
     Args:

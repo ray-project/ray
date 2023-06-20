@@ -1616,7 +1616,7 @@ class Policy(metaclass=ABCMeta):
         seq_lens: TensorType,
         framework: str = None,
     ):
-        """Adds a time dimension if use_lstm is True in the model config.
+        """Adds a time dimension for recurrent RLModules.
 
         Args:
             input_dict: The input dict.
@@ -1625,9 +1625,12 @@ class Policy(metaclass=ABCMeta):
                 If None, will default to the framework of the policy.
 
         Returns:
-            The prepared input dict.
+            The input dict, with a possibly added time dimension.
         """
-        if self.model.is_recurrent():
+        if (
+            self.config.get("_enable_rl_module_api", False)
+            and self.model.is_recurrent()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -1656,13 +1659,13 @@ class Policy(metaclass=ABCMeta):
 
     @ExperimentalAPI
     def maybe_remove_time_dimension(self, input_dict: Dict[str, TensorType]):
-        """Removes a time dimension if use_lstm is True in the model config.
+        """Removes a time dimension for recurrent RLModules.
 
         Args:
             input_dict: The input dict.
 
         Returns:
-            The prepared input dict.
+            The input dict with a possibly removed time dimension.
         """
         raise NotImplementedError
 
@@ -1755,8 +1758,9 @@ class Policy(metaclass=ABCMeta):
             [self.view_requirements] if hasattr(self, "view_requirements") else []
         )
 
-        if self.config["_enable_rl_module_api"]:
-            state = tree.flatten(init_state)
+        for i, state in enumerate(init_state):
+            # Allow `state` to be either a Space (use zeros as initial values)
+            # or any value (e.g. a dict or a non-zero tensor).
             fw = (
                 np
                 if isinstance(state, np.ndarray)
@@ -1770,13 +1774,12 @@ class Policy(metaclass=ABCMeta):
                 )
             else:
                 space = state
-
             for vr in view_reqs:
                 # Only override if user has not already provided
                 # custom view-requirements for state_in_n.
-                if STATE_IN not in vr:
-                    vr[STATE_IN] = ViewRequirement(
-                        STATE_OUT,
+                if "state_in_{}".format(i) not in vr:
+                    vr["state_in_{}".format(i)] = ViewRequirement(
+                        "state_out_{}".format(i),
                         shift=-1,
                         used_for_compute_actions=True,
                         batch_repeat_value=self.config.get("model", {}).get(
@@ -1786,46 +1789,10 @@ class Policy(metaclass=ABCMeta):
                     )
                 # Only override if user has not already provided
                 # custom view-requirements for state_out_n.
-                if STATE_OUT not in vr:
-                    vr[STATE_OUT] = ViewRequirement(space=space, used_for_training=True)
-        else:
-            for i, state in enumerate(init_state):
-                # Allow `state` to be either a Space (use zeros as initial values)
-                # or any value (e.g. a dict or a non-zero tensor).
-                fw = (
-                    np
-                    if isinstance(state, np.ndarray)
-                    else torch
-                    if torch and torch.is_tensor(state)
-                    else None
-                )
-                if fw:
-                    space = (
-                        Box(-1.0, 1.0, shape=state.shape)
-                        if fw.all(state == 0.0)
-                        else state
+                if "state_out_{}".format(i) not in vr:
+                    vr["state_out_{}".format(i)] = ViewRequirement(
+                        space=space, used_for_training=True
                     )
-                else:
-                    space = state
-                for vr in view_reqs:
-                    # Only override if user has not already provided
-                    # custom view-requirements for state_in_n.
-                    if "state_in_{}".format(i) not in vr:
-                        vr["state_in_{}".format(i)] = ViewRequirement(
-                            "state_out_{}".format(i),
-                            shift=-1,
-                            used_for_compute_actions=True,
-                            batch_repeat_value=self.config.get("model", {}).get(
-                                "max_seq_len", 1
-                            ),
-                            space=space,
-                        )
-                    # Only override if user has not already provided
-                    # custom view-requirements for state_out_n.
-                    if "state_out_{}".format(i) not in vr:
-                        vr["state_out_{}".format(i)] = ViewRequirement(
-                            space=space, used_for_training=True
-                        )
 
     @DeveloperAPI
     def __repr__(self):

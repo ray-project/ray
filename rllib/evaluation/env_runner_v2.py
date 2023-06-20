@@ -1074,13 +1074,11 @@ class EnvRunnerV2:
                     [d.data.sample_batch for d in eval_data]
                 )
 
-            result = policy.compute_actions_from_input_dict(
+            eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,
                 timestep=policy.global_timestep,
                 episodes=[self._active_episodes[t.env_id] for t in eval_data],
             )
-
-            eval_results[policy_id] = result
 
         return eval_results
 

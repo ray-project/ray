@@ -336,7 +336,10 @@ class TorchPolicyV2(Policy):
             "_enable_learner_api", False
         ), "This is a helper method for the new learner API."
 
-        if self.model.is_recurrent():
+        if (
+            self.config.get("_enable_rl_module_api", False)
+            and self.model.is_recurrent()
+        ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
