@@ -10,6 +10,7 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.common import HTTPProxyStatus
 from ray.serve._private.http_state import HTTPState, HTTPProxyState
+from ray.serve._private.http_proxy import HTTPProxyActor
 
 HEAD_NODE_ID = "node_id-index-head"
 
@@ -54,9 +55,11 @@ class MockHTTPProxyActor:
 def _create_http_proxy_state(
     proxy_actor_class: Any = MockHTTPProxyActor,
     status: HTTPProxyStatus = HTTPProxyStatus.STARTING,
+    node_id: str = "mock_node_id",
+    **kwargs,
 ) -> HTTPProxyState:
-    proxy = proxy_actor_class.options(lifetime="detached").remote()
-    state = HTTPProxyState(proxy, "alice", "mock_node_id", "mock_node_ip")
+    proxy = proxy_actor_class.options(lifetime="detached").remote(**kwargs)
+    state = HTTPProxyState(proxy, "alice", node_id, "mock_node_ip")
     state.set_status(status=status)
     print(f"The http proxy state created has the status of: {state.status}")
     return state
@@ -529,6 +532,56 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed():
 
     # Ensure _consecutive_health_check_failures has been reset
     assert proxy_state._consecutive_health_check_failures == 0
+
+
+def test_update_active_flags(mock_get_all_node_ids):
+    """Test update_active_flags() method
+
+    When update nodes to inactive, head node http proxy should always be active while
+    worker node http proxy should change to inactive.
+    """
+    worker_node_id = "worker-node-id-0"
+    state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
+
+    # Setup http proxy for head node
+    state._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(
+        proxy_actor_class=HTTPProxyActor,
+        status=HTTPProxyStatus.HEALTHY,
+        node_id=HEAD_NODE_ID,
+        host="localhost",
+        port=8000,
+        root_path='/',
+        controller_name='mock_controller_name',
+        node_ip_address='foo',
+    )
+    # Setup http proxy for a worker node
+    state._proxy_states[worker_node_id] = _create_http_proxy_state(
+        proxy_actor_class=HTTPProxyActor,
+        status=HTTPProxyStatus.HEALTHY,
+        node_id=worker_node_id,
+        host="localhost",
+        port=8000,
+        root_path='/',
+        controller_name='mock_controller_name',
+        node_ip_address='bar',
+    )
+
+    # Update flag for no nodes active
+    state.update_active_flags(set())
+
+    # Head node proxy should continue to be active
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=state._proxy_states[HEAD_NODE_ID],
+        status=HTTPProxyStatus.HEALTHY,
+    )
+
+    # Worker node proxy should turn inactive
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=state._proxy_states[worker_node_id],
+        status=HTTPProxyStatus.INACTIVE,
+    )
 
 
 if __name__ == "__main__":

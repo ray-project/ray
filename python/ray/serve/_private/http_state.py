@@ -130,18 +130,15 @@ class HTTPProxyState:
 
         1) When the HTTP proxy is already shutting down, do nothing.
         2) When the HTTP proxy is starting, check ready object reference. If ready
-        object reference returns a successful call and the http proxy is active, set
-        status to HEALTHY. If the http proxy is not active, set status to inactive.
-        If the call to ready() on the HTTP Proxy actor has any exception or timeout,
-        increment the consecutive health check failure counter and retry on the next
-        update call. The status is only set to UNHEALTHY when all retries have
-        exhausted.
+        object reference returns a successful call, set status to HEALTHY. If the call
+        to ready() on the HTTP Proxy actor has any exception or timeout, increment the
+        consecutive health check failure counter and retry on the next update call. The
+        status is only set to UNHEALTHY when all retries have exhausted.
         3) When the HTTP proxy already has an in-progress health check. If health check
-        object returns a successful call and the http proxy is active, set status to
-        HEALTHY. If the http proxy is not active, set status to inactive. If the call
-        has any exception or timeout, count towards 1 of the consecutive health check
-        failures and retry on the next update call. The status is only set to UNHEALTHY
-        when all retries have exhausted.
+        object returns a successful call, set status to HEALTHY. If the call has any
+        exception or timeout, count towards 1 of the consecutive health check failures
+        and retry on the next update call. The status is only set to UNHEALTHY when all
+        retries have exhausted.
         4) When the HTTP proxy need to setup another health check (when none of the
         above met and the time since the last health check is longer than
         PROXY_HEALTH_CHECK_PERIOD_S with some margin). Reset
