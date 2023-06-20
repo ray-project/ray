@@ -1,17 +1,17 @@
-# A3C (Asynchronous Advantage Actor-Critic)
+# ES (Evolution Strategies)
 
-[A3C](https://arxiv.org/abs/1602.01783) is the asynchronous version of A2C, where gradients are computed on the workers directly after trajectory rollouts, and only then shipped to a central learner to accumulate these gradients on the central model. After the central model update, parameters are broadcast back to all workers. Similar to A2C, A3C scales to 16-32+ worker processes depending on the environment.
+[ES](https://arxiv.org/abs/1703.03864) is a class of black box optimization algorithms, as an alternative to popular MDP-based RL techniques such as Q-learning and Policy Gradients. It is invariant to action frequency and delayed rewards, tolerant of extremely long horizons, and does not need temporal discounting or value function approximation.
 
 
 ## Installation
 
 ```
-conda create -n rllib-a3c python=3.10
-conda activate rllib-a3c
+conda create -n rllib-es python=3.10
+conda activate rllib-es
 pip install -r requirements.txt
 pip install -e '.[development]'
 ```
 
 ## Usage
 
-[A3C Example](examples/a3c_cartpole_v1.py)
+[ES Example]()
