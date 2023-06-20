@@ -5,7 +5,7 @@
 # Atari
 gymnasium[atari,mujoco]==0.28.1
 # For testing MuJoCo envs with gymnasium.
-mujoco-py<2.2,>=2.1
+mujoco==2.3.5
 dm_control==1.0.12
 
 # For tests on PettingZoo's multi-agent envs.
