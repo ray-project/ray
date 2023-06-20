@@ -73,4 +73,4 @@ Here is a summary of results:
 | ipex | max-autotune | 12.88 |
 
 
-As you can see `onnxrt` does not gain any speed ups in the setup we tested (in fact it slows the workload down by %70) while the `ipex` provides ~%10 speed up. If we change the model architecture these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
+As you can see, `onnxrt` does not gain any speed-ups in the setup we tested (in fact it slows the workload down by %70) while the `ipex` provides ~%10 speed-up. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
