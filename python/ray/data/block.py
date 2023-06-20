@@ -50,12 +50,6 @@ U = TypeVar("U", covariant=True)
 KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
-STRICT_MODE_EXPLANATION = (
-    "Important: Ray Data requires schemas for all datasets in Ray 2.5. This means "
-    "that standalone Python objects are no longer supported. In addition, the default "
-    "batch format is fixed to NumPy."
-)
-
 
 def _validate_key_fn(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],

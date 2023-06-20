@@ -90,7 +90,6 @@ from ray.data._internal.util import (
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
-    STRICT_MODE_EXPLANATION,
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
@@ -245,9 +244,6 @@ class Dataset:
         """
         assert isinstance(plan, ExecutionPlan), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
-
-        if ray.util.log_once("strict_mode_explanation"):
-            logger.warning(STRICT_MODE_EXPLANATION)
 
         self._plan = plan
         self._uuid = uuid4().hex
