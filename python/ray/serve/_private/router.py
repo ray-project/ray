@@ -102,8 +102,8 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
             - should we give up if we try N replicas without succeeding, or just keep trying?
               Safer to keep retrying with exponential backoff (people spam massive queues today).
         """
-        max_sleep_s = 1.0
-        curr_sleep_s = 0.1
+        sleep_steps_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
+        curr_iteration = 0
         while True:
             while len(self._replicas) == 0:
                 logger.info(
@@ -121,9 +121,10 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            curr_sleep_s = min(curr_sleep_s * 2, max_sleep_s)
-            print(f"Sleeping for {curr_sleep_s}s.")
-            await asyncio.sleep(curr_sleep_s)
+            sleep_s = sleep_steps_s[min(curr_iteration, len(sleep_steps_s)-1)]
+            print(f"Sleeping for {sleep_s}s.")
+            await asyncio.sleep(sleep_s)
+            curr_iteration += 1
 
     async def select_replica(
         self, replicas: List[RunningReplicaInfo]
