@@ -1233,10 +1233,10 @@ class DeploymentState:
         This is used to determine which node has replicas. Only nodes with replicas and
         head node should have active proxies.
         """
-        return set(
+        return {
             replica.actor_node_id
             for replica in self._replicas.get([ReplicaState.RUNNING])
-        )
+        }
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
