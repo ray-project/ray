@@ -78,8 +78,8 @@ xlrd==2.0.1
 memray; platform_system != "Windows" and sys_platform != "darwin"
 
 # For doc tests
-myst-parser==2.0.0
-myst-nb==0.17.2
+myst-parser==0.15.2
+myst-nb==0.13.1
 sphinx==4.3.2
 jupytext==1.13.6
 jinja2==3.0.3
@@ -99,7 +99,7 @@ importlib-metadata==4.10.0
 tensorboardX==2.4.1
 starlette==0.17.1
 h11==0.12.0
-markdown-it-py==2.2.0
+markdown-it-py==1.1.0
 attrs==21.4.0
 pytz==2022.7.1
 # Compatibility with spacy 3.5 (model en_core_web_sm)
