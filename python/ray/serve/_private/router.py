@@ -87,11 +87,15 @@ class ReplicaScheduler(ABC):
 class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
     """Round-robins requests across a set of actor replicas using streaming calls."""
 
-    def __init__(self, deployment_name: str):
+    def __init__(self, event_loop: asyncio.AbstractEventLoop, deployment_name: str):
+        self._loop = event_loop
         self._deployment_name = deployment_name
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, RunningReplicaInfo] = {}
         self._replicas_updated_event = asyncio.Event()
+
+        self._scheduling_tasks: Set[asyncio.Task] = set()
+        self._pending_assignment_futures: List[asyncio.Future] = []
 
     async def choose_two_gen(self) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """TODO.
@@ -121,7 +125,7 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            sleep_s = sleep_steps_s[min(curr_iteration, len(sleep_steps_s)-1)]
+            sleep_s = sleep_steps_s[min(curr_iteration, len(sleep_steps_s) - 1)]
             print(f"Sleeping for {sleep_s}s.")
             await asyncio.sleep(sleep_s)
             curr_iteration += 1
@@ -133,9 +137,6 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
         done, pending = await asyncio.wait(
             tasks, timeout=0.1, return_when=asyncio.ALL_COMPLETED
         )
-
-        # print("DONE:", done)
-        # print("PENDING:", pending)
 
         if len(done) == 0:
             print("NO TASKS FINISHED")
@@ -161,18 +162,52 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
 
         return self._replicas[chosen_replica_id]
 
+    def schedule_replica(self, replica):
+        while len(self._pending_assignment_futures) > 0:
+            fut = self._pending_assignment_futures.pop(0)
+            if not fut.done():
+                fut.set_result(replica)
+                break
+
+        return len(self._scheduling_tasks) <= self.target_running_scheduling_tasks()
+
+    async def try_schedule(self):
+        curr_task = asyncio.current_task().get_name()
+        # print(curr_task, "try_schedule entered")
+        keep_scheduling = True
+        while keep_scheduling:
+            async for candidates in self.choose_two_gen():
+                replica = await self.select_replica(candidates)
+                if replica is not None:
+                    keep_scheduling = self.schedule_replica(replica)
+                    print(curr_task, "Got replica! Keep scheduling?", keep_scheduling)
+                    break
+
+        self._scheduling_tasks.remove(asyncio.current_task())
+        # print(curr_task, "try_schedule exited")
+
+    def target_running_scheduling_tasks(self) -> int:
+        return min(len(self._pending_assignment_futures), 2 * len(self._replicas))
+
+    def maybe_start_schedule_tasks(self):
+        curr_running_tasks = len(self._scheduling_tasks)
+        tasks_to_start = self.target_running_scheduling_tasks() - curr_running_tasks
+        print(f"Starting {tasks_to_start} tasks!")
+        for _ in range(tasks_to_start):
+            self._scheduling_tasks.add(
+                self._loop.create_task(self.try_schedule()),
+            )
+
     async def assign_replica(
         self, query: Query
     ) -> "ray._raylet.StreamingObjectRefGenerator":
-        async for candidates in self.choose_two_gen():
-            replica = await self.select_replica(candidates)
-            if replica is not None:
-                break
-
-        if replica.is_cross_language:
-            raise RuntimeError(
-                "Streaming is not yet supported for cross-language actors."
-            )
+        fut = asyncio.Future()
+        self._pending_assignment_futures.append(fut)
+        try:
+            self.maybe_start_schedule_tasks()
+            replica = await fut
+        except asyncio.CancelledError:
+            fut.cancel()
 
         return replica.actor_handle.handle_request_streaming.options(
             num_returns="streaming"
@@ -194,6 +229,7 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
             )
 
         self._replicas_updated_event.set()
+        self.maybe_start_schedule_tasks()
 
 
 class RoundRobinReplicaScheduler(ReplicaScheduler):
@@ -455,7 +491,7 @@ class Router:
         self._event_loop = event_loop
         if _stream:
             self._replica_scheduler = RoundRobinStreamingReplicaScheduler(
-                deployment_name
+                event_loop, deployment_name
             )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
