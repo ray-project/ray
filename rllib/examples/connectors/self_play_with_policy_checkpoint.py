@@ -51,7 +51,7 @@ class AddPolicyCallback(DefaultCallbacks):
             self._checkpoint_dir, policy_ids=[OPPONENT_POLICY_ID]
         )
 
-        # Add restored policy to trainer.
+        # Add restored policy to Algorithm.
         # Note that this policy doesn't have to be trained with the same algorithm
         # of the training stack. You can even mix up TF policies with a Torch stack.
         algorithm.add_policy(

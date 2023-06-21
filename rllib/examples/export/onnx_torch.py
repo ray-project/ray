@@ -8,7 +8,7 @@ import shutil
 import torch
 
 if __name__ == "__main__":
-    # Configure our PPO trainer
+    # Configure our PPO Algorithm.
     config = (
         ppo.PPOConfig()
         .rollouts(num_rollout_workers=1)
