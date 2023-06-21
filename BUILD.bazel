@@ -303,7 +303,6 @@ cc_grpc_library(
     grpc_only = True,
     deps = [
         "//src/ray/protobuf:autoscaler_cc_proto",
-        "//src/ray/protobuf:instance_manager_cc_proto",
     ],
 )
 
