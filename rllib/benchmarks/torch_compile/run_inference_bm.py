@@ -132,7 +132,9 @@ def main(pargs):
     print("Eager...")
     eager_times = []
     for _ in tqdm.tqdm(range(num_iters)):
-        _, t = timed(lambda: eager_module.forward_exploration(batch), use_cuda=not use_cpu)
+        _, t = timed(
+            lambda: eager_module.forward_exploration(batch), use_cuda=not use_cpu
+        )
         eager_times.append(t)
     eager_throughputs = 1 / np.array(eager_times)
     print("Eager done.")
@@ -141,7 +143,9 @@ def main(pargs):
     print("Compiled...")
     compiled_times = []
     for _ in tqdm.tqdm(range(num_iters)):
-        _, t = timed(lambda: compiled_module.forward_exploration(batch), use_cuda=not use_cpu)
+        _, t = timed(
+            lambda: compiled_module.forward_exploration(batch), use_cuda=not use_cpu
+        )
         compiled_times.append(t)
         pass
     compiled_throughputs = 1 / np.array(compiled_times)

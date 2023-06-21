@@ -15,7 +15,7 @@ def _parse_args():
         "--num-iters", "-n", type=int, default=10, help="Number of iterations"
     )
     parser.add_argument(
-        "--backend", type=str, default="onnxrt", help="torch dynamo backend" 
+        "--backend", type=str, default="onnxrt", help="torch dynamo backend"
     )
     parser.add_argument("--mode", type=str, default=None, help="torch dynamo mode")
     parser.add_argument("--smoke-test", action="store_true", help="smoke test")

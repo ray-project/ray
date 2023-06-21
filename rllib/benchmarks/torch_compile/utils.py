@@ -62,7 +62,7 @@ def timed(fn, no_grad=True, use_cuda=True):
         else:
             result = fn()
         return result
-    
+
     if use_cuda:
         start = torch.cuda.Event(enable_timing=True)
         end = torch.cuda.Event(enable_timing=True)
