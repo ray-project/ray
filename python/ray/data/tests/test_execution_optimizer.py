@@ -383,9 +383,9 @@ def test_repartition_e2e(
 @pytest.mark.parametrize("preserve_order", (True, False))
 def test_union_operator(ray_start_regular_shared, enable_optimizer, preserve_order):
     planner = Planner()
-    read_parquet_op = Read(ParquetDatasource(), [])
-    read_range_op = Read(RangeDatasource(), [])
-    read_json_op = Read(JSONDatasource(), [])
+    read_parquet_op = Read(ParquetDatasource(), [], 0)
+    read_range_op = Read(RangeDatasource(), [], 0)
+    read_json_op = Read(JSONDatasource(), [], 0)
     union_op = Union(
         read_parquet_op,
         read_range_op,
