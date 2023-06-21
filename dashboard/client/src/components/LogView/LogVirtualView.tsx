@@ -79,11 +79,9 @@ export type LogVirtualViewProps = {
   revert?: boolean;
   startTime?: string;
   endTime?: string;
-  maxLines?: number;
 };
 
 const LogVirtualView: React.FC<LogVirtualViewProps> = ({
-  // eslint-disable-next-line prefer-const
   content,
   width = "100%",
   height,
@@ -98,18 +96,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   revert = false,
   startTime,
   endTime,
-  maxLines = 1000,
 }) => {
-  const lineCount = 100_000_0;
-  const chunkSize = 1000; // Set the desired chunk size
-
-  let longContent = "";
-
-  for (let i = 0; i < lineCount / chunkSize; i++) {
-    longContent += Array(chunkSize).fill(content).join("\n");
-  }
-
-  content = longContent;
   const [logs, setLogs] = useState<{ i: number; origin: string }[]>([]);
   const total = logs.length;
   const timmer = useRef<ReturnType<typeof setTimeout>>();
@@ -219,7 +206,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         ...style,
       }}
       itemSize={fontSize + 6}
-      itemCount={total > maxLines ? maxLines : total}
+      itemCount={total}
     >
       {itemRenderer}
     </List>
