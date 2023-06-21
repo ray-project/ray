@@ -351,11 +351,13 @@ class RuntimeContext(object):
         Returns:
             The handle of current actor.
         """
-        if self.actor_id is None:
-            raise RuntimeError("This method is only available in an actor.")
         worker = self.worker
         worker.check_connected()
-        return worker.core_worker.get_actor_handle(self.actor_id)
+        actor_id = worker.actor_id
+        if actor_id.is_nil():
+            raise RuntimeError("This method is only available in an actor.")
+
+        return worker.core_worker.get_actor_handle(actor_id)
 
     @property
     def gcs_address(self):
@@ -384,8 +386,11 @@ _runtime_context = None
 
 @PublicAPI
 @client_mode_hook
-def get_runtime_context():
+def get_runtime_context() -> RuntimeContext:
     """Get the runtime context of the current driver/worker.
+
+    The obtained runtime context can be used to get the metadata
+    of the current task and actor.
 
     Example:
 
@@ -394,6 +399,10 @@ def get_runtime_context():
             import ray
             # Get the job id.
             ray.get_runtime_context().get_job_id()
+            # Get the actor id.
+            ray.get_runtime_context().get_actor_id()
+            # Get the task id.
+            ray.get_runtime_context().get_task_id()
 
     """
     global _runtime_context

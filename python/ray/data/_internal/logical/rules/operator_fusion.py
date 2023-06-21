@@ -1,7 +1,7 @@
 from typing import Iterator, List, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
-from ray.data._internal.compute import CallableClass, get_compute, is_task_compute
+from ray.data._internal.compute import get_compute, is_task_compute
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -10,7 +10,9 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -139,9 +141,20 @@ class OperatorFusionRule(Rule):
         # - AbstractMap -> AbstractMap
         # - AbstractMap -> RandomShuffle
         # - AbstractMap -> Repartition (shuffle=True)
-        if not isinstance(
-            down_logical_op, (AbstractMap, RandomShuffle, Repartition)
-        ) or not isinstance(up_logical_op, AbstractMap):
+        if not (
+            (
+                isinstance(up_logical_op, AbstractMap)
+                and isinstance(down_logical_op, AbstractMap)
+            )
+            or (
+                isinstance(up_logical_op, AbstractMap)
+                and isinstance(down_logical_op, RandomShuffle)
+            )
+            or (
+                isinstance(up_logical_op, AbstractMap)
+                and isinstance(down_logical_op, Repartition)
+            )
+        ):
             return False
 
         # Do not fuse Repartition operator if shuffle is disabled
@@ -149,39 +162,16 @@ class OperatorFusionRule(Rule):
         if isinstance(down_logical_op, Repartition) and not down_logical_op._shuffle:
             return False
 
-        # Allow fusing tasks->actors if the resources are compatible (read->map), but
-        # not the other way around. The latter (downstream op) will be used as the
-        # compute if fused.
-        if (
-            isinstance(down_logical_op, AbstractUDFMap)
-            and is_task_compute(down_logical_op._compute)
-            and isinstance(up_logical_op, AbstractUDFMap)
-            and get_compute(up_logical_op._compute)
-            != get_compute(down_logical_op._compute)
+        if isinstance(down_logical_op, AbstractUDFMap) and isinstance(
+            up_logical_op, AbstractUDFMap
         ):
-            return False
-
-        # Fusing callable classes is only supported if they are the same function AND
-        # their construction arguments are the same. Note the Write can be compatbile
-        # with any UDF as Write itself doesn't have UDF.
-        # TODO(Clark): Support multiple callable classes instantiating in the same actor
-        # worker.
-        if (
-            isinstance(down_logical_op, AbstractUDFMap)
-            and isinstance(down_logical_op._fn, CallableClass)
-            and isinstance(up_logical_op, AbstractUDFMap)
-            and isinstance(up_logical_op._fn, CallableClass)
-            and (
-                up_logical_op._fn != down_logical_op._fn
-                or (
-                    up_logical_op._fn_constructor_args
-                    != down_logical_op._fn_constructor_args
-                    or up_logical_op._fn_constructor_kwargs
-                    != down_logical_op._fn_constructor_kwargs
-                )
-            )
-        ):
-            return False
+            # Allow fusing tasks->actors if the resources are compatible (read->map),
+            # but not the other way around. The latter (downstream op) will be used as
+            # the compute if fused.
+            if is_task_compute(down_logical_op._compute) and get_compute(
+                up_logical_op._compute
+            ) != get_compute(down_logical_op._compute):
+                return False
 
         # Only fuse if the ops' remote arguments are compatible.
         if not _are_remote_args_compatible(
@@ -266,7 +256,7 @@ class OperatorFusionRule(Rule):
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependencies[0]
+            input_op = up_logical_op.input_dependency
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op
@@ -333,6 +323,10 @@ class OperatorFusionRule(Rule):
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
             input_op,
+            num_outputs=down_op._num_outputs,
+            # Transfer over the existing sub-progress bars from
+            # the AllToAllOperator (if any) into the fused operator.
+            sub_progress_bar_names=down_op._sub_progress_bar_names,
             name=name,
         )
         # Bottom out at the source logical op (e.g. Read()).

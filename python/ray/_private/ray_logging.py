@@ -390,7 +390,7 @@ class LogDeduplicator:
                 self.recent[dedup_key] = state
             elif state.count > 0:
                 # Aggregation wasn't fruitful, print the line and stop aggregating.
-                output.append(dict(state.metadata, lines=[line]))
+                output.append(dict(state.metadata, lines=[state.line]))
 
         return output
 

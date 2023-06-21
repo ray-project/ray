@@ -21,7 +21,7 @@ from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import STRICT_MODE, column_udf, extract_values
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -199,10 +199,17 @@ def test_cache_dataset(ray_start_regular_shared):
     assert isinstance(ds2, MaterializedDataset)
     assert not ds.is_fully_executed()
 
+    # Tests standard iteration uses the materialized blocks.
     for _ in range(10):
         ds2.take_all()
 
     assert ray.get(c.inc.remote()) == 2
+
+    # Tests streaming iteration uses the materialized blocks.
+    for _ in range(10):
+        list(ds2.streaming_split(1)[0].iter_batches())
+
+    assert ray.get(c.inc.remote()) == 3
 
 
 def test_schema(ray_start_regular_shared):
@@ -1315,21 +1322,6 @@ def test_len(ray_start_regular_shared):
     ds = ray.data.range(1)
     with pytest.raises(AttributeError):
         len(ds)
-
-
-@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
-def test_simple_block_select():
-    xs = list(range(100))
-    block_accessor = BlockAccessor.for_block(xs)
-
-    block = block_accessor.select([lambda x: x % 3])
-    assert block == [x % 3 for x in xs]
-
-    with pytest.raises(ValueError):
-        block = block_accessor.select(["foo"])
-
-    with pytest.raises(ValueError):
-        block = block_accessor.select([])
 
 
 def test_pandas_block_select():

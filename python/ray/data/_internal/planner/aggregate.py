@@ -72,6 +72,6 @@ def generate_aggregate_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(agg_spec)
 
-        return scheduler.execute(refs, num_outputs)
+        return scheduler.execute(refs, num_outputs, ctx)
 
     return fn

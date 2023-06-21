@@ -63,27 +63,62 @@
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
-# TODO(@bveeramani): Enable doctests.
-# doctest(
-#     files = glob(
-#         ["**/*.py"],
-#         exclude=[
-#             "**/examples/**",
-#             "**/tests/**",
-#             # Deprecations
-#             "utils/window_stat.py",
-#             "utils/timer.py",
-#             "utils/memory.py",
-#             "offline/off_policy_estimator.py",
-#             "offline/estimators/feature_importance.py",
-#             "env/wrappers/recsim_wrapper.py",
-#             "env/remote_vector_env.py",
-#             # Missing imports
-#             "algorithms/dreamerv3/**"
-#         ]
-#     ),
-#     tags = ["team:rllib"]
-# )
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            "**/test_*.py",
+            # Deprecated modules
+            "utils/window_stat.py",
+            "utils/timer.py",
+            "utils/memory.py",
+            "offline/off_policy_estimator.py",
+            "offline/estimators/feature_importance.py",
+            "env/wrappers/recsim_wrapper.py",
+            "env/remote_vector_env.py",
+            # Missing imports
+            "algorithms/dreamerv3/**",
+            # FIXME: These modules contain broken examples that weren't previously
+            # tested.
+            "algorithms/algorithm_config.py",
+            "algorithms/alpha_star/alpha_star.py",
+            "algorithms/r2d2/r2d2.py",
+            "algorithms/sac/rnnsac.py",
+            "algorithms/simple_q/simple_q.py",
+            "core/models/base.py",
+            "core/models/specs/checker.py",
+            "core/models/specs/specs_base.py",
+            "core/models/specs/specs_dict.py",
+            "env/wrappers/pettingzoo_env.py",
+            "evaluation/collectors/sample_collector.py",
+            "evaluation/episode.py",
+            "evaluation/metrics.py",
+            "evaluation/observation_function.py",
+            "evaluation/postprocessing.py",
+            "execution/buffers/mixin_replay_buffer.py",
+            "models/base_model.py",
+            "models/catalog.py",
+            "models/distributions.py",
+            "models/preprocessors.py",
+            "models/repeated_values.py",
+            "models/tf/tf_distributions.py",
+            "models/torch/model.py",
+            "models/torch/torch_distributions.py",
+            "policy/rnn_sequencing.py",
+            "utils/actor_manager.py",
+            "utils/filter.py",
+            "utils/from_config.py",
+            "utils/metrics/window_stat.py",
+            "utils/nested_dict.py",
+            "utils/pre_checks/env.py",
+            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
+            "utils/spaces/space_utils.py"
+        ]
+    ),
+    tags = ["team:rllib"]
+)
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -1031,13 +1066,23 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
 )
 
-# Dreamer
+# Dreamer (V1)
 py_test(
     name = "test_dreamer",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
+
+# DreamerV3
+# TODO (sven): Enable once the version conflict for gymnasium/supersuit/pettingzoo
+#  /shimmy/mujoco has been resolved.
+#py_test(
+#    name = "test_dreamerv3",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+#)
 
 # DT
 py_test(
@@ -1658,7 +1703,7 @@ py_test(
 py_test(
     name = "env/tests/test_single_agent_gym_env_runner",
     tags = ["team:rllib", "env"],
-    size = "small",
+    size = "medium",
     srcs = ["env/tests/test_single_agent_gym_env_runner.py"]
 )
 
@@ -2091,7 +2136,7 @@ py_test(
 py_test(
     name = "test_convtranspose2d_stack",
     tags = ["team:rllib", "models"],
-    size = "small",
+    size = "medium",
     data = glob(["tests/data/images/obstacle_tower.png"]),
     srcs = ["models/tests/test_convtranspose2d_stack.py"]
 )
@@ -2496,7 +2541,7 @@ py_test(
 py_test(
     name = "tests/backward_compat/test_gym_env_apis",
     tags = ["team:rllib", "env"],
-    size = "medium",
+    size = "large",
     srcs = ["tests/backward_compat/test_gym_env_apis.py"]
 )
 
@@ -2798,7 +2843,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_appo",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesAPPO"]
@@ -2807,7 +2852,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_impala",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesIMPALA"]
@@ -2816,7 +2861,7 @@ py_test(
 py_test(
      name = "tests/test_supported_spaces_a3c",
      main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
+     tags = ["team:rllib", "tests_dir", "exclusive"],
      size = "large",
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesA3C"]
@@ -2852,7 +2897,7 @@ py_test(
 py_test(
     name = "tests/test_supported_spaces_off_policy",
     main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
+    tags = ["team:rllib", "tests_dir", "exclusive"],
     size = "medium",
     srcs = ["tests/test_supported_spaces.py"],
     args = ["TestSupportedSpacesOffPolicy"]
@@ -4187,7 +4232,7 @@ py_test(
 py_test(
     name = "examples/learner/ppo_tuner_local_gpu_tf2",
     main = "examples/learner/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
     size = "medium",
     srcs = ["examples/learner/ppo_tuner.py"],
     args = ["--framework=tf2", "--config=local-gpu"]
@@ -4247,6 +4292,14 @@ py_test(
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
 )
 
+py_test(
+    name = "examples/learner/train_w_bc_finetune_w_ppo",
+    main = "examples/learner/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learner/train_w_bc_finetune_w_ppo.py"],
+)
+
 # --------------------------------------------------------------------
 # examples/documentation directory
 #
@@ -4302,6 +4355,7 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
+    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
