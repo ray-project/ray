@@ -200,7 +200,9 @@ def train_loop_for_worker(config):
         epoch_times.append(epoch_time_s)
         throughputs.append(config["num_images_per_epoch"] / epoch_time_s)
         # Drop the first epoch to remove warmup time.
-        total_tput = sum(epoch_times[1:]) / sum(throughputs[1:])
+        total_tput = -1
+        if len(epoch_times) > 1:
+            total_tput = (epoch) * config["num_images_per_epoch"] / sum(epoch_times[1:])
         logger.info(
             "Epoch time: {epoch_time_s}s, images/s: {throughput}".format(
                 epoch_time_s=epoch_time_s,
