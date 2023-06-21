@@ -194,7 +194,7 @@ class ClientCallManager {
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : cluster_id_{absl::Mutex{}, ClusterID::Nil()},
+      : cluster_id_(ClusterID::Nil()),
         main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -326,7 +326,8 @@ class ClientCallManager {
     }
   }
 
-  /// UUID of the cluster.
+  /// UUID of the cluster. Potential race between creating a ClientCall object
+  /// and setting the cluster ID.
   SafeClusterID cluster_id_;
 
   /// The main event loop, to which the callback functions will be posted.

@@ -415,18 +415,22 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 #pragma pack(pop)
 
 struct SafeClusterID {
-  absl::Mutex m_;
-  ClusterID id GUARDED_BY(m_);
+ private:
+  mutable absl::Mutex m_;
+  ClusterID id_ GUARDED_BY(m_);
 
-  const ClusterID load() {
+ public:
+  SafeClusterID(const ClusterID &id) : id_(id) {}
+
+  const ClusterID load() const {
     absl::MutexLock l(&m_);
-    return id;
+    return id_;
   }
 
   ClusterID exchange(const ClusterID &newId) {
     absl::MutexLock l(&m_);
-    ClusterID old = id;
-    id = newId;
+    ClusterID old = id_;
+    id_ = newId;
     return old;
   }
 };
