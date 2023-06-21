@@ -166,7 +166,7 @@ class _Shard:
         # Merge the policies config overrides with the main config.
         # Also, adjust `num_gpus` (to indicate an individual policy's
         # num_gpus, not the total number of GPUs).
-        cfg = Algorithm.merge_trainer_configs(
+        cfg = Algorithm.merge_algorithm_configs(
             self.config,
             dict(policy_spec.config, **{"num_gpus": self.num_gpus_per_policy}),
         )
