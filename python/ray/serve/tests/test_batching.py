@@ -1,3 +1,4 @@
+import time
 import pytest
 import asyncio
 import requests
@@ -39,6 +40,44 @@ def test_batching(serve_instance):
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
     assert max(counter_result) < 20
+
+
+def test_batching_magic_attributes(serve_instance):
+    @serve.deployment
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+            self.batch_sizes = set()
+
+        @property
+        def _ray_serve_max_batch_size(self):
+            return self.count + 1
+
+        @property
+        def _ray_serve_batch_wait_timeout_s(self):
+            return 1
+
+        @serve.batch
+        async def handle_batch(self, requests):
+            self.count += 1
+            batch_size = len(requests)
+            self.batch_sizes.add(batch_size)
+            return [batch_size] * batch_size
+
+        async def __call__(self, request):
+            return await self.handle_batch(request)
+
+    handle = serve.run(BatchingExample.bind())
+
+    future_list = []
+    for _ in range(21):
+        f = handle.remote(1)
+        future_list.append(f)
+
+    counter_result = ray.get(future_list)
+    # batch size is increased by 1 with each call
+    # 1+2+3+4+5+6 == 21
+    assert set(counter_result) == {1, 2, 3, 4, 5, 6}
 
 
 def test_batching_exception(serve_instance):
@@ -212,6 +251,39 @@ async def test_batch_size_multiple_zero_timeout(use_class):
         await t2
     with pytest.raises(ZeroDivisionError):
         await t3
+
+
+@pytest.mark.asyncio
+async def test_batch_timeout_empty_queue():
+    """Check that Serve waits when creating batches.
+
+    Serve should wait a full batch_wait_timeout_s after receiving the first
+    request in the next batch before processing the batch.
+    """
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.25)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
+
+    num_iterations = 2
+    for iteration in range(num_iterations):
+        tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
+
+        # Due to the long timeout, none of the tasks should finish until a tenth
+        # request is submitted
+        assert len(done) == 0
+
+        tasks.append(get_or_create_event_loop().create_task(no_op(None)))
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
+
+        # All the timeout tasks should be finished
+        assert set(tasks) == set(done)
+        assert all(t.result() == "No-op" for t in tasks)
+
+        if iteration < num_iterations - 1:
+            # Leave queue empty for batch_wait_timeout_s between batches
+            time.sleep(0.25)
 
 
 @pytest.mark.asyncio
