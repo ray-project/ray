@@ -651,11 +651,9 @@ TEST_F(EventTest, VerifyOnlyNthOccurenceEventLogged) {
   EventManager::Instance().AddReporter(std::make_shared<TestEventReporter>());
   const std::string kLogStr = "this is a test log";
   auto start_time = std::chrono::steady_clock::now().time_since_epoch();
-  size_t num_iterations = 0;
   // printed 30, 60, 90, 120ms 4 times.
   while (std::chrono::steady_clock::now().time_since_epoch() - start_time <
          std::chrono::milliseconds(100)) {
-    num_iterations++;
     RAY_EVENT_EVERY_MS(INFO, "label", 30) << kLogStr;
   }
 
