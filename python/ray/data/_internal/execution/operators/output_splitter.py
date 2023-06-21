@@ -101,8 +101,8 @@ class OutputSplitter(PhysicalOperator):
         self._buffer.append(bundle)
         self._dispatch_bundles()
 
-    def inputs_done(self) -> None:
-        super().inputs_done()
+    def all_inputs_done(self) -> None:
+        super().all_inputs_done()
         if not self._equal:
             self._dispatch_bundles(dispatch_all=True)
             assert not self._buffer, "Should have dispatched all bundles."

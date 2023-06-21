@@ -56,6 +56,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
     msgpack_deserialize,
     get_all_node_ids,
+    check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
@@ -338,10 +339,6 @@ class ActorReplicaWrapper:
         """Returns the relative log file path of the actor, None if not placed."""
         return self._log_file_path
 
-    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
-        ready, _ = ray.wait([obj_ref], timeout=0)
-        return len(ready) == 1
-
     def start(self, deployment_info: DeploymentInfo):
         """
         Start a new actor for current DeploymentReplica instance.
@@ -449,8 +446,10 @@ class ActorReplicaWrapper:
             replica_ready_check_func = self._actor_handle.initialize_and_get_metadata
             self._ready_obj_ref = replica_ready_check_func.remote(
                 deployment_config,
-                # Ensure that `is_allocated` will execute before `reconfigure`,
-                # because `reconfigure` runs user code that could block the replica
+                # Ensure that `is_allocated` will execute
+                # before `initialize_and_get_metadata`,
+                # because `initialize_and_get_metadata` runs
+                # user code that could block the replica
                 # asyncio loop. If that happens before `is_allocated` is executed,
                 # the `is_allocated` call won't be able to run.
                 self._allocated_obj_ref,
@@ -534,11 +533,11 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if not self._check_obj_ref_ready(self._allocated_obj_ref):
+        if not check_obj_ref_ready_nowait(self._allocated_obj_ref):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         # Check whether relica initialization has completed.
-        replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
+        replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
@@ -609,7 +608,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-            stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
+            stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
                 try:
@@ -643,7 +642,7 @@ class ActorReplicaWrapper:
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
-        elif self._check_obj_ref_ready(self._health_check_ref):
+        elif check_obj_ref_ready_nowait(self._health_check_ref):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
@@ -1356,6 +1355,13 @@ class DeploymentState:
         if decision_num_replicas == self._target_state.num_replicas:
             return
 
+        logger.info(
+            f"Autoscaling deployment {self._name} replicas from "
+            f"{self._target_state.num_replicas} to {decision_num_replicas}. "
+            f"Current ongoing requests: {current_num_ongoing_requests}, "
+            f"current handle queued queries: {current_handle_queued_queries}."
+        )
+
         new_config = copy(curr_info)
         new_config.set_autoscaled_num_replicas(decision_num_replicas)
         if new_config.version is None:
@@ -1364,9 +1370,10 @@ class DeploymentState:
         self._set_target_state(new_config)
 
     def delete(self) -> None:
-        self._set_target_state_deleting()
+        if not self._target_state.deleting:
+            self._set_target_state_deleting()
 
-    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> int:
+    def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
 
         Stop replicas with versions that require the actor to be restarted, and
@@ -1379,23 +1386,24 @@ class DeploymentState:
         replicas_to_update = self._replicas.pop(
             exclude_version=self._target_state.version,
             states=[ReplicaState.STARTING, ReplicaState.RUNNING],
-            max_replicas=max_to_stop,
             ranking_function=rank_replicas_for_stopping,
         )
         replicas_changed = False
         code_version_changes = 0
         reconfigure_changes = 0
         for replica in replicas_to_update:
+            if (code_version_changes + reconfigure_changes) >= max_to_stop:
+                self._replicas.add(replica.actor_details.state, replica)
             # If the new version requires the actors to be restarted, stop the replica.
             # A new one with the correct version will be started later as part of the
             # normal scale-up process.
-            if replica.version.requires_actor_restart(self._target_state.version):
+            elif replica.version.requires_actor_restart(self._target_state.version):
                 code_version_changes += 1
                 self._stop_replica(replica)
                 replicas_changed = True
             # Otherwise, only lightweight options in deployment config is a mismatch, so
             # we update it dynamically without restarting the replica.
-            else:
+            elif replica.actor_details.state == ReplicaState.RUNNING:
                 reconfigure_changes += 1
                 if replica.version.requires_long_poll_broadcast(
                     self._target_state.version
@@ -1410,6 +1418,9 @@ class DeploymentState:
                     "Adding UPDATING to replica_tag: "
                     f"{replica.replica_tag}, deployment_name: {self._name}"
                 )
+            # We don't allow going from STARTING to UPDATING.
+            else:
+                self._replicas.add(replica.actor_details.state, replica)
 
         if code_version_changes > 0:
             logger.info(
@@ -1460,7 +1471,7 @@ class DeploymentState:
             self._target_state.num_replicas
             < old_running_replicas + old_stopping_replicas
         ):
-            return 0
+            return False
 
         # The number of replicas that are currently in transition between
         # an old version and the new version. Note that we cannot directly
@@ -1679,7 +1690,8 @@ class DeploymentState:
                 self._replicas.add(ReplicaState.RUNNING, replica)
                 transitioned_to_running = True
                 logger.info(
-                    f"Replica {replica.replica_tag} started successfully.",
+                    f"Replica {replica.replica_tag} started successfully "
+                    f"on node {replica.actor_node_id}.",
                     extra={"log_to_stderr": False},
                 )
             elif start_status == ReplicaStartupStatus.FAILED:
