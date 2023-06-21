@@ -265,8 +265,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Resources of local node.
   NodeResourceInstances local_resources_;
   /// A map storing when the resource was last idle.
-  absl::flat_hash_map<scheduling::ResourceID, absl::optional<int64_t>>
-      resources_last_idle_time_ns_;
+  absl::flat_hash_map<scheduling::ResourceID, absl::optional<absl::Time>>
+      resources_last_idle_time_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.

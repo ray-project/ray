@@ -548,7 +548,7 @@ message ResourcesData {
   bool cluster_full_of_actors_detected = 14;
   // The duration in ms during which all the node's resources are idle. If the
   // node currently has any resource being used, this will 0.
-  int64 resources_idle_time_ms = 15;
+  int64 resources_idle_duration_ms = 15;
   // Last unused = 16
 }
 
