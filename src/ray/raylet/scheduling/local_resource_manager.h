@@ -246,14 +246,27 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
+  /// \param record_idle_resource: Whether to record the idle resource. This is false
+  ///   when the resource was allocated partially so its idle state is actually not
+  ///   affected.
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation,
+                                 bool record_idle_resource = true);
 
   void UpdateAvailableObjectStoreMemResource();
+
+  void SetResourceIdle(const scheduling::ResourceID &resource_id);
+
+  void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
+
+  absl::optional<int64_t> GetResourceIdleTime() const;
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
+  /// A map storing when the resource was last idle.
+  absl::flat_hash_map<scheduling::ResourceID, absl::optional<int64_t>>
+      resources_last_idle_time_ns_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
