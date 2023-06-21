@@ -114,7 +114,7 @@ def send_sample_request():
 
 
 if __name__ == "__main__":
-    # To run this example, you need install vllm which requires
+    # To run this example, you need to install vllm which requires
     # OS: Linux
     # Python: 3.8 or higher
     # CUDA: 11.0 – 11.8
