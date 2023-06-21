@@ -845,10 +845,11 @@ class DeploymentReplica(VersionedReplica):
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        self._actor.start(deployment_info)
+        deployment_upscale_request = self._actor.start(deployment_info)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
+        return deployment_upscale_request
 
     def reconfigure(self, version: DeploymentVersion) -> bool:
         """
@@ -1144,10 +1145,6 @@ class DeploymentState:
                 "healthy, 0 means unhealthy."
             ),
             tag_keys=("deployment", "replica", "application"),
-        )
-
-        self._deployment_scheduler.add_deployment(
-            self._name, SpreadDeploymentSchedulingStrategy()
         )
 
     def should_autoscale(self) -> bool:
@@ -1885,6 +1882,8 @@ class DeploymentState:
         Returns (deleted, any_replicas_recovering).
         """
         deleted, any_replicas_recovering = False, False
+        upscale = []
+        downscale = None
         try:
             # Add or remove DeploymentReplica instances in self._replicas.
             # This should be the only place we adjust total number of replicas
@@ -1960,26 +1959,21 @@ class DriverDeploymentState(DeploymentState):
         else:
             self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-        self._deployment_scheduler.on_deployment_created(
-            self._name, DriverDeploymentSchedulingStrategy()
-        )
-
     def _get_all_node_ids(self):
         # Test mock purpose
         return get_all_node_ids(self._gcs_client)
 
-    def _deploy_driver(self) -> bool:
+    def _deploy_driver(self) -> List[DeploymentUpscaleRequest]:
         """Deploy the driver deployment to each node."""
-        replica_changed = False
+        upscale = []
         num_existing_replicas = self._replicas.count()
         if num_existing_replicas >= self._target_state.num_replicas:
             num_running_replicas = self._replicas.count(states=[ReplicaState.RUNNING])
             if num_running_replicas >= self._target_state.num_replicas:
                 for replica in self._replicas.pop(states=[ReplicaState.STARTING]):
                     self._stop_replica(replica)
-                    replica_changed = True
 
-            return replica_changed
+            return upscale
 
         for _ in range(self._target_state.num_replicas - num_existing_replicas):
             replica_name = ReplicaName(self._name, get_random_letters())
@@ -1991,12 +1985,11 @@ class DriverDeploymentState(DeploymentState):
                 self._target_state.version,
                 self._deployment_scheduler,
             )
-            new_deployment_replica.start(self._target_state.info)
+            upscale.append(new_deployment_replica.start(self._target_state.info))
 
             self._replicas.add(ReplicaState.STARTING, new_deployment_replica)
-            replica_changed = True
 
-        return replica_changed
+        return upscale
 
     def _stop_all_replicas(self) -> bool:
         replica_changed = False
@@ -2028,6 +2021,9 @@ class DriverDeploymentState(DeploymentState):
     def update(self) -> Tuple[bool, bool]:
         """Returns (deleted, any_replicas_recovering)."""
         try:
+            self._check_and_update_replicas()
+
+            upscale = []
             if self._target_state.deleting:
                 self._stop_all_replicas()
             else:
@@ -2042,18 +2038,21 @@ class DriverDeploymentState(DeploymentState):
                     if new_config.version is None:
                         new_config.version = self._target_state.version.code_version
                     self._set_target_state(new_config)
+
                 max_to_stop = self._calculate_max_replicas_to_stop()
                 self._stop_or_update_outdated_version_replicas(max_to_stop)
-                self._deploy_driver()
-            self._check_and_update_replicas()
-            return self._check_curr_status()
+
+                upscale = self._deploy_driver()
+
+            deleted, any_replicas_recovering = self._check_curr_status()
+            return deleted, any_replicas_recovering, upscale, None
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
-            return False, False
+            return False, False, [], None
 
     def should_autoscale(self) -> bool:
         return False
@@ -2081,26 +2080,6 @@ class DeploymentStateManager:
         self._long_poll_host = long_poll_host
         self._deployment_scheduler = DeploymentScheduler()
 
-        self._create_deployment_state: Callable = lambda name: DeploymentState(
-            name,
-            controller_name,
-            detached,
-            long_poll_host,
-            self._deployment_scheduler,
-            self._save_checkpoint_func,
-        )
-
-        self._create_driver_deployment_state: Callable = (
-            lambda name: DriverDeploymentState(
-                name,
-                controller_name,
-                detached,
-                long_poll_host,
-                self._deployment_scheduler,
-                self._save_checkpoint_func,
-            )
-        )
-
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()
 
@@ -2109,6 +2088,34 @@ class DeploymentStateManager:
         # TODO(simon): move autoscaling related stuff into a manager.
         self.autoscaling_metrics_store = InMemoryMetricsStore()
         self.handle_metrics_store = InMemoryMetricsStore()
+
+    def _create_driver_deployment_state(self, name):
+        self._deployment_scheduler.on_deployment_created(
+            name, DriverDeploymentSchedulingStrategy()
+        )
+
+        return DriverDeploymentState(
+            name,
+            self._controller_name,
+            self._detached,
+            self._long_poll_host,
+            self._deployment_scheduler,
+            self._save_checkpoint_func,
+        )
+
+    def _create_deployment_state(self, name):
+        self._deployment_scheduler.on_deployment_created(
+            name, SpreadDeploymentSchedulingStrategy()
+        )
+
+        return DeploymentState(
+            name,
+            self._controller_name,
+            self._detached,
+            self._long_poll_host,
+            self._deployment_scheduler,
+            self._save_checkpoint_func,
+        )
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
         self.autoscaling_metrics_store.add_metrics_point(data, send_timestamp)
@@ -2424,7 +2431,7 @@ class DeploymentStateManager:
             if upscale:
                 upscales.extend(upscale)
             if downscale:
-                downscales.add(downscale)
+                downscales.append(downscale)
 
             if deleted:
                 deleted_tags.append(deployment_name)

@@ -103,7 +103,7 @@ class DeploymentScheduler:
 
         for deployment_name, pending_replicas in self._pending_replicas.items():
             if not pending_replicas:
-                return
+                continue
 
             deployment_scheduling_strategy = self._deployments[deployment_name]
             if isinstance(
