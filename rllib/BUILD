@@ -2092,6 +2092,13 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_learner_compile",
+    tags = ["team:rllib", "core", "ray_data"],
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
+)
+
+py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
     size = "medium",

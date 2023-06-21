@@ -25,6 +25,7 @@ from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, Modu
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -279,15 +280,20 @@ class AlgorithmConfig(_Config):
         }
         # Torch compile settings
         self.torch_compile_learner = False
+        self.torch_compile_learner_what_to_compile = (
+            TorchCompileWhatToCompile.FORWARD_TRAIN
+        )
+        # AOT Eager is a dummy backend and will not result in speedups
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
-        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
+        self.torch_compile_learner_dynamo_mode = None
         self.torch_compile_worker = False
+        # AOT Eager is a dummy backend and will not result in speedups
         self.torch_compile_worker_dynamo_backend = (
-            "aot_eager" if sys.platform == "darwin" else "inductor"
+            "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
-        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
+        self.torch_compile_worker_dynamo_mode = None
 
         # `self.environment()`
         self.env = None
@@ -1197,6 +1203,7 @@ class AlgorithmConfig(_Config):
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         torch_compile_learner: Optional[bool] = NotProvided,
+        torch_compile_learner_what_to_compile: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_mode: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker: Optional[bool] = NotProvided,
@@ -1223,8 +1230,12 @@ class AlgorithmConfig(_Config):
             local_tf_session_args: Override the following tf session args on the local
                 worker
             torch_compile_learner: If True, forward_train methods on TorchRLModules
-            on the learner are compiled. If not specified, the default is to compile
-            forward train on the learner.
+                on the learner are compiled. If not specified, the default is to compile
+                forward train on the learner.
+            torch_compile_learner_what_to_compile: A TorchCompileWhatToCompile
+                mode specifying what to compile on the learner side if
+                torch_compile_learner is True. See TorchCompileWhatToCompile for
+                details and advice on its usage.
             torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
             torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
@@ -1266,6 +1277,10 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_learner_dynamo_mode is not NotProvided:
             self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
+        if torch_compile_learner_what_to_compile is not NotProvided:
+            self.torch_compile_learner_what_to_compile = (
+                torch_compile_learner_what_to_compile
+            )
         if torch_compile_worker is not NotProvided:
             self.torch_compile_worker = torch_compile_worker
         if torch_compile_worker_dynamo_backend is not NotProvided:
@@ -3056,7 +3071,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_train=self.torch_compile_learner,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
         )
@@ -3069,8 +3083,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_exploration=self.torch_compile_worker,
-            compile_forward_inference=self.torch_compile_worker,
             torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
@@ -3341,7 +3353,11 @@ class AlgorithmConfig(_Config):
         )
 
         if self.framework_str == "torch":
-            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+            config.framework(
+                torch_compile=self.torch_compile_learner,
+                torch_compile_cfg=self.get_torch_compile_learner_config(),
+                torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
+            )
         elif self.framework_str == "tf2":
             config.framework(eager_tracing=self.eager_tracing)
 
