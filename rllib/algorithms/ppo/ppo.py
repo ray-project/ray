@@ -489,12 +489,12 @@ class PPO(Algorithm):
         # workers.
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             if self.workers.num_remote_workers() > 0:
-                from_worker_or_learner_group = None
+                from_worker_or_trainer = None
                 if self.config._enable_learner_api:
                     # sync weights from learner_group to all rollout workers
-                    from_worker_or_learner_group = self.learner_group
+                    from_worker_or_trainer = self.learner_group
                 self.workers.sync_weights(
-                    from_worker_or_learner_group=from_worker_or_learner_group,
+                    from_worker_or_trainer=from_worker_or_trainer,
                     policies=policies_to_update,
                     global_vars=global_vars,
                 )

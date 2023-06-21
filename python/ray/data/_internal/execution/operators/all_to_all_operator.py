@@ -6,32 +6,8 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
-
-
-class OneToOneOperator(PhysicalOperator):
-    """An operator that has one input and one output dependency.
-
-    This operator serves as the base for map, filter, limit, etc.
-    """
-
-    def __init__(
-        self,
-        name: str,
-        input_op: PhysicalOperator,
-    ):
-        """Create a OneToOneOperator.
-        Args:
-            input_op: Operator generating input data for this op.
-            name: The name of this operator.
-        """
-        super().__init__(name, [input_op])
-
-    @property
-    def input_dependency(self) -> PhysicalOperator:
-        return self.input_dependencies[0]
 
 
 class AllToAllOperator(PhysicalOperator):
@@ -49,6 +25,7 @@ class AllToAllOperator(PhysicalOperator):
         name: str = "AllToAll",
     ):
         """Create an AllToAllOperator.
+
         Args:
             bulk_fn: The blocking transformation function to run. The inputs are the
                 list of input ref bundles, and the outputs are the output ref bundles
@@ -80,7 +57,7 @@ class AllToAllOperator(PhysicalOperator):
         assert input_index == 0, input_index
         self._input_buffer.append(refs)
 
-    def all_inputs_done(self) -> None:
+    def inputs_done(self) -> None:
         ctx = TaskContext(
             task_idx=self._next_task_index,
             sub_progress_bar_dict=self._sub_progress_bar_dict,
@@ -88,7 +65,7 @@ class AllToAllOperator(PhysicalOperator):
         self._output_buffer, self._stats = self._bulk_fn(self._input_buffer, ctx)
         self._next_task_index += 1
         self._input_buffer.clear()
-        super().all_inputs_done()
+        super().inputs_done()
 
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
@@ -125,23 +102,3 @@ class AllToAllOperator(PhysicalOperator):
         if self._sub_progress_bar_dict is not None:
             for sub_bar in self._sub_progress_bar_dict.values():
                 sub_bar.close()
-
-
-class NAryOperator(PhysicalOperator):
-    """An operator that has multiple input dependencies and one output.
-
-    This operator serves as the base for union, zip, etc.
-    """
-
-    def __init__(
-        self,
-        *input_ops: LogicalOperator,
-    ):
-        """Create a OneToOneOperator.
-        Args:
-            input_op: Operator generating input data for this op.
-            name: The name of this operator.
-        """
-        input_names = ", ".join([op._name for op in input_ops])
-        op_name = f"{self.__class__.__name__}({input_names})"
-        super().__init__(op_name, list(input_ops))

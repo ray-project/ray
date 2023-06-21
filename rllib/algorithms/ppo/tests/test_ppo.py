@@ -157,7 +157,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:
@@ -225,7 +225,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
                 print("Env={}".format(env))
                 for lstm in [False, True]:

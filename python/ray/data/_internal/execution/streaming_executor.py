@@ -27,7 +27,6 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
-    update_operator_states,
 )
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
@@ -257,8 +256,6 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
-
-        update_operator_states(topology)
 
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():
