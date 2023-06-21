@@ -53,7 +53,7 @@ scikit-image
 prometheus_client>=0.7.1
 requests
 pandas
-tensorboardX>=1.9
+tensorboardX<2.6.1,>=1.9  # tensorboardX 2.6.1 starts using protobuf>=4
 gymnasium==0.26.3
 grpcio<=1.50.0,>=1.42.0  # ray client
 aiohttp>=3.7
