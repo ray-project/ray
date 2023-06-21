@@ -9,7 +9,8 @@ doctest(
             "**/tests/**",
             "suggest/**",
             "impl/test_utils.py",
-            "automl/board/**",
+            # Deprecated
+            "automl/**",
             "checkpoint_manager.py",
             "cluster_info.py",
             "config_parser.py",
@@ -21,7 +22,7 @@ doctest(
             "trial.py",
             "trial_runner.py",
             "utils/placement_groups.py",
-            "utils/trainable.py"
+            "utils/trainable.py",
         ]
     ),
     tags = ["team:ml"]
@@ -60,14 +61,6 @@ py_test(
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "rllib"],
-)
-
-py_test(
-    name = "test_automl_searcher",
-    size = "small",
-    srcs = ["tests/test_automl_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -663,15 +656,6 @@ py_test(
     name = "dragonfly_example",
     size = "medium",
     srcs = ["examples/dragonfly_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "genetic_example",
-    size = "small",
-    srcs = ["examples/genetic_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]

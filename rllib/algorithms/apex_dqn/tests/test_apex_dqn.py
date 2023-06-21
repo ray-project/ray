@@ -130,7 +130,7 @@ class TestApexDQN(unittest.TestCase):
         )
 
         def _step_n_times(algo, n: int):
-            """Step trainer n times.
+            """Step Algorithm n times.
 
             Returns:
                 learning rate at the end of the execution.
