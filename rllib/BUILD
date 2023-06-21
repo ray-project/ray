@@ -141,7 +141,7 @@ py_test(
     main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
     tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
     size = "small",
-    srcs = ["benchmarks/torch_compile/run_ppo_with_inference.py"],
+    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
     args = ["--smoke-test"]
 )
 

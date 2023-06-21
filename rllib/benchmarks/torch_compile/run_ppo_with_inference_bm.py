@@ -85,5 +85,4 @@ def main(pargs):
 
 
 if __name__ == "__main__":
-    pargs = _parse_args()
-    main(pargs)
+    main(_parse_args())
