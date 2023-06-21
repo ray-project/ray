@@ -362,10 +362,7 @@ class APPOTorchPolicy(
         model: TorchModelV2,
         action_dist: TorchDistributionWrapper,
     ) -> Dict[str, TensorType]:
-        out = {}
-        if not self.config["vtrace"]:
-            out[SampleBatch.VF_PREDS] = model.value_function()
-        return out
+        return {SampleBatch.VF_PREDS: model.value_function()}
 
     @override(TorchPolicyV2)
     def postprocess_trajectory(

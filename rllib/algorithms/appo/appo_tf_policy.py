@@ -389,8 +389,7 @@ def get_appo_tf_policy(name: str, base: type) -> type:
         @override(base)
         def extra_action_out_fn(self) -> Dict[str, TensorType]:
             extra_action_fetches = super().extra_action_out_fn()
-            if not self.config["vtrace"]:
-                extra_action_fetches[SampleBatch.VF_PREDS] = self.model.value_function()
+            extra_action_fetches[SampleBatch.VF_PREDS] = self.model.value_function()
             return extra_action_fetches
 
         @override(base)
