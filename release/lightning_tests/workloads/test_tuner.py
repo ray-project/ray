@@ -7,7 +7,7 @@ import ray
 import ray.tune as tune
 from ray.air.config import CheckpointConfig, ScalingConfig
 from ray.train.lightning import LightningTrainer, LightningConfigBuilder
-from ray.tune.schedulers import PopulationBasedTraining
+from ray.tune.schedulers import ASHAScheduler
 
 from lightning_test_utils import MNISTClassifier, MNISTDataModule
 
@@ -65,11 +65,7 @@ if __name__ == "__main__":
             metric="val_accuracy",
             mode="max",
             num_samples=2,
-            scheduler=PopulationBasedTraining(
-                time_attr="training_iteration",
-                hyperparam_mutations={"lightning_config": mutation_config},
-                perturbation_interval=1,
-            ),
+            scheduler=ASHAScheduler(max_t=5, grace_period=1, reduction_factor=2),
         ),
     )
     results = tuner.fit()
