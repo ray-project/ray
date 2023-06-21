@@ -1,12 +1,9 @@
 import collections
-from typing import Any
+from typing import Any, Mapping
 
-import numpy as np
-
-from ray.data._internal.arrow_block import ArrowBlockBuilder, ArrowRow
+from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.pandas_block import PandasBlockBuilder, PandasRow
-from ray.data._internal.simple_block import SimpleBlockBuilder
+from ray.data._internal.pandas_block import PandasBlockBuilder
 from ray.data.block import Block, BlockAccessor, DataBatch
 
 
@@ -15,26 +12,21 @@ class DelegatingBlockBuilder(BlockBuilder):
         self._builder = None
         self._empty_block = None
 
-    def add(self, item: Any) -> None:
-        if self._builder is None:
-            # TODO (kfstorm): Maybe we can use Pandas block format for dict.
-            if isinstance(item, collections.abc.Mapping) or isinstance(item, ArrowRow):
-                import pyarrow
+    def add(self, item: Mapping[str, Any]) -> None:
+        assert isinstance(item, collections.abc.Mapping), item
 
-                try:
-                    check = ArrowBlockBuilder()
-                    check.add(item)
-                    check.build()
-                    self._builder = ArrowBlockBuilder()
-                except (TypeError, pyarrow.lib.ArrowInvalid):
-                    # Can also handle nested Python objects, which Arrow cannot.
-                    self._builder = PandasBlockBuilder()
-            elif isinstance(item, np.ndarray):
+        import pyarrow
+
+        if self._builder is None:
+            try:
+                check = ArrowBlockBuilder()
+                check.add(item)
+                check.build()
                 self._builder = ArrowBlockBuilder()
-            elif isinstance(item, PandasRow):
+            except (TypeError, pyarrow.lib.ArrowInvalid):
+                # Can also handle nested Python objects, which Arrow cannot.
                 self._builder = PandasBlockBuilder()
-            else:
-                self._builder = SimpleBlockBuilder()
+
         self._builder.add(item)
 
     def add_batch(self, batch: DataBatch):

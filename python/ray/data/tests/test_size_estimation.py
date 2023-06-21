@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
@@ -17,44 +16,6 @@ ARROW_LARGE_VALUE = {"value": "a" * 10000}
 def assert_close(actual, expected, tolerance=0.3):
     print("assert_close", actual, expected)
     assert abs(actual - expected) / expected < tolerance, (actual, expected)
-
-
-def test_py_size(ray_start_regular_shared):
-    b = SimpleBlockBuilder()
-    assert b.get_estimated_memory_usage() == 0
-    b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 111)
-    b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 222)
-    for _ in range(8):
-        b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 1110)
-    for _ in range(90):
-        b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 11100)
-    b.add_block([SMALL_VALUE] * 900)
-    assert_close(b.get_estimated_memory_usage(), 111000)
-    assert len(b.build()) == 1000
-
-
-def test_py_size_diff_values(ray_start_regular_shared):
-    b = SimpleBlockBuilder()
-    assert b.get_estimated_memory_usage() == 0
-    for _ in range(10):
-        b.add(LARGE_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 100120)
-    for _ in range(100):
-        b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 121120)
-    for _ in range(100):
-        b.add(LARGE_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 1166875)
-    for _ in range(100):
-        b.add(LARGE_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 2182927)
-    b.add_block([SMALL_VALUE] * 1000)
-    assert_close(b.get_estimated_memory_usage(), 2240613)
-    assert len(b.build()) == 1310
 
 
 def test_arrow_size(ray_start_regular_shared):

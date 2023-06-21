@@ -104,7 +104,6 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
                 PandasBlockBuilder,
                 PandasBlockSchema,
             )
-            from ray.data._internal.simple_block import SimpleBlockBuilder
 
             num_empty_blocks = output_num_blocks - len(reduce_block_refs)
             first_block_schema = reduce_metadata[0].schema
@@ -112,8 +111,6 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
                 raise ValueError(
                     "Cannot split partition on blocks with unknown block format."
                 )
-            elif isinstance(first_block_schema, type):
-                builder = SimpleBlockBuilder()
             elif isinstance(first_block_schema, pa.Schema):
                 builder = ArrowBlockBuilder()
             elif isinstance(first_block_schema, PandasBlockSchema):

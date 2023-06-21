@@ -77,9 +77,9 @@ def _validate_key_fn(
 
 # Represents a batch of records to be stored in the Ray object store.
 #
-# Block data can be accessed in a uniform way via ``BlockAccessors`` such as
-# ``SimpleBlockAccessor`` and ``ArrowBlockAccessor``.
-Block = Union[list, "pyarrow.Table", "pandas.DataFrame", bytes]
+# Block data can be accessed in a uniform way via ``BlockAccessors`` like`
+# ``ArrowBlockAccessor``.
+Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
@@ -236,11 +236,6 @@ class BlockAccessor:
     Ideally, we wouldn't need a separate accessor classes for blocks. However,
     this is needed if we want to support storing ``pyarrow.Table`` directly
     as a top-level Ray object, without a wrapping class (issue #17186).
-
-    There are three types of block accessors: ``SimpleBlockAccessor``, which
-    operates over a plain Python list, ``ArrowBlockAccessor`` for
-    ``pyarrow.Table`` type blocks, ``PandasBlockAccessor`` for ``pandas.DataFrame``
-    type blocks.
     """
 
     def num_rows(self) -> int:

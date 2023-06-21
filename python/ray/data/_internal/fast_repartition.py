@@ -93,7 +93,6 @@ def fast_repartition(
             PandasBlockBuilder,
             PandasBlockSchema,
         )
-        from ray.data._internal.simple_block import SimpleBlockBuilder
 
         num_empties = num_blocks - len(new_blocks)
 
@@ -102,8 +101,6 @@ def fast_repartition(
                 "Dataset is empty or cleared, can't determine the format of "
                 "the dataset."
             )
-        elif isinstance(schema, type):
-            builder = SimpleBlockBuilder()
         elif isinstance(schema, pa.Schema):
             builder = ArrowBlockBuilder()
         elif isinstance(schema, PandasBlockSchema):
