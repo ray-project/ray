@@ -409,6 +409,11 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 #include "ray/common/id_def.h"
 
+#undef DEFINE_UNIQUE_ID
+
+// Restore the compiler alignment to default (8 bytes).
+#pragma pack(pop)
+
 struct SafeClusterID {
   absl::Mutex m_;
   ClusterID id GUARDED_BY(m_);
@@ -425,11 +430,6 @@ struct SafeClusterID {
     return old;
   }
 };
-
-#undef DEFINE_UNIQUE_ID
-
-// Restore the compiler alignment to default (8 bytes).
-#pragma pack(pop)
 
 template <typename T>
 BaseID<T>::BaseID() {
