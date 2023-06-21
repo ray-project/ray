@@ -7,7 +7,6 @@ from concurrent.futures import Future
 from queue import Queue
 
 import ray._private.services
-import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
 import ray.experimental.internal_kv as internal_kv
