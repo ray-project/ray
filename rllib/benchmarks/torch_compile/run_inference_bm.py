@@ -108,7 +108,6 @@ def main(pargs):
     eager_module = spec.build().to(device)
     compiled_module = spec.build().to(device)
     compile_config = TorchCompileConfig(
-        compile_forward_exploration=True,
         torch_dynamo_backend=pargs.backend,
         torch_dynamo_mode=pargs.mode,
     )
