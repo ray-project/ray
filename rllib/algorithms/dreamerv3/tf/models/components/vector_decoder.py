@@ -6,10 +6,11 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class VectorDecoder(tf.keras.Model):
@@ -22,13 +23,13 @@ class VectorDecoder(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         observation_space: gym.Space,
     ):
         """Initializes a VectorDecoder instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Determines the exact size of the underlying MLP.
             observation_space: The observation space to decode back into. This must
                 be a Box of shape (d,), where d >= 1.
@@ -41,7 +42,7 @@ class VectorDecoder(tf.keras.Model):
         )
 
         self.mlp = MLP(
-            model_dimension=model_dimension,
+            model_size=model_size,
             output_layer_size=observation_space.shape[0],
         )
 
@@ -62,13 +63,5 @@ class VectorDecoder(tf.keras.Model):
         # Send h-cat-z through MLP to get mean values of diag gaussian.
         loc = self.mlp(out)
 
-        # Create the Gaussian diag distribution.
-        distribution = tfp.distributions.MultivariateNormalDiag(
-            loc=loc,
-            # Scale == 1.0.
-            scale_diag=tf.ones_like(loc),
-        )
-        pred_obs = distribution.sample()
-
-        # Always return both predicted observations (sample0 and distribution.
-        return pred_obs, distribution
+        # Return only the predicted observations (mean, no sample).
+        return loc

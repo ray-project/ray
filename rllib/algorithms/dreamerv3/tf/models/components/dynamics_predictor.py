@@ -5,12 +5,13 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import tensorflow as tf
-
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.tf.models.components.representation_layer import (
     RepresentationLayer,
 )
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class DynamicsPredictor(tf.keras.Model):
@@ -26,17 +27,17 @@ class DynamicsPredictor(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         num_categoricals: Optional[int] = None,
         num_classes_per_categorical: Optional[int] = None,
     ):
         """Initializes a DynamicsPredictor instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different parameters.
             num_categoricals: Overrides the number of categoricals used in the z-states.
-                In [1], 32 is used for any model dimension.
+                In [1], 32 is used for any model size.
             num_classes_per_categorical: Overrides the number of classes within each
                 categorical used for the z-states. In [1], 32 is used for any model
                 dimension.
@@ -47,12 +48,12 @@ class DynamicsPredictor(tf.keras.Model):
             # TODO: In Danijar's code, the Dynamics Net only has a single layer, no
             #  matter the model size.
             num_dense_layers=1,
-            model_dimension=model_dimension,
+            model_size=model_size,
             output_layer_size=None,
         )
         # The (prior) z-state generating layer.
         self.representation_layer = RepresentationLayer(
-            model_dimension=model_dimension,
+            model_size=model_size,
             num_categoricals=num_categoricals,
             num_classes_per_categorical=num_classes_per_categorical,
         )

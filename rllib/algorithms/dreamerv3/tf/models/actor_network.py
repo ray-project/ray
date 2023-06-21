@@ -8,10 +8,12 @@ from typing import Optional
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete
 import numpy as np
-import tensorflow as tf
-import tensorflow_probability as tfp
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+
+_, tf, _ = try_import_tf()
+tfp = try_import_tfp()
 
 
 class ActorNetwork(tf.keras.Model):
@@ -28,19 +30,19 @@ class ActorNetwork(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         action_space: gym.Space,
     ):
         """Initializes an ActorNetwork instance.
 
         Args:
-             model_dimension: The "Model Size" used according to [1] Appendinx B.
+             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
              action_space: The action space the our environment used.
         """
         super().__init__(name="actor")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.action_space = action_space
 
         # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
@@ -55,20 +57,23 @@ class ActorNetwork(tf.keras.Model):
         # For discrete actions, use a single MLP that computes logits.
         if isinstance(self.action_space, Discrete):
             self.mlp = MLP(
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 output_layer_size=self.action_space.n,
                 name="actor_mlp",
             )
         # For cont. actions, use separate MLPs for Gaussian mean and stddev.
+        # TODO (sven): In the author's original code repo, this is NOT the case,
+        #  inputs are pushed through a shared MLP, then only the two output linear
+        #  layers are separate for std- and mean logits.
         elif isinstance(action_space, Box):
             output_layer_size = np.prod(action_space.shape)
             self.mlp = MLP(
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 output_layer_size=output_layer_size,
                 name="actor_mlp_mean",
             )
             self.std_mlp = MLP(
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 output_layer_size=output_layer_size,
                 name="actor_mlp_std",
             )
@@ -76,15 +81,15 @@ class ActorNetwork(tf.keras.Model):
             raise ValueError(f"Invalid action space: {action_space}")
 
     @tf.function
-    def call(self, h, z, return_distribution=False):
+    def call(self, h, z, return_distr_params=False):
         """Performs a forward pass through this policy network.
 
         Args:
             h: The deterministic hidden state of the sequence model. [B, dim(h)].
             z: The stochastic discrete representations of the original
                 observation input. [B, num_categoricals, num_classes].
-            return_distribution: Whether to return (as a second tuple item) the action
-                distribution object created by the policy.
+            return_distr_params: Whether to return (as a second tuple item) the action
+                distribution parameter tensor created by the policy.
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
@@ -109,8 +114,10 @@ class ActorNetwork(tf.keras.Model):
             # Danijar's code does: distr = [Distr class](logits=tf.log(probs)).
             # Not sure why we don't directly use the already available probs instead.
             action_logits = tf.math.log(action_probs)
-            # Create the distribution object using the unimix'd logits.
-            distr = tfp.distributions.OneHotCategorical(logits=action_logits)
+
+            # Distribution parameters are the log(probs) directly.
+            distr_params = action_logits
+            distr = self.get_action_dist_object(distr_params)
 
             action = tf.cast(tf.stop_gradient(distr.sample()), tf.float32) + (
                 action_probs - tf.stop_gradient(action_probs)
@@ -122,15 +129,48 @@ class ActorNetwork(tf.keras.Model):
             # minstd, maxstd taken from [1] from configs.yaml
             minstd = 0.1
             maxstd = 1.0
+
+            # Distribution parameters are the squashed std_logits and the tanh'd
+            # mean logits.
             # squash std_logits from (-inf, inf) to (minstd, maxstd)
             std_logits = (maxstd - minstd) * tf.sigmoid(std_logits + 2.0) + minstd
+            mean_logits = tf.tanh(action_logits)
+
+            distr_params = tf.concat([mean_logits, std_logits], axis=-1)
+            distr = self.get_action_dist_object(distr_params)
+
+            action = distr.sample()
+
+        if return_distr_params:
+            return action, distr_params
+        return action
+
+    def get_action_dist_object(self, action_dist_params_T_B):
+        """Helper method to create an action distribution object from (T, B, ..) params.
+
+        Args:
+            action_dist_params_T_B: The time-major action distribution parameters.
+                This could be simply the logits (discrete) or a to-be-split-in-2
+                tensor for mean and stddev (continuous).
+
+        Returns:
+            The tfp action distribution object, from which one can sample, compute
+            log probs, entropy, etc..
+        """
+        if isinstance(self.action_space, gym.spaces.Discrete):
+            # Create the distribution object using the unimix'd logits.
+            distr = tfp.distributions.OneHotCategorical(logits=action_dist_params_T_B)
+
+        elif isinstance(self.action_space, gym.spaces.Box):
             # Compute Normal distribution from action_logits and std_logits
-            distr = tfp.distributions.Normal(tf.tanh(action_logits), std_logits)
+            loc, scale = tf.split(action_dist_params_T_B, 2, axis=-1)
+            distr = tfp.distributions.Normal(loc=loc, scale=scale)
+
             # If action_space is a box with multiple dims, make individual dims
             # independent.
             distr = tfp.distributions.Independent(distr, len(self.action_space.shape))
-            action = distr.sample()
 
-        if return_distribution:
-            return action, distr
-        return action
+        else:
+            raise ValueError(f"Action space {self.action_space} not supported!")
+
+        return distr
