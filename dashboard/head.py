@@ -144,7 +144,9 @@ class DashboardHead:
             self.server, self.grpc_port = None, None
         else:
             grpc_ip = "127.0.0.1" if self.ip == "127.0.0.1" else "0.0.0.0"
-            self.server, self.grpc_port = initialize_grpc_port_and_server(grpc_ip, grpc_port)
+            self.server, self.grpc_port = initialize_grpc_port_and_server(
+                grpc_ip, grpc_port
+            )
             logger.info("Dashboard head grpc address: %s:%s", grpc_ip, self.grpc_port)
         # If the dashboard is started as non-minimal version, http server should
         # be configured to expose APIs.
@@ -283,7 +285,9 @@ class DashboardHead:
             self.metrics = None
         else:
             from ray._private.gcs_utils import GcsAioClient
-            self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+            self.gcs_aio_client = GcsAioClient(
+                address=gcs_address, nums_reconnect_retry=0
+            )
             self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
         try:
