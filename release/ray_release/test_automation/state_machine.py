@@ -208,6 +208,9 @@ class TestStateMachine:
         )
 
     def _create_github_issue(self) -> None:
+        labels = ["P0", "bug", "release-test", self.test.get_oncall()]
+        if not self.test.is_stable():
+            labels.append("unstable-release-test")
         issue_number = self.ray_repo.create_issue(
             title=f"Release test {self.test.get_name()} failed",
             body=(
@@ -215,7 +218,7 @@ class TestStateMachine:
                 f"See {self.test_results[0].url} for more details.\n\n"
                 f"Managed by OSS Test Policy"
             ),
-            labels=["P0", "bug", "release-test", self.test.get_oncall()],
+            labels=labels,
             assignee="can-anyscale",
         ).number
         self.test[Test.KEY_GITHUB_ISSUE_NUMBER] = issue_number
