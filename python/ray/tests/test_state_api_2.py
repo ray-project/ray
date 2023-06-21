@@ -361,7 +361,7 @@ def test_ray_timeline(shutdown_only):
 
     @ray.remote
     def f():
-        import time
+        pass
 
     ray.get(f.remote())
 
