@@ -326,7 +326,10 @@ class Tee(object):
         self._handling_warning = False
 
     def _warn(self, op, s, args, kwargs):
-        # If we are already handling a warning, prevent infinite recursion.
+        # If we are already handling a warning, this is because
+        # `logger.warning` below triggered the same object again
+        # (e.g. because stderr is redirected to this object).
+        # In that case, exit early to avoid recursion.
         if self._handling_warning:
             return
 
