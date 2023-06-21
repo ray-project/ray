@@ -1234,10 +1234,8 @@ class DeploymentState:
         head node should have active proxies.
         """
         return set(
-            [
-                replica.actor_node_id
-                for replica in self._replicas.get([ReplicaState.RUNNING])
-            ]
+            replica.actor_node_id
+            for replica in self._replicas.get([ReplicaState.RUNNING])
         )
 
     def list_replica_details(self) -> List[ReplicaDetails]:
