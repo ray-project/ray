@@ -64,14 +64,6 @@ py_test(
 )
 
 py_test(
-    name = "test_automl_searcher",
-    size = "small",
-    srcs = ["tests/test_automl_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_callbacks",
     size = "small",
     srcs = ["tests/test_callbacks.py"],
