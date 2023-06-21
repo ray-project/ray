@@ -14,8 +14,8 @@ aiorwlock==1.3.0
 aiosignal==1.3.1
 aiosqlite==0.19.0
 ale-py==0.8.1
-alembic==1.11.0
-anyio==3.6.2
+alembic==1.11.1
+anyio==3.7.0
 applicationinsights==0.11.10
 argcomplete==1.12.3
 argon2-cffi==21.3.0
@@ -34,7 +34,7 @@ ax-platform==0.3.1
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.26.4
+azure-core==1.27.0
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.4.0
@@ -57,7 +57,7 @@ botorch==0.8.3
 brotlipy==0.7.0
 build==0.10.0
 cached-property==1.5.2
-cachetools==5.3.0
+cachetools==5.3.1
 catboost==1.2
 certifi @ file:///croot/certifi_1683875369620/work/certifi
 cffi @ file:///tmp/abs_98z5h56wf8/croots/recipe/cffi_1659598650955/work
@@ -76,7 +76,7 @@ colorlog==6.7.0
 comet-ml==3.31.9
 comm==0.1.3
 commonmark==0.9.1
-conda==23.3.1
+conda @ file:///croot/conda_1685025188142/work
 conda-content-trust @ file:///tmp/abs_5952f1c8-355c-4855-ad2e-538535021ba5h26t22e5/croots/recipe/conda-content-trust_1658126371814/work
 conda-package-handling @ file:///croot/conda-package-handling_1666940373510/work
 configobj==5.0.8
@@ -92,11 +92,11 @@ debugpy==1.6.7
 decorator==5.1.1
 deepspeed==0.8.3
 defusedxml==0.7.1
-Deprecated==1.2.13
+Deprecated==1.2.14
 dill==0.3.6
 distlib==0.3.6
 dm-tree==0.1.8
-docker==6.1.2
+docker==6.1.3
 docker-pycreds==0.4.0
 dopamine-rl==4.0.5
 dragonfly-opt==0.1.6
@@ -107,16 +107,16 @@ everett==3.2.0
 exceptiongroup==1.1.1
 executing==1.2.0
 fairscale==0.4.6
-fastapi==0.95.1
+fastapi==0.97.0
 fasteners==0.18
-fastjsonschema==2.16.3
-filelock==3.12.0
+fastjsonschema==2.17.1
+filelock==3.12.2
 FLAML==1.1.1
 Flask==2.3.2
 flatbuffers==2.0.7
 flax==0.6.10
 flit_core @ file:///opt/conda/conda-bld/flit-core_1644941570762/work/source/flit_core
-fonttools==4.39.4
+fonttools==4.40.0
 fqdn==1.5.1
 freezegun==1.1.0
 frozenlist==1.3.3
@@ -130,12 +130,12 @@ glfw==2.5.9
 gluoncv==0.10.5.post0
 google-api-core==2.11.0
 google-api-python-client==1.7.8
-google-auth==2.18.0
+google-auth==2.19.1
 google-auth-httplib2==0.1.0
 google-auth-oauthlib==0.4.6
 google-oauth==1.0.1
 google-pasta==0.2.0
-googleapis-common-protos==1.59.0
+googleapis-common-protos==1.59.1
 gpustat==1.1
 GPy==1.10.0
 gpytorch==1.9.1
@@ -154,24 +154,24 @@ higher==0.2.1
 hjson==3.1.0
 hpbandster==0.7.4
 httplib2==0.22.0
-huggingface-hub==0.14.1
+huggingface-hub==0.15.1
 humanfriendly==10.0
 hyperopt==0.2.5
 idna @ file:///croot/idna_1666125576474/work
-imageio==2.28.1
+imageio==2.31.1
 imageio-ffmpeg==0.4.5
 importlib-metadata==6.0.1
 importlib-resources==5.12.0
 iniconfig==2.0.0
-ipykernel==6.23.1
-ipython==8.13.2
+ipykernel==6.23.2
+ipython==8.14.0
 ipython-genutils==0.2.0
 ipywidgets==8.0.6
 isodate==0.6.1
 isoduration==20.11.0
 itsdangerous==2.1.2
-jax==0.4.10
-jaxlib==0.4.10
+jax==0.4.12
+jaxlib==0.4.12
 jedi==0.18.2
 Jinja2==3.1.2
 jmespath==1.0.1
@@ -184,7 +184,7 @@ jupyter-events==0.6.3
 jupyter-ydoc==0.2.4
 jupyter_client==8.2.0
 jupyter_core==5.3.0
-jupyter_server==2.5.0
+jupyter_server==2.6.0
 jupyter_server_fileid==0.9.0
 jupyter_server_terminals==0.4.4
 jupyter_server_ydoc==0.6.1
@@ -203,18 +203,18 @@ lightgbm==3.3.5
 lightgbm-ray==0.1.8
 lightning-bolts==0.4.0
 linear-operator==0.3.0
-llvmlite==0.40.0
+llvmlite==0.40.1rc1
 lz4==4.3.2
 Mako==1.2.4
 Markdown==3.4.3
-markdown-it-py==2.2.0
-MarkupSafe==2.1.2
+markdown-it-py==3.0.0
+MarkupSafe==2.1.3
 matplotlib==3.7.1
 matplotlib-inline==0.1.6
 mdurl==0.1.2
 minigrid==2.1.1
 mistune==2.0.5
-ml-dtypes==0.1.0
+ml-dtypes==0.2.0
 mlagents-envs==0.28.0
 mlflow==2.2.2
 modin==0.18.1
@@ -234,9 +234,9 @@ multipledispatch==0.6.0
 multiprocess==0.70.14
 mxnet==1.8.0.post0
 nbclassic==1.0.0
-nbclient==0.7.4
+nbclient==0.8.0
 nbconvert==7.4.0
-nbformat==5.8.0
+nbformat==5.9.0
 nest-asyncio==1.5.6
 netifaces==0.11.0
 networkx==3.1
@@ -260,15 +260,17 @@ opencensus-context==0.1.3
 opencv-python==4.7.0.72
 opentelemetry-api==1.1.0
 opentelemetry-exporter-otlp==1.1.0
+opentelemetry-exporter-otlp-proto-common==1.18.0
 opentelemetry-exporter-otlp-proto-grpc==1.1.0
-opentelemetry-exporter-otlp-proto-http==1.17.0
+opentelemetry-exporter-otlp-proto-http==1.18.0
 opentelemetry-proto==1.1.0
 opentelemetry-sdk==1.1.0
 opentelemetry-semantic-conventions==0.20b0
 opt-einsum==3.3.0
 optax==0.1.5
 optuna==2.10.0
-orbax-checkpoint==0.2.3
+orbax-checkpoint==0.2.5
+overrides==7.3.1
 packaging==23.1
 pandas==1.5.3
 pandocfilters==1.5.0
@@ -284,11 +286,11 @@ pickleshare==0.7.5
 Pillow==9.5.0
 pip-tools==6.13.0
 pkginfo==1.9.6
-platformdirs==3.5.1
-plotly==5.14.1
+platformdirs==3.5.3
+plotly==5.15.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.7.0
-prettytable==3.7.0
+prettytable==3.8.0
 prometheus-client==0.13.1
 promise==2.3
 prompt-toolkit==3.0.38
@@ -305,7 +307,7 @@ pyasn1==0.5.0
 pyasn1-modules==0.3.0
 pycosat @ file:///croot/pycosat_1666805502580/work
 pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
-pydantic==1.10.7
+pydantic==1.10.9
 pyDeprecate==0.3.2
 pygame==2.1.2
 pyglet==1.5.15
@@ -314,7 +316,7 @@ PyJWT==2.7.0
 pymoo==0.5.0
 pymunk==6.2.1
 PyNaCl==1.5.0
-PyOpenGL==3.1.6
+PyOpenGL==3.1.7
 pyOpenSSL==22.1.0
 pyparsing==3.0.9
 pyperclip==1.8.2
@@ -325,7 +327,7 @@ pyro-ppl==1.8.4
 Pyro4==4.82
 pyrsistent==0.19.3
 PySocks @ file:///tmp/build/80754af9/pysocks_1605305812635/work
-pytest==7.3.1
+pytest==7.3.2
 pytest-remotedata==0.3.2
 python-dateutil==2.8.2
 python-json-logger==2.0.7
@@ -334,14 +336,15 @@ pytorch-ranger==0.1.1
 pytz==2022.7.1
 PyWavelets==1.4.1
 PyYAML==6.0
-pyzmq==25.0.2
+pyzmq==25.1.0
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
+ray @ file:///home/ray/ray-2.5.1-cp39-cp39-manylinux2014_x86_64.whl#sha256=ca573d8c5faf8a31c7d1604b155e70f3e2e66608ba11fa3ea16f7397a6f1ec70
+ray-cpp==2.5.1
 ray-lightning==0.3.0
 recsim==0.2.4
 redis==3.5.3
-regex==2023.5.5
-requests==2.30.0
+regex==2023.6.3
+requests==2.31.0
 requests-oauthlib==1.3.1
 requests-toolbelt==1.0.0
 responses==0.18.0
@@ -354,15 +357,15 @@ ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
 s3fs==2023.1.0
 s3transfer==0.6.1
-scikit-image==0.20.0
+scikit-image==0.21.0
 scikit-learn==1.2.2
 scikit-optimize==0.9.0
-scipy==1.9.1
-segment-analytics-python==2.2.2
+scipy==1.10.1
+segment-analytics-python==2.2.3
 semantic-version==2.10.0
 Send2Trash==1.8.2
 sentencepiece==0.1.96
-sentry-sdk==1.23.0
+sentry-sdk==1.25.1
 serpent==1.41
 setproctitle==1.3.2
 shap==0.41.0
@@ -377,7 +380,7 @@ soupsieve==2.4.1
 SQLAlchemy==1.4.48
 sqlparse==0.4.4
 stack-data==0.6.2
-starlette==0.26.1
+starlette==0.27.0
 statsmodels==0.14.0
 stevedore==5.1.0
 SuperSuit==3.7.0
@@ -393,7 +396,7 @@ tensorflow==2.11.0
 tensorflow-estimator==2.11.0
 tensorflow-io-gcs-filesystem==0.32.0
 tensorflow-probability==0.19.0
-tensorstore==0.1.36
+tensorstore==0.1.37
 termcolor==2.3.0
 terminado==0.17.1
 tf-slim==1.1.0
@@ -422,19 +425,19 @@ transformers==4.19.1
 tune-sklearn==0.4.4
 typeguard==2.13.3
 typer==0.9.0
-typing_extensions==4.5.0
+typing_extensions==4.6.3
 tzdata==2023.3
 uri-template==1.2.0
 uritemplate==3.0.1
-urllib3 @ file:///croot/urllib3_1680254681959/work
+urllib3 @ file:///croot/urllib3_1686163155763/work
 uvicorn==0.22.0
 virtualenv==20.21.0
 wandb==0.13.4
 wcwidth==0.2.6
 webcolors==1.13
 webencodings==0.5.1
-websocket-client==1.5.1
-Werkzeug==2.3.4
+websocket-client==1.5.3
+Werkzeug==2.3.6
 widgetsnbextension==4.0.7
 wrapt==1.15.0
 wurlitzer==3.0.3
