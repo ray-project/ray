@@ -226,9 +226,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
         if self._additional_output_splits > 1:
             block = BlockAccessor.for_block(block)
             offset = 0
-            split_sizes = np.array_split(
-                range(block.num_rows()), self._additional_output_splits
-            )
+            split_sizes = _splitrange(block.num_rows(), self._additional_output_splits)
             for split in split_sizes:
                 size = len(split)
                 yield block.slice(offset, offset + size, copy=True)
@@ -496,3 +494,21 @@ class _RandomIntRowDatasourceReader(Reader):
             i += block_size
 
         return read_tasks
+
+
+def _splitrange(n, k):
+    """Calculates array lens of np.array_split().
+
+    This is the equivalent of
+    `[len(x) for x in np.array_split(range(n), k)]`.
+    """
+    base = n // k
+    output = [base] * k
+    rem = n - sum(output)
+    for i in range(len(output)):
+        if rem > 0:
+            output[i] += 1
+            rem -= 1
+    assert rem == 0, (rem, output, n, k)
+    assert sum(output) == n, (output, n, k)
+    return output

@@ -1,8 +1,23 @@
+import numpy as np
 import pytest
 
 import ray
+from ray.data.datasource.datasource import _splitrange
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_splitrange():
+    def f(n, k):
+        assert _splitrange(n, k) == [len(a) for a in np.array_split(range(n), k)]
+
+    f(0, 1)
+    f(5, 1)
+    f(50, 1)
+    f(50, 2)
+    f(50, 3)
+    f(50, 4)
+    f(50, 5)
 
 
 def test_small_file_split(ray_start_10_cpus_shared):
