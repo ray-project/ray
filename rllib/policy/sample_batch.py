@@ -1122,15 +1122,23 @@ class SampleBatch(dict):
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]
                     else:
-                        return (
-                            value[start_unpadded:stop_unpadded]
-                            if value is not None
-                            else None
-                        )
+                        if isinstance(value, np.ndarray):
+                            return value[start_unpadded:stop_unpadded]
+                        else:
+                            # Since infos should be stored as lists and not arrays,
+                            # we return the values here and slice them separately
+                            # TODO(Artur): Clean this hack up.
+                            return value
                 else:
                     return value[start_seq_len:stop_seq_len]
 
             data = tree.map_structure_with_path(map_, self)
+            # TODO(Artur): Clean this hack up.
+            if isinstance(data[SampleBatch.INFOS], list):
+                data[SampleBatch.INFOS] = data[SampleBatch.INFOS][
+                    start_unpadded:stop_unpadded
+                ]
+
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
