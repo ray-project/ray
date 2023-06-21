@@ -11,6 +11,7 @@ import ray
 from ray.air import session
 from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
 from ray.air.config import ScalingConfig
+from ray.train import DataConfig
 from ray.data.preprocessors import BatchMapper
 from ray import tune
 from ray.tune import Tuner
@@ -61,14 +62,13 @@ def build_model():
 def print_dataset_stats(ds):
     print("")
     print("====Dataset stats====")
-    print(f"num_rows: {ds.count()}")
-    print(f"num_partitions: {ds.num_blocks()}")
-    print(f"size: {ds.size_bytes() // 1e9}GB")
     print(ds.stats())
     print("")
 
 
 def train_loop_for_worker(config):
+    epoch_times = []
+    throughputs = []
     if config["train_sleep_time_ms"] >= 0:
         model = None
     else:
@@ -104,12 +104,14 @@ def train_loop_for_worker(config):
     def ray_dataset_to_tf_dataset(
         dataset, batch_size, num_steps_per_epoch, online_processing
     ):
-        if online_processing:
-            # Apply online preprocessing on the decoded images, cropping and
-            # flipping.
-            dataset = dataset.map_batches(
-                crop_and_flip_image_batch, batch_format="pandas"
-            )
+        # if online_processing:
+        #     # Apply online preprocessing on the decoded images, cropping and
+        #     # flipping.
+        #     dataset = dataset.map_batches(
+        #         crop_and_flip_image_batch, batch_format="pandas"
+        #     )
+
+        return dataset.to_tf(feature_columns="image", label_columns="label", batch_size=batch_size)
 
         def to_tensor_iterator():
             num_steps = 0
@@ -195,6 +197,10 @@ def train_loop_for_worker(config):
                     print("Step", i)
 
         epoch_time_s = time.perf_counter() - epoch_start_time_s
+        epoch_times.append(epoch_time_s)
+        throughputs.append(config["num_images_per_epoch"] / epoch_time_s)
+        # Drop the first epoch to remove warmup time.
+        total_tput = sum(epoch_times[1:]) / sum(throughputs[1:])
         logger.info(
             "Epoch time: {epoch_time_s}s, images/s: {throughput}".format(
                 epoch_time_s=epoch_time_s,
@@ -204,12 +210,18 @@ def train_loop_for_worker(config):
 
         # You can also use ray.air.integrations.keras.Callback
         # for reporting and checkpointing instead of reporting manually.
+
         session.report(
             {
-                # f"epoch_{epoch}_time_s": epoch_time_s,
+                f"all_epoch_times_s": epoch_times,
+                f"all_throughputs_imgs_s": throughputs,
+                "tput_images_per_s": total_tput,
             }
         )
 
+        if config["data_loader"] == RAY_DATA:
+            print_dataset_stats(dataset_shard)
+            print("epoch time", epoch, epoch_time_s)
 
 def crop_and_flip_image_batch(image_batch):
     image_batch["image"] = [
@@ -253,6 +265,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
 
     def process_images():
         for image_buffer in tf_record_batch["image/encoded"]:
+            # Each image output is ~600KB.
             yield preprocess_image(
                 image_buffer=image_buffer,
                 output_height=DEFAULT_IMAGE_SIZE,
@@ -294,11 +307,17 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
     return filenames
 
 
-def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
+def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file, batch_size):
     filenames = get_tfrecords_filenames(
         data_root, num_images_per_epoch, num_images_per_input_file
     )
     ds = ray.data.read_tfrecords(filenames)
+    ds = ds.map_batches(decode_crop_and_flip_tf_record_batch,
+                        batch_size=batch_size,
+                        batch_format="pandas")
+    # ds = ds.map_batches(crop_and_flip_image_batch,
+    #                     batch_size=batch_size,
+    #                     batch_format="pandas")
     # TODO(swang): If we are reading the actual dataset and we only want to read
     # a fraction of images, then we should actually call .limit(), but right now
     # this materializes all data to the object store. For now, we can just skip
@@ -325,10 +344,13 @@ FIELDS = [
     "min_available_mb",
     "time_total_s",
     "tput_images_per_s",
+    "all_epoch_times_s",
+    "all_throughputs_imgs_s",
 ]
 
 
 def write_metrics(data_loader, command_args, metrics, output_file):
+    print(metrics)
     row = {key: val for key, val in metrics.items() if key in FIELDS}
     row["data_loader"] = data_loader
     for field in FIELDS:
@@ -511,8 +533,11 @@ if __name__ == "__main__":
         "shuffle_buffer_size": None
         if args.shuffle_buffer_size == 0
         else args.shuffle_buffer_size,
-        "online_processing": args.online_processing,
+        "online_processing": True,
     }
+
+    options = DataConfig.default_ingest_options()
+
     if args.synthetic_data:
         logger.info("Using synthetic data loader...")
         preprocessor = None
@@ -529,21 +554,22 @@ if __name__ == "__main__":
             ctx = ray.data.context.DataContext.get_current()
             ctx.block_splitting_enabled = True
 
+            options.resource_limits.object_store_memory = 10e9
+
             datasets["train"] = build_dataset(
                 args.data_root,
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
+                args.batch_size,
             )
-            # Set a lower batch size for images to prevent OOM.
-            batch_size = 32
             if args.online_processing:
                 preprocessor = BatchMapper(
-                    decode_tf_record_batch, batch_size=batch_size, batch_format="pandas"
+                    decode_tf_record_batch, batch_size=args.batch_size, batch_format="pandas"
                 )
             else:
                 preprocessor = BatchMapper(
                     decode_crop_and_flip_tf_record_batch,
-                    batch_size=batch_size,
+                    batch_size=args.batch_size,
                     batch_format="pandas",
                 )
             train_loop_config["data_loader"] = RAY_DATA
@@ -554,9 +580,16 @@ if __name__ == "__main__":
             num_workers=1,
             use_gpu=args.use_gpu,
             trainer_resources={"CPU": args.trainer_resources_cpu},
+            
         ),
         datasets=datasets,
-        preprocessor=preprocessor,
+        dataset_config=ray.train.DataConfig(
+            execution_options=options,
+        ),
+        # dataset_config={
+        #     "train": DatasetConfig(max_object_store_memory_fraction=0.2),
+        # },
+        # preprocessor=preprocessor,
         train_loop_config=train_loop_config,
     )
 
@@ -624,3 +657,6 @@ if __name__ == "__main__":
             # returned by AIR, so it's possible that it raised an error other
             # than OutOfDiskError here.
             pass
+
+
+    ray.timeline("timeline.json")

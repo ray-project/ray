@@ -325,10 +325,10 @@ def build_tf_dataset(
                 map_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE
             )
     dataset = dataset.take(num_images_per_epoch)
-    if dataset_cache:
-        # Improve training / eval performance when data is in remote storage and
-        # can fit into worker memory.
-        dataset = dataset.materialize()
+    # if dataset_cache:
+    #     # Improve training / eval performance when data is in remote storage and
+    #     # can fit into worker memory.
+    #     dataset = dataset.materialize()
 
     return process_record_dataset(
         dataset=dataset,
