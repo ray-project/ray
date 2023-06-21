@@ -404,8 +404,7 @@ class Dataset:
         This applies the ``fn`` in parallel with map tasks, with each task handling
         a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
 
-        To learn more about writing functions for :meth:`~Dataset.map_batches`, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+        To learn more, see the :ref:`Transforming batches user guide <transforming_batches>`.
 
         .. tip::
             If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
@@ -442,7 +441,7 @@ class Dataset:
 
             Here ``fn`` returns the same batch type as the input, but your ``fn`` can
             also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`Transforming Data <transforming_data>`.
+            :ref:`Transforming batches <transforming_batches>`.
 
             >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -964,6 +963,11 @@ class Dataset:
     ) -> "Dataset":
         """Randomly shuffle the elements of this dataset.
 
+        .. tip::
+
+            ``random_shuffle`` can be slow. For better performance, try
+            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
@@ -986,7 +990,7 @@ class Dataset:
 
         Returns:
             The shuffled dataset.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -3660,6 +3664,7 @@ class Dataset:
             num_workers = 4 * len(ray.nodes())
         return RandomAccessDataset(self, key, num_workers=num_workers)
 
+    @Deprecated
     @ConsumptionAPI
     def repeat(self, times: Optional[int] = None) -> "DatasetPipeline":
         """Convert this into a DatasetPipeline by looping over this dataset.
@@ -3748,6 +3753,7 @@ class Dataset:
             )
         return pipe
 
+    @Deprecated
     def window(
         self,
         *,
