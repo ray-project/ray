@@ -294,14 +294,6 @@ def _prepare_remote_environment(
         except CommandTimeout as e:
             raise PrepareCommandTimeout(e)
 
-    for pre_run_cmd in test.get_byod_pre_run_cmds():
-        try:
-            command_runner.run_prepare_command(pre_run_cmd, timeout=300)
-        except CommandError as e:
-            raise PrepareCommandError(e)
-        except CommandTimeout as e:
-            raise PrepareCommandTimeout(e)
-
 
 def _running_test_script(
     test: Test,

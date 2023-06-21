@@ -6363,11 +6363,10 @@
   team: core
   cluster:
     byod:
+      type: gpu
       runtime_env:
         - RAY_INTERNAL_MEM_PROFILE_COMPONENTS=dashboard_agent
-      pre_run_cmds:
-        - echo "deb [signed-by=/usr/share/keyrings/cloud.google.gpg] https://packages.cloud.google.com/apt cloud-sdk main" | sudo tee -a /etc/apt/sources.list.d/google-cloud-sdk.list
-        - curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | sudo apt-key --keyring /usr/share/keyrings/cloud.google.gpg add -
+      post_build_script: byod_agent_stress_test.sh
     cluster_env: agent_stress_app_config.yaml
     cluster_compute: agent_stress_compute.yaml
 
