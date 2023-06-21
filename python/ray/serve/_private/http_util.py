@@ -5,8 +5,9 @@ import inspect
 import json
 import logging
 import pickle
-from typing import List, Optional, Type
+from typing import Any, List, Optional, Type
 
+import starlette
 from fastapi.encoders import jsonable_encoder
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
@@ -434,3 +435,32 @@ class ASGIAppReplicaWrapper:
 
         with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
             await self._serve_asgi_lifespan.shutdown()
+
+
+def validate_http_proxy_callback_return(
+    middlewares: Any,
+) -> [starlette.middleware.Middleware]:
+    """Validate the return value of HTTP proxy callback.
+
+    Middlewares should be a list of Starlette middlewares. If it is None, we
+    will treat it as an empty list. If it is not a list, we will raise an
+    error. If it is a list, we will check if all the items in the list are
+    Starlette middlewares.
+    """
+
+    if middlewares is None:
+        middlewares = []
+    if not isinstance(middlewares, list):
+        raise ValueError(
+            "HTTP proxy callback must return a list of Starlette middlewares."
+        )
+    else:
+        # All middlewares must be Starlette middlewares.
+        # https://www.starlette.io/middleware/#using-pure-asgi-middleware
+        for middleware in middlewares:
+            if not issubclass(type(middleware), starlette.middleware.Middleware):
+                raise ValueError(
+                    "HTTP proxy callback must return a list of Starlette middlewares, "
+                    f"instead got {type(middleware)} type item in the list."
+                )
+    return middlewares

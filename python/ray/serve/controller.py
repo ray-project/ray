@@ -36,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
+    RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.deploy_utils import (
     deploy_args_to_deployment_info,
@@ -62,6 +63,7 @@ from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
     DEFAULT,
     override_runtime_envs_except_env_vars,
+    call_function_from_import_path,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -113,6 +115,12 @@ class ServeController:
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
+        if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
+            logger.info(
+                "Calling user-provided callback from import path "
+                f"{RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH}."
+            )
+            call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace

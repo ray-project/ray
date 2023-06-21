@@ -205,3 +205,12 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
     os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
 )
+
+# Serve HTTP proxy callback import path.
+RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
+)
+# Serve controller callback import path.
+RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
+)

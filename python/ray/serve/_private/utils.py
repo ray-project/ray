@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
+from ray._private.utils import import_attr
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import __main__
@@ -645,3 +646,29 @@ class MetricsPusher:
     def __del__(self):
         self.stop_event.set()
         self.pusher_thread.join()
+
+
+def call_function_from_import_path(import_path: str) -> Any:
+    """Call the function given import path.
+
+    Args:
+        import_path: The import path of the function to call.
+    Raises:
+        ValueError: If the import path is invalid.
+        TypeError: If the import path is not callable.
+        RuntimeError: if the function raise exeception during execution.
+    Returns:
+        The result of the function call.
+    """
+    try:
+        callback_func = import_attr(import_path)
+    except Exception as e:
+        raise ValueError(f"The import path {import_path} cannot be imported: {e}")
+
+    if not callable(callback_func):
+        raise TypeError(f"The import path {import_path} is not callable.")
+
+    try:
+        return callback_func()
+    except Exception as e:
+        raise RuntimeError(f"The function {import_path} raised an exception: {e}")
