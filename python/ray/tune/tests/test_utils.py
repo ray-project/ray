@@ -92,17 +92,17 @@ def test_retry_fn_timeout(tmpdir):
 
 
 def test_tee_recursion():
-    f = io.TextIOBase()
-    g = io.TextIOBase()
+    f = io.StringIO()
+    g = io.StringIO()
 
     tee = Tee(f, g)
 
     hdlr = logging.StreamHandler(tee)
     util_logger.addHandler(hdlr)
 
-    logging.info("BEFORE")
+    util_logger.info("BEFORE")
     f.close()
-    logging.info("AFTER")
+    util_logger.info("AFTER")
 
     util_logger.removeHandler(hdlr)
 
