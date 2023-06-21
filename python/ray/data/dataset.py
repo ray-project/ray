@@ -1707,7 +1707,7 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
             >>> ds.distinct().take_all()
-             [{'item': 1}, {'item': 2}, {'item': 3}]
+            [{'item': 1}, {'item': 2}, {'item': 3}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
