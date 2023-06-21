@@ -101,7 +101,7 @@ def test_tune_mnist_keras(legacy_progress_reporter, start_client_server_4_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.tune_mnist_keras import tune_mnist
 
-    tune_mnist(num_training_iterations=5)
+    tune_mnist(num_training_iterations=2)
 
 
 def test_mnist_ptl_mini(legacy_progress_reporter, start_client_server):

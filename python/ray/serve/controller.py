@@ -160,7 +160,7 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager
+            self.deployment_state_manager, self.endpoint_state, self.kv_store
         )
 
         # Keep track of single-app vs multi-app
@@ -376,6 +376,7 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
+            logger.info("Recovering config from checkpoint.")
             deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )
@@ -423,6 +424,7 @@ class ServeController:
     def shutdown(self):
         """Shuts down the serve instance completely."""
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
         if self.http_state:
@@ -473,30 +475,18 @@ class ServeController:
 
         return updating
 
-    def deploy_application(
-        self, name: str, deployment_args_list: List[Dict]
-    ) -> List[bool]:
+    def deploy_application(self, name: str, deployment_args_list: List[Dict]) -> None:
         """
-        Takes in a list of dictionaries that contain keyword arguments for the
-        controller's deploy() function. Calls deploy on all the argument
-        dictionaries in the list. Effectively executes an atomic deploy on a
-        group of deployments.
+        Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
 
         Args:
             name: Application name.
             deployment_args_list: List of deployment infomation, each item in the list
                 contains all the information for the single deployment.
-
-        Returns: list of deployment status to indicate whether each deployment is
-            deployed successfully or not.
         """
 
-        deployments_to_delete = self.application_state_manager.deploy_application(
-            name, deployment_args_list
-        )
-        self.delete_deployments(deployments_to_delete)
-        return [self.deploy(**args) for args in deployment_args_list]
+        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
 
     def deploy_apps(
         self,
@@ -754,7 +744,7 @@ class ServeController:
             is NOT_STARTED.
         """
 
-        app_status = self.application_state_manager.get_app_status(name)
+        app_status = self.application_state_manager.get_app_status_info(name)
         deployment_statuses = self.application_state_manager.get_deployments_statuses(
             name
         )
@@ -808,13 +798,8 @@ class ServeController:
 
         During deletion, the application status is DELETING
         """
-        deployments_to_delete = []
         for name in names:
-            deployments_to_delete.extend(
-                self.application_state_manager.get_deployments(name)
-            )
             self.application_state_manager.delete_application(name)
-        self.delete_deployments(deployments_to_delete)
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """Record multiplexed model ids for a replica of deployment
@@ -900,7 +885,7 @@ def deploy_serve_application(
             )
 
         # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix)
+        serve.run(app, name=name, route_prefix=route_prefix, _blocking=False)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
