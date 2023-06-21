@@ -92,12 +92,12 @@ class CustomTorchTokenizer(TorchModel, Encoder):
 
 class CustomTfTokenizer(TfModel, Encoder):
     def __init__(self, config) -> None:
-        TorchModel.__init__(self, config)
+        TfModel.__init__(self, config)
         Encoder.__init__(self, config)
 
         self.net = tf.keras.models.Sequential(
             [
-                tf.keras.layers.Input(input_shape=config.input_dims),
+                tf.keras.layers.Input(shape=config.input_dims),
                 tf.keras.layers.Dense(config.output_dims[0], activation="relu"),
             ]
         )

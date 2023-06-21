@@ -3403,6 +3403,52 @@ py_test(
 )
 
 py_test(
+    name = "examples/custom_rnn_model_repeat_after_me_tf",
+    main = "examples/custom_rnn_model.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_rnn_model.py"],
+    args = ["--as-test", "--run=PPO", "--framework=tf", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+# The below four tests replace the above four tests in the context of the RL Module API.
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_tf2",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=tf2", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_torch",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+)
+
+py_test(
     name = "examples/custom_tf_policy",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "small",
