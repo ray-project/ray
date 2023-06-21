@@ -14,7 +14,7 @@ from ray._raylet import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    PROXY_HEALTH_CHECK_TIMEOUT_S,
     SERVE_LOGGER_NAME,
     SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
@@ -181,14 +181,14 @@ class HTTPProxyState:
                     self.try_update_status(HTTPProxyStatus.UNHEALTHY)
             elif (
                 time.time() - self._last_health_check_time
-                > DEFAULT_HEALTH_CHECK_TIMEOUT_S
+                > PROXY_HEALTH_CHECK_TIMEOUT_S
             ):
                 # Health check hasn't returned and the timeout is up, consider it
                 # failed.
                 self._health_check_obj_ref = None
                 logger.warning(
                     "Didn't receive health check response for HTTP proxy "
-                    f"{self._node_id} after {DEFAULT_HEALTH_CHECK_TIMEOUT_S}s"
+                    f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
                 )
                 self.try_update_status(HTTPProxyStatus.UNHEALTHY)
             else:
