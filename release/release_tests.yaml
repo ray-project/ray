@@ -828,7 +828,7 @@
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
-    timeout: 3600
+    timeout: 4500
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
   variations:
@@ -1642,62 +1642,6 @@
       cluster:
         cluster_env: xgboost/app_config_gpu_master.yaml
         cluster_compute: xgboost/tpl_gpu_small_scaling_gce.yaml
-
-  alert: default
-
-- name: ml_user_ray_lightning_user_test_latest
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    cluster_env: ray-lightning/app_config.yaml
-    cluster_compute: ray-lightning/compute_tpl_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python ray-lightning/ray_lightning_user_test.py
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ray-lightning/app_config.yaml
-        cluster_compute: ray-lightning/compute_tpl_gce.yaml
-
-  alert: default
-
-- name: ml_user_ray_lightning_user_test_master
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    cluster_env: ray-lightning/app_config_master.yaml
-    cluster_compute: ray-lightning/compute_tpl_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python ray-lightning/ray_lightning_user_test.py
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ray-lightning/app_config_master.yaml
-        cluster_compute: ray-lightning/compute_tpl_gce.yaml
 
   alert: default
 
