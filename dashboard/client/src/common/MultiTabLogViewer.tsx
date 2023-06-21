@@ -98,6 +98,8 @@ export const MultiTabLogViewer = ({
           ) : (
             tabs.map((tab) => {
               const { title, ...data } = tab;
+              console.log("data: ", data);
+
               return (
                 <HideableBlock
                   key={title}
