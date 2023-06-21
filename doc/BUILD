@@ -281,15 +281,6 @@ py_test_run_all_subdirectory(
 )
 
 py_test(
-    name = "vllm_example",
-    size = "large",
-    include = ["source/serve/doc_code/vllm_example.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:serve", "gpu"],
-)
-
-py_test(
     name = "pytorch_resnet_finetune",
     size = "large",
     main = "test_myst_doc.py",
