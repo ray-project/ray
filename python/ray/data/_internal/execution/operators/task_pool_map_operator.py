@@ -27,6 +27,7 @@ class TaskPoolMapOperator(MapOperator):
         input_op: PhysicalOperator,
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        can_modify_num_rows: Optional[bool] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an TaskPoolMapOperator instance.
@@ -39,10 +40,17 @@ class TaskPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            can_modify_num_rows: Whether this operator can potentially modify
+                the number of rows, i.e. number of input rows != number of output rows.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
+            transform_fn,
+            input_op,
+            name,
+            min_rows_per_bundle,
+            can_modify_num_rows,
+            ray_remote_args,
         )
         self._tasks: Dict[ObjectRef[ObjectRefGenerator], _TaskState] = {}
         self._next_task_idx = 0

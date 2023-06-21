@@ -41,6 +41,7 @@ class MapOperator(OneToOneOperator, ABC):
         input_op: PhysicalOperator,
         name: str,
         min_rows_per_bundle: Optional[int],
+        can_modify_num_rows: Optional[bool],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
         # NOTE: This constructor should not be called directly; use MapOperator.create()
@@ -62,7 +63,7 @@ class MapOperator(OneToOneOperator, ABC):
         # Output metadata, added to on get_next().
         self._output_metadata: List[BlockMetadata] = []
 
-        super().__init__(name, input_op)
+        super().__init__(name, input_op, can_modify_num_rows)
 
     @classmethod
     def create(
@@ -75,6 +76,7 @@ class MapOperator(OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        can_modify_num_rows: Optional[bool] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
         """Create a MapOperator.
@@ -109,6 +111,7 @@ class MapOperator(OneToOneOperator, ABC):
                 input_op,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                can_modify_num_rows=can_modify_num_rows,
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
@@ -135,6 +138,7 @@ class MapOperator(OneToOneOperator, ABC):
                 autoscaling_policy=autoscaling_policy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                can_modify_num_rows=can_modify_num_rows,
                 ray_remote_args=ray_remote_args,
             )
         else:
@@ -180,6 +184,7 @@ class MapOperator(OneToOneOperator, ABC):
         assert input_index == 0, input_index
         # Add ref bundle allocation to operator's object store metrics.
         self._metrics.cur += refs.size_bytes()
+        self._update_input_num_rows(refs)
         if self._metrics.cur > self._metrics.peak:
             self._metrics.peak = self._metrics.cur
         # Add RefBundle to the bundler.
@@ -298,6 +303,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._metrics.cur -= bundle.size_bytes()
         for _, meta in bundle.blocks:
             self._output_metadata.append(meta)
+        self._update_output_num_rows(bundle)
         return bundle
 
     @abstractmethod

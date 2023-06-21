@@ -19,18 +19,57 @@ class OneToOneOperator(PhysicalOperator):
         self,
         name: str,
         input_op: PhysicalOperator,
+        can_modify_num_rows: Optional[bool],
     ):
         """Create a OneToOneOperator.
 
         Args:
             input_op: Operator generating input data for this op.
             name: The name of this operator.
+            can_modify_num_rows: Whether this operator can potentially modify
+                the number of rows, i.e. number of input rows != number of output rows.
         """
         super().__init__(name, [input_op])
+        self._can_modify_num_rows = can_modify_num_rows
+        self._num_input_rows = 0
+        self._num_output_rows = 0
 
     @property
     def input_dependency(self) -> PhysicalOperator:
         return self.input_dependencies[0]
+
+    def _update_input_num_rows(self, refs: RefBundle):
+        """Increment the total number of input rows this operator has received.
+        Should be called from add_input() with the input RefBundle."""
+        if refs.num_rows() is not None and self._num_input_rows is not None:
+            self._num_input_rows += refs.num_rows()
+        else:
+            self._num_input_rows = None
+
+    def _update_output_num_rows(self, refs: RefBundle):
+        """Increment the total number of output rows this operator has yielded.
+        Should be called from get_next() with the resulting RefBundle."""
+        if refs.num_rows() is not None and self._num_output_rows is not None:
+            self._num_output_rows += refs.num_rows()
+        else:
+            self._num_output_rows = None
+
+    @property
+    def can_modify_num_rows(self) -> Optional[bool]:
+        """Whether this operator can modify the number of rows,
+        i.e. number of input rows != number of output rows."""
+        return self._can_modify_num_rows
+
+    def completed(self) -> bool:
+        op_completed = super().completed()
+        # Verify that number of input rows is the same as the number of output rows
+        # when `self.can_modify_num_rows` is False.
+        if op_completed and self.can_modify_num_rows is False:
+            assert self._num_input_rows == self._num_output_rows, (
+                f"Expected number of output rows ({self._num_output_rows})"
+                f" to be equal to number of input rows ({self._num_input_rows})."
+            )
+        return op_completed
 
 
 class LimitOperator(OneToOneOperator):
@@ -47,9 +86,13 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_metadata: List[BlockMetadata] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op)
+        super().__init__(self._name, input_op, self.can_modify_num_rows)
         if self._limit <= 0:
             self.inputs_done()
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return True
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
@@ -98,6 +141,7 @@ class LimitOperator(OneToOneOperator):
             owns_blocks=refs.owns_blocks,
         )
         self._buffer.append(out_refs)
+        self._update_input_num_rows(refs)
         if self._limit_reached():
             self.inputs_done()
 

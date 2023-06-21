@@ -53,6 +53,7 @@ class ActorPoolMapOperator(MapOperator):
         autoscaling_policy: "AutoscalingPolicy",
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
+        can_modify_num_rows: Optional[bool] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         """Create an ActorPoolMapOperator instance.
@@ -68,10 +69,17 @@ class ActorPoolMapOperator(MapOperator):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            can_modify_num_rows: Whether this operator can potentially modify
+                the number of rows, i.e. number of input rows != number of output rows.
             ray_remote_args: Customize the ray remote args for this op's tasks.
         """
         super().__init__(
-            transform_fn, input_op, name, min_rows_per_bundle, ray_remote_args
+            transform_fn,
+            input_op,
+            name,
+            min_rows_per_bundle,
+            can_modify_num_rows,
+            ray_remote_args,
         )
         self._init_fn = init_fn
         self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)

@@ -1209,9 +1209,9 @@ def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
         return x
 
     def check_valid_plan_and_result(ds, expected_plan, expected_result):
-        ds.take_all()
+        actual_result = ds.take_all()
         assert str(ds._plan._logical_plan.dag) == expected_plan
-        assert ds.take_all() == expected_result
+        assert actual_result == expected_result
 
     # Test basic limit pushdown past Map.
     ds = ray.data.range(100, parallelism=100).map(f1).limit(1)
