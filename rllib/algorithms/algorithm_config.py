@@ -4,6 +4,7 @@ import math
 import os
 import sys
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Container,
@@ -12,7 +13,6 @@ from typing import (
     Optional,
     Tuple,
     Type,
-    TYPE_CHECKING,
     Union,
 )
 
@@ -21,17 +21,13 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core.learner.learner import LearnerHyperparameters
-from ray.rllib.core.learner.learner_group_config import (
-    LearnerGroupConfig,
-    ModuleSpec,
-)
+from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, ModuleSpec
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
-from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models import MODEL_DEFAULTS
@@ -39,16 +35,16 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
     ExperimentalAPI,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
-    Deprecated,
     DEPRECATED_VALUE,
+    Deprecated,
     deprecation_warning,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
-from ray.rllib.utils.from_config import from_config, NotProvided
+from ray.rllib.utils.from_config import NotProvided, from_config
 from ray.rllib.utils.gym import (
     convert_old_gym_space_to_gymnasium_space,
     try_import_gymnasium_and_gym,
@@ -56,10 +52,11 @@ from ray.rllib.utils.gym import (
 from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
-    deserialize_type,
     NOT_SERIALIZABLE,
+    deserialize_type,
     serialize_type,
 )
+from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.utils.typing import (
     AgentID,
     AlgorithmConfigDict,
@@ -260,7 +257,7 @@ class AlgorithmConfig(_Config):
 
         # `self.framework()`
         self.framework_str = "torch"
-        self.eager_tracing = False
+        self.eager_tracing = True
         self.eager_max_retraces = 20
         self.tf_session_args = {
             # note: overridden by `local_tf_session_args`
@@ -305,8 +302,9 @@ class AlgorithmConfig(_Config):
         self.disable_env_checking = False
         # Whether this env is an atari env (for atari-specific preprocessing).
         # If not specified, we will try to auto-detect this.
-        self.is_atari = None
+        self._is_atari = None
         self.auto_wrap_old_gym_envs = True
+        self.action_mask_key = "action_mask"
 
         # `self.rollouts()`
         self.env_runner_cls = None
@@ -718,31 +716,6 @@ class AlgorithmConfig(_Config):
         #  of themselves? This way, users won't even be able to alter those values
         #  directly anymore.
 
-    def _detect_atari_env(self) -> bool:
-        """Returns whether this configured env is an Atari env or not.
-
-        Returns:
-            True, if specified env is an Atari env, False otherwise.
-        """
-        # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-        # or "ALE/Breakout-v5".
-        # We do NOT attempt to auto-detect Atari env for other specified types like
-        # a callable, to avoid running heavy logics in validate().
-        # For these cases, users can explicitly set `environment(atari=True)`.
-        if not type(self.env) == str:
-            return False
-
-        try:
-            if self.env.startswith("ALE/"):
-                env = gym.make("GymV26Environment-v0", env_id=self.env)
-            else:
-                env = gym.make(self.env)
-        except gym.error.NameNotFound:
-            # Not an Atari env if this is not a gym env.
-            return False
-
-        return is_atari(env)
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def validate(self) -> None:
         """Validates all values in this config."""
@@ -987,10 +960,6 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
-
-        # Detect if specified env is an Atari env.
-        if self.is_atari is None:
-            self.is_atari = self._detect_atari_env()
 
         if self.input_ == "sampler" and self.off_policy_estimation_methods:
             raise ValueError(
@@ -1237,8 +1206,8 @@ class AlgorithmConfig(_Config):
         """Sets the config's DL framework settings.
 
         Args:
-            framework: tf: TensorFlow (static-graph); tf2: TensorFlow 2.x
-                (eager or traced, if eager_tracing=True); torch: PyTorch
+            framework: torch: PyTorch; tf2: TensorFlow 2.x (eager execution or traced
+                if eager_tracing=True); tf: TensorFlow (static-graph);
             eager_tracing: Enable tracing in eager mode. This greatly improves
                 performance (speedup ~2x), but makes it slightly harder to debug
                 since Python code won't be evaluated after the initial eager pass.
@@ -1325,6 +1294,7 @@ class AlgorithmConfig(_Config):
         disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         auto_wrap_old_gym_envs: Optional[bool] = NotProvided,
+        action_mask_key: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1368,7 +1338,7 @@ class AlgorithmConfig(_Config):
             disable_env_checking: If True, disable the environment pre-checking module.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
-                this during config validation.
+                this.
             auto_wrap_old_gym_envs: Whether to auto-wrap old gym environments (using
                 the pre 0.24 gym APIs, e.g. reset() returning single obs and no info
                 dict). If True, RLlib will automatically wrap the given gym env class
@@ -1376,6 +1346,9 @@ class AlgorithmConfig(_Config):
                 (gym.wrappers.EnvCompatibility). If False, RLlib will produce a
                 descriptive error on which steps to perform to upgrade to gymnasium
                 (or to switch this flag to True).
+             action_mask_key: If observation is a dictionary, expect the value by
+                the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
+                array of zeros and ones). Defaults to "action_mask".
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1405,9 +1378,11 @@ class AlgorithmConfig(_Config):
         if disable_env_checking is not NotProvided:
             self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
-            self.is_atari = is_atari
+            self._is_atari = is_atari
         if auto_wrap_old_gym_envs is not NotProvided:
             self.auto_wrap_old_gym_envs = auto_wrap_old_gym_envs
+        if action_mask_key is not NotProvided:
+            self.action_mask_key = action_mask_key
 
         return self
 
@@ -2319,6 +2294,8 @@ class AlgorithmConfig(_Config):
                 In case there are more than this many episodes collected in a single
                 training iteration, use all of these episodes for metrics computation,
                 meaning don't ever cut any "excess" episodes.
+                Set this to 1 to disable smoothing and to always report only the most
+                recently collected episode's return.
             min_time_s_per_iteration: Minimum time to accumulate within a single
                 `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
@@ -2644,6 +2621,34 @@ class AlgorithmConfig(_Config):
         `.get_default_learner_class()` method.
         """
         return self._learner_class or self.get_default_learner_class()
+
+    @property
+    def is_atari(self) -> bool:
+        """True if if specified env is an Atari env."""
+
+        # Not yet determined, try to figure this out.
+        if self._is_atari is None:
+            # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
+            # or "ALE/Breakout-v5".
+            # We do NOT attempt to auto-detect Atari env for other specified types like
+            # a callable, to avoid running heavy logics in validate().
+            # For these cases, users can explicitly set `environment(atari=True)`.
+            if not type(self.env) == str:
+                return False
+            try:
+                if self.env.startswith("ALE/"):
+                    env = gym.make("GymV26Environment-v0", env_id=self.env)
+                else:
+                    env = gym.make(self.env)
+            # Any gymnasium error -> Cannot be an Atari env.
+            except gym.error.Error:
+                return False
+
+            self._is_atari = is_atari(env)
+            # Clean up env's resources, if any.
+            env.close()
+
+        return self._is_atari
 
     # TODO: Make rollout_fragment_length as read-only property and replace the current
     #  self.rollout_fragment_length a private variable.
