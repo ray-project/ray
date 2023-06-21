@@ -705,7 +705,7 @@ def build(
             schema.host = "0.0.0.0"
             schema.port = 8000
 
-        if kubernetes_format:
+        if not multi_app and kubernetes_format:
             return schema.kubernetes_dict(exclude_unset=True)
         else:
             return schema.dict(exclude_unset=True)
