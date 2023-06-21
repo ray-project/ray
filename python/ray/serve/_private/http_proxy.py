@@ -244,8 +244,8 @@ class HTTPProxy:
             ),
         )
         self._ongoing_requests = 0
-        self._ongoing_requests_dummy_obj_ref = None
-        self.active = True
+        self._prevent_node_downscale_ref = None
+        self.draining = False
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -276,9 +276,9 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
-    async def _service_unavailable(self, scope, receive, send):
+    async def _draining_response(self, scope, receive, send):
         response = Response(
-            "This node has no replica. Http proxy is unavailable.",
+            "This node is being drained.",
             status_code=503,
         )
         await response.send(scope, receive, send)
@@ -290,6 +290,30 @@ class HTTPProxy:
 
         await queue.wait_for_message()
         return queue.get_messages_nowait()
+
+    def _ongoing_requests_start(self):
+        """Ongoing requests start.
+
+        The current autoscale logic can downscale nodes with ongoing requests if the
+        node doesn't have replicas and has no object references. This counter and
+        the dummy object reference will have to keep the node alive while draining
+        requests, so they are not dropped unintentionally.
+        """
+        self._ongoing_requests += 1
+        if self._ongoing_requests > 0 and self._prevent_node_downscale_ref is None:
+            logger.info("Putting keep alive object reference to prevent downscaling.")
+            self._prevent_node_downscale_ref = ray.put("ongoing_requests")
+
+    def _ongoing_requests_end(self):
+        """Ongoing requests end.
+
+        Decrement the ongoing request counter and drop the dummy object reference
+        signaling that the node can be downscaled safely.
+        """
+        self._ongoing_requests -= 1
+        if self._ongoing_requests == 0:
+            logger.info("Dropping keep alive object reference to allow downscaling.")
+            self._prevent_node_downscale_ref = None
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -306,8 +330,8 @@ class HTTPProxy:
         route_path = scope["path"][len(root_path) :]
 
         if route_path == "/-/routes":
-            if not self.active:
-                return await self._service_unavailable(scope, receive, send)
+            if self.draining:
+                return await self._draining_response(scope, receive, send)
 
             self.request_counter.inc(
                 tags={
@@ -322,8 +346,8 @@ class HTTPProxy:
             )
 
         if route_path == "/-/healthz":
-            if not self.active:
-                return await self._service_unavailable(scope, receive, send)
+            if self.draining:
+                return await self._draining_response(scope, receive, send)
 
             self.request_counter.inc(
                 tags={
@@ -337,13 +361,7 @@ class HTTPProxy:
                 scope, receive, send
             )
 
-        # The current autoscale logic can downscale nodes with ongoing requests if the
-        # node doesn't have replicas and has no object references. This counter and
-        # the dummy object reference will have to keep the node alive while draining
-        # requests, so they are not dropped unintentionally.
-        self._ongoing_requests += 1
-        if self._ongoing_requests > 0 and self._ongoing_requests_dummy_obj_ref is None:
-            self._ongoing_requests_dummy_obj_ref = ray.put("ongoing_requests")
+        self._ongoing_requests_start()
 
         route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
         if route_prefix is None:
@@ -440,11 +458,7 @@ class HTTPProxy:
                 }
             )
 
-        # Decrement the ongoing request counter and drop the dummy object reference
-        # signaling that the node can be downscaled safely.
-        self._ongoing_requests -= 1
-        if self._ongoing_requests == 0:
-            self._ongoing_requests_dummy_obj_ref = None
+        self._ongoing_requests_end()
 
     async def send_request_to_replica_unary(
         self,
@@ -663,7 +677,7 @@ class HTTPProxyActor:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 
         # Start running the HTTP server on the event loop.
-        # This task should be running forever. we track it in case of failure.
+        # This task should be running forever. We track it in case of failure.
         self.running_task = get_or_create_event_loop().create_task(self.run())
 
     async def ready(self):
@@ -742,12 +756,13 @@ Please make sure your http-host and http-port are specified correctly."""
     async def receive_asgi_messages(self, request_id: str) -> bytes:
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))
 
-    async def set_active_flag(self, node_id: str, active: bool):
-        """Set the active flag on the http proxy.
+    async def set_draining_flag(self, node_id: str, draining: bool):
+        """Set the draining flag on the http proxy.
 
-        Set the active flag on the http proxy to signal `/-/healthz` and `/-/routes`
-        endpoints returns 503 on inactive proxies. Also log when active state changes.
+        Set the draining flag on the http proxy to signal `/-/healthz` and `/-/routes`
+        endpoints returns 503 on draining proxies. Also log when draining state
+        changes.
         """
-        if self.app.active != active:
-            logger.info(f"Setting active flag on node {node_id} to {active}.")
-            self.app.active = active
+        if self.app.draining != draining:
+            logger.info(f"Setting draining flag on node {node_id} to {draining}.")
+            self.app.draining = draining

@@ -77,15 +77,15 @@ class HTTPProxyState:
         self._status = status
         self.update_actor_details(status=self._status)
 
-    def set_active_flag(self, node_id: str, active: bool):
-        """Set the active flag on the http proxy.
+    def set_draining_flag(self, node_id: str, draining: bool):
+        """Set the draining flag on the http proxy.
 
-        Set the active flag on the http proxy. When the flag is set to false, also
-        update status to from HEALTHY to INACTIVE to display on the dashboard.
+        Set the draining flag on the http proxy. When the flag is set to false, also
+        update status to from HEALTHY to DRAINING to display on the dashboard.
         """
-        self._actor_handle.set_active_flag.remote(node_id=node_id, active=active)
-        if self._status == HTTPProxyStatus.HEALTHY and not active:
-            self.try_update_status(HTTPProxyStatus.INACTIVE)
+        self._actor_handle.set_draining_flag.remote(node_id=node_id, draining=draining)
+        if self._status == HTTPProxyStatus.HEALTHY and draining:
+            self.try_update_status(HTTPProxyStatus.DRAINING)
 
     def try_update_status(self, status: HTTPProxyStatus):
         """Try update with the new status and only update when the conditions are met.
@@ -336,10 +336,15 @@ class HTTPState:
     def _start_proxy(
         self, name: str, node_id: str, node_ip_address: str
     ) -> ActorHandle:
+        """Helper to start a single HTTP proxy.
+
+        Takes the name of the proxy, the node id, and the node ip address. and creates a
+        new HTTPProxyActor actor handle for the proxy. Also, setting up
+        `TEST_WORKER_NODE_PORT` env var will help head node and worker nodes to be
+        opening on different ports.
+        """
         port = self._config.port
 
-        # This is used for test. Setting up `TEST_WORKER_NODE_PORT` env var will help
-        # head node and worker nodes to be opening on different ports.
         if (
             node_id != self._head_node_id
             and os.getenv("TEST_WORKER_NODE_PORT") is not None
@@ -430,16 +435,16 @@ class HTTPState:
             ]
         )
 
-    def update_active_flags(self, active_nodes: Set[str]):
-        """Update the active states of all HTTP proxies.
+    def update_draining_flags(self, active_nodes: Set[str]):
+        """Update the draining states of all HTTP proxies.
 
-        Given a set of active nodes, set the active flag of all HTTP proxies, except
-        for head node. Head node will always be active.
+        Given a set of active nodes, set the draining flag of all HTTP proxies, except
+        for head node. Head node will never be draining.
         """
         for node_id, proxy_state in self._proxy_states.items():
-            # Head node will always be active.
+            # Head node will always be draining.
             if node_id == self._head_node_id:
                 continue
 
-            active = node_id in active_nodes
-            proxy_state.set_active_flag(node_id=node_id, active=active)
+            draining = node_id not in active_nodes
+            proxy_state.set_draining_flag(node_id=node_id, draining=draining)

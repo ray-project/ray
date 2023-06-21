@@ -271,16 +271,16 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
-    def _update_http_proxy_active_flag(self):
-        """Update the active flag of all http proxies.
+    def _update_http_proxy_draining_flag(self):
+        """Update the draining flag of all http proxies.
 
-        Get a list of node ids that have running replicas and update the active on http
-        proxies.
+        Get a list of node ids that have running replicas and update the draining flag
+        on http proxies.
         """
         if self.http_state is None:
             return
 
-        self.http_state.update_active_flags(
+        self.http_state.update_draining_flags(
             self.deployment_state_manager.get_node_ids_with_running_replicas()
         )
 
@@ -322,7 +322,7 @@ class ServeController:
             except Exception:
                 logger.exception("Exception updating application state.")
 
-            self._update_http_proxy_active_flag()
+            self._update_http_proxy_draining_flag()
 
             try:
                 self._put_serve_snapshot()

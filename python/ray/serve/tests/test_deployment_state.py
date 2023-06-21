@@ -2722,7 +2722,7 @@ def test_get_node_ids_with_running_replicas(
         by_state=[(ReplicaState.STARTING, 3)],
     )
     mocked_replicas = deployment_state._replicas.get()
-    assert deployment_state.get_running_replica_node_ids() == []
+    assert deployment_state.get_running_replica_node_ids() == set()
     assert deployment_state_manager.get_node_ids_with_running_replicas() == set()
 
     # When the replicas are in RUNNING state, `get_running_replica_node_ids()` should
@@ -2740,7 +2740,7 @@ def test_get_node_ids_with_running_replicas(
         version=version1,
         by_state=[(ReplicaState.RUNNING, 3)],
     )
-    assert deployment_state.get_running_replica_node_ids() == list(node_ids)
+    assert deployment_state.get_running_replica_node_ids() == set(node_ids)
     assert deployment_state_manager.get_node_ids_with_running_replicas() == set(
         node_ids
     )

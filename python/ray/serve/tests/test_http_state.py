@@ -534,11 +534,11 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed():
     assert proxy_state._consecutive_health_check_failures == 0
 
 
-def test_update_active_flags(mock_get_all_node_ids):
-    """Test update_active_flags() method
+def test_update_draining_flags(mock_get_all_node_ids):
+    """Test update_draining_flags() method
 
-    When update nodes to inactive, head node http proxy should always be active while
-    worker node http proxy should change to inactive.
+    When update nodes to inactive, head node http proxy should never be draining while
+    worker node http proxy should change to draining.
     """
     worker_node_id = "worker-node-id-0"
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
@@ -566,21 +566,21 @@ def test_update_active_flags(mock_get_all_node_ids):
         node_ip_address="bar",
     )
 
-    # Update flag for no nodes active
-    state.update_active_flags(set())
+    # Update flag for no nodes draining
+    state.update_draining_flags(set())
 
-    # Head node proxy should continue to be active
+    # Head node proxy should continue to be HEALTHY
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=state._proxy_states[HEAD_NODE_ID],
         status=HTTPProxyStatus.HEALTHY,
     )
 
-    # Worker node proxy should turn inactive
+    # Worker node proxy should turn DRAINING
     wait_for_condition(
         condition_predictor=_update_and_check_proxy_status,
         state=state._proxy_states[worker_node_id],
-        status=HTTPProxyStatus.INACTIVE,
+        status=HTTPProxyStatus.DRAINING,
     )
 
 

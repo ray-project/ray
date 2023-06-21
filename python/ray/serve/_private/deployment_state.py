@@ -1227,16 +1227,18 @@ class DeploymentState:
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 
-    def get_running_replica_node_ids(self) -> List[str]:
+    def get_running_replica_node_ids(self) -> Set[str]:
         """Get the node ids of all running replicas in this deployment.
 
-        This is used to determine which node has replicas and in terms determine
-        the active flag on the http proxy.
+        This is used to determine which node has replicas. Only nodes with replicas and
+        head node should have active proxies.
         """
-        return [
-            replica.actor_node_id
-            for replica in self._replicas.get([ReplicaState.RUNNING])
-        ]
+        return set(
+            [
+                replica.actor_node_id
+                for replica in self._replicas.get([ReplicaState.RUNNING])
+            ]
+        )
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
@@ -2497,12 +2499,12 @@ class DeploymentStateManager:
         )
 
     def get_node_ids_with_running_replicas(self) -> Set[str]:
-        """Return set of node ids with running replicas.
+        """Return set of node ids with running replicas of any deployment.
 
-        This is used to determine which node has replicas and in terms determine
-        the active flag on the http proxy.
+        This is used to determine which node has replicas. Only nodes with replicas and
+        head node should have active proxies.
         """
-        running_replicas = set()
+        node_ids = set()
         for deployment_state in self._deployment_states.values():
-            running_replicas.update(deployment_state.get_running_replica_node_ids())
-        return running_replicas
+            node_ids.update(deployment_state.get_running_replica_node_ids())
+        return node_ids
