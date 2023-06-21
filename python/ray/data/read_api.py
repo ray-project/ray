@@ -342,7 +342,9 @@ def read_datasource(
             )
         )
 
-    # Compute the number of blocks the read will return.
+    # Compute the number of blocks the read will return. If the number of blocks is
+    # expected to be less than the requested parallelism, boost the number of blocks
+    # by adding an additional split into `k` pieces to each read task.
     if read_tasks:
         if inmemory_size:
             expected_block_size = inmemory_size / len(read_tasks)
@@ -356,7 +358,7 @@ def read_datasource(
         estimated_num_blocks = len(read_tasks) * size_based_splits
         logger.debug(f"Blocks after size splits {estimated_num_blocks}")
 
-        # Add more output splitting if needed.
+        # Add more output splitting for each read task if needed.
         if estimated_num_blocks < requested_parallelism:
             k = math.ceil(requested_parallelism / estimated_num_blocks)
             logger.info(
