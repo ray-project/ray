@@ -74,7 +74,6 @@ def test_import_logger_all(logging_setup):
     [
         "ray.tune",
         "ray.tune.analysis",
-        "ray.tune.automl",
         "ray.tune.cli",
         "ray.tune.execution",
         "ray.tune.experiment",
