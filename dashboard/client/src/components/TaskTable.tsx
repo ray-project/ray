@@ -19,13 +19,14 @@ import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
+import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
+import { useJobDetail } from "../pages/job/hook/useJobDetail";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 import { HelpInfo } from "./Tooltip";
-
 export type TaskTableProps = {
   tasks: Task[];
   jobId?: string;
@@ -70,7 +71,10 @@ const TaskTable = ({
           only view all the logs of the worker and a worker can run multiple
           tasks.
           <br />- Error: For tasks that have failed, show a stack trace for the
-          faiure.
+          faiure. - Stack Trace: Get a stacktrace of the alive actor.
+          <br />- CPU Flame Graph: Get a flamegraph for the next 5 seconds of an
+          alive actor.
+          <br />- Profiling: Get profiling information for the next 5 seconds of
         </Typography>
       ),
     },
@@ -322,13 +326,15 @@ export default TaskTable;
 
 type TaskTableActionsProps = {
   task: Task;
+  jobId?: string;
 };
 
-const TaskTableActions = ({ task }: TaskTableActionsProps) => {
+const TaskTableActions = ({ task, jobId }: TaskTableActionsProps) => {
   const errorDetails =
     task.error_type !== null && task.error_message !== null
       ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
+  const { job } = useJobDetail();
 
   return (
     <React.Fragment>
@@ -336,7 +342,18 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
         Log
       </Link>
       <br />
-
+      <CpuProfilingLink
+        pid={job?.driver_info?.pid}
+        ip={job?.driver_info?.node_ip_address}
+        type=""
+      />
+      <br />
+      <CpuStackTraceLink
+        pid={job?.driver_info?.pid}
+        ip={job?.driver_info?.node_ip_address}
+        type=""
+      />
+      <br />
       {errorDetails && (
         <CodeDialogButton
           title="Error details"
