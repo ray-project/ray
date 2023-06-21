@@ -190,7 +190,7 @@ def check_gym_environments(env: Union[gym.Env, "old_gym.Env"]) -> None:
             env.action_space, sampled_action
         )
         raise ValueError(
-            "The observation collected from env.action_space.sample() was not "
+            "The action collected from env.action_space.sample() was not "
             "contained within your env's action space. It is possible "
             "that there was a type mismatch, or that one of the "
             "sub-actions was out of bounds:\n {}(sub-)obs: {} ({})"
