@@ -44,4 +44,4 @@ transformers==4.19.1; python_version > '3.6'
 wandb==0.13.4
 xgboost==1.6.2; python_version <= '3.7'
 xgboost==1.7.6; python_version > '3.7'
-zoopt==0.4.2
+zoopt==0.4.1
