@@ -97,11 +97,14 @@ def test_tee_recursion():
 
     tee = Tee(f, g)
 
-    util_logger.addHandler(logging.StreamHandler(tee))
+    hdlr = logging.StreamHandler(tee)
+    util_logger.addHandler(hdlr)
 
     logging.info("BEFORE")
     f.close()
     logging.info("AFTER")
+
+    util_logger.removeHandler(hdlr)
 
 
 if __name__ == "__main__":
