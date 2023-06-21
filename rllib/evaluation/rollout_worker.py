@@ -1846,9 +1846,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_rl_module_api", False):
+            if self.config.get("_enable_rl_module_api", False) and self.config.get(
+                "torch_compile_worker"
+            ):
+                if self.config.framework_str != "torch":
+                    raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)
-                if rl_module is not None and self.config.framework_str == "torch":
+                if rl_module is not None:
                     compile_config = self.config.get_torch_compile_worker_config()
                     rl_module.compile(compile_config)
 

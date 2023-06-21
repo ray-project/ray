@@ -56,7 +56,9 @@ class LearnerGroupConfig:
 
         # `self.framework()`
         self.eager_tracing = True
+        self.torch_compile = False
         self.torch_compile_cfg = None
+        self.torch_compile_what_to_compile = None
 
     def validate(self) -> None:
 
@@ -85,6 +87,8 @@ class LearnerGroupConfig:
         framework_hps = FrameworkHyperparameters(
             eager_tracing=self.eager_tracing,
             torch_compile_cfg=self.torch_compile_cfg,
+            torch_compile=self.torch_compile,
+            what_to_compile=self.torch_compile_what_to_compile,
         )
 
         learner_spec = LearnerSpec(
@@ -100,14 +104,22 @@ class LearnerGroupConfig:
     def framework(
         self,
         eager_tracing: Optional[bool] = NotProvided,
+        torch_compile: Optional[bool] = NotProvided,
         torch_compile_cfg: Optional["TorchCompileConfig"] = NotProvided,
+        torch_compile_what_to_compile: Optional[str] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
 
+        if torch_compile is not NotProvided:
+            self.torch_compile = torch_compile
+
         if torch_compile_cfg is not NotProvided:
             self.torch_compile_cfg = torch_compile_cfg
+
+        if torch_compile_what_to_compile is not NotProvided:
+            self.torch_compile_what_to_compile = torch_compile_what_to_compile
 
         return self
 

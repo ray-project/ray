@@ -698,3 +698,14 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
+
+
+def _dynamo_is_available():
+    # This only works if torch._dynamo is available
+    try:
+        # TODO(Artur): Remove this once torch._dynamo is available on CI
+        import torch._dynamo as dynamo  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

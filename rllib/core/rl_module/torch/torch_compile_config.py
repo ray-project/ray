@@ -27,16 +27,13 @@ class TorchCompileConfig:
     the inductor backend is not supported on OSX so far.
 
     Args:
-        compile_forward_train: Whether to compile the forward_train method.
-        compile_forward_inference: Whether to compile the forward_inference method.
-        compile_forward_exploration: Whether to compile the forward_exploration method.
         torch_dynamo_backend: The torch.dynamo backend to use.
+        torch_dynamo_mode: The torch.dynamo mode to use.
         kwargs: Additional keyword arguments to pass to `torch.compile()`
     """
 
-    compile_forward_train: bool = False
-    compile_forward_inference: bool = False
-    compile_forward_exploration: bool = False
-    torch_dynamo_backend: str = "aot_eager" if sys.platform == "darwin" else "inductor"
-    torch_dynamo_mode: str = "reduce-overhead"
+    torch_dynamo_backend: str = (
+        "aot_eager" if sys.platform == "darwin" else "cudagraphs"
+    )
+    torch_dynamo_mode: str = None
     kwargs: dict = field(default_factory=lambda: dict())
