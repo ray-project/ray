@@ -477,9 +477,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
+  uint64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
   RAY_LOG(DEBUG) << "Received an intermediate result of index " << item_index
                  << " generator_id: " << generator_id;
+
   {
     absl::MutexLock lock(&mu_);
     auto stream_it = object_ref_streams_.find(generator_id);
@@ -494,10 +496,21 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       RAY_CHECK(request.dynamic_return_objects_size() == 0);
       return true;
     }
+
+    auto it = submissible_tasks_.find(task_id);
+    if (it != submissible_tasks_.end()) {
+      if (it->second.spec.AttemptNumber() > attempt_number) {
+        // Generator task reports can arrive at any time. If the first attempt
+        // fails, we may receive a report from the first executor after the
+        // second attempt has started. In this case, we should ignore the first
+        // attempt.
+        return false;
+      }
+    }
   }
 
-  // Handle the intermediate values.
-  // NOTE: Until we support the retry, this is always empty return value.
+  // NOTE: If it is the first execution (e.g., CompletePendingTask has never been called),
+  // it is always empty.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
   // TODO(sang): Support the regular return values as well.
@@ -513,8 +526,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       if (stream_it != object_ref_streams_.end()) {
         index_not_used_yet = stream_it->second.InsertToStream(object_id, item_index);
       }
-      // TODO(sang): Update the reconstruct ids and task spec
-      // when we support retry.
     }
     // If the ref was written to a stream, we should also
     // own the dynamically generated task return.
@@ -621,6 +632,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     // Record any dynamically returned objects. We need to store these with the
     // task spec so that the worker will recreate them if the task gets
     // re-executed.
+    // TODO(sang): Remove this logic once streaming generator is the default.
     if (first_execution) {
       for (const auto &dynamic_return_id : dynamic_return_ids) {
         RAY_LOG(DEBUG) << "Task " << task_id << " produced dynamic return object "
@@ -630,9 +642,28 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       for (const auto &dynamic_return_id : dynamic_returns_in_plasma) {
         it->second.reconstructable_return_ids.insert(dynamic_return_id);
       }
+
+      // Set the number of return values from a streaming generator when it is
+      // the first execution. This is necessary in case the task is re-executed
+      // later, because we need to make sure that the task returns the same
+      // number of objects.
+      if (reply.streaming_generator_return_ids_size() > 0) {
+        RAY_CHECK(spec.IsStreamingGenerator());
+        spec.SetNumStreamingGeneratorReturns(reply.streaming_generator_return_ids_size());
+        RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
+                       << " has " << spec.NumStreamingGeneratorReturns()
+                       << " return objects.";
+        for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
+          if (return_id_info.is_plasma_object()) {
+            it->second.reconstructable_return_ids.insert(
+                ObjectID::FromBinary(return_id_info.object_id()));
+          }
+        }
+      }
     }
 
     // Release the lineage for any non-plasma return objects.
+    // TODO(sang): Remove this logic once streaming generator is the default.
     for (const auto &direct_return_id : direct_return_ids) {
       RAY_LOG(DEBUG) << "Task " << it->first << " returned direct object "
                      << direct_return_id << ", now has "
@@ -674,6 +705,25 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       }
     } else {
       submissible_tasks_.erase(it);
+    }
+  }
+
+  if (is_application_error && !first_execution && spec.IsStreamingGenerator()) {
+    RAY_LOG(DEBUG) << "Streaming generator task " << spec.TaskId()
+                   << " failed with application error, failing "
+                   << spec.NumStreamingGeneratorReturns() << " return objects.";
+    // It means the task has re-executed, but in the second execution, it fails with
+    // an application error. In this case, we should fail all the rest of
+    // known streaming generator returns.
+    for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
+      const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+      RAY_LOG(DEBUG) << "Failing streamed object " << generator_return_id;
+      RAY_CHECK_EQ(reply.return_objects_size(), 1);
+      const auto &return_object = reply.return_objects(0);
+      HandleTaskReturn(generator_return_id,
+                       return_object,
+                       NodeID::FromBinary(worker_addr.raylet_id()),
+                       store_in_plasma_ids.count(generator_return_id));
     }
   }
 
@@ -899,9 +949,16 @@ void TaskManager::RemoveFinishedTaskReferences(
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
   }
+  // TODO(sang): Remove it once the streaming generator is turned on
+  // by default.
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
       return_ids.push_back(dynamic_return_id);
+    }
+  }
+  if (spec.IsStreamingGenerator()) {
+    for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
+      return_ids.push_back(spec.StreamingGeneratorReturnId(i));
     }
   }
 
@@ -1015,6 +1072,23 @@ void TaskManager::MarkTaskReturnObjectsFailed(
         put_in_local_plasma_callback_(error, dynamic_return_id);
       } else {
         in_memory_store_->Put(error, dynamic_return_id);
+      }
+    }
+  }
+  // If it was a streaming generator, try failing all the return object refs.
+  // In a normal time, it is no-op because the object ref values are already
+  // written, and Ray doesn't allow to overwrite values for the object ref.
+  // It is only useful when lineage reconstruction retry is failed. In this
+  // case, all these objects are lost from the plasma store, so we
+  // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
+  // for more details.
+  if (spec.IsStreamingGenerator()) {
+    for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
+      const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+      if (store_in_plasma_ids.count(generator_return_id)) {
+        put_in_local_plasma_callback_(error, generator_return_id);
+      } else {
+        in_memory_store_->Put(error, generator_return_id);
       }
     }
   }

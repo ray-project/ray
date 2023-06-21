@@ -1,9 +1,8 @@
-from dataclasses import dataclass, field
 import os
-from typing import Any, Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import ray
-from ray.util.annotations import DeveloperAPI
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.memory_tracing import trace_deallocation
@@ -12,6 +11,7 @@ from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
@@ -36,7 +36,7 @@ class RefBundle:
     """
 
     # The size_bytes must be known in the metadata, num_rows is optional.
-    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]]
+    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata]]
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
@@ -49,6 +49,8 @@ class RefBundle:
     _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
+        if not isinstance(self.blocks, tuple):
+            object.__setattr__(self, "blocks", tuple(self.blocks))
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
@@ -58,6 +60,11 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+
+    def __setattr__(self, key, value):
+        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
+            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
+        object.__setattr__(self, key, value)
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known."""
@@ -389,7 +396,15 @@ class PhysicalOperator(Operator):
         """
         raise NotImplementedError
 
-    def inputs_done(self) -> None:
+    def input_done(self, input_index: int) -> None:
+        """Called when the upstream operator at index `input_index` has completed().
+
+        After this is called, the executor guarantees that no more inputs will be added
+        via `add_input` for the given input index.
+        """
+        pass
+
+    def all_inputs_done(self) -> None:
         """Called when all upstream operators have completed().
 
         After this is called, the executor guarantees that no more inputs will be added

@@ -1,11 +1,9 @@
-from contextlib import contextmanager
-
 import functools
 import os
 import tempfile
-import ray
+from contextlib import contextmanager
 
-STRICT_MODE = ray.data.DatasetContext.get_current().strict_mode
+import ray
 
 
 @ray.remote

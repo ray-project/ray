@@ -25,6 +25,7 @@ import pandas as pd
 import textwrap
 import time
 
+from ray.air._internal.usage import AirEntrypoint
 from ray.tune.search.sample import Domain
 from ray.tune.utils.log import Verbosity
 
@@ -182,6 +183,10 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
     for t in trials:
         trials_by_state[t.status].append(t)
     return trials_by_state
+
+
+def _get_trials_with_error(trials: List[Trial]) -> List[Trial]:
+    return [t for t in trials if t.error_file]
 
 
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
@@ -359,6 +364,7 @@ def _get_trial_table_data(
     param_keys: List[str],
     metric_keys: List[str],
     all_rows: bool = False,
+    wrap_headers: bool = False,
 ) -> _TrialTableData:
     """Generate a table showing the current progress of tuning trials.
 
@@ -369,6 +375,7 @@ def _get_trial_table_data(
             Including both default and user defined.
             Will only be shown if at least one trial is having the key.
         all_rows: Force to show all rows.
+        wrap_headers: If True, header columns can be wrapped with ``\n``.
 
     Returns:
         Trial table data, including header and trial table per each status.
@@ -390,11 +397,11 @@ def _get_trial_table_data(
 
     # get header from metric keys
     formatted_metric_columns = [
-        _max_len(k, max_len=max_column_length, wrap=True) for k in metric_keys
+        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in metric_keys
     ]
 
     formatted_param_columns = [
-        _max_len(k, max_len=max_column_length, wrap=True) for k in param_keys
+        _max_len(k, max_len=max_column_length, wrap=wrap_headers) for k in param_keys
     ]
 
     metric_header = [
@@ -599,13 +606,18 @@ class ProgressReporter:
 def _detect_reporter(
     verbosity: AirVerbosity,
     num_samples: int,
+    entrypoint: Optional[AirEntrypoint] = None,
     metric: Optional[str] = None,
     mode: Optional[str] = None,
     config: Optional[Dict] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
     rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
-    if num_samples and num_samples > 1:
+    if entrypoint in {
+        AirEntrypoint.TUNE_RUN,
+        AirEntrypoint.TUNE_RUN_EXPERIMENTS,
+        AirEntrypoint.TUNER,
+    }:
         if rich_enabled:
             if not rich:
                 raise ImportError("Please run `pip install rich`. ")
@@ -633,6 +645,7 @@ def _detect_reporter(
 
 class TuneReporterBase(ProgressReporter):
     _heartbeat_threshold = AirVerbosity.DEFAULT
+    _wrap_headers = False
 
     def __init__(
         self,
@@ -688,6 +701,7 @@ class TuneReporterBase(ProgressReporter):
             param_keys=self._inferred_params,
             metric_keys=all_metrics,
             all_rows=force_full_output,
+            wrap_headers=self._wrap_headers,
         )
         return result, trial_table_data
 
@@ -744,7 +758,7 @@ class TuneTerminalReporter(TuneReporterBase):
         # now print the table using Tabulate
         more_infos = []
         all_data = []
-        header = table_data.header
+        fail_header = table_data.header
         for sub_table in table_data.data:
             all_data.extend(sub_table.trial_infos)
             if sub_table.more_info:
@@ -753,7 +767,7 @@ class TuneTerminalReporter(TuneReporterBase):
         print(
             tabulate(
                 all_data,
-                headers=header,
+                headers=fail_header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
@@ -762,16 +776,52 @@ class TuneTerminalReporter(TuneReporterBase):
             print(", ".join(more_infos))
         print()
 
+        trials_with_error = _get_trials_with_error(trials)
+        if not trials_with_error:
+            return
+
+        print(f"Number of errored trials: {len(trials_with_error)}")
+        fail_header = ["Trial name", "# failures", "error file"]
+        fail_table_data = [
+            [
+                str(trial),
+                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                trial.error_file,
+            ]
+            for trial in trials_with_error
+        ]
+        print(
+            tabulate(
+                fail_table_data,
+                headers=fail_header,
+                tablefmt=AIR_TABULATE_TABLEFMT,
+                showindex=False,
+                colalign=("left", "right", "left"),
+            )
+        )
+        if any(trial.status == Trial.TERMINATED for trial in trials_with_error):
+            print("* The trial terminated successfully after retrying.")
+        print()
+
 
 class TuneRichReporter(TuneReporterBase):
+    _wrap_headers = True
+
     def __init__(
         self,
         verbosity: AirVerbosity,
         num_samples: int,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
+        config: Optional[Dict] = None,
     ):
-        super().__init__(verbosity, num_samples, metric, mode)
+        super().__init__(
+            verbosity=verbosity,
+            num_samples=num_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
+        )
         self._live = None
 
     # since sticky table, we can afford to do that more often.

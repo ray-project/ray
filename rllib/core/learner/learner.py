@@ -3,6 +3,7 @@ import json
 import logging
 import pathlib
 from collections import defaultdict
+from enum import Enum
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -82,6 +83,30 @@ ENTROPY_KEY = "entropy"
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
+class TorchCompileWhatToCompile(str, Enum):
+    """Enumerates schemes of what parts of the TorchLearner can be compiled.
+
+    This can be either the entire update step of the learner or only the forward
+    methods (and therein the forward_train method) of the RLModule.
+
+    .. note::
+        - torch.compiled code can become slow on graph breaks or even raise
+            errors on unsupported operations. Empirically, compiling
+            `forward_train` should introduce little graph breaks, raise no
+            errors but result in a speedup comparable to compiling the
+            complete update.
+        - Using `complete_update` is experimental and may result in errors.
+    """
+
+    # Compile the entire update step of the learner.
+    # This includes the forward pass of the RLModule, the loss computation, and the
+    # optimizer step.
+    COMPLETE_UPDATE = "complete_update"
+    # Only compile the forward methods (and therein the forward_train method) of the
+    # RLModule.
+    FORWARD_TRAIN = "forward_train"
+
+
 @dataclass
 class FrameworkHyperparameters:
     """The framework specific hyper-parameters.
@@ -92,12 +117,46 @@ class FrameworkHyperparameters:
             This is useful for speeding up the training loop. However, it is not
             compatible with all tf operations. For example, tf.print is not supported
             in tf.function.
+        torch_compile: Whether to use torch.compile() within the context of a given
+            learner.
+        what_to_compile: What to compile when using torch.compile(). Can be one of
+            [TorchCompileWhatToCompile.complete_update,
+            TorchCompileWhatToCompile.forward_train].
+            If `complete_update`, the update step of the learner will be compiled. This
+            includes the forward pass of the RLModule, the loss computation, and the
+            optimizer step.
+            If `forward_train`, only the forward methods (and therein the
+            forward_train method) of the RLModule will be compiled.
+            Either of the two may lead to different performance gains in different
+            settings.
+            `complete_update` promises the highest performance gains, but may not work
+            in some settings. By compiling only forward_train, you may already get
+            some speedups and avoid issues that arise from compiling the entire update.
         troch_compile_config: The TorchCompileConfig to use for compiling the RL
             Module in Torch.
     """
 
-    eager_tracing: bool = False
+    eager_tracing: bool = True
+    torch_compile: bool = False
+    what_to_compile: str = TorchCompileWhatToCompile.FORWARD_TRAIN
     torch_compile_cfg: Optional["TorchCompileConfig"] = None
+
+    def validate(self):
+        if self.torch_compile:
+            if self.what_to_compile not in [
+                TorchCompileWhatToCompile.FORWARD_TRAIN,
+                TorchCompileWhatToCompile.COMPLETE_UPDATE,
+            ]:
+                raise ValueError(
+                    f"what_to_compile must be one of ["
+                    f"TorchCompileWhatToCompile.forward_train, "
+                    f"TorchCompileWhatToCompile.complete_update] but is"
+                    f" {self.what_to_compile}"
+                )
+            if self.torch_compile_cfg is None:
+                raise ValueError(
+                    "torch_compile_cfg must be set when torch_compile is True."
+                )
 
 
 @dataclass
@@ -314,6 +373,7 @@ class Learner:
         self._framework_hyperparameters = (
             framework_hyperparameters or FrameworkHyperparameters()
         )
+        self._framework_hyperparameters.validate()
 
         # whether self.build has already been called
         self._is_built = False
@@ -601,11 +661,11 @@ class Learner:
 
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
-    def apply_gradients(self, gradients: ParamDict) -> None:
+    def apply_gradients(self, gradients_dict: ParamDict) -> None:
         """Applies the gradients to the MultiAgentRLModule parameters.
 
         Args:
-            gradients: A dictionary of gradients in the same (flat) format as
+            gradients_dict: A dictionary of gradients in the same (flat) format as
                 self._params. Note that top-level structures, such as module IDs,
                 will not be present anymore in this dict. It will merely map gradient
                 tensor references to gradient tensors.
@@ -765,14 +825,14 @@ class Learner:
         """
 
     @abc.abstractmethod
-    def _convert_batch_type(self, batch: MultiAgentBatch) -> NestedDict[TensorType]:
-        """Converts a MultiAgentBatch to a NestedDict of Tensors on the correct device.
+    def _convert_batch_type(self, batch: MultiAgentBatch) -> MultiAgentBatch:
+        """Converts the elements of a MultiAgentBatch to Tensors on the correct device.
 
         Args:
             batch: The MultiAgentBatch object to convert.
 
         Returns:
-            The resulting NestedDict with framework-specific tensor values placed
+            The resulting MultiAgentBatch with framework-specific tensor values placed
             on the correct device.
         """
 
@@ -987,7 +1047,7 @@ class Learner:
         timestep: int,
         **kwargs,
     ) -> Mapping[ModuleID, Any]:
-        """Apply additional non-gradient based updates to this Trainer.
+        """Apply additional non-gradient based updates to this Algorithm.
 
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.
@@ -1143,19 +1203,22 @@ class Learner:
             batch_iter = MiniBatchDummyIterator
 
         results = []
-        for minibatch in batch_iter(batch, minibatch_size, num_iters):
-            # Convert minibatch into a tensor batch (NestedDict).
-            tensor_minibatch = self._convert_batch_type(minibatch)
+        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
+        # device (e.g. GPU). We move the batch already here to avoid having to move
+        # every single minibatch that is created in the `batch_iter` below.
+        batch = self._convert_batch_type(batch)
+        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
+            nested_tensor_minibatch = NestedDict(tensor_minibatch.policy_batches)
             (
                 fwd_out,
                 loss_per_module,
                 metrics_per_module,
-            ) = self._update(tensor_minibatch)
+            ) = self._update(nested_tensor_minibatch)
 
             result = self.compile_results(
-                batch=minibatch,
+                batch=tensor_minibatch,
                 fwd_out=fwd_out,
                 loss_per_module=loss_per_module,
                 metrics_per_module=defaultdict(dict, **metrics_per_module),

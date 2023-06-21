@@ -147,15 +147,12 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = AlgorithmConfig().environment(
             env="ALE/Breakout-v5", env_config={"frameskip": 1}
         )
-        config.validate()
         self.assertTrue(config.is_atari)
 
         config = AlgorithmConfig().environment(env="ALE/Pong-v5")
-        config.validate()
         self.assertTrue(config.is_atari)
 
         config = AlgorithmConfig().environment(env="CartPole-v1")
-        config.validate()
         # We do not auto-detect callable env makers for Atari envs.
         self.assertFalse(config.is_atari)
 
@@ -166,12 +163,10 @@ class TestAlgorithmConfig(unittest.TestCase):
                 make_kwargs={"frameskip": 1},
             )
         )
-        config.validate()
         # We do not auto-detect callable env makers for Atari envs.
         self.assertFalse(config.is_atari)
 
         config = AlgorithmConfig().environment(env="NotAtari")
-        config.validate()
         self.assertFalse(config.is_atari)
 
     def test_rl_module_api(self):
@@ -305,7 +300,9 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         marl_spec = config.get_marl_module_spec(
             policy_dict={"p1": policy_spec_ph, "p2": policy_spec_ph},
-            module_spec=SingleAgentRLModuleSpec(module_class=passed_module_class)
+            single_agent_rl_module_spec=SingleAgentRLModuleSpec(
+                module_class=passed_module_class
+            )
             if passed_module_class
             else None,
         )

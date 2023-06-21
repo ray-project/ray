@@ -92,9 +92,7 @@ def main(
         # the modules are reloaded and use the newest files, instead of
         # old ones, which may not have the changes introduced on the
         # checked out branch.
-        cmd = [sys.executable, __file__, "--no-clone-repo"]
-        if test_collection_file:
-            cmd += ["--test-collection-file", test_collection_file]
+        cmd = _get_rerun_cmd(test_collection_file, run_jailed_tests)
         subprocess.run(cmd, capture_output=False, check=True)
         return
     elif repo:
@@ -186,6 +184,8 @@ def main(
         or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
         or (branch.startswith("releases/") and buildkite_branch.startswith("releases/"))
     )
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        env["REPORT_TO_RAY_TEST_DB"] = "1"
 
     steps = []
     for group in sorted(grouped_tests):
@@ -238,6 +238,18 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
+
+
+def _get_rerun_cmd(
+    test_collection_file: Optional[str] = None,
+    run_jailed_tests: bool = False,
+):
+    cmd = [sys.executable, __file__, "--no-clone-repo"]
+    if test_collection_file:
+        cmd += ["--test-collection-file", test_collection_file]
+    if run_jailed_tests:
+        cmd += ["--run-jailed-tests"]
+    return cmd
 
 
 if __name__ == "__main__":

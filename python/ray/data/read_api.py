@@ -12,42 +12,35 @@ from typing import (
     Union,
 )
 
-
 import numpy as np
 
 import ray
+from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrowRefs,
-    FromHuggingFace,
+from ray.data._internal.logical.operators.from_operators import (
+    FromArrow,
+    FromItems,
+    FromNumpy,
+    FromPandas,
 )
-from ray.data._internal.logical.operators.from_items_operator import FromItems
-from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromDask,
-    FromMars,
-    FromModin,
-    FromPandasRefs,
-)
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
-    pandas_df_to_arrow_block,
-    ndarray_to_block,
+    _lazy_import_pyarrow_dataset,
     get_table_block_metadata,
+    ndarray_to_block,
+    pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
+from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -55,20 +48,20 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    SQLDatasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
+    MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    MongoDatasource,
     ReadTask,
+    SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
     WebDatasetDatasource,
@@ -83,7 +76,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import dask
@@ -92,8 +84,8 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
-    import pyspark
     import pymongoarrow.api
+    import pyspark
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -109,7 +101,7 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
-    output_arrow_format: bool = False,
+    output_arrow_format: bool = True,
 ) -> MaterializedDataset:
     """Create a dataset from a list of local Python objects.
 
@@ -125,16 +117,10 @@ def from_items(
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
             Parallelism may be limited by the number of items.
-        output_arrow_format: If True, always return data in Arrow format, raising an
-            error if this is not possible. Defaults to False.
 
     Returns:
         MaterializedDataset holding the items.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        output_arrow_format = True
-
     import builtins
 
     if parallelism == 0:
@@ -158,32 +144,14 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        if ctx.strict_mode:
-            # In strict mode, we will fallback from Arrow -> Pandas automatically in
-            # the delegating block builder, and never use simple blocks.
-            builder = DelegatingBlockBuilder()
-        elif output_arrow_format:
-            builder = ArrowBlockBuilder()
-        else:
-            builder = DelegatingBlockBuilder()
+        builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
             item = items[j]
-            if ctx.strict_mode:
-                if not isinstance(item, collections.abc.Mapping):
-                    item = {"item": item}
-            else:
-                if output_arrow_format and not isinstance(
-                    item, (collections.abc.Mapping, np.ndarray)
-                ):
-                    raise ValueError(
-                        "Arrow block format can only be used if all items are "
-                        "either dicts or Numpy arrays. Received data of type: "
-                        f"{type(items[j])}. Set `output_arrow_format` to "
-                        "False to not use Arrow blocks."
-                    )
+            if not isinstance(item, collections.abc.Mapping):
+                item = {"item": item}
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
@@ -193,7 +161,7 @@ def from_items(
             )
         )
 
-    from_items_op = FromItems(items, detected_parallelism)
+    from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
@@ -227,32 +195,18 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
     Returns:
         Dataset producing the integers.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        return read_datasource(
-            RangeDatasource(),
-            parallelism=parallelism,
-            n=n,
-            block_format="arrow",
-            column_name="id",
-        )
-    return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
-    )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="arrow",
-        column_name="value",
+        column_name="id",
     )
+
+
+@Deprecated
+def range_table(n: int, *, parallelism: int = -1) -> Dataset:
+    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
 
 
 @PublicAPI
@@ -286,13 +240,12 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Returns:
         Dataset producing the integers as Arrow tensor records.
     """
-    ctx = ray.data.DataContext.get_current()
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="tensor",
-        column_name="data" if ctx.strict_mode else "__value__",
+        column_name="data",
         tensor_shape=tuple(shape),
     )
 
@@ -338,11 +291,8 @@ def read_datasource(
         )
         local_uri = True
 
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     force_local = False
     cur_pg = ray.util.get_current_placement_group()
@@ -566,6 +516,28 @@ def read_parquet(
               variety: string
            }
         )
+
+        The Parquet reader also supports projection and filter pushdown, allowing column
+        selection and row filtering to be pushed down to the file scan.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            # Create a Dataset by reading a Parquet file, pushing column selection and
+            # row filtering down to the file scan.
+            ds = ray.data.read_parquet(
+                "example://iris.parquet",
+                columns=["sepal.length", "variety"],
+                filter=pa.dataset.field("sepal.length") > 5.0,
+            )
+
+            ds.show(2)
+
+        .. testoutput::
+
+            {'sepal.length': 5.1, 'variety': 'Setosa'}
+            {'sepal.length': 5.4, 'variety': 'Setosa'}
 
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
@@ -1348,16 +1320,7 @@ def read_binary_files(
     Returns:
         Dataset producing records read from the specified paths.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        output_arrow_format = True
-
-    if not output_arrow_format:
-        logger.warning(
-            "read_binary_files() returns Dataset in Python list format as of Ray "
-            "v2.4. Use read_binary_files(output_arrow_format=True) to return "
-            "Dataset in Arrow format.",
-        )
+    output_arrow_format = True
 
     return read_datasource(
         BinaryDatasource(),
@@ -1400,7 +1363,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+        :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
 
@@ -1489,9 +1452,6 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
     ds = from_pandas_refs(
         [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
     )
-    logical_plan = LogicalPlan(FromDask(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1508,10 +1468,6 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
     import mars.dataframe as md
 
     ds: Dataset = md.to_ray_dataset(df)
-
-    logical_plan = LogicalPlan(FromMars(ds.dataframe))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1529,10 +1485,6 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
 
     parts = unwrap_partitions(df, axis=0)
     ds = from_pandas_refs(parts)
-
-    logical_plan = LogicalPlan(FromModin(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1591,15 +1543,15 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
-    logical_plan = LogicalPlan(FromPandasRefs(dfs))
     context = DataContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+                DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1612,10 +1564,11 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1674,13 +1627,12 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    from_numpy_refs_op = FromNumpyRefs(ndarrays)
-    logical_plan = LogicalPlan(from_numpy_refs_op)
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1730,12 +1682,12 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrowRefs(tables))
+    logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1778,7 +1730,6 @@ def from_huggingface(
     Example:
 
     .. doctest::
-        :options: +ELLIPSIS
 
         >>> import ray
         >>> import datasets
@@ -1818,10 +1769,12 @@ def from_huggingface(
     import datasets
 
     def convert(ds: "datasets.Dataset") -> Dataset:
-        ray_ds = from_arrow(ds.data.table)
-        logical_plan = LogicalPlan(FromHuggingFace(ds))
-        ray_ds._logical_plan = logical_plan
-        ray_ds._plan.link_logical_plan(logical_plan)
+        # To get the resulting Arrow table from a Hugging Face Dataset after
+        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # we create a copy of the Arrow table, which applies the indices
+        # mapping from the transformations.
+        hf_ds_arrow = ds.with_format("arrow")
+        ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
