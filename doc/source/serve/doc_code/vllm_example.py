@@ -52,13 +52,17 @@ class VLLMPredictDeployment:
         self.engine = AsyncLLMEngine.from_engine_args(args)
 
     async def stream_results(self, results_generator) -> AsyncGenerator[bytes, None]:
+        num_returned = 0
         async for request_output in results_generator:
             prompt = request_output.prompt
-            text_outputs = [prompt + output.text for output in request_output.outputs]
-            ret = {"text": text_outputs}
+            text_outputs = [output.text for output in request_output.outputs]
+            assert len(text_outputs) == 1
+            text_output = text_outputs[0][num_returned:]
+            ret = {"text": text_output}
             yield (json.dumps(ret) + "\n").encode("utf-8")
+            num_returned += len(text_output)
 
-    async def abort_request(self, request_id) -> None:
+    async def may_abort_request(self, request_id) -> None:
         await self.engine.abort(request_id)
 
     async def __call__(self, request: Request) -> Response:
@@ -77,8 +81,9 @@ class VLLMPredictDeployment:
         results_generator = self.engine.generate(prompt, sampling_params, request_id)
         if stream:
             background_tasks = BackgroundTasks()
-            # Abort the request if the client disconnects.
-            background_tasks.add_task(self.abort_request, request_id)
+            # Using backgroun_taks so we abort the the request
+            # if the client disconnects.
+            background_tasks.add_task(self.may_abort_request, request_id)
             return StreamingResponse(
                 self.stream_results(results_generator), background=background_tasks
             )
