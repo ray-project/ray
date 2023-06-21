@@ -1,3 +1,4 @@
+import asyncio
 from abc import ABC, abstractmethod
 from collections import namedtuple
 from typing import List
@@ -50,6 +51,32 @@ class QuotaBasedRequestSelectionPolicy(RequestSelectionPolicy):
             for request in results:
                 queue.reverse_push(request)
             return []
+        return results
+
+    def select_new_requests_asyncio_queue(
+        self, in_process_requests: List[InferenceRequest], queue: asyncio.Queue
+    ) -> List[InferenceRequest]:
+        min_num_requests, token_budget = self.calculate_quota(in_process_requests)
+
+        if min_num_requests and queue.qsize() < min_num_requests:
+            return []
+
+        hypothetical_results = []
+        while len(hypothetical_results) < queue.qsize():
+            request = queue._queue[0]
+            if request.total_tokens() >= token_budget:
+                break
+            hypothetical_results.append(request)
+            token_budget -= request.total_tokens()
+
+        results = []
+        if min_num_requests and len(hypothetical_results) < min_num_requests:
+            results = []
+        else:
+            results = []
+            for _ in hypothetical_results:
+                results.append(queue.get_nowait())
+
         return results
 
     def calculate_quota(self, in_process_requests: List[InferenceRequest]) -> Quota:

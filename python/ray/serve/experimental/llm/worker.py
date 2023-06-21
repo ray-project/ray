@@ -16,10 +16,20 @@ class InferenceWorker:
     def process_new_batch(
         self, requests: List[GenerationRequest]
     ) -> Tuple[List[Generation], int]:
+        print("Worker started processing new batch")
         batch_state = self._model.create_batch(requests)
+        print("Worker created new batch")
         generations, batch_state = self._model.generate_token(batch_state)
-        self._batch_state_cache[batch_state.id] = batch_state
-        return generations, batch_state.id
+        print("Worker generated a token")
+        try:
+            print("Batch state ID: ", batch_state.id)
+        except Exception as e:
+            print("Failed to get batch state id", repr(e))
+        if batch_state is not None:
+            self._batch_state_cache[batch_state.id] = batch_state
+            return generations, batch_state.id
+        else:
+            return generations, None
 
     def generate_next_token(
         self, batch_ids: List[int]
@@ -51,6 +61,9 @@ class InferenceWorker:
         return generations, None
 
     def filter_requests(self, batch_id: int, request_ids: List[int]) -> Optional[int]:
+        if batch_id is None:
+            return None
+
         batch_state = self._batch_state_cache.pop(batch_id)
 
         if len(request_ids) == 0:

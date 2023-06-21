@@ -66,15 +66,20 @@ class TokenStream:
         self._queue = asyncio.Queue()
         self._loop = loop
 
-    async def end(self):
-        await asyncio.wrap_future(
-            asyncio.run_coroutine_threadsafe(self._queue.put(EOS), self._loop)
-        )
+    # async def end(self):
+    # await asyncio.wrap_future(
+    #     asyncio.run_coroutine_threadsafe(self._queue.put(EOS), self._loop)
+    # )
 
-    async def put(self, item):
-        await asyncio.wrap_future(
-            asyncio.run_coroutine_threadsafe(self._queue.put(item), self._loop)
-        )
+    def end(self):
+        self._queue.put_nowait(EOS)
+
+    # async def put(self, item):
+    def put(self, item):
+        self._queue.put_nowait(item)
+        # await asyncio.wrap_future(
+        #     asyncio.run_coroutine_threadsafe(self._queue.put(item), self._loop)
+        # )
 
     def __aiter__(self):
         return self

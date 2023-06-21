@@ -15,7 +15,12 @@ from ray.serve.experimental.llm.types import (
 )
 from ray.serve.experimental.llm.tokenstream import FakeTokenStream, Event_ts
 from ray.serve.experimental.llm.queue import RequestQueue, InferenceRequest
-from ray.serve.experimental.llm.policy import RequestSelectionPolicy
+from ray.serve.experimental.llm.policy import (
+    RequestSelectionPolicy,
+    QuotaBasedRequestSelectionPolicy,
+)
+
+from ray._private.utils import run_background_task
 
 logger = logging.getLogger(__name__)
 
@@ -103,8 +108,9 @@ class InferenceScheduler:
         self,
         tokenizer: Tokenizer,
         inference_worker_loader,
-        request_selection_policy: RequestSelectionPolicy,
-        request_queue: RequestQueue,
+        request_selection_policy: QuotaBasedRequestSelectionPolicy,  # RequestSelectionPolicy,
+        # request_queue: RequestQueue,
+        request_queue: asyncio.Queue,
         loop: asyncio.AbstractEventLoop,
         inline: bool = False,
     ):
@@ -112,18 +118,22 @@ class InferenceScheduler:
         self._request_selection_policy = request_selection_policy
         self._inference_worker_loader = inference_worker_loader
         self._request_queue = request_queue
+        self._queue_put_event = asyncio.Event()
         self._loop = loop
         self._lock = Lock()
         self._stop = False
         self._stats = Stats()
         if not inline:
-            self._thread = Thread(target=self._run_scheduling_loop)
-            self._thread.start()
+            # self._thread = Thread(target=self._run_scheduling_loop)
+            # self._thread.start()
+            # self.scheduling_loop_task = asyncio.get_event_loop().create_task(self._run_scheduling_loop())
+            self.scheduling_loop_task = run_background_task(self._run_scheduling_loop())
 
     def stop(self):
         with self._lock:
             self._stop = True
-        self._thread.join()
+        pass
+        # self._thread.join()
 
     def is_stopped(self) -> bool:
         with self._lock:
@@ -156,14 +166,15 @@ class InferenceScheduler:
 
     def _add_request(self, request: GenerationRequest, event=None) -> FakeTokenStream:
         pending_request = InferenceRequest.from_request(request, self._loop, event)
-        self._request_queue.push(pending_request)
+        # self._request_queue.push(pending_request)
+        self._request_queue.put_nowait(pending_request)
+        self._queue_put_event.set()
         return pending_request.output_stream
 
-    def _run_scheduling_loop(self):
+    async def _run_scheduling_loop(self):
         """Schedule requests to be processed by the inference worker."""
         # start work the in the scheduling loop to avoid GPU memory leak.
         self._inference_worker = self._inference_worker_loader()
-        print("model loaded")
         self._stats.start()
 
         # The main schedule loop:
@@ -179,9 +190,10 @@ class InferenceScheduler:
         # 3. goto step 1.
         batch_id = None
         in_process_requests = []
+        await asyncio.sleep(0.1)
         while not self.is_stopped():
             # select new requests to process.
-            new_requests = self._select_new_requests(in_process_requests)
+            new_requests = await self._select_new_requests(in_process_requests)
             new_batch_id, new_unfinished_requests = self._process_new_requests(
                 new_requests
             )
@@ -192,12 +204,13 @@ class InferenceScheduler:
             )
             self._stats.iteration_finished()
             self._report_stats()
+            await asyncio.sleep(0.1)
 
     def _report_stats(self):
         if self._stats.report_stats():
             self._inference_worker.report_stats()
 
-    def _select_new_requests(
+    async def _select_new_requests(
         self,
         in_process_requests: List[InferenceRequest],
     ) -> List[InferenceRequest]:
@@ -208,9 +221,15 @@ class InferenceScheduler:
         ):
             # if there is no in-process requests and no new requests in the queue,
             # wait for new requests to arrive in the queue.
-            self._request_queue.wait(1)
+            # self._request_queue.wait(1)
 
-        requests = self._request_selection_policy.select_new_requests(
+            await self._queue_put_event.wait()
+            self._queue_put_event.clear()
+
+        # requests = self._request_selection_policy.select_new_requests(
+        #     in_process_requests, self._request_queue
+        # )
+        requests = self._request_selection_policy.select_new_requests_asyncio_queue(
             in_process_requests, self._request_queue
         )
         self._stats.request_selected(requests)

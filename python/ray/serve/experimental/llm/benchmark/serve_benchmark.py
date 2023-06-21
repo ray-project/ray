@@ -1,3 +1,4 @@
+import asyncio
 import random
 from starlette.requests import Request
 from starlette.responses import StreamingResponse
@@ -11,6 +12,8 @@ from ray.serve.experimental.llm.types import SamplingParams
 from ray.serve.experimental.llm.worker import InferenceWorker
 from ray.serve.experimental.llm.policy import QuotaBasedRequestSelectionPolicy
 from ray.serve.experimental.llm.scheduler import InferenceScheduler, TransfomerTokenizer
+
+from ray._private.utils import get_or_create_event_loop
 
 
 @serve.deployment
@@ -27,7 +30,8 @@ class ModelServer:
             do_sample=False,
             max_new_tokens=64,
             stop_sequences=[],
-            ignore_eos_token=True,
+            # ignore_eos_token=True,
+            ignore_eos_token=False,
             watermark=False,
             seed=42,
         )
@@ -40,8 +44,9 @@ class ModelServer:
             request_selection_policy=QuotaBasedRequestSelectionPolicy(
                 max_batch_total_tokens=25000, max_waiting_tokens=20
             ),
-            request_queue=RequestQueue(),
+            request_queue=asyncio.Queue(),  # RequestQueue(),
             loop=None,
+            # loop=get_or_create_event_loop(),
             inline=False,
         )
 

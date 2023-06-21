@@ -25,7 +25,7 @@ class InferenceRequest:
         return cls(
             id=request.id,
             request=request,
-            output_stream=TokenStream(loop=loop, event=event),
+            output_stream=TokenStream(),  # loop=loop),#, event=event),
             submit_time_ns=int(time.time()),
         )
 
