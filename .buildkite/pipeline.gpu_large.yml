@@ -50,7 +50,7 @@
     ["NO_WHEELS_REQUIRED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_DOC_AFFECTED"]
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 INSTALL_VLLM=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/requirements_ml_docker.txt
     - ./ci/env/env_info.sh
     # Test examples with newer version of `transformers`
