@@ -170,7 +170,7 @@ class GlobalState:
             entry = gcs_pb2.JobTableData.FromString(job_table[i])
             job_info = {}
             job_info["JobID"] = entry.job_id.hex()
-            job_info["DriverIPAddress"] = entry.driver_ip_address
+            job_info["DriverIPAddress"] = entry.driver_address.ip_address
             job_info["DriverPid"] = entry.driver_pid
             job_info["Timestamp"] = entry.timestamp
             job_info["StartTime"] = entry.start_time

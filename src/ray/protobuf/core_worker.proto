@@ -385,6 +385,12 @@ message RayletNotifyGCSRestartRequest {}
 
 message RayletNotifyGCSRestartReply {}
 
+message NumPendingTasksRequest {}
+
+message NumPendingTasksReply {
+  int64 num_pending_tasks = 1;
+}
+
 message ReportGeneratorItemReturnsRequest {
   // The intermediate return object that's dynamically
   // generated from the executor side.
@@ -467,4 +473,6 @@ service CoreWorkerService {
   rpc Exit(ExitRequest) returns (ExitReply);
   // Assign the owner of an object to the intended worker.
   rpc AssignObjectOwner(AssignObjectOwnerRequest) returns (AssignObjectOwnerReply);
+  // Get the number of pending tasks.
+  rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
 }

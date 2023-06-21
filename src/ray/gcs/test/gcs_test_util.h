@@ -212,7 +212,12 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
-    job_table_data->set_driver_ip_address("127.0.0.1");
+    rpc::Address address;
+    address.set_ip_address("127.0.0.1");
+    address.set_port(1234);
+    address.set_raylet_id(UniqueID::FromRandom().Binary());
+    address.set_worker_id(UniqueID::FromRandom().Binary());
+    job_table_data->mutable_driver_address()->CopyFrom(address);
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }
@@ -243,14 +248,24 @@ struct Mocker {
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
       const JobID &job_id,
       const std::string &ray_namespace,
-      const std::optional<std::string> &submission_id = std::nullopt) {
+      const std::optional<std::string> &submission_id = std::nullopt,
+      const std::optional<rpc::Address> &address = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
-
+    if (address.has_value()) {
+      job_table_data->mutable_driver_address()->CopyFrom(address.value());
+    } else {
+      rpc::Address dummy_address;
+      dummy_address.set_port(1234);
+      dummy_address.set_raylet_id(NodeID::FromRandom().Binary());
+      dummy_address.set_ip_address("123.456.7.8");
+      dummy_address.set_worker_id(WorkerID::FromRandom().Binary());
+      job_table_data->mutable_driver_address()->CopyFrom(dummy_address);
+    }
     if (submission_id.has_value()) {
       job_table_data->mutable_config()->mutable_metadata()->insert(
           {"job_submission_id", submission_id.value()});

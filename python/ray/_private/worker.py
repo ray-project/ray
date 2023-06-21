@@ -2750,7 +2750,8 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
-            "ray.kill() only supported for actors. Got: {}.".format(type(actor))
+            "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
+            "Got: {}.".format(type(actor))
         )
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
@@ -2792,7 +2793,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            f"Got: {type(object_ref)}."
+            f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)
 
