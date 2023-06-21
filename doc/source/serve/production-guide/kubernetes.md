@@ -37,7 +37,7 @@ Under the `spec` section in the `RayService` CR, set the following fields:
 
 **`deploymentUnhealthySecondThreshold`**: Represents the number of seconds that the Serve application status can be unavailable before the service is considered unhealthy. The Serve application status is unavailable whenever the Ray dashboard is unavailable. The default is 60 seconds. When the service is unhealthy, the KubeRay Service controller tries to recreate a new cluster and deploy the application to the new cluster.
 
-**`serveConfigV2`**: Represents the configuration that Ray Serve uses to deploy the application. Use the `--kubernetes-format`/`-k` flag with `serve build` to print the Serve configuration and copy-paste it directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
+**`serveConfigV2`**: Represents the configuration that Ray Serve uses to deploy the application. Using `serve build` to print the Serve configuration and copy-paste it directly into your [Kubernetes config](serve-in-production-kubernetes) and `RayService` CR.
 
 **`rayClusterConfig`**: Populate this field with the contents of the `spec` field from the `RayCluster` CR YAML file. Refer to [KubeRay configuration](kuberay-config) for more details.
 
