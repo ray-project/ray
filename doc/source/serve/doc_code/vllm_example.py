@@ -54,7 +54,6 @@ class VLLMPredictDeployment:
     async def stream_results(self, results_generator) -> AsyncGenerator[bytes, None]:
         num_returned = 0
         async for request_output in results_generator:
-            prompt = request_output.prompt
             text_outputs = [output.text for output in request_output.outputs]
             assert len(text_outputs) == 1
             text_output = text_outputs[0][num_returned:]
