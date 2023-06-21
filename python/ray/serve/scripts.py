@@ -731,8 +731,9 @@ def build(
         )
     else:
         if kubernetes_format:
-            raise click.ClickException(
-                "Multi-application config is not supported in Kubernetes format yet."
+            cli_logger.info(
+                "Multi-application configs take the same format when used with "
+                "Kubernetes."
             )
 
         app_configs = []
