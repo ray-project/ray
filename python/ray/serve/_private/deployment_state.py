@@ -57,8 +57,8 @@ from ray.serve._private.utils import (
     get_all_node_ids,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
+from ray.serve._private import deployment_scheduler
 from ray.serve._private.deployment_scheduler import (
-    DeploymentScheduler,
     SpreadDeploymentSchedulingStrategy,
     DriverDeploymentSchedulingStrategy,
     DeploymentUpscaleRequest,
@@ -168,7 +168,6 @@ class ActorReplicaWrapper:
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        deployment_scheduler: DeploymentScheduler,
     ):
         self._actor_name = actor_name
         self._detached = detached
@@ -176,7 +175,6 @@ class ActorReplicaWrapper:
 
         self._replica_tag = replica_tag
         self._deployment_name = deployment_name
-        self._deployment_scheduler = deployment_scheduler
 
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
@@ -500,10 +498,6 @@ class ActorReplicaWrapper:
                 self._actor_handle.initialize_and_get_metadata.remote()
             )
 
-        self._deployment_scheduler.on_replica_recovering(
-            self._deployment_name, self._replica_tag
-        )
-
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
         Check if current replica has started by making ray API calls on
@@ -543,10 +537,6 @@ class ActorReplicaWrapper:
                 "the replica will be stopped."
             )
             return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
-
-        self._deployment_scheduler.on_replica_running(
-            self._deployment_name, self._replica_tag, self._node_id
-        )
 
         # Check whether relica initialization has completed.
         replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
@@ -604,10 +594,6 @@ class ActorReplicaWrapper:
         except ValueError:
             # ValueError thrown from ray.get_actor means actor has already been deleted
             pass
-
-        self._deployment_scheduler.on_replica_stopping(
-            self._deployment_name, self._replica_tag
-        )
 
         return self.graceful_shutdown_timeout_s
 
@@ -774,7 +760,6 @@ class DeploymentReplica(VersionedReplica):
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        deployment_scheduler: DeploymentScheduler,
     ):
         self._actor = ActorReplicaWrapper(
             f"{ReplicaName.prefix}{format_actor_name(replica_tag)}",
@@ -783,7 +768,6 @@ class DeploymentReplica(VersionedReplica):
             replica_tag,
             deployment_name,
             version,
-            deployment_scheduler,
         )
         self._controller_name = controller_name
         self._deployment_name = deployment_name
@@ -1113,7 +1097,7 @@ class DeploymentState:
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        deployment_scheduler: DeploymentScheduler,
+        deployment_scheduler: deployment_scheduler.DeploymentScheduler,
         _save_checkpoint_func: Callable,
     ):
 
@@ -1201,6 +1185,9 @@ class DeploymentState:
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
+            self._deployment_scheduler.on_replica_recovering(
+                replica_name.deployment_tag, replica_name.replica_tag
+            )
             logger.debug(
                 f"RECOVERING replica: {new_deployment_replica.replica_tag}, "
                 f"deployment: {self._name}."
@@ -1552,7 +1539,6 @@ class DeploymentState:
                         replica_name.replica_tag,
                         replica_name.deployment_tag,
                         self._target_state.version,
-                        self._deployment_scheduler,
                     )
                     upscale.append(
                         new_deployment_replica.start(self._target_state.info)
@@ -1680,6 +1666,9 @@ class DeploymentState:
                 # This replica should be now be added to handle's replica
                 # set.
                 self._replicas.add(ReplicaState.RUNNING, replica)
+                self._deployment_scheduler.on_replica_running(
+                    self._name, replica.replica_tag, replica.actor_node_id
+                )
                 logger.info(
                     f"Replica {replica.replica_tag} started successfully "
                     f"on node {replica.actor_node_id}.",
@@ -1698,6 +1687,10 @@ class DeploymentState:
                 ReplicaStartupStatus.PENDING_ALLOCATION,
                 ReplicaStartupStatus.PENDING_INITIALIZATION,
             ]:
+                if start_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
+                    self._deployment_scheduler.on_replica_running(
+                        self._name, replica.replica_tag, replica.actor_node_id
+                    )
                 is_slow = time.time() - replica._start_time > SLOW_STARTUP_WARNING_S
                 if is_slow:
                     slow_replicas.append((replica, start_status))
@@ -1745,6 +1738,7 @@ class DeploymentState:
         )
         replica.stop(graceful=graceful_stop)
         self._replicas.add(ReplicaState.STOPPING, replica)
+        self._deployment_scheduler.on_replica_stopping(self._name, replica.replica_tag)
         self.health_check_gauge.set(
             0,
             tags={
@@ -1942,7 +1936,7 @@ class DriverDeploymentState(DeploymentState):
         controller_name: str,
         detached: bool,
         long_poll_host: LongPollHost,
-        deployment_scheduler: DeploymentScheduler,
+        deployment_scheduler: deployment_scheduler.DeploymentScheduler,
         _save_checkpoint_func: Callable,
         gcs_client: GcsClient = None,
     ):
@@ -1983,7 +1977,6 @@ class DriverDeploymentState(DeploymentState):
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 self._target_state.version,
-                self._deployment_scheduler,
             )
             upscale.append(new_deployment_replica.start(self._target_state.info))
 
@@ -2078,7 +2071,7 @@ class DeploymentStateManager:
         self._detached = detached
         self._kv_store = kv_store
         self._long_poll_host = long_poll_host
-        self._deployment_scheduler = DeploymentScheduler()
+        self._deployment_scheduler = deployment_scheduler.DeploymentScheduler()
 
         self._deployment_states: Dict[str, DeploymentState] = dict()
         self._deleted_deployment_metadata: Dict[str, DeploymentInfo] = OrderedDict()

@@ -2,6 +2,7 @@ import sys
 import time
 from typing import Any, Dict, List, Optional, Tuple
 from unittest.mock import patch, Mock
+from collections import defaultdict
 
 import pytest
 
@@ -15,7 +16,9 @@ from ray.serve._private.common import (
     ReplicaName,
     ReplicaState,
 )
-from ray.serve._private.deployment_scheduler import DeploymentScheduler
+from ray.serve._private.deployment_scheduler import (
+    DeploymentUpscaleRequest,
+)
 from ray.serve._private.deployment_state import (
     ActorReplicaWrapper,
     DeploymentState,
@@ -70,7 +73,6 @@ class MockReplicaActorWrapper:
         replica_tag: ReplicaTag,
         deployment_name: str,
         version: DeploymentVersion,
-        deployment_scheduler: DeploymentScheduler,
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
@@ -177,6 +179,15 @@ class MockReplicaActorWrapper:
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
+        return DeploymentUpscaleRequest(
+            deployment_name=self._deployment_name,
+            replica_name=self._replica_tag,
+            actor_def=None,
+            actor_resources=None,
+            actor_options=None,
+            actor_init_args=None,
+            on_scheduled=None,
+        )
 
     def reconfigure(self, version: DeploymentVersion):
         self.started = True
@@ -224,6 +235,45 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
+
+
+class MockDeploymentScheduler:
+    def __init__(self):
+        self.deployments = set()
+        self.replicas = defaultdict(set)
+
+    def on_deployment_created(self, deployment_name, scheduling_strategy):
+        assert deployment_name not in self.deployments
+        self.deployments.add(deployment_name)
+
+    def on_deployment_deleted(self, deployment_name):
+        assert deployment_name in self.deployments
+        self.deployments.remove(deployment_name)
+
+    def on_replica_stopping(self, deployment_name, replica_name):
+        assert replica_name in self.replicas[deployment_name]
+        self.replicas[deployment_name].remove(replica_name)
+
+    def on_replica_running(self, deployment_name, replica_name, node_id):
+        assert replica_name in self.replicas[deployment_name]
+
+    def on_replica_recovering(self, deployment_name, replica_name):
+        assert replica_name not in self.replicas[deployment_name]
+        self.replicas[deployment_name].add(replica_name)
+
+    def schedule(self, upscales, downscales):
+        for upscale in upscales:
+            assert upscale.replica_name not in self.replicas[upscale.deployment_name]
+            self.replicas[upscale.deployment_name].add(upscale.replica_name)
+
+        deployment_to_replicas_to_stop = defaultdict(set)
+        for downscale in downscales:
+            replica_iter = iter(self.replicas[downscale.deployment_name])
+            for _ in range(downscale.num_to_stop):
+                deployment_to_replicas_to_stop[downscale.deployment_name].add(
+                    next(replica_iter)
+                )
+        return deployment_to_replicas_to_stop
 
 
 class MockKVStore:
@@ -2468,7 +2518,12 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
     with patch(
         "ray.serve._private.deployment_state.ActorReplicaWrapper",
         new=MockReplicaActorWrapper,
-    ), patch("time.time", new=timer.time), patch(
+    ), patch(
+        "ray.serve._private.deployment_scheduler.DeploymentScheduler",
+        new=MockDeploymentScheduler,
+    ), patch(
+        "time.time", new=timer.time
+    ), patch(
         "ray.serve._private.long_poll.LongPollHost"
     ) as mock_long_poll:
 
@@ -2481,15 +2536,8 @@ def mock_deployment_state_manager(request) -> Tuple[DeploymentStateManager, Mock
             mock_long_poll,
             all_current_actor_names,
         )
-        deployment_state = DeploymentState(
-            "test",
-            "name",
-            True,
-            mock_long_poll,
-            deployment_state_manager._save_checkpoint_func,
-        )
 
-        yield deployment_state_manager, deployment_state, timer
+        yield deployment_state_manager, timer
     ray.shutdown()
 
 
@@ -2499,19 +2547,19 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     Test that shutdown waits for all deployments to be deleted and they
     are force-killed without a grace period.
     """
-    deployment_state_manager, deployment_state, timer = mock_deployment_state_manager
+    deployment_state_manager, timer = mock_deployment_state_manager
 
-    tag = "test"
+    deployment_name = "test"
 
     grace_period_s = 10
     b_info_1, b_version_1 = deployment_info(
         graceful_shutdown_timeout_s=grace_period_s,
         is_driver_deployment=is_driver_deployment,
     )
-    updating = deployment_state.deploy(b_info_1)
+    updating = deployment_state_manager.deploy(deployment_name, b_info_1)
     assert updating
 
-    deployment_state_manager._deployment_states[tag] = deployment_state
+    deployment_state = deployment_state_manager._deployment_states[deployment_name]
 
     # Single replica should be created.
     deployment_state_manager.update()
