@@ -136,7 +136,10 @@ class ExecutionPlan:
         # determined by the config at the time it was created.
         self._context = copy.deepcopy(DataContext.get_current())
 
-        self._skip_optimizer_pipeline = not self._context.optimizer_enabled
+        # Whether the corresponding dataset is generated from a pipeline.
+        # Currently, when this is True, this skips the new execution plan optimizer.
+        # TODO(scottjlee): remove this once we remove DatasetPipeline.
+        self._generated_from_pipeline = not self._context.optimizer_enabled
 
     def __repr__(self) -> str:
         return (
@@ -308,7 +311,7 @@ class ExecutionPlan:
         plan_copy = ExecutionPlan(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
-        plan_copy._skip_optimizer_pipeline = self._skip_optimizer_pipeline
+        plan_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -340,7 +343,7 @@ class ExecutionPlan:
             dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
-        plan_copy._skip_optimizer_pipeline = self._skip_optimizer_pipeline
+        plan_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks.copy()

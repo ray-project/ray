@@ -22,7 +22,7 @@ def pipeline_stage(fn: Callable[[], Dataset]) -> Dataset:
     ds = fn()
     # Flag used to skip the new plan optimizer, which does not
     # support DatasetPipeline (will fall back to legacy plan optimizer)
-    ds._plan._skip_optimizer_pipeline = True
+    ds._plan._generated_from_pipeline = True
     return ds.materialize()
 
 
