@@ -103,23 +103,33 @@ def from_items(
     parallelism: int = -1,
     output_arrow_format: bool = True,
 ) -> MaterializedDataset:
-    """Create a dataset from a list of local Python objects.
+    """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
+
+    Use this method to create small datasets for testing and exploration.
 
     Examples:
-        >>> import ray
-        >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
-        MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
-        >>> ds.take_batch(2) # doctest: +SKIP
-        {"item": array([1, 2])}
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([1, 2, 3, 4, 5])
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            item    int64
 
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
-            Parallelism may be limited by the number of items.
+            Parallelism might be limited by the number of items.
 
     Returns:
-        MaterializedDataset holding the items.
+        A :class:`~ray.data.Dataset` holding the items.
     """
     import builtins
 
