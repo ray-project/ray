@@ -220,6 +220,7 @@ const App = () => {
                   <Route element={<Actors />} path="" />
                   <Route element={<ActorDetailLayout />} path=":actorId">
                     <Route element={<ActorDetailPage />} path="" />
+                    <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
                 </Route>
                 <Route element={<Metrics />} path="metrics" />
@@ -241,10 +242,6 @@ const App = () => {
                     <Route
                       element={<ServeReplicaDetailPage />}
                       path=":deploymentName/:replicaId"
-                    />
-                    <Route
-                      element={<TaskPage />}
-                      path=":deploymentName/:replicaId/tasks/:taskId"
                     />
                   </Route>
                 </Route>
