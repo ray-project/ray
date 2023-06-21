@@ -44,7 +44,7 @@ class TestSimpleQ(unittest.TestCase):
 
         num_iterations = 2
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build(env="CartPole-v1")
             rw = algo.workers.local_worker()
             for i in range(num_iterations):
