@@ -1297,8 +1297,7 @@ class DeploymentState:
 
         new_info = copy(self._target_state.info)
         new_info.set_autoscaled_num_replicas(num_replicas)
-        if new_info.version is None:
-            new_info.version = self._target_state.version.code_version
+        new_info.version = self._target_state.version.code_version
 
         target_state = DeploymentTargetState.from_deployment_info(new_info)
 
