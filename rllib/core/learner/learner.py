@@ -3,6 +3,7 @@ import json
 import logging
 import pathlib
 from collections import defaultdict
+from enum import Enum
 from dataclasses import dataclass, field
 from typing import (
     Any,
@@ -82,6 +83,30 @@ ENTROPY_KEY = "entropy"
 LEARNER_RESULTS_CURR_LR_KEY = "curr_lr"
 
 
+class TorchCompileWhatToCompile(str, Enum):
+    """Enumerates schemes of what parts of the TorchLearner can be compiled.
+
+    This can be either the entire update step of the learner or only the forward
+    methods (and therein the forward_train method) of the RLModule.
+
+    .. note::
+        - torch.compiled code can become slow on graph breaks or even raise
+            errors on unsupported operations. Empirically, compiling
+            `forward_train` should introduce little graph breaks, raise no
+            errors but result in a speedup comparable to compiling the
+            complete update.
+        - Using `complete_update` is experimental and may result in errors.
+    """
+
+    # Compile the entire update step of the learner.
+    # This includes the forward pass of the RLModule, the loss computation, and the
+    # optimizer step.
+    COMPLETE_UPDATE = "complete_update"
+    # Only compile the forward methods (and therein the forward_train method) of the
+    # RLModule.
+    FORWARD_TRAIN = "forward_train"
+
+
 @dataclass
 class FrameworkHyperparameters:
     """The framework specific hyper-parameters.
@@ -92,12 +117,46 @@ class FrameworkHyperparameters:
             This is useful for speeding up the training loop. However, it is not
             compatible with all tf operations. For example, tf.print is not supported
             in tf.function.
+        torch_compile: Whether to use torch.compile() within the context of a given
+            learner.
+        what_to_compile: What to compile when using torch.compile(). Can be one of
+            [TorchCompileWhatToCompile.complete_update,
+            TorchCompileWhatToCompile.forward_train].
+            If `complete_update`, the update step of the learner will be compiled. This
+            includes the forward pass of the RLModule, the loss computation, and the
+            optimizer step.
+            If `forward_train`, only the forward methods (and therein the
+            forward_train method) of the RLModule will be compiled.
+            Either of the two may lead to different performance gains in different
+            settings.
+            `complete_update` promises the highest performance gains, but may not work
+            in some settings. By compiling only forward_train, you may already get
+            some speedups and avoid issues that arise from compiling the entire update.
         troch_compile_config: The TorchCompileConfig to use for compiling the RL
             Module in Torch.
     """
 
     eager_tracing: bool = True
+    torch_compile: bool = False
+    what_to_compile: str = TorchCompileWhatToCompile.FORWARD_TRAIN
     torch_compile_cfg: Optional["TorchCompileConfig"] = None
+
+    def validate(self):
+        if self.torch_compile:
+            if self.what_to_compile not in [
+                TorchCompileWhatToCompile.FORWARD_TRAIN,
+                TorchCompileWhatToCompile.COMPLETE_UPDATE,
+            ]:
+                raise ValueError(
+                    f"what_to_compile must be one of ["
+                    f"TorchCompileWhatToCompile.forward_train, "
+                    f"TorchCompileWhatToCompile.complete_update] but is"
+                    f" {self.what_to_compile}"
+                )
+            if self.torch_compile_cfg is None:
+                raise ValueError(
+                    "torch_compile_cfg must be set when torch_compile is True."
+                )
 
 
 @dataclass
@@ -314,6 +373,7 @@ class Learner:
         self._framework_hyperparameters = (
             framework_hyperparameters or FrameworkHyperparameters()
         )
+        self._framework_hyperparameters.validate()
 
         # whether self.build has already been called
         self._is_built = False
@@ -987,7 +1047,7 @@ class Learner:
         timestep: int,
         **kwargs,
     ) -> Mapping[ModuleID, Any]:
-        """Apply additional non-gradient based updates to this Trainer.
+        """Apply additional non-gradient based updates to this Algorithm.
 
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.

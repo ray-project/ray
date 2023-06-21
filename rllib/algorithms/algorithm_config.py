@@ -25,6 +25,7 @@ from ray.rllib.core.learner.learner_group_config import LearnerGroupConfig, Modu
 from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import ModuleID, SingleAgentRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
+from ray.rllib.core.learner.learner import TorchCompileWhatToCompile
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -127,7 +128,7 @@ class AlgorithmConfig(_Config):
         ...     .resources(num_gpus=0)
         ...     .rollouts(num_rollout_workers=4)
         ...     .callbacks(MemoryTrackingCallbacks)
-        >>> # A config object can be used to construct the respective Trainer.
+        >>> # A config object can be used to construct the respective Algorithm.
         >>> rllib_algo = config.build()  # doctest: +SKIP
 
     Example:
@@ -139,7 +140,7 @@ class AlgorithmConfig(_Config):
         >>> # Use `to_dict()` method to get the legacy plain python config dict
         >>> # for usage with `tune.Tuner().fit()`.
         >>> tune.Tuner(  # doctest: +SKIP
-        ...     "[registered trainer class]", param_space=config.to_dict()
+        ...     "[registered Algorithm class]", param_space=config.to_dict()
         ...     ).fit()
     """
 
@@ -234,7 +235,7 @@ class AlgorithmConfig(_Config):
     def __init__(self, algo_class=None):
         # Define all settings and their default values.
 
-        # Define the default RLlib Trainer class that this AlgorithmConfig will be
+        # Define the default RLlib Algorithm class that this AlgorithmConfig will be
         # applied to.
         self.algo_class = algo_class
 
@@ -279,15 +280,20 @@ class AlgorithmConfig(_Config):
         }
         # Torch compile settings
         self.torch_compile_learner = False
+        self.torch_compile_learner_what_to_compile = (
+            TorchCompileWhatToCompile.FORWARD_TRAIN
+        )
+        # AOT Eager is a dummy backend and will not result in speedups
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
-        self.torch_compile_learner_dynamo_mode = "reduce-overhead"
+        self.torch_compile_learner_dynamo_mode = None
         self.torch_compile_worker = False
+        # AOT Eager is a dummy backend and will not result in speedups
         self.torch_compile_worker_dynamo_backend = (
-            "aot_eager" if sys.platform == "darwin" else "inductor"
+            "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
-        self.torch_compile_worker_dynamo_mode = "reduce-overhead"
+        self.torch_compile_worker_dynamo_mode = None
 
         # `self.environment()`
         self.env = None
@@ -1125,7 +1131,7 @@ class AlgorithmConfig(_Config):
                 `num_gpus_per_learner_worker` accordingly (e.g. 4 GPUs total, and model
                 needs 2 GPUs: `num_learner_workers = 2` and
                 `num_gpus_per_learner_worker = 2`)
-            num_cpus_per_learner_worker: Number of CPUs allocated per trainer worker.
+            num_cpus_per_learner_worker: Number of CPUs allocated per Learner worker.
                 Only necessary for custom processing pipeline inside each Learner
                 requiring multiple CPU cores. Ignored if `num_learner_workers = 0`.
             num_gpus_per_learner_worker: Number of GPUs allocated per worker. If
@@ -1197,6 +1203,7 @@ class AlgorithmConfig(_Config):
         tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         local_tf_session_args: Optional[Dict[str, Any]] = NotProvided,
         torch_compile_learner: Optional[bool] = NotProvided,
+        torch_compile_learner_what_to_compile: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_mode: Optional[str] = NotProvided,
         torch_compile_learner_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker: Optional[bool] = NotProvided,
@@ -1223,8 +1230,12 @@ class AlgorithmConfig(_Config):
             local_tf_session_args: Override the following tf session args on the local
                 worker
             torch_compile_learner: If True, forward_train methods on TorchRLModules
-            on the learner are compiled. If not specified, the default is to compile
-            forward train on the learner.
+                on the learner are compiled. If not specified, the default is to compile
+                forward train on the learner.
+            torch_compile_learner_what_to_compile: A TorchCompileWhatToCompile
+                mode specifying what to compile on the learner side if
+                torch_compile_learner is True. See TorchCompileWhatToCompile for
+                details and advice on its usage.
             torch_compile_learner_dynamo_backend: The torch dynamo backend to use on
                 the learner.
             torch_compile_learner_dynamo_mode: The torch dynamo mode to use on the
@@ -1266,6 +1277,10 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_learner_dynamo_mode is not NotProvided:
             self.torch_compile_learner_dynamo_mode = torch_compile_learner_dynamo_mode
+        if torch_compile_learner_what_to_compile is not NotProvided:
+            self.torch_compile_learner_what_to_compile = (
+                torch_compile_learner_what_to_compile
+            )
         if torch_compile_worker is not NotProvided:
             self.torch_compile_worker = torch_compile_worker
         if torch_compile_worker_dynamo_backend is not NotProvided:
@@ -3056,7 +3071,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_train=self.torch_compile_learner,
             torch_dynamo_backend=self.torch_compile_learner_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_learner_dynamo_mode,
         )
@@ -3069,8 +3083,6 @@ class AlgorithmConfig(_Config):
         )
 
         return TorchCompileConfig(
-            compile_forward_exploration=self.torch_compile_worker,
-            compile_forward_inference=self.torch_compile_worker,
             torch_dynamo_backend=self.torch_compile_worker_dynamo_backend,
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
@@ -3095,7 +3107,7 @@ class AlgorithmConfig(_Config):
 
         Returns:
             The Learner class to use for this algorithm either as a class type or as
-            a string (e.g. ray.rllib.core.learner.testing.torch.BCTrainer).
+            a string (e.g. ray.rllib.core.learner.testing.torch.BC).
         """
         raise NotImplementedError
 
@@ -3341,7 +3353,11 @@ class AlgorithmConfig(_Config):
         )
 
         if self.framework_str == "torch":
-            config.framework(torch_compile_cfg=self.get_torch_compile_learner_config())
+            config.framework(
+                torch_compile=self.torch_compile_learner,
+                torch_compile_cfg=self.get_torch_compile_learner_config(),
+                torch_compile_what_to_compile=self.torch_compile_learner_what_to_compile,  # noqa: E501
+            )
         elif self.framework_str == "tf2":
             config.framework(eager_tracing=self.eager_tracing)
 
