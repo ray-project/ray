@@ -17,7 +17,7 @@ config = (
             "vf_share_layers": True,
             "use_lstm": True,
         },
-        # TODO: Switch over to new stack.
+        # TODO: Switch over to new stack once it supports LSTMs.
         # _enable_learner_api=True,
     )
     # .rl_module(_enable_rl_module_api=True)
