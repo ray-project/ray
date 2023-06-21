@@ -20,6 +20,7 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/raylet/runtime_env_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_client.h"
 #include "ray/rpc/agent_manager/agent_manager_server.h"
 #include "ray/rpc/runtime_env/runtime_env_client.h"
@@ -35,17 +36,6 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
 typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
     const std::string &ip_address, int port)>
     RuntimeEnvAgentClientFactoryFn;
-
-/// Callback that's called after runtime env is created.
-/// \param[in] successful Whether or not the creation was successful.
-/// \param[in] serialized_runtime_env_context Serialized context.
-/// \param[in] setup_error_message The error message if runtime env creation fails.
-/// It must be only set when successful == false.
-typedef std::function<void(bool successful,
-                           const std::string &serialized_runtime_env_context,
-                           const std::string &setup_error_message)>
-    GetOrCreateRuntimeEnvCallback;
-typedef std::function<void(bool successful)> DeleteRuntimeEnvIfPossibleCallback;
 
 class AgentManager : public rpc::AgentManagerServiceHandler {
  public:
@@ -88,6 +78,10 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
   /// \param[in] callback The callback function.
   virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
                                           DeleteRuntimeEnvIfPossibleCallback callback);
+
+  // Wraps this AgentManager to a RuntimeEnvManagerClient. The caller must ensure the
+  // Client lives shorter than this AgentManager.
+  std::shared_ptr<RuntimeEnvManagerClient> GetRuntimeEnvManagerClient();
 
  private:
   void StartAgent();

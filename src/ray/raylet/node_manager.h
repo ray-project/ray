@@ -18,6 +18,8 @@
 #include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
+#include "ray/rpc/runtime_env/runtime_env_client.h"
+#include "ray/rpc/runtime_env/runtime_env_server.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/task/task.h"
@@ -30,6 +32,7 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
+#include "ray/raylet/runtime_env_manager_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
 #include "ray/raylet/scheduling/scheduling_ids.h"
@@ -86,6 +89,9 @@ struct NodeManagerConfig {
   WorkerCommandMap worker_commands;
   /// The native library path which includes the core libraries.
   std::string native_library_path;
+  /// If true, starts a RuntimeEnvService in Raylet. Otherwise, starts a RuntimeEnvAgent
+  /// in DashboardAgent in Python.
+  bool runtime_env_service_in_raylet;
   /// The command used to start agent.
   std::string agent_command;
   /// The time between reports resources in milliseconds.
@@ -730,6 +736,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The agent manager RPC service.
   std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
   rpc::AgentManagerGrpcService agent_manager_service_;
+
+  /// The Runtime Env Manager RPC service.
+  std::unique_ptr<rpc::RuntimeEnvServiceHandler> runtime_env_service_hander_;
+  std::unique_ptr<rpc::RuntimeEnvGrpcService> runtime_env_service_;
+
+  /// Wrapper client for RuntimeEnvManager. Always non-null.
+  std::shared_ptr<RuntimeEnvManagerClient> runtime_env_manager_client_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

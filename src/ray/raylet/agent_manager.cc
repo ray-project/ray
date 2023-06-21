@@ -17,6 +17,7 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
+#include "ray/raylet/runtime_env_manager_client.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
@@ -25,6 +26,36 @@
 
 namespace ray {
 namespace raylet {
+
+namespace {
+
+class AgentManagerAsRuntimeEnvManagerClient : public RuntimeEnvManagerClient {
+ public:
+  AgentManagerAsRuntimeEnvManagerClient(AgentManager *agent_manager)
+      : agent_manager_(agent_manager) {}
+  void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const std::string &serialized_allocated_resource_instances,
+                             GetOrCreateRuntimeEnvCallback callback) override {
+    return agent_manager_->GetOrCreateRuntimeEnv(job_id,
+                                                 serialized_runtime_env,
+                                                 runtime_env_config,
+                                                 serialized_allocated_resource_instances,
+                                                 std::move(callback));
+  }
+  virtual void DeleteRuntimeEnvIfPossible(
+      const std::string &serialized_runtime_env,
+      DeleteRuntimeEnvIfPossibleCallback callback) override {
+    return agent_manager_->DeleteRuntimeEnvIfPossible(serialized_runtime_env,
+                                                      std::move(callback));
+  }
+
+ private:
+  AgentManager *agent_manager_;
+};
+
+}  // namespace
 
 void AgentManager::HandleRegisterAgent(rpc::RegisterAgentRequest request,
                                        rpc::RegisterAgentReply *reply,
@@ -231,45 +262,12 @@ void AgentManager::GetOrCreateRuntimeEnv(
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::GetOrCreateRuntimeEnvRequest request;
-  request.set_job_id(job_id.Hex());
-  request.set_serialized_runtime_env(serialized_runtime_env);
-  request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
-  request.set_serialized_allocated_resource_instances(
-      serialized_allocated_resource_instances);
-  runtime_env_agent_client_->GetOrCreateRuntimeEnv(
-      request,
-      [serialized_runtime_env,
-       runtime_env_config,
-       serialized_allocated_resource_instances,
-       job_id,
-       callback = std::move(callback)](const Status &status,
-                                       const rpc::GetOrCreateRuntimeEnvReply &reply) {
-        if (status.ok()) {
-          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback(true,
-                     reply.serialized_runtime_env_context(),
-                     /*setup_error_message*/ "");
-          } else {
-            RAY_LOG(INFO) << "Failed to create runtime env for job " << job_id
-                          << ", error message: " << reply.error_message();
-            RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                           << serialized_runtime_env;
-            callback(false,
-                     reply.serialized_runtime_env_context(),
-                     /*setup_error_message*/ reply.error_message());
-          }
-
-        } else {
-          RAY_LOG(INFO)
-              << "Failed to create runtime env for job " << job_id
-              << ", status = " << status
-              << ", maybe there are some network problems, will fail the request.";
-          RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                         << serialized_runtime_env;
-          callback(false, "", "Failed to request agent.");
-        }
-      });
+  RuntimeEnvManagerClient::Create(runtime_env_agent_client_)
+      ->GetOrCreateRuntimeEnv(job_id,
+                              serialized_runtime_env,
+                              runtime_env_config,
+                              serialized_allocated_resource_instances,
+                              callback);
 }
 
 void AgentManager::DeleteRuntimeEnvIfPossible(
@@ -300,33 +298,12 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
   }
-  rpc::DeleteRuntimeEnvIfPossibleRequest request;
-  request.set_serialized_runtime_env(serialized_runtime_env);
-  request.set_source_process("raylet");
-  runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
-      request,
-      [serialized_runtime_env, callback = std::move(callback)](
-          Status status, const rpc::DeleteRuntimeEnvIfPossibleReply &reply) {
-        if (status.ok()) {
-          if (reply.status() == rpc::AGENT_RPC_STATUS_OK) {
-            callback(true);
-          } else {
-            // TODO(sang): Find a better way to delivering error messages in this case.
-            RAY_LOG(ERROR) << "Failed to delete runtime env"
-                           << ", error message: " << reply.error_message();
-            RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
-            callback(false);
-          }
+  RuntimeEnvManagerClient::Create(runtime_env_agent_client_)
+      ->DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
+}
 
-        } else {
-          RAY_LOG(ERROR)
-              << "Failed to delete runtime env reference"
-              << ", status = " << status
-              << ", maybe there are some network problems, will fail the request.";
-          RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
-          callback(false);
-        }
-      });
+std::shared_ptr<RuntimeEnvManagerClient> AgentManager::GetRuntimeEnvManagerClient() {
+  return std::make_shared<AgentManagerAsRuntimeEnvManagerClient>(this);
 }
 
 }  // namespace raylet

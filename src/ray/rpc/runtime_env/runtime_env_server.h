@@ -32,6 +32,7 @@ namespace rpc {
 /// `src/ray/protobuf/runtime_env_agent.proto`.
 class RuntimeEnvServiceHandler {
  public:
+  virtual ~RuntimeEnvServiceHandler() {}
   virtual void HandleGetOrCreateRuntimeEnv(GetOrCreateRuntimeEnvRequest request,
                                      GetOrCreateRuntimeEnvReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;

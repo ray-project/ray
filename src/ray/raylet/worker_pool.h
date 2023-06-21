@@ -32,7 +32,7 @@
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
-#include "ray/raylet/agent_manager.h"
+#include "ray/raylet/runtime_env_manager_client.h"
 #include "ray/raylet/worker.h"
 
 namespace ray {
@@ -210,8 +210,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param node_manager_port The port Raylet uses for listening to incoming connections.
   void SetNodeManagerPort(int node_manager_port);
 
-  /// Set agent manager.
-  void SetAgentManager(std::shared_ptr<AgentManager> agent_manager);
+  /// Set Runtime Env Manager Client.
+  void SetRuntimeEnvManagerClient(std::shared_ptr<RuntimeEnvManagerClient> runtime_env_manager_client);
 
   /// Handles the event that a job is started.
   ///
@@ -758,9 +758,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// A callback to get the current time.
   const std::function<double()> get_time_;
-  /// Agent manager.
-  std::shared_ptr<AgentManager> agent_manager_;
-
+  /// Runtime env manager client.
+std::shared_ptr<RuntimeEnvManagerClient> runtime_env_manager_client_;
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
   int64_t process_failed_rate_limited_ = 0;

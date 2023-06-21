@@ -24,18 +24,18 @@ class RuntimeEnvManager : public rpc::RuntimeEnvServiceHandler {
  public:
   explicit RuntimeEnvManager() {}
 
-  virtual void GetOrCreateRuntimeEnv(rpc::GetOrCreateRuntimeEnvRequest request,
-                                     rpc::GetOrCreateRuntimeEnvReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback);
+  void HandleGetOrCreateRuntimeEnv(rpc::GetOrCreateRuntimeEnvRequest request,
+                                   rpc::GetOrCreateRuntimeEnvReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  virtual void DeleteRuntimeEnvIfPossible(rpc::DeleteRuntimeEnvIfPossibleRequest request,
-                                          rpc::DeleteRuntimeEnvIfPossibleReply *reply,
-                                          rpc::SendReplyCallback send_reply_callback);
+  void HandleDeleteRuntimeEnvIfPossible(
+      rpc::DeleteRuntimeEnvIfPossibleRequest request,
+      rpc::DeleteRuntimeEnvIfPossibleReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
-  virtual void GetRuntimeEnvsInfo(rpc::GetRuntimeEnvsInfoRequest request,
-                                  rpc::GetRuntimeEnvsInfoReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback);
-  
+  void HandleGetRuntimeEnvsInfo(rpc::GetRuntimeEnvsInfoRequest request,
+                                rpc::GetRuntimeEnvsInfoReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 };
 
 }  // namespace raylet

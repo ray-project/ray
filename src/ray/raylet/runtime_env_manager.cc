@@ -20,7 +20,7 @@
 namespace ray {
 namespace raylet {
 
-void RuntimeEnvManager::GetOrCreateRuntimeEnv(
+void RuntimeEnvManager::HandleGetOrCreateRuntimeEnv(
     rpc::GetOrCreateRuntimeEnvRequest request,
     rpc::GetOrCreateRuntimeEnvReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -28,7 +28,7 @@ void RuntimeEnvManager::GetOrCreateRuntimeEnv(
       ray::Status::NotImplemented("not implemented yet"), nullptr, nullptr);
 }
 
-void RuntimeEnvManager::DeleteRuntimeEnvIfPossible(
+void RuntimeEnvManager::HandleDeleteRuntimeEnvIfPossible(
     rpc::DeleteRuntimeEnvIfPossibleRequest request,
     rpc::DeleteRuntimeEnvIfPossibleReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
@@ -36,7 +36,7 @@ void RuntimeEnvManager::DeleteRuntimeEnvIfPossible(
       ray::Status::NotImplemented("not implemented yet"), nullptr, nullptr);
 }
 
-void RuntimeEnvManager::GetRuntimeEnvsInfo(rpc::GetRuntimeEnvsInfoRequest request,
+void RuntimeEnvManager::HandleGetRuntimeEnvsInfo(rpc::GetRuntimeEnvsInfoRequest request,
                                            rpc::GetRuntimeEnvsInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   send_reply_callback(

@@ -31,6 +31,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/raylet/format/node_manager_generated.h"
+#include "ray/raylet/runtime_env_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/stats/stats.h"
@@ -250,6 +251,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       agent_manager_service_handler_(
           new DefaultAgentManagerServiceHandler(agent_manager_)),
       agent_manager_service_(io_service, *agent_manager_service_handler_),
+      runtime_env_service_hander_(nullptr),
+      runtime_env_service_(nullptr),
       local_object_manager_(
           self_node_id_,
           config.node_manager_address,
@@ -385,6 +388,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
+  // TODO(ryw): if config.runtime_env_service_in_raylet is true, make sure there's extra
+  // arg in agent_command_line to ask DashboardAgent not spawn a RuntimeEnvAgent.
   auto agent_command_line = ParseCommandLine(config.agent_command);
   for (auto &arg : agent_command_line) {
     auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
@@ -409,7 +414,19 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
         return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
             new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
-  worker_pool_.SetAgentManager(agent_manager_);
+
+  if (config.runtime_env_service_in_raylet) {
+    runtime_env_service_hander_ = std::make_unique<RuntimeEnvManager>();
+    runtime_env_service_ = std::make_unique<rpc::RuntimeEnvGrpcService>(
+        io_service, *runtime_env_service_hander_);
+    node_manager_server_.RegisterService(*runtime_env_service_);
+    runtime_env_manager_client_ =
+        RuntimeEnvManagerClient::Create(std::make_shared<rpc::RuntimeEnvAgentClient>(
+            config.node_manager_address, config.node_manager_port, client_call_manager_));
+  } else {
+    runtime_env_manager_client_ = agent_manager_->GetRuntimeEnvManagerClient();
+  }
+  worker_pool_.SetRuntimeEnvManagerClient(runtime_env_manager_client_);
   worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms());

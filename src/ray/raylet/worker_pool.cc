@@ -173,8 +173,9 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
   node_manager_port_ = node_manager_port;
 }
 
-void WorkerPool::SetAgentManager(std::shared_ptr<AgentManager> agent_manager) {
-  agent_manager_ = agent_manager;
+void WorkerPool::SetRuntimeEnvManagerClient(
+    std::shared_ptr<RuntimeEnvManagerClient> runtime_env_manager_client) {
+  runtime_env_manager_client_ = runtime_env_manager_client;
 }
 
 void WorkerPool::PopWorkerCallbackAsync(const PopWorkerCallback &callback,
@@ -1601,7 +1602,7 @@ void WorkerPool::GetOrCreateRuntimeEnv(
     const std::string &serialized_allocated_resource_instances) {
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
-  agent_manager_->GetOrCreateRuntimeEnv(
+  runtime_env_manager_client_->GetOrCreateRuntimeEnv(
       job_id,
       serialized_runtime_env,
       runtime_env_config,
@@ -1627,7 +1628,7 @@ void WorkerPool::GetOrCreateRuntimeEnv(
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
-    agent_manager_->DeleteRuntimeEnvIfPossible(
+    runtime_env_manager_client_->DeleteRuntimeEnvIfPossible(
         serialized_runtime_env, [serialized_runtime_env](bool successful) {
           if (!successful) {
             RAY_LOG(ERROR) << "Delete runtime env failed";
