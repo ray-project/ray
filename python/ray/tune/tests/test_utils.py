@@ -1,9 +1,12 @@
+import io
+import logging
+import sys
 import time
 
 import pytest
 
 from ray.tune.search.variant_generator import format_vars
-from ray.tune.utils.util import retry_fn
+from ray.tune.utils.util import retry_fn, Tee, logger as util_logger
 
 
 def test_format_vars():
@@ -88,7 +91,18 @@ def test_retry_fn_timeout(tmpdir):
     assert marker.exists()
 
 
-if __name__ == "__main__":
-    import sys
+def test_tee_recursion():
+    f = io.TextIOBase()
+    g = io.TextIOBase()
 
+    tee = Tee(f, g)
+
+    util_logger.addHandler(logging.StreamHandler(tee))
+
+    logging.info("BEFORE")
+    f.close()
+    logging.info("AFTER")
+
+
+if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
