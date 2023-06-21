@@ -235,16 +235,13 @@ class MockKVStore:
     def __init__(self):
         self.store = dict()
 
-    def put(self, key: str, val: bytes) -> bool:
+    def put(self, key: str, val: Any) -> bool:
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
-        if not isinstance(val, bytes):
-            raise TypeError("val must be bytes, got: {}.".format(type(val)))
-
         self.store[key] = val
         return True
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> Any:
         if not isinstance(key, str):
             raise TypeError("key must be a string, got: {}.".format(type(key)))
         return self.store.get(key, None)

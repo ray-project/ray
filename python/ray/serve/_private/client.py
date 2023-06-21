@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 from ray.serve.config import DeploymentConfig, HTTPOptions
 from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
+    CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
@@ -219,6 +220,68 @@ class ServeControllerClient:
         else:
             raise TimeoutError(f"Deployment {name} wasn't deleted after {timeout_s}s.")
 
+    def _wait_for_deployment_created(self, name: str, timeout_s: int = -1):
+        """Waits for the named deployment to be created.
+
+        A deployment being created simply means that its been registered
+        with the deployment state manager. The deployment state manager
+        will then continue to reconcile the deployment towards its
+        target state.
+
+        Raises TimeoutError if this doesn't happen before timeout_s.
+        """
+
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+            status_bytes = ray.get(self._controller.get_deployment_status.remote(name))
+
+            if status_bytes is not None:
+                break
+
+            time.sleep(CLIENT_CHECK_CREATION_POLLING_INTERVAL_S)
+        else:
+            raise TimeoutError(
+                f"Deployment {name} did not become HEALTHY after {timeout_s}s."
+            )
+
+    def _wait_for_application_running(self, name: str, timeout_s: int = -1):
+        """Waits for the named application to enter "RUNNING" status.
+
+        Raises:
+            RuntimeError: if the application enters the "DEPLOY_FAILED" status instead.
+            TimeoutError: if this doesn't happen before timeout_s.
+        """
+        start = time.time()
+        while time.time() - start < timeout_s or timeout_s < 0:
+
+            status_bytes = ray.get(self._controller.get_serve_status.remote(name))
+            if status_bytes is None:
+                raise RuntimeError(
+                    f"Waiting for application {name} to be RUNNING, "
+                    "but application doesn't exist."
+                )
+
+            status = StatusOverview.from_proto(
+                StatusOverviewProto.FromString(status_bytes)
+            )
+
+            if status.app_status.status == ApplicationStatus.RUNNING:
+                break
+            elif status.app_status.status == ApplicationStatus.DEPLOY_FAILED:
+                raise RuntimeError(
+                    f"Deploying application {name} failed: {status.app_status.message}"
+                )
+
+            logger.debug(
+                f"Waiting for {name} to be RUNNING, current status: "
+                f"{status.app_status.status}."
+            )
+            time.sleep(CLIENT_POLLING_INTERVAL_S)
+        else:
+            raise TimeoutError(
+                f"Application {name} did not become RUNNING after {timeout_s}s."
+            )
+
     @_ensure_connected
     def deploy(
         self,
@@ -259,7 +322,6 @@ class ServeControllerClient:
         name,
         deployments: List[Dict],
         _blocking: bool = True,
-        remove_past_deployments: bool = True,
     ):
         deployment_args_list = []
         for deployment in deployments:
@@ -279,38 +341,16 @@ class ServeControllerClient:
                 )
             )
 
-        updating_list = ray.get(
-            self._controller.deploy_application.remote(name, deployment_args_list)
-        )
-
-        tags = []
-        for i, updating in enumerate(updating_list):
-            deployment = deployments[i]
-            deployment_name, version = deployment["name"], deployment["version"]
-
-            tags.append(
-                self.log_deployment_update_status(deployment_name, version, updating)
-            )
-
-        for i, deployment in enumerate(deployments):
-            deployment_name = deployment["name"]
-            url = deployment["url"]
-
-            if _blocking:
-                self._wait_for_deployment_healthy(deployment_name)
-                self.log_deployment_ready(deployment_name, version, url, tags[i])
-
-        if remove_past_deployments:
-            # clean up the old deployments
-            new_deployments_names = set()
+        ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
+        if _blocking:
+            self._wait_for_application_running(name)
             for deployment in deployments:
-                new_deployments_names.add(deployment["name"])
+                deployment_name = deployment["name"]
+                tag = f"component=serve deployment={deployment_name}"
+                url = deployment["url"]
+                version = deployment["version"]
 
-            all_deployments_names = set(self.list_deployments().keys())
-            deployment_names_to_delete = all_deployments_names.difference(
-                new_deployments_names
-            )
-            self.delete_deployments(deployment_names_to_delete, blocking=_blocking)
+                self.log_deployment_ready(deployment_name, version, url, tag)
 
     @_ensure_connected
     def deploy_apps(
