@@ -13,6 +13,7 @@ import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -44,7 +45,6 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import normalize_action
 from ray.rllib.utils.tf_utils import get_gpu_devices
 from ray.rllib.utils.threading import with_lock
@@ -175,9 +175,11 @@ class EagerTFPolicyV2(Policy):
             def fold_mapping(item):
                 item = tf.convert_to_tensor(item)
                 shape = tf.shape(item)
-                b_dim, t_dim = list(shape)[:2]
+                b_dim, t_dim = shape[0], shape[1]
                 other_dims = shape[2:]
-                return tf.reshape(item, (int(b_dim * t_dim),) + tuple(other_dims))
+                return tf.reshape(
+                    item, tf.concat([[b_dim * t_dim], other_dims], axis=0)
+                )
 
             for k, v in input_dict.items():
                 if k not in (STATE_IN, STATE_OUT):
@@ -527,7 +529,7 @@ class EagerTFPolicyV2(Policy):
         if self.config.get("_enable_rl_module_api"):
             # For recurrent models, we need to add a time dimension.
             seq_lens = input_dict.get("seq_lens", None)
-            if not seq_lens:
+            if seq_lens is None:
                 # In order to calculate the batch size ad hoc, we need a sample batch.
                 if not isinstance(input_dict, SampleBatch):
                     input_dict = SampleBatch(input_dict)
@@ -937,7 +939,9 @@ class EagerTFPolicyV2(Policy):
             extra_fetches[SampleBatch.ACTION_LOGP] = logp
             extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
 
-        return actions, {}, extra_fetches
+        state_out = convert_to_numpy(fwd_out.get("state_out", {}))
+
+        return actions, state_out, extra_fetches
 
     # TODO: Figure out, why _ray_trace_ctx=None helps to prevent a crash in
     #  eager_tracing=True.
@@ -957,11 +961,10 @@ class EagerTFPolicyV2(Policy):
         extra_fetches = {}
 
         input_dict = NestedDict(input_dict)
-        # TODO (sven): Support RNNs when using RLModules.
-        input_dict[STATE_IN] = None
-        input_dict[SampleBatch.SEQ_LENS] = None
 
         fwd_out = self.model.forward_inference(input_dict)
+        # For recurrent models, we need to remove the time dimension.
+        fwd_out = self.maybe_remove_time_dimension(fwd_out)
 
         # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
         # Create a (deterministic) distribution object.
@@ -991,7 +994,9 @@ class EagerTFPolicyV2(Policy):
             if k not in [SampleBatch.ACTIONS, "state_out"]:
                 extra_fetches[k] = v
 
-        return actions, {}, extra_fetches
+        state_out = convert_to_numpy(fwd_out.get("state_out", {}))
+
+        return actions, state_out, extra_fetches
 
     @with_lock
     def _compute_actions_helper(

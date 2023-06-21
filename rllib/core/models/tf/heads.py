@@ -59,7 +59,7 @@ def auto_fold_unfold_time(input_spec: str):
             except ValueError as original_error:
                 # Attempt to fold/unfold the time dimension.
                 # Calculate a new shape for the input data.
-                b, t = actual_shape[:2]
+                b, t = actual_shape[0], actual_shape[1]
                 other_dims = actual_shape[2:]
                 reshaped_b = b * t
                 new_shape = tf.concat([[reshaped_b], other_dims], axis=0)

@@ -418,7 +418,14 @@ def check_compute_single_action(
             action, state_out, _ = action
         if state_out:
             for si, so in zip(tree.flatten(state_in), tree.flatten(state_out)):
-                check(list(si.shape), so.shape)
+                if tf.is_tensor(si):
+                    # If si is a tensor of Dimensions, we need to convert it
+                    # We expect this to be the case for TF RLModules who's initial
+                    # states are Tf Tensors.
+                    si_shape = si.shape.as_list()
+                else:
+                    si_shape = list(si.shape)
+                check(si_shape, so.shape)
 
         if unsquash is None:
             unsquash = what.config["normalize_actions"]
