@@ -194,7 +194,7 @@ class ClientCallManager {
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : cluster_id_(cluster_id),
+      : cluster_id_{absl::Mutex{}, ClusterID::Nil()},
         main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -327,7 +327,7 @@ class ClientCallManager {
   }
 
   /// UUID of the cluster.
-  std::atomic<ClusterID> cluster_id_;
+  SafeClusterID cluster_id_;
 
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;

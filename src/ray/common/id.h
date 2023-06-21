@@ -409,6 +409,23 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 
 #include "ray/common/id_def.h"
 
+struct SafeClusterID {
+  absl::Mutex m_;
+  ClusterID id GUARDED_BY(m_);
+
+  const ClusterID load() {
+    absl::MutexLock l(&m_);
+    return id;
+  }
+
+  ClusterID exchange(const ClusterID &newId) {
+    absl::MutexLock l(&m_);
+    ClusterID old = id;
+    id = newId;
+    return old;
+  }
+};
+
 #undef DEFINE_UNIQUE_ID
 
 // Restore the compiler alignment to default (8 bytes).
