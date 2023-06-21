@@ -1,7 +1,6 @@
 """
 This example script demonstrates how one can define a custom logger
-object for any RLlib Trainer via the Trainer's config dict's
-"logger_config" key.
+object for any RLlib Algorithm via the Algorithm's config's `logger_config` property.
 By default (logger_config=None), RLlib will construct a tune
 UnifiedLogger object, which logs JSON, CSV, and TBX output.
 
