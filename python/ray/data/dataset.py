@@ -1700,6 +1700,33 @@ class Dataset:
 
         return GroupedData(self, key)
 
+    def distinct(self) -> "Dataset":
+        """Remove duplicate rows from the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
+            >>> ds.distinct().take_all()
+             [{'item': 1}, {'item': 2}, {'item': 3}]
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        .. note:: Currently distinct only supports Datasets with one single column.
+
+        Returns:
+            A new dataset with distinct rows.
+        """
+        columns = self.columns(fetch_if_missing=True)
+        assert columns is not None
+        if len(columns) > 1:
+            # TODO(hchen): Remove this limitation once groupby supports
+            # multiple columns.
+            raise NotImplementedError(
+                "`distinct` currently only suports Datasets with one single column, "
+                "please apply `select_columns` before `distinct`."
+            )
+        return self.groupby(columns[0]).count().drop_columns(["count()"])
+
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate the entire dataset as one group.
