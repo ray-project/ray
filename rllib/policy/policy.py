@@ -1627,11 +1627,11 @@ class Policy(metaclass=ABCMeta):
         Returns:
             The input dict, with a possibly added time dimension.
         """
-        # We need to check for hasattr(self.model, "is_reccurent") because a dummy
-        # RLModule for testing is not expected to have this.
+        # We need to check for hasattr(self, "model") because a dummy Policy may not
+        # have a model.
         if (
             self.config.get("_enable_rl_module_api", False)
-            and hasattr(self.model, "is_recurrent") and self.model.is_recurrent()
+            and hasattr(self, "model") and self.model.is_recurrent()
         ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
