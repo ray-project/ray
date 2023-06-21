@@ -243,6 +243,10 @@ const App = () => {
                       element={<ServeReplicaDetailPage />}
                       path=":deploymentName/:replicaId"
                     />
+                    <Route
+                      element={<TaskPage />}
+                      path=":deploymentName/:replicaId/tasks/:taskId"
+                    />
                   </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">
