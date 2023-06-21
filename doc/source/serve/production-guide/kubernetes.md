@@ -236,13 +236,13 @@ In the status, you can see that the `RayService` is preparing a pending cluster.
 After the pending cluster is healthy, it becomes the active cluster and the previous cluster is terminated.
 
 ## Autoscaling
-You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. For more detailed information, you can learn about the configuration options [here](serve-scaling-and-resource-allocation).
+You can configure autoscaling for your Serve application by setting the autoscaling field in the Serve config. Learn more about the configuration options in [Scaling and Resource Allocation](serve-scaling-and-resource-allocation).
 
 To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutoscaling` to True. Additionally, there are other options available to configure the autoscaling behavior. For further details, please refer to the documentation [here](serve-scaling-and-resource-allocation).
 
 
 :::{note}
-In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot K8s cluster, and instructions can be found [here]((https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster)). For EKS, you can enable K8s cluster autoscaling by utilizing the Cluster Autoscaler, and you can find detailed information [here](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between K8s autoscaling and Ray autoscaling, please refer to this [documentation](kuberay-autoscaler-with-ray-autoscaler).
+In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster]((https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster)). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
 :::
 
 ## Next Steps
