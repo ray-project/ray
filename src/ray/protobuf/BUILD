@@ -368,9 +368,6 @@ cc_proto_library(
 proto_library(
     name = "autoscaler_proto",
     srcs = ["experimental/autoscaler.proto"],
-    deps = [
-        ":instance_manager_proto",
-    ],
 )
 
 python_grpc_compile(
