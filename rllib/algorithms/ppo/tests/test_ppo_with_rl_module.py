@@ -89,7 +89,7 @@ class TestPPO(unittest.TestCase):
                 _enable_learner_api=True,
             )
             .rollouts(
-                num_rollout_workers=0,
+                num_rollout_workers=1,
                 # Test with compression.
                 # compress_observations=True,
                 enable_connectors=True,
@@ -109,8 +109,8 @@ class TestPPO(unittest.TestCase):
                     config.training(model=get_model_config(fw, lstm=lstm))
 
                     algo = config.build(env=env)
-                    # # TODO: Maybe add an API to get the Learner(s) instances within
-                    # #  a learner group, remote or not.
+                    # TODO: Maybe add an API to get the Learner(s) instances within
+                    #  a learner group, remote or not.
                     learner = algo.learner_group._learner
                     optim = learner.get_optimizer()
                     # Check initial LR directly set in optimizer vs the first (ts=0)
@@ -187,7 +187,7 @@ class TestPPO(unittest.TestCase):
                 ppo.PPOConfig()
                 .environment("Pendulum-v1")
                 .rollouts(
-                    num_rollout_workers=0,
+                    num_rollout_workers=1,
                 )
                 .training(
                     gamma=0.99,
