@@ -31,7 +31,7 @@ class JobConfig:
             specify the search path for user code. This will be used as
             `CLASSPATH` in Java and `PYTHONPATH` in Python.
             See :ref:`Ray cross-language programming <cross_language>` for more details.
-        runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
+        runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
         metadata: An opaque metadata dictionary.
         ray_namespace: A :ref:`namespace <namespaces-guide>`
             is a logical grouping of jobs and named actors.
@@ -107,7 +107,7 @@ class JobConfig:
         working_dir translated from a local directory to a URI).
 
         Args:
-            runtime_env: A :ref:`runtime environment <runtime-environment>` dictionary.
+            runtime_env: A :ref:`runtime environment <runtime-environments>` dictionary.
             validate: Whether to validate the runtime env.
         """
         self.runtime_env = runtime_env if runtime_env is not None else {}

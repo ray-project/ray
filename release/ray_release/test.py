@@ -112,6 +112,9 @@ class Test(dict):
         """
         Returns whether this test is running on a BYOD cluster.
         """
+        if os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false":
+            # Do not run BYOD tests on PRs
+            return False
         return self["cluster"].get("byod") is not None
 
     def get_byod_type(self) -> Optional[str]:
@@ -137,6 +140,14 @@ class Test(dict):
         if not self.is_byod_cluster():
             return {}
         return _convert_env_list_to_dict(self["cluster"]["byod"].get("runtime_env", []))
+
+    def get_byod_pips(self) -> List[str]:
+        """
+        Returns the list of pips for the BYOD cluster.
+        """
+        if not self.is_byod_cluster():
+            return []
+        return self["cluster"]["byod"].get("pip", [])
 
     def get_name(self) -> str:
         """
