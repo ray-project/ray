@@ -59,8 +59,8 @@ from ray.serve._private.utils import (
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 from ray.serve._private import deployment_scheduler
 from ray.serve._private.deployment_scheduler import (
-    SpreadDeploymentSchedulingStrategy,
-    DriverDeploymentSchedulingStrategy,
+    SpreadDeploymentSchedulingPolicy,
+    DriverDeploymentSchedulingPolicy,
     DeploymentUpscaleRequest,
     DeploymentDownscaleRequest,
 )
@@ -1639,7 +1639,10 @@ class DeploymentState:
                 return True, any_replicas_recovering
 
             # Check for a non-zero number of deployments.
-            if target_replica_count == running_at_target_version_replica_cnt:
+            if (
+                target_replica_count == running_at_target_version_replica_cnt
+                and running_at_target_version_replica_cnt == all_running_replica_cnt
+            ):
                 self._curr_status_info = DeploymentStatusInfo(
                     self._name, DeploymentStatus.HEALTHY
                 )
@@ -2084,7 +2087,7 @@ class DeploymentStateManager:
 
     def _create_driver_deployment_state(self, name):
         self._deployment_scheduler.on_deployment_created(
-            name, DriverDeploymentSchedulingStrategy()
+            name, DriverDeploymentSchedulingPolicy()
         )
 
         return DriverDeploymentState(
@@ -2098,7 +2101,7 @@ class DeploymentStateManager:
 
     def _create_deployment_state(self, name):
         self._deployment_scheduler.on_deployment_created(
-            name, SpreadDeploymentSchedulingStrategy()
+            name, SpreadDeploymentSchedulingPolicy()
         )
 
         return DeploymentState(

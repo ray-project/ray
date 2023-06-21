@@ -373,13 +373,19 @@ def mock_deployment_state(request) -> Tuple[DeploymentState, Mock, Mock]:
                 "name",
                 True,
                 mock_long_poll,
+                MockDeploymentScheduler(),
                 mock_save_checkpoint_fn,
                 mock_client,
             )
             yield deployment_state, timer
         else:
             deployment_state = DeploymentState(
-                "name", "name", True, mock_long_poll, mock_save_checkpoint_fn
+                "name",
+                "name",
+                True,
+                mock_long_poll,
+                MockDeploymentScheduler(),
+                mock_save_checkpoint_fn,
             )
 
             yield deployment_state, timer
@@ -629,7 +635,8 @@ def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_sta
     assert updating
 
     # Single replica should be created.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(upscale, [])
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
 
     # update() should not transition the state if the replica isn't ready.
@@ -645,7 +652,11 @@ def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_sta
 
     # Removing the replica should transition it to stopping.
     deployment_state.delete()
-    deployment_state.update()
+    _, _, _, downscale = deployment_state.update()
+    replicas_to_stop = deployment_state._deployment_scheduler.schedule(
+        [], [downscale] if downscale else []
+    )[deployment_state._name]
+    deployment_state.stop_replicas(replicas_to_stop)
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
     assert deployment_state._replicas.get()[0]._actor.stopped
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
@@ -653,7 +664,7 @@ def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_sta
     # Once it's done stopping, replica should be removed.
     replica = deployment_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    deleted, _ = deployment_state.update()
+    deleted, _, _, _ = deployment_state.update()
     assert deleted
     check_counts(deployment_state, total=0)
 
@@ -669,11 +680,16 @@ def test_force_kill(mock_get_all_node_ids, mock_deployment_state):
 
     # Create and delete the deployment.
     deployment_state.deploy(b_info_1)
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(upscale, [])
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state.update()
     deployment_state.delete()
-    deployment_state.update()
+    _, _, _, downscale = deployment_state.update()
+    replicas_to_stop = deployment_state._deployment_scheduler.schedule(
+        [], [downscale] if downscale else []
+    )[deployment_state._name]
+    deployment_state.stop_replicas(replicas_to_stop)
 
     # Replica should remain in STOPPING until it finishes.
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
@@ -702,7 +718,7 @@ def test_force_kill(mock_get_all_node_ids, mock_deployment_state):
     # Once the replica is done stopping, it should be removed.
     replica = deployment_state._replicas.get()[0]
     replica._actor.set_done_stopping()
-    deleted, _ = deployment_state.update()
+    deleted, _, _, _ = deployment_state.update()
     assert deleted
     check_counts(deployment_state, total=0)
 
@@ -718,7 +734,8 @@ def test_redeploy_same_version(mock_get_all_node_ids, mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(upscale, [])
     check_counts(
         deployment_state,
         version=b_version_1,
@@ -776,7 +793,8 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(upscale, [])
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -794,11 +812,9 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     deployment_state._replicas.get(states=[ReplicaState.STOPPING])[
         0
     ]._actor.set_done_stopping()
-    deployment_state.update()
-    check_counts(deployment_state, total=0)
-
     # Now that the old replica has stopped, the new replica should be started.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(upscale, [])
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
@@ -826,15 +842,13 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
         0
     ]._actor.set_done_stopping()
 
-    deployment_state.update()
-    check_counts(deployment_state, total=0)
-
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(upscale, [])
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
-    deleted, _ = deployment_state.update()
+    deleted, _, _, _ = deployment_state.update()
     assert not deleted
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.RUNNING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.HEALTHY

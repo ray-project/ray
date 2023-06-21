@@ -1,5 +1,5 @@
 import ray
-from typing import Callable, Dict, Tuple
+from typing import Callable, Dict, Tuple, Optional, List
 from dataclasses import dataclass
 from collections import defaultdict
 from ray._raylet import GcsClient
@@ -7,16 +7,22 @@ from ray.serve._private.utils import get_all_node_ids
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
-class SpreadDeploymentSchedulingStrategy:
+class SpreadDeploymentSchedulingPolicy:
     pass
 
 
-class DriverDeploymentSchedulingStrategy:
+class DriverDeploymentSchedulingPolicy:
     pass
 
 
 @dataclass
 class DeploymentUpscaleRequest:
+    """Request to schedule a single replica.
+
+    The scheduler is responsible for scheduling
+    based on the deployment scheduling policy.
+    """
+
     deployment_name: str
     replica_name: str
     actor_def: ray.actor.ActorClass
@@ -28,23 +34,39 @@ class DeploymentUpscaleRequest:
 
 @dataclass
 class DeploymentDownscaleRequest:
+    """Request to stop certain number of replicas.
+
+    The scheduler is responsible for
+    choosing the replicas to stop.
+    """
+
     deployment_name: str
     num_to_stop: int
 
 
 class DeploymentScheduler:
-    def __init__(self, gcs_client=None):
+    """A centralized scheduler for all serve deployments.
+
+    It makes scheduling decisions in a batch mode for each update cycle.
+    """
+
+    def __init__(self, gcs_client: Optional[GcsClient] = None):
+        # {deployment_name: scheduling_policy}
         self._deployments = {}
         # Replicas that are pending to be scheduled.
+        # {deployment_name: {replica_name: deployment_upscale_request}}
         self._pending_replicas = defaultdict(dict)
         # Replicas that are being scheduled.
         # The underlying actors are submitted.
+        # {deployment_name: {replica_name: target_node_id}}
         self._launching_replicas = defaultdict(dict)
         # Replicas that are recovering.
         # We don't know where those replicas are running.
+        # {deployment_name: {replica_name}}
         self._recovering_replicas = defaultdict(set)
         # Replicas that are running.
         # We know where those replicas are running.
+        # {deployment_name: {replica_name: running_node_id}}
         self._running_replicas = defaultdict(dict)
 
         if gcs_client:
@@ -52,14 +74,16 @@ class DeploymentScheduler:
         else:
             self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    def on_deployment_created(self, deployment_name, scheduling_strategy):
+    def on_deployment_created(self, deployment_name, scheduling_policy):
+        """This is called whenver a new deployment is created."""
         assert deployment_name not in self._pending_replicas
         assert deployment_name not in self._launching_replicas
         assert deployment_name not in self._recovering_replicas
         assert deployment_name not in self._running_replicas
-        self._deployments[deployment_name] = scheduling_strategy
+        self._deployments[deployment_name] = scheduling_policy
 
     def on_deployment_deleted(self, deployment_name):
+        """This is called whenver a deployment is deleted."""
         assert not self._pending_replicas[deployment_name]
         del self._pending_replicas[deployment_name]
 
@@ -75,12 +99,14 @@ class DeploymentScheduler:
         del self._deployments[deployment_name]
 
     def on_replica_stopping(self, deployment_name, replica_name):
+        """This is called whenver a deployment replica is being stopped."""
         self._pending_replicas[deployment_name].pop(replica_name, None)
         self._launching_replicas[deployment_name].pop(replica_name, None)
         self._recovering_replicas[deployment_name].discard(replica_name)
         self._running_replicas[deployment_name].pop(replica_name, None)
 
     def on_replica_running(self, deployment_name, replica_name, node_id):
+        """This is called whenver a deployment replica is running with known node id."""
         assert replica_name not in self._pending_replicas[deployment_name]
 
         self._launching_replicas[deployment_name].pop(replica_name, None)
@@ -89,13 +115,27 @@ class DeploymentScheduler:
         self._running_replicas[deployment_name][replica_name] = node_id
 
     def on_replica_recovering(self, deployment_name, replica_name):
+        """This is called whenver a deployment replica is recovering."""
         assert replica_name not in self._pending_replicas[deployment_name]
         assert replica_name not in self._launching_replicas[deployment_name]
         assert replica_name not in self._running_replicas[deployment_name]
 
         self._recovering_replicas[deployment_name].add(replica_name)
 
-    def schedule(self, upscales, downscales):
+    def schedule(
+        self,
+        upscales: List[DeploymentUpscaleRequest],
+        downscales: List[DeploymentDownscaleRequest],
+    ):
+        """This is called for each update cycle to do batch scheduling.
+
+        Args:
+            upscales: a list of replicas to schedule.
+            downscales: a list of downscale requests.
+
+        Returns:
+            The replicas to stop for each deployment.
+        """
         for upscale in upscales:
             self._pending_replicas[upscale.deployment_name][
                 upscale.replica_name
@@ -105,14 +145,14 @@ class DeploymentScheduler:
             if not pending_replicas:
                 continue
 
-            deployment_scheduling_strategy = self._deployments[deployment_name]
+            deployment_scheduling_policy = self._deployments[deployment_name]
             if isinstance(
-                deployment_scheduling_strategy, SpreadDeploymentSchedulingStrategy
+                deployment_scheduling_policy, SpreadDeploymentSchedulingPolicy
             ):
                 self._schedule_spread_deployment(deployment_name)
             else:
                 assert isinstance(
-                    deployment_scheduling_strategy, DriverDeploymentSchedulingStrategy
+                    deployment_scheduling_policy, DriverDeploymentSchedulingPolicy
                 )
                 self._schedule_driver_deployment(deployment_name)
 
