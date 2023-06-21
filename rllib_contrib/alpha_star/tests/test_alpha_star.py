@@ -49,8 +49,8 @@ class TestAlphaStar(unittest.TestCase):
                 replay_buffer_replay_ratio=0.0,
                 use_kl_loss=True,
             )
-            .rollouts(num_rollout_workers=3, num_envs_per_worker=5)
-            .resources(num_gpus=4, _fake_gpus=True)
+            .rollouts(num_rollout_workers=1, num_envs_per_worker=5)
+            .resources(num_gpus=2, _fake_gpus=True)
         )
 
         num_iterations = 2
