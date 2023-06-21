@@ -133,8 +133,8 @@ class TransformersPredictor(Predictor):
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
-                initialization. If ``pipeline`` is None, this must contain
-                the 'task' argument. Cannot contain 'model'. Can be used
+                initialization. If ``pipeline_cls`` is None, this must contain
+                the 'task' argument. Can be used
                 to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
                 True, 'device' will be set to 0 by default, unless 'device_map' is
                 passed.

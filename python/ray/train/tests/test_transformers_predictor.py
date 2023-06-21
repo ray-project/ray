@@ -109,14 +109,21 @@ def test_predict_no_preprocessor_no_training(tmpdir, ray_start_4_cpus):
     assert len(predictions) == 3
 
 
-def test_custom_pipeline(tmpdir):
+@pytest.mark.parametrize("model_cls", [GPT2LMHeadModel, None])
+def test_custom_pipeline(tmpdir, model_cls):
     """Create predictor from a custom pipeline class."""
     model_config = AutoConfig.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_config(model_config)
     tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
     checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
+
+    if model_cls:
+        kwargs = {}
+    else:
+        kwargs = {"task": "text-generation"}
+
     predictor = TransformersPredictor.from_checkpoint(
-        checkpoint, pipeline_cls=CustomPipeline, model_cls=GPT2LMHeadModel
+        checkpoint, pipeline_cls=CustomPipeline, model_cls=model_cls, **kwargs
     )
     assert isinstance(predictor.pipeline, CustomPipeline)
 
