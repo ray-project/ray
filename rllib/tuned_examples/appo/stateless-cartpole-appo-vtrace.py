@@ -6,7 +6,7 @@ config = (
     APPOConfig()
     .environment(StatelessCartPole)
     .resources(num_gpus=0)
-    .rollouts(num_rollout_workers=0, observation_filter="MeanStdFilter")
+    .rollouts(num_rollout_workers=1, observation_filter="MeanStdFilter")
     .training(
         lr=0.0003,
         num_sgd_iter=6,
