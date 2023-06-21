@@ -1631,7 +1631,8 @@ class Policy(metaclass=ABCMeta):
         # have a model.
         if (
             self.config.get("_enable_rl_module_api", False)
-            and hasattr(self, "model") and self.model.is_recurrent()
+            and hasattr(self, "model")
+            and self.model.is_recurrent()
         ):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.

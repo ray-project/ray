@@ -1122,7 +1122,11 @@ class SampleBatch(dict):
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]
                     else:
-                        return value[start_unpadded:stop_unpadded]
+                        return (
+                            value[start_unpadded:stop_unpadded]
+                            if value is not None
+                            else None
+                        )
                 else:
                     return value[start_seq_len:stop_seq_len]
 
