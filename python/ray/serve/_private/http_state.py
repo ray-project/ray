@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import random
 import time
 import traceback
@@ -335,6 +336,20 @@ class HTTPState:
     def _start_proxy(
         self, name: str, node_id: str, node_ip_address: str
     ) -> ActorHandle:
+        port = self._config.port
+
+        # This is used for test. Setting up `TEST_WORKER_NODE_PORT` env var will help
+        # head node and worker nodes to be opening on different ports.
+        if (
+            node_id != self._head_node_id
+            and os.getenv("TEST_WORKER_NODE_PORT") is not None
+        ):
+            logger.warning(
+                f"`TEST_WORKER_NODE_PORT` env var is set. "
+                f"Using it for worker node {node_id}."
+            )
+            port = int(os.getenv("TEST_WORKER_NODE_PORT"))
+
         proxy = HTTPProxyActor.options(
             num_cpus=self._config.num_cpus,
             name=name,
@@ -345,7 +360,7 @@ class HTTPState:
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         ).remote(
             self._config.host,
-            self._config.port,
+            port,
             self._config.root_path,
             controller_name=self._controller_name,
             node_ip_address=node_ip_address,

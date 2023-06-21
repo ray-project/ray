@@ -550,9 +550,9 @@ def test_update_active_flags(mock_get_all_node_ids):
         node_id=HEAD_NODE_ID,
         host="localhost",
         port=8000,
-        root_path='/',
-        controller_name='mock_controller_name',
-        node_ip_address='foo',
+        root_path="/",
+        controller_name="mock_controller_name",
+        node_ip_address="foo",
     )
     # Setup http proxy for a worker node
     state._proxy_states[worker_node_id] = _create_http_proxy_state(
@@ -561,9 +561,9 @@ def test_update_active_flags(mock_get_all_node_ids):
         node_id=worker_node_id,
         host="localhost",
         port=8000,
-        root_path='/',
-        controller_name='mock_controller_name',
-        node_ip_address='bar',
+        root_path="/",
+        controller_name="mock_controller_name",
+        node_ip_address="bar",
     )
 
     # Update flag for no nodes active

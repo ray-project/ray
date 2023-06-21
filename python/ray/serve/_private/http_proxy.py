@@ -297,7 +297,6 @@ class HTTPProxy:
         See details at:
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
-
         assert scope["type"] in {"http", "websocket"}
 
         method = scope.get("method", "websocket").upper()
@@ -664,7 +663,7 @@ class HTTPProxyActor:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 
         # Start running the HTTP server on the event loop.
-        # This task should be running forever. We track it in case of failure.
+        # This task should be running forever. we track it in case of failure.
         self.running_task = get_or_create_event_loop().create_task(self.run())
 
     async def ready(self):

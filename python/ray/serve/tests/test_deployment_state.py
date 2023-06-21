@@ -2744,7 +2744,9 @@ def test_get_node_ids_with_running_replicas(
         by_state=[(ReplicaState.RUNNING, 3)],
     )
     assert deployment_state.get_running_replica_node_ids() == list(node_ids)
-    assert deployment_state_manager.get_node_ids_with_running_replicas() == set(node_ids)
+    assert deployment_state_manager.get_node_ids_with_running_replicas() == set(
+        node_ids
+    )
 
 
 if __name__ == "__main__":
