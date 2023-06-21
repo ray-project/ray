@@ -123,7 +123,7 @@ test_core() {
     msys)
       args+=(
         -//:core_worker_test
-        -//:event_test
+        -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_health_check_manager_test
