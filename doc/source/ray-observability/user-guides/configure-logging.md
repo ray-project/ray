@@ -41,7 +41,7 @@ System logs may include information about your applications. For example, ``runt
 :::
 
 ### Application logs
-- ``job-driver-[submission_id].log``: The stdout of a job submitted with the :ref:`Ray Jobs API <jobs-overview>`.
+- ``job-driver-[submission_id].log``: The stdout of a job submitted with the {ref}`Ray Jobs API <jobs-overview>`.
 - ``worker-[worker_id]-[job_id]-[pid].[out|err]``: Python or Java part of Ray drivers and workers. All stdout and stderr from Tasks or Actors are streamed to these files. Note that job_id is the ID of the driver.
 
 ### System (component) logs
