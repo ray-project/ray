@@ -394,6 +394,11 @@ install_pip_packages() {
     requirements_packages+=("holidays==0.24") # holidays 0.25 causes `import prophet` to fail.
   fi
 
+  # Additional dependency for vllm.
+  if [ "${INSTALL_VLLM-}" = 1 ]; then
+    requirements_packages+=("vllm")
+  fi
+
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt")
