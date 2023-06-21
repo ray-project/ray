@@ -987,7 +987,7 @@ class Learner:
         timestep: int,
         **kwargs,
     ) -> Mapping[ModuleID, Any]:
-        """Apply additional non-gradient based updates to this Trainer.
+        """Apply additional non-gradient based updates to this Algorithm.
 
         For example, this could be used to do a polyak averaging update
         of a target network in off policy algorithms like SAC or DQN.

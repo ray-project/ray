@@ -142,7 +142,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
             # Call train while results aren't returned because this is
-            # a asynchronous trainer and results are returned asynchronously.
+            # a asynchronous algorithm and results are returned asynchronously.
             while True:
                 results = algo.train()
                 if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_POLICY_ID):

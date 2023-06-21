@@ -200,7 +200,7 @@ class TestPPO(unittest.TestCase):
         for _ in framework_iterator(config, ("torch", "tf2")):
             algo = config.build()
             # Call train while results aren't returned because this is
-            # a asynchronous trainer and results are returned asynchronously.
+            # a asynchronous Algorithm and results are returned asynchronously.
             curr_kl_coeff_1 = None
             curr_kl_coeff_2 = None
             while not curr_kl_coeff_1 or not curr_kl_coeff_2:

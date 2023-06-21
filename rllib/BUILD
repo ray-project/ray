@@ -3703,7 +3703,7 @@ py_test(
 )
 
 # Taking out this test for now: Mixed torch- and tf- policies within the same
-# Trainer never really worked.
+# Algorothm never really worked.
 # py_test(
 #     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
 #     main = "examples/multi_agent_two_trainers.py",

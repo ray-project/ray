@@ -301,7 +301,7 @@ if __name__ == "__main__":
             ),
         ).fit()
 
-    # Restore trained trainer (set to non-explore behavior) and play against
+    # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0

@@ -64,14 +64,14 @@ class TestA3C(unittest.TestCase):
             min_time_s_per_iteration=0, min_sample_timesteps_per_iteration=20
         )
 
-        def _step_n_times(trainer, n: int):
-            """Step trainer n times.
+        def _step_n_times(algo, n: int):
+            """Step Algorithm n times.
 
             Returns:
                 learning rate at the end of the execution.
             """
             for _ in range(n):
-                results = trainer.train()
+                results = algo.train()
             return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
                 "entropy_coeff"
             ]

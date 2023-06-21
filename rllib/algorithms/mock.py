@@ -10,7 +10,7 @@ from ray.rllib.utils.annotations import override
 
 
 class _MockTrainer(Algorithm):
-    """Mock trainer for use in tests."""
+    """Mock Algorithm for use in tests."""
 
     @classmethod
     @override(Algorithm)
@@ -88,7 +88,7 @@ class _MockTrainer(Algorithm):
 
 
 class _SigmoidFakeData(_MockTrainer):
-    """Trainer that returns sigmoid learning curves.
+    """Algorithm that returns sigmoid learning curves.
 
     This can be helpful for evaluating early stopping algorithms."""
 
@@ -145,10 +145,10 @@ class _ParameterTuningTrainer(_MockTrainer):
 def _algorithm_import_failed(trace):
     """Returns dummy Algorithm class for if PyTorch etc. is not installed."""
 
-    class _TrainerImportFailed(Algorithm):
-        _name = "TrainerImportFailed"
+    class _AlgorithmImportFailed(Algorithm):
+        _name = "AlgorithmImportFailed"
 
         def setup(self, config):
             raise ImportError(trace)
 
-    return _TrainerImportFailed
+    return _AlgorithmImportFailed

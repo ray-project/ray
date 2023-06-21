@@ -11,13 +11,13 @@ logger = logging.getLogger(__name__)
 
 
 class DDPGConfig(SimpleQConfig):
-    """Defines a configuration class from which a DDPG Trainer can be built.
+    """Defines a configuration class from which a DDPG can be built.
 
     Example:
         >>> from ray.rllib.algorithms.ddpg.ddpg import DDPGConfig
         >>> config = DDPGConfig().training(lr=0.01).resources(num_gpus=1)
         >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Trainer object from the config and run one training iteration.
+        >>> # Build a Algorithm object from the config and run one training iteration.
         >>> algo = config.build(env="Pendulum-v1") # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
 

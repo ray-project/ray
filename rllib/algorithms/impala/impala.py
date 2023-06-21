@@ -840,7 +840,7 @@ class Impala(Algorithm):
         # TODO(avnishn): Remove this once we have a way to extend placement group
         # factories.
         if cf._enable_learner_api:
-            # resources for the trainer
+            # Resources for the Algorithm.
             if cf.num_learner_workers == 0:
                 # if num_learner_workers is 0, then we need to allocate one gpu if
                 # num_gpus_per_learner_worker is greater than 0.

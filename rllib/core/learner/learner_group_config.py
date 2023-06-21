@@ -69,7 +69,7 @@ class LearnerGroupConfig:
         if self.learner_class is None:
             raise ValueError(
                 "Cannot initialize an Learner without an Learner class. Please provide "
-                "the Learner class with .learner(learner_class=MyTrainerClass)."
+                "the Learner class with .learner(learner_class=MyLearnerClass)."
             )
 
     def build(self) -> LearnerGroup:

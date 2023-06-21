@@ -171,7 +171,7 @@ class GTrXLNet(RecurrentNetwork):
     Can be used as a drop-in replacement for LSTMs in PPO and IMPALA.
     For an example script, see: `ray/rllib/examples/attention_net.py`.
 
-    To use this network as a replacement for an RNN, configure your Trainer
+    To use this network as a replacement for an RNN, configure your Algorithm
     as follows:
 
     Examples:

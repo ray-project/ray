@@ -209,7 +209,7 @@ class Policy(metaclass=ABCMeta):
             observation_space: Observation space of the policy.
             action_space: Action space of the policy.
             config: A complete Algorithm/Policy config dict. For the default
-                config keys and values, see rllib/trainer/trainer.py.
+                config keys and values, see rllib/algorithm/algorithm.py.
         """
         self.observation_space: gym.Space = observation_space
         self.action_space: gym.Space = action_space
@@ -313,7 +313,7 @@ class Policy(metaclass=ABCMeta):
                 for pid, policy_state in policy_states.items():
                     # Get spec and config, merge config with
                     serialized_policy_spec = worker_state["policy_specs"][pid]
-                    policy_config = Algorithm.merge_trainer_configs(
+                    policy_config = Algorithm.merge_algorithm_configs(
                         worker_state["policy_config"], serialized_policy_spec["config"]
                     )
                     serialized_policy_spec.update({"config": policy_config})
@@ -1269,8 +1269,8 @@ class Policy(metaclass=ABCMeta):
             # If in local debugging mode, and _fake_gpus is not on.
             num_gpus = 0
         elif worker_idx == 0:
-            # if we are in the new rl trainer world num_gpus is deprecated.
-            # so use num_gpus_per_worker for policy sampling
+            # If we are on the new RLModule/Learner stack, `num_gpus` is deprecated.
+            # so use `num_gpus_per_worker` for policy sampling
             # we need this .get() syntax here to ensure backwards compatibility.
             if self.config.get("_enable_learner_api", False):
                 num_gpus = self.config["num_gpus_per_worker"]
@@ -1297,7 +1297,7 @@ class Policy(metaclass=ABCMeta):
     def _create_exploration(self) -> Exploration:
         """Creates the Policy's Exploration object.
 
-        This method only exists b/c some Trainers do not use TfPolicy nor
+        This method only exists b/c some Algorithms do not use TfPolicy nor
         TorchPolicy, but inherit directly from Policy. Others inherit from
         TfPolicy w/o using DynamicTFPolicy.
         TODO(sven): unify these cases.

@@ -200,7 +200,7 @@ NUM_GRADIENT_UPDATES = "num_grad_updates"
 class CRR(Algorithm):
 
     # TODO: we have a circular dependency for get
-    #  default config. config -> Trainer -> config
+    #  default config. config -> Algorithm -> config
     #  defining Config class in the same file for now as a workaround.
 
     def setup(self, config: AlgorithmConfig):
