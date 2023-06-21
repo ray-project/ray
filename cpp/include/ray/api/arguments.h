@@ -32,7 +32,14 @@ class Arguments {
                            std::vector<TaskArg> *task_args,
                            InputArgTypes &&arg) {
     if constexpr (is_object_ref_v<OriginArgType>) {
-      PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
+      if (RayRuntimeHolder::Instance().Runtime()->IsLocalMode()) {
+        PushReferenceArg(task_args, std::forward<InputArgTypes>(arg));
+      } else {
+        // After the Object Ref parameter is supported, this exception will be deleted.
+        throw std::invalid_argument(
+            "At present, the Ray C++ API does not support the passing of "
+            "`ray::ObjectRef` parameters. Will support later.");
+      }
     } else if constexpr (is_object_ref_v<InputArgTypes>) {
       // core_worker submitting task callback will get the value of an ObjectRef arg, but
       // local mode we don't call core_worker submit task, so we need get the value of an
