@@ -23,6 +23,16 @@ compile_pip_requirements(
     visibility = ["//visibility:private"],
 )
 
+compile_pip_requirements(
+    name = "requirements_ml_byod",
+    requirements_in = "ray_release/byod/requirements_ml_byod.in",
+    requirements_txt = "ray_release/byod/requirements_ml_byod.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 test_srcs = glob(["**/*.py"])
 
 ####

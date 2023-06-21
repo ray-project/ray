@@ -2573,7 +2573,11 @@
 
   frequency: weekly
   team: serve
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2611,7 +2615,11 @@
 
   frequency: weekly
   team: serve
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1_c5.yaml
 
@@ -2649,7 +2657,11 @@
 
   frequency: weekly
   team: serve
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2724,8 +2736,10 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
@@ -2753,8 +2767,10 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
 
@@ -2781,7 +2797,10 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
@@ -2802,9 +2821,12 @@
 - name: jobs_check_cuda_available
   group: Jobs tests
   team: serve
+  python: "3.8"
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
@@ -2825,9 +2847,12 @@
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
+  python: "3.8"
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
@@ -2854,8 +2879,10 @@
 
   frequency: nightly
   team: serve
+  python: "3.8"
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: rte_small.yaml
 
@@ -2883,8 +2910,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: rte_minimal.yaml
 
@@ -2938,8 +2966,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
@@ -2965,8 +2994,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu.yaml
 
@@ -2992,8 +3022,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
 
@@ -3019,8 +3050,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_32_cpu_autoscaling.yaml
 
@@ -3046,8 +3078,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
@@ -3093,8 +3126,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3121,8 +3155,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3149,8 +3184,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3177,8 +3213,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
 
@@ -3206,8 +3243,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
@@ -3233,8 +3271,9 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_single_node.yaml
 
@@ -3261,8 +3300,10 @@
 
   frequency: nightly
   team: serve
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: gpu_app_config.yaml
     cluster_compute: compute_tpl_gpu_node.yaml
 
@@ -5977,6 +6018,8 @@
     byod:
       runtime_env:
         - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 

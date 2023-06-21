@@ -1,0 +1,9 @@
+# Python requirements to run release tests from anyscale byod (gpu type)
+boto3
+cmake
+crc32c
+numpy
+pyarrow
+pytest
+tqdm
+validators

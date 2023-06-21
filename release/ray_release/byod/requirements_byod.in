@@ -1,4 +1,4 @@
-# Python requirements to run release tests from anyscale byod
+# Python requirements to run release tests from anyscale byod (cpu type)
 ale-py
 anyscale
 boto3
