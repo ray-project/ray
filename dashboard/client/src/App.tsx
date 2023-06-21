@@ -220,7 +220,6 @@ const App = () => {
                   <Route element={<Actors />} path="" />
                   <Route element={<ActorDetailLayout />} path=":actorId">
                     <Route element={<ActorDetailPage />} path="" />
-                    <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
                 </Route>
                 <Route element={<Metrics />} path="metrics" />

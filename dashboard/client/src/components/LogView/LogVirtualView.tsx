@@ -98,9 +98,12 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   revert = false,
   startTime,
   endTime,
-  maxLines = 1000,
+  maxLines = 50_000,
 }) => {
-  const lineCount = 100_000_0;
+  const lineCount = 100_000;
+  console.log("lineCount: ", lineCount);
+  console.log("maxLines: ", maxLines);
+
   const chunkSize = 1000; // Set the desired chunk size
 
   let longContent = "";
