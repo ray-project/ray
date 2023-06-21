@@ -420,7 +420,7 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
         logger = logging.getLogger(__name__)
 
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=4)
+        cluster.add_node(num_cpus=1)
         ray.init(address=cluster.address)
 
         logger.warning("SSSSSS:10")
