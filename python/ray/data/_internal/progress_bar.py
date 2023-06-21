@@ -46,6 +46,8 @@ class ProgressBar:
         self, name: str, total: int, position: int = 0, enabled: Optional[bool] = None
     ):
         self._desc = name
+        self._total = total
+        self._position = position
         if enabled is None:
             from ray.data import DataContext
 
@@ -105,11 +107,17 @@ class ProgressBar:
             self._bar.set_description(self._desc)
 
     def update(self, i: int) -> None:
+        # Make sure the progress bar doesn't go over 100%.
+        i = min(i, self._total - self._position)
         if self._bar and i != 0:
             self._bar.update(i)
+            self._position += i
 
     def close(self):
         if self._bar:
+            # Make sure the progress bar is at 100% before closing.
+            if self._position != self._total:
+                self._bar.update(self._total - self._position)
             self._bar.close()
             self._bar = None
 
