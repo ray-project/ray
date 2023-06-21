@@ -483,7 +483,7 @@
   instance_size: small
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
-    - DOC_TESTING=1 INSTALL_TIMESERIES_LIBS=1 INSTALL_VLLM=1 ./ci/env/install-dependencies.sh
+    - DOC_TESTING=1 INSTALL_TIMESERIES_LIBS=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=timeseries_libs,-external,-gpu,-post_wheel_build,-doctest doc/...
 
