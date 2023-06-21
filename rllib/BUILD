@@ -2136,7 +2136,7 @@ py_test(
 py_test(
     name = "test_convtranspose2d_stack",
     tags = ["team:rllib", "models"],
-    size = "small",
+    size = "medium",
     data = glob(["tests/data/images/obstacle_tower.png"]),
     srcs = ["models/tests/test_convtranspose2d_stack.py"]
 )
