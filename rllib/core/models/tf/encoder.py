@@ -284,10 +284,11 @@ class TfLSTMEncoder(TfModel, Encoder):
             # For our first input dim, we infer from the tokenizer.
             # This is necessary because we need to build the layers in order to be
             # able to get/set weights directly after instantiation.
-            input_dims = (1,) + self.tokenizer.output_specs[ENCODER_OUT].full_shape
+            input_dims = (1,) + tuple(self.tokenizer.output_specs[
+                                          ENCODER_OUT].full_shape)
         else:
             self.tokenizer = None
-            input_dims = (1,) + config.input_dims
+            input_dims = (1,) + tuple(config.input_dims)
 
         # Create the tf LSTM layers.
         self.lstms = []
