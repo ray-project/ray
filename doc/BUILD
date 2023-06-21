@@ -200,7 +200,6 @@ py_test_run_all_subdirectory(
         "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
-        "source/serve/doc_code/vllm_example.py", # Requires GPU
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -278,15 +277,6 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:ml", "ray_air", "gpu"],
-)
-
-py_test(
-    name = "vllm_example",
-    size = "large",
-    include = ["source/serve/doc_code/vllm_example.py"],
-    exclude = [],
-    extra_srcs = [],
-    tags = ["exclusive", "team:serve", "gpu"],
 )
 
 py_test(
