@@ -441,7 +441,5 @@ class HTTPState:
             if node_id == self._head_node_id:
                 continue
 
-            if node_id in active_nodes:
-                proxy_state.set_active_flag(node_id=node_id, active=True)
-            else:
-                proxy_state.set_active_flag(node_id=node_id, active=False)
+            active = node_id in active_nodes
+            proxy_state.set_active_flag(node_id=node_id, active=active)
