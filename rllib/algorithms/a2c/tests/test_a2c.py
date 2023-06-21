@@ -25,7 +25,7 @@ class TestA2C(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             for env in ["ALE/Pong-v5", "CartPole-v1", "Pendulum-v1"]:
                 config.environment(env)
                 algo = config.build()

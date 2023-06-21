@@ -3,7 +3,6 @@ from typing import Any
 
 import numpy as np
 
-import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder, ArrowRow
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasRow
@@ -28,12 +27,8 @@ class DelegatingBlockBuilder(BlockBuilder):
                     check.build()
                     self._builder = ArrowBlockBuilder()
                 except (TypeError, pyarrow.lib.ArrowInvalid):
-                    ctx = ray.data.DataContext.get_current()
-                    if ctx.strict_mode:
-                        # Can also handle nested Python objects, which Arrow cannot.
-                        self._builder = PandasBlockBuilder()
-                    else:
-                        self._builder = SimpleBlockBuilder()
+                    # Can also handle nested Python objects, which Arrow cannot.
+                    self._builder = PandasBlockBuilder()
             elif isinstance(item, np.ndarray):
                 self._builder = ArrowBlockBuilder()
             elif isinstance(item, PandasRow):

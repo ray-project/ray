@@ -37,6 +37,7 @@ from ray.serve._private.constants import (
     RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
@@ -500,6 +501,12 @@ def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
             camel_dict[key] = val
 
     return camel_dict
+
+
+def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
+    """Check if ray object reference is ready without waiting for it."""
+    finished, _ = ray.wait([obj_ref], timeout=0)
+    return len(finished) == 1
 
 
 serve_telemetry_tag_map = {
