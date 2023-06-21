@@ -1720,7 +1720,7 @@ class Dataset:
         return GroupedData(self, key)
 
     def distinct(self) -> "Dataset":
-        """Remove duplicate rows from the dataset.
+        """Remove duplicate rows from the :class:`~ray.data.Dataset`.
 
         Examples:
             >>> import ray
@@ -1730,10 +1730,10 @@ class Dataset:
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
-        .. note:: Currently distinct only supports Datasets with one single column.
+        .. note:: Currently distinct only supports :class:`~ray.data.Dataset`s with one single column.
 
         Returns:
-            A new dataset with distinct rows.
+            A new :class:`~ray.data.Dataset` with distinct rows.
         """
         columns = self.columns(fetch_if_missing=True)
         assert columns is not None
