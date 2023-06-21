@@ -188,7 +188,6 @@ exclude_patterns = [
     "ray-references/api/ray-observability/state/doc/ray.*",
     "ray-observability/reference/doc/ray.*",
     "cluster/running-applications/doc/ray.*",
-    "ray-core/runtime_env_auth.md",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

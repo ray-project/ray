@@ -93,7 +93,7 @@ class TestMARWIL(unittest.TestCase):
             algo.stop()
 
     def test_marwil_cont_actions_from_offline_file(self):
-        """Test whether MARWILTrainer runs with cont. actions.
+        """Test whether MARWIL runs with cont. actions.
 
         Learns from a historic-data file.
         To generate this data, first run:

@@ -213,7 +213,7 @@
 - name: air_benchmark_xgboost_cpu_10
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-
+  python: "3.8"
   frequency: nightly
   team: ml
 
@@ -695,8 +695,14 @@
   jailed: true
 
   frequency: nightly
+  python: "3.8"
   team: data
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_task_oom_retries=50
+        - RAY_min_memory_free_bytes=1000000000
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
@@ -722,8 +728,14 @@
   jailed: true
 
   frequency: nightly
+  python: "3.8"
   team: data
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - RAY_task_oom_retries=50
+        - RAY_min_memory_free_bytes=1000000000
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16.yaml
 
@@ -750,7 +762,13 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
+      runtime_env:
+        - RAY_task_oom_retries=50
+        - RAY_min_memory_free_bytes=1000000000
     cluster_env: app_config_oom.yaml
     cluster_compute: compute_cpu_16_worker_nodes_2.yaml
 
@@ -810,7 +828,7 @@
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
   run:
-    timeout: 3600
+    timeout: 4500
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
 
   variations:
@@ -994,7 +1012,7 @@
 - name: xgboost_train_gpu
   group: XGBoost
   working_dir: xgboost_tests
-
+  python: "3.8"
   frequency: nightly
   team: ml
 
@@ -1627,62 +1645,6 @@
 
   alert: default
 
-- name: ml_user_ray_lightning_user_test_latest
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    cluster_env: ray-lightning/app_config.yaml
-    cluster_compute: ray-lightning/compute_tpl_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python ray-lightning/ray_lightning_user_test.py
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ray-lightning/app_config.yaml
-        cluster_compute: ray-lightning/compute_tpl_gce.yaml
-
-  alert: default
-
-- name: ml_user_ray_lightning_user_test_master
-  group: ML user tests
-  working_dir: ml_user_tests
-
-  frequency: nightly-3x
-  team: ml
-
-  cluster:
-    cluster_env: ray-lightning/app_config_master.yaml
-    cluster_compute: ray-lightning/compute_tpl_aws.yaml
-
-  run:
-    timeout: 1200
-    script: python ray-lightning/ray_lightning_user_test.py
-    wait_for_nodes:
-      num_nodes: 3
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: ray-lightning/app_config_master.yaml
-        cluster_compute: ray-lightning/compute_tpl_gce.yaml
-
-  alert: default
-
 - name: ml_user_tune_rllib_connect_test
   group: ML user tests
   working_dir: ml_user_tests
@@ -2023,7 +1985,7 @@
     cluster_compute: tpl_100x2.yaml
 
   run:
-    timeout: 900
+    timeout: 750
     prepare_timeout: 1200
     script: python workloads/test_network_overhead.py
     wait_for_nodes:
@@ -2039,7 +2001,7 @@
         cluster_env: app_config.yaml
         cluster_compute: tpl_20x2.yaml
       run:
-        timeout: 500
+        timeout: 750
         prepare_timeout: 600
         script: python workloads/test_network_overhead.py --smoke-test
         wait_for_nodes:
@@ -4760,6 +4722,7 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
     cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
@@ -4791,6 +4754,9 @@
   group: core-daily-test
   working_dir: nightly_tests
 
+  stable: false 
+  jailed: true
+
   python: "3.8"
   frequency: nightly
   team: core
@@ -4803,7 +4769,7 @@
     cluster_compute: stress_tests/stress_tests_compute_large.yaml
 
   run:
-    timeout: 3600
+    timeout: 4200
     script: python stress_tests/test_state_api_scale.py
     wait_for_nodes:
       num_nodes: 7
@@ -5046,11 +5012,8 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_usage_threshold=0.7 
-        - RAY_task_oom_retries=-1
     cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
 
@@ -5485,7 +5448,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: inference.yaml
 
@@ -5510,7 +5476,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: shuffle_app_config.yaml
     cluster_compute: shuffle_compute.yaml
 
@@ -5534,7 +5503,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5560,7 +5532,12 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
@@ -5585,7 +5562,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
@@ -5610,7 +5590,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
 
@@ -5635,7 +5618,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
@@ -5665,7 +5651,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute_gpu.yaml
 
@@ -5690,7 +5679,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5713,7 +5705,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5737,7 +5732,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5760,7 +5758,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: read_tfrecords_benchmark_app.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5784,7 +5785,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5808,7 +5812,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5832,7 +5839,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: multi_node_benchmark_compute.yaml
 
@@ -5856,7 +5866,10 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
@@ -5959,7 +5972,11 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -5984,7 +6001,13 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6009,7 +6032,13 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 
@@ -6266,8 +6295,14 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
+    byod:
+      runtime_env:
+        - RAY_memory_monitor_refresh_ms=0
+      pip:
+        - ray[default]
     cluster_env: shuffle/shuffle_app_config_oom_disabled.yaml
     cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
 

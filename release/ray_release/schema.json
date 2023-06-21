@@ -112,6 +112,9 @@
 				"pre_run_cmds": {
 					"type": "array"
 				},
+				"pip": {
+					"type": "array"
+				},
 				"runtime_env": {
 					"type": "array"
 				}
