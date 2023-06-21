@@ -227,8 +227,7 @@ class ReadTask(Callable[[], Iterable[Block]]):
             block = BlockAccessor.for_block(block)
             offset = 0
             split_sizes = _splitrange(block.num_rows(), self._additional_output_splits)
-            for split in split_sizes:
-                size = len(split)
+            for size in split_sizes:
                 yield block.slice(offset, offset + size, copy=True)
                 offset += size
         else:
