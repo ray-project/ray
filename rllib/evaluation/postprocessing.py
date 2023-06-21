@@ -273,9 +273,12 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
     # Set the SampleBatch.VALUES_BOOTSTRAPPED field to all 0.0, except for the
     # very last timestep (where this bootstrapping value is actually needed), which
     # we set to the computed `last_r`.
-    values_bootstrapped = np.zeros_like(sample_batch[SampleBatch.REWARDS])
-    values_bootstrapped[-1] = last_r
-    sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = values_bootstrapped
+    sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = np.concatenate(
+        [sample_batch[SampleBatch.VF_PREDS][1:], np.array([last_r])], axis=0
+    )
+    #values_bootstrapped = np.zeros_like(sample_batch[SampleBatch.REWARDS])
+    #values_bootstrapped[-1] = last_r
+    #sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = values_bootstrapped
 
     return sample_batch
 
