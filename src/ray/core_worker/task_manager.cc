@@ -35,13 +35,10 @@ std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   for (int64_t index = 0; index <= max_index_seen_; index++) {
     const auto &object_id = GetObjectRefAtIndex(index);
     if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
-      RAY_LOG(ERROR) << "SANG-TODO 1 " << index << " id: " << object_id;
       continue;
     }
-    RAY_LOG(ERROR) << "SANG-TODO 2 " << index << " id: " << object_id;
 
     if (index >= next_index_) {
-      RAY_LOG(ERROR) << "SANG-TODO 3 " << index << " id: " << object_id;
       result.push_back(object_id);
     }
   }
@@ -113,7 +110,6 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
   }
   refs_written_to_stream_.insert(object_id);
   max_index_seen_ = std::max(max_index_seen_, item_index);
-  RAY_LOG(ERROR) << "SANG-TODO max index seen updated: " << max_index_seen_;
   return true;
 }
 

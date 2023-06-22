@@ -1151,6 +1151,27 @@ def test_generator_max_returns(monkeypatch, shutdown_only):
             ray.get(driver.remote())
 
 
+def test_return_yield_mix(shutdown_only):
+    """
+    Test the case where yield and return is mixed within a
+    generator task.
+    """
+
+    @ray.remote
+    def g():
+        for i in range(3):
+            yield i
+            return
+
+    generator = g.options(num_returns="streaming").remote()
+    result = []
+    for ref in generator:
+        result.append(ray.get(ref))
+
+    assert len(result) == 1
+    assert result[0] == 0
+
+
 if __name__ == "__main__":
     import os
 
