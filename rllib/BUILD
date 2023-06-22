@@ -3431,7 +3431,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch",
     main = "examples/custom_recurrent_rnn_tokenizer.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
