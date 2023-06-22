@@ -175,7 +175,7 @@ def redis_alive(port, enable_tls):
     if enable_tls:
         from ray._raylet import Config
 
-        params = {"ssl": True, ssl_cert_reqs: "required"}
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
         if Config.REDIS_CA_CERT():
             params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
         if Config.REDIS_CLIENT_CERT():
