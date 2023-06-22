@@ -1133,8 +1133,9 @@ class SampleBatch(dict):
                     return value[start_seq_len:stop_seq_len]
 
             data = tree.map_structure_with_path(map_, self)
-            # TODO(Artur): Clean this hack up.
-            if isinstance(data[SampleBatch.INFOS], list):
+
+            # Since we don't slice in the above map_ function, we do it here.
+            if isinstance(data.get(SampleBatch.INFOS), list):
                 data[SampleBatch.INFOS] = data[SampleBatch.INFOS][
                     start_unpadded:stop_unpadded
                 ]
