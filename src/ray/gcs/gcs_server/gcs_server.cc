@@ -61,6 +61,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
       client_call_manager_(main_service,
+                           ClusterID::Nil(),
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
@@ -373,12 +374,16 @@ void GcsServer::InitClusterTaskManager() {
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
+  auto client_factory = [this](const rpc::Address &address) {
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+  };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
                                                      gcs_publisher_,
                                                      *runtime_env_manager_,
                                                      *function_manager_,
-                                                     kv_manager_->GetInstance());
+                                                     kv_manager_->GetInstance(),
+                                                     client_factory);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
