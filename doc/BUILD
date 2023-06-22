@@ -15,7 +15,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
+    tags = ["exclusive", "team:ml", "highly_parallel"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
@@ -25,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -158,6 +158,7 @@ py_test_run_all_subdirectory(
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
+    env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
 )
 
 
@@ -199,6 +200,7 @@ py_test_run_all_subdirectory(
         "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
+        "source/serve/doc_code/vllm_example.py", # Requires GPU
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -307,7 +309,7 @@ py_test_run_all_subdirectory(
 
 doctest(
     files = glob(
-        include=["source/**/*.rst"],
+        include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
             "source/ray-core/handling-dependencies.rst",
@@ -316,7 +318,13 @@ doctest(
             "source/ray-observability/user-guides/cli-sdk.rst",
             "source/rllib/rllib-env.rst",
             "source/rllib/rllib-sample-collection.rst",
-            "source/data/batch_inference.rst"
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+            "source/train/faq.rst"
         ]
     ),
     size = "large",
@@ -324,10 +332,12 @@ doctest(
 )
 
 
+
 doctest(
-    files = glob(
-        include=["source/data/batch_inference.rst"],
-    ),
+    files = [
+        "source/data/batch_inference.rst",
+        "source/data/transforming-data.rst"
+    ],
     tags = ["team:data"],
     gpu = True
 )

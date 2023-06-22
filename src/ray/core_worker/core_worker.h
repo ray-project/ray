@@ -764,6 +764,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that created a generator_id.
   /// \param[in] item_index The index of the task return. It is used to reorder the
   /// report from the caller side.
+  /// \param[in] attempt_number The number of time the current task is retried.
+  /// 0 means it is the first attempt.
   /// \param[in] finished True indicates there's going to be no more intermediate
   /// task return. When finished is provided dynamic_return_object's key must be
   /// pair<nil, empty_pointer>
@@ -772,6 +774,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
+      uint64_t attempt_number,
       bool finished);
 
   /// Implements gRPC server handler.
@@ -1199,6 +1202,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::AssignObjectOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  // Get the number of pending tasks.
+  void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
+                             rpc::NumPendingTasksReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1399,6 +1406,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
+      std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
       ReferenceCounter::ReferenceTableProto *borrowed_refs,
       bool *is_retryable_error,
       std::string *application_error);
@@ -1515,12 +1523,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       return false;
     }
   }
-
-  /// Request the spillage of an object that we own from the primary that hosts
-  /// the primary copy to spill.
-  void SpillOwnedObject(const ObjectID &object_id,
-                        const std::shared_ptr<RayObject> &obj,
-                        std::function<void()> callback);
 
   const CoreWorkerOptions options_;
 

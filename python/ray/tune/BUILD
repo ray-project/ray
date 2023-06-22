@@ -9,7 +9,8 @@ doctest(
             "**/tests/**",
             "suggest/**",
             "impl/test_utils.py",
-            "automl/board/**",
+            # Deprecated
+            "automl/**",
             "checkpoint_manager.py",
             "cluster_info.py",
             "config_parser.py",
@@ -21,7 +22,7 @@ doctest(
             "trial.py",
             "trial_runner.py",
             "utils/placement_groups.py",
-            "utils/trainable.py"
+            "utils/trainable.py",
         ]
     ),
     tags = ["team:ml"]
@@ -42,7 +43,6 @@ py_library(
 # "client": Test uses the ray client.
 # "example": Test runs a tune example script.
 # "exclusive": ???
-# "py37": Test requires py3.7 or later.
 # "soft_imports": Tests checking whether Tune runs without any of its soft dependencies.
 # "pytorch": Test uses PyTorch.
 # "tensorflow": Test uses TensorFlow.
@@ -61,14 +61,6 @@ py_test(
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "rllib"],
-)
-
-py_test(
-    name = "test_automl_searcher",
-    size = "small",
-    srcs = ["tests/test_automl_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -92,7 +84,7 @@ py_test(
     size = "large",
     srcs = ["tests/test_client.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "client", "py37", "exclusive"]
+    tags = ["team:ml", "client", "exclusive"]
 )
 
 py_test(
@@ -513,14 +505,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example", "no_main"],
 )
 
-py_test(
-    name = "ext_pytorch",
-    size = "large",
-    srcs = ["tests/ext_pytorch.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-)
-
 # Todo: Ensure MPLBACKEND=Agg
 py_test(
     name = "tutorial",
@@ -611,7 +595,7 @@ py_test(
     size = "small",
     srcs = ["examples/ax_example.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "py37"],
+    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -672,15 +656,6 @@ py_test(
     name = "dragonfly_example",
     size = "medium",
     srcs = ["examples/dragonfly_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "genetic_example",
-    size = "small",
-    srcs = ["examples/genetic_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
@@ -762,7 +737,7 @@ py_test(
     size = "medium",
     srcs = ["examples/mlflow_ptl.py"],
     deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example", "py37", "pytorch"],
+    tags = ["team:ml", "exclusive", "example", "pytorch"],
     args = ["--smoke-test"]
 )
 
