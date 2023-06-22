@@ -3,6 +3,7 @@ import json
 import os
 import sys
 from pathlib import Path
+import tempfile
 
 from collections import defaultdict
 from ray._private.test_utils import check_call_subprocess
@@ -353,6 +354,26 @@ def test_state_api_scale_smoke(shutdown_only):
     assert full_path.exists()
 
     check_call_subprocess(["python", str(full_path), "--smoke-test"])
+
+
+def test_ray_timeline(shutdown_only):
+    ray.init(num_cpus=8)
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "timeline.json")
+        ray.timeline(filename)
+
+        with open(filename, "r") as f:
+            dumped = json.load(f)
+        # TODO(swang): Check actual content. It doesn't seem to match the
+        # return value of chrome_tracing_dump in above tests?
+        assert len(dumped) > 0
 
 
 if __name__ == "__main__":
