@@ -508,10 +508,11 @@ class RayServeReplica:
     async def _update_metrics_loop(self):
         while True:
             request_stats = self._get_handle_request_stats()
-            num_running_requests = request_stats["running"]
-            num_pending_requests = request_stats["pending"]
-            self.num_pending_items.set(num_pending_requests)
-            self.num_processing_items.set(num_running_requests)
+            if request_stats:
+                num_running_requests = request_stats["running"]
+                num_pending_requests = request_stats["pending"]
+                self.num_processing_items.set(num_running_requests)
+                self.num_pending_items.set(num_pending_requests)
             await asyncio.sleep(RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S)
 
     async def check_health(self):
