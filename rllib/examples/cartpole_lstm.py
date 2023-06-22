@@ -3,6 +3,7 @@ import os
 
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import check_learning_achieved
+from ray.tune.registry import get_trainable_cls
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -42,37 +43,26 @@ if __name__ == "__main__":
 
     ray.init(num_cpus=args.num_cpus or None)
 
-    configs = {
-        "PPO": {
-            "model": {
-                "vf_share_layers": True,
-            },
-            "vf_loss_coeff": 0.0001,
-        },
-        "IMPALA": {
-            "num_workers": 2,
-            "num_gpus": 0,
-            "vf_loss_coeff": 0.01,
-        },
-    }
+    algo_cls = get_trainable_cls(args.run)
+    config = algo_cls.get_default_config()
 
-    config = dict(
-        configs[args.run],
-        **{
-            "env": StatelessCartPole,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            "model": {
-                "use_lstm": True,
-                "lstm_cell_size": 256,
-                "lstm_use_prev_action": args.use_prev_action,
-                "lstm_use_prev_reward": args.use_prev_reward,
-            },
-            "framework": args.framework,
-            # Run with tracing enabled for tf2?
-            "eager_tracing": args.eager_tracing,
-        }
+    config.environment(
+        env=StatelessCartPole
+    ).resources(
+        num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
+    ).framework(
+        args.framework, eager_tracing=args.eager_tracing
+    ).reporting(
+        min_time_s_per_iteration=0.1
     )
+
+    if args.run == "PPO":
+        config.model["vf_share_layers"] = True
+        config.vf_loss_coeff = 0.0001
+    elif args.run == "IMPALA":
+        config.num_workers = 2
+        config.num_gpus = 0
+        config.vf_loss_coeff = 0.01
 
     stop = {
         "training_iteration": args.stop_iters,
@@ -80,42 +70,12 @@ if __name__ == "__main__":
         "episode_reward_mean": args.stop_reward,
     }
 
-    # To run the Algorithm without ``Tuner.fit``, using our LSTM model and
-    # manual state-in handling, do the following:
-
-    # Example (use `config` from the above code):
-    # >> import numpy as np
-    # >> from ray.rllib.algorithms.ppo import PPO
-    # >>
-    # >> algo = PPO(config)
-    # >> lstm_cell_size = config["model"]["lstm_cell_size"]
-    # >> env = StatelessCartPole()
-    # >> obs, info = env.reset()
-    # >>
-    # >> # range(2) b/c h- and c-states of the LSTM.
-    # >> init_state = state = [
-    # ..     np.zeros([lstm_cell_size], np.float32) for _ in range(2)
-    # .. ]
-    # >> prev_a = 0
-    # >> prev_r = 0.0
-    # >>
-    # >> while True:
-    # >>     a, state_out, _ = algo.compute_single_action(
-    # ..         obs, state, prev_action=prev_a, prev_reward=prev_r
-    # ..     )
-    # >>     obs, reward, done, truncated, _ = env.step(a)
-    # >>     if done:
-    # >>         obs, info = env.reset()
-    # >>         state = init_state
-    # >>         prev_a = 0
-    # >>         prev_r = 0.0
-    # >>     else:
-    # >>         state = state_out
-    # >>         prev_a = a
-    # >>         prev_r = reward
-
     tuner = tune.Tuner(
-        args.run, param_space=config, run_config=air.RunConfig(stop=stop, verbose=2)
+        args.run,
+        param_space=config.to_dict(),
+        run_config=air.RunConfig(
+            stop=stop,
+        ),
     )
     results = tuner.fit()
 
