@@ -168,10 +168,21 @@ def is_process_listen_to_port(pid, port):
     return False
 
 
-def redis_alive(port):
+def redis_alive(port, enable_tls):
     import redis
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+        params = {"ssl": True, ssl_cert_reqs="required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
 
-    cli = redis.Redis("localhost", port)
+    cli = redis.Redis("localhost", port, **params)
+
     try:
         return cli.ping()
     except Exception:
@@ -202,7 +213,7 @@ def start_redis(db_dir):
                 db_dir=db_dir,
             )
             try:
-                wait_for_condition(redis_alive, 3, 100, port=port)
+                wait_for_condition(redis_alive, 3, 100, port=port, enable_tls=enable_tls)
             except Exception as e:
                 print(e)
                 continue
