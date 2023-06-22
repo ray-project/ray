@@ -21,7 +21,9 @@ from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
-_, tf, _ = try_import_tf()
+
+tf1, tf, _ = try_import_tf()
+tf1.enable_eager_execution()
 torch, nn = try_import_torch()
 
 
