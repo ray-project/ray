@@ -134,17 +134,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     length of each replicas is requested from it via a control message.
 
     The replica responds with two items: (queue_length, accepted). Only replicas that
-    accept the request are considered; between those, the one with the lower queue length
-    is chosen.
+    accept the request are considered; between those, the one with the lower queue
+    length is chosen.
 
     In the case when neither replica accepts the request (e.g., their queues are full),
     the procedure is repeated with backoff. This backoff repeats indefinitely until a
-    replica is chosen, so the caller should use timeouts and cancellation to avoid hangs.
+    replica is chosen, so the caller should use timeouts and cancellation to avoid
+    hangs.
 
     Each request being scheduled may spawn an independent task that runs the scheduling
     procedure concurrently. This task will not necessarily satisfy the request that
-    started it (in order to maintain the FIFO order). The total number of tasks is capped
-    at (2 * num_replicas).
+    started it (in order to maintain the FIFO order). The total number of tasks is
+    capped at (2 * num_replicas).
     """
 
     # The sequence of backoff timeouts to use when all replicas' queues are full.
