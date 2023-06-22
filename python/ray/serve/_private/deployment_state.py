@@ -519,21 +519,22 @@ class ActorReplicaWrapper:
         ):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
-        try:
-            (
-                self._pid,
-                self._actor_id,
-                self._worker_id,
-                self._node_id,
-                self._node_ip,
-                self._log_file_path,
-            ) = ray.get(self._allocated_obj_ref)
-        except RayTaskError as e:
-            logger.exception(
-                f"Exception in replica '{self._replica_tag}', "
-                "the replica will be stopped."
-            )
-            return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
+        if not self._is_cross_language:
+            try:
+                (
+                    self._pid,
+                    self._actor_id,
+                    self._worker_id,
+                    self._node_id,
+                    self._node_ip,
+                    self._log_file_path,
+                ) = ray.get(self._allocated_obj_ref)
+            except RayTaskError as e:
+                logger.exception(
+                    f"Exception in replica '{self._replica_tag}', "
+                    "the replica will be stopped."
+                )
+                return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
 
         # Check whether relica initialization has completed.
         replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
