@@ -23,6 +23,7 @@ pillow
 pyarrow
 pydantic < 1.10.0
 pyyaml
+pytorch-lightning==1.6.5
 scikit-optimize
 redis
 starlette
