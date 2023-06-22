@@ -61,8 +61,17 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 
+/*****************************/
+/* ENV labels for autoscaler */
+/*****************************/
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
+
+constexpr char kNodeTypeNameEnv[] = "RAY_NODE_TYPE_NAME";
+
+/**********************************/
+/* ENV labels for autoscaler ends */
+/**********************************/
 
 /// Key for the placement group's bundle placement constraint.
 /// Used by FormatPlacementGroupLabelName()
