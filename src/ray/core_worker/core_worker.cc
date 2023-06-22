@@ -2840,6 +2840,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
+    uint64_t attempt_number,
     bool finished) {
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
                  << " finished: " << finished << ", id: " << dynamic_return_object.first;
@@ -2848,6 +2849,7 @@ Status CoreWorker::ReportGeneratorItemReturns(
   request.set_item_index(item_index);
   request.set_finished(finished);
   request.set_generator_id(generator_id.Binary());
+  request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {
@@ -3829,6 +3831,15 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
       /*pinned_at_raylet_id=*/NodeID::FromBinary(borrower_address.raylet_id()));
   reference_counter_->AddBorrowerAddress(object_id, borrower_address);
   RAY_CHECK(memory_store_->Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA), object_id));
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+// Handle RPC for TaskManager::NumPendingTasks().
+void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
+                                       rpc::NumPendingTasksReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received NumPendingTasks request.";
+  reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

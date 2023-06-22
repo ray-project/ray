@@ -13,16 +13,13 @@ from typing import List, Tuple
 
 import gymnasium as gym
 import numpy as np
+from supersuit.generic_wrappers import resize_v1
 import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.env.env_runner import EnvRunner
-from ray.rllib.env.wrappers.atari_wrappers import (
-    MaxAndSkipEnv,
-    NoopResetEnv,
-    ResizeImage,
-)
+from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
@@ -66,7 +63,7 @@ class DreamerV3EnvRunner(EnvRunner):
             # full action space=False,
             wrappers = [
                 partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
-                partial(ResizeImage, width=64, height=64),  # resize to 64x64
+                partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
                 NormalizedImageEnv,
                 NoopResetEnv,
                 MaxAndSkipEnv,

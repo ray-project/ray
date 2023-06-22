@@ -130,7 +130,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path)
+    ds = ray.data.read_numpy(path, parallelism=1)
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=1,\n"
@@ -146,7 +146,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     with open(os.path.join(path, "foo.txt"), "w") as f:
         f.write("foobar")
 
-    ds = ray.data.read_numpy(path)
+    ds = ray.data.read_numpy(path, parallelism=1)
     assert ds.num_blocks() == 1
     assert ds.count() == 10
     assert str(ds) == (
@@ -186,7 +186,9 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     path = os.path.join(path, "test.npy")
     np.save(path, np.expand_dims(np.arange(0, 10), 1))
-    ds = ray.data.read_numpy(path, meta_provider=FastFileMetadataProvider())
+    ds = ray.data.read_numpy(
+        path, meta_provider=FastFileMetadataProvider(), parallelism=1
+    )
     assert str(ds) == (
         "Dataset(\n"
         "   num_blocks=1,\n"
