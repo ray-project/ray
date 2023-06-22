@@ -126,7 +126,7 @@ class ValueNetworkMixin:
     def __init__(self, config):
         # When doing GAE, we need the value function estimate on the
         # observation.
-        if config["use_gae"]:
+        if config.get("use_gae") or config.get("vtrace"):
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
             # input_dict.
