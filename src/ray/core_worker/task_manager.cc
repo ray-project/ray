@@ -42,6 +42,13 @@ std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
       result.push_back(object_id);
     }
   }
+
+  if (end_of_stream_index_ != -1) {
+    // End of stream index is never consumed by a caller
+    // so we should add it here.
+    result.push_back(GetObjectRefAtIndex(end_of_stream_index_));
+  }
+
   // Temporarily owned refs are not consumed.
   for (const auto &object_id : temporarily_owned_refs_) {
     result.push_back(object_id);
