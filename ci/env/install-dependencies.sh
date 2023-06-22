@@ -357,7 +357,7 @@ install_pip_packages() {
     # Install MuJoCo.
     sudo apt install libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf -y
     wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-    mkdir /root/.mujoco
+    mkdir -p /root/.mujoco
     mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
     (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
     echo "export LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin" >> /root/.bashrc
