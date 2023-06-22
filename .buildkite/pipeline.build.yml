@@ -212,7 +212,7 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
-- label: ":python: Minimal install 3.7"
+- label: ":python: Minimal install Python {{matrix}}"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
@@ -458,6 +458,7 @@
     # See https://stackoverflow.com/questions/63383400/error-cannot-uninstall-ruamel-yaml-while-creating-docker-image-for-azure-ml-a
     # Pin urllib to avoid downstream ssl incompatibility issues. This matches requirements-doc.txt.
     - pip install "mosaicml==0.12.1" "urllib3<1.27" --ignore-installed
+    - ./ci/env/env_info.sh
     - ./ci/ci.sh build_sphinx_docs
 
 - label: ":octopus: Tune multinode tests"
