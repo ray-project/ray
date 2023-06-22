@@ -220,14 +220,16 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
 def test_distinct(ray_start_regular_shared):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
     assert ds.distinct().sort("item").take_all() == [
-      {"item": 1},
-      {"item": 2},
-      {"item": 3},
+        {"item": 1},
+        {"item": 2},
+        {"item": 3},
     ]
-    ds = ray.data.from_items([
-        {"a": 1, "b": 1},
-        {"a": 1, "b": 2},
-    ])
+    ds = ray.data.from_items(
+        [
+            {"a": 1, "b": 1},
+            {"a": 1, "b": 2},
+        ]
+    )
     # Currently, we don't support distinct on multiple columns.
     with pytest.raises(NotImplementedError):
         ds.distinct().take_all()
