@@ -212,7 +212,7 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
-- label: ":python: Minimal install 3.7"
+- label: ":python: Minimal install Python {{matrix}}"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
