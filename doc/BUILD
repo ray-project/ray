@@ -134,6 +134,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
         "source/serve/doc_code/streaming_example.py",
+        "source/serve/doc_code/vllm_example.py", # Requires GPU and CUDA
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -200,7 +201,6 @@ py_test_run_all_subdirectory(
         "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
-        "source/serve/doc_code/vllm_example.py", # Requires GPU
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
