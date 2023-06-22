@@ -40,7 +40,6 @@ colorful
 pyyaml
 rich
 gpustat>=1.0.0
-urllib3
 opentelemetry-sdk
 fastapi
 virtualenv<20.21.1,>=20.0.24

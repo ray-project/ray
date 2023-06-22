@@ -264,7 +264,6 @@ if setup_spec.type == SetupType.RAY:
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
-        "k8s": ["urllib3"],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
