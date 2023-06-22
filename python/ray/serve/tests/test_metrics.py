@@ -98,7 +98,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
             await signal.wait.remote()
 
     handle = serve.run(A.bind(), name="app1")
-    ref = handle.remote()
+    _ = handle.remote()
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 1,
         timeout=20,
