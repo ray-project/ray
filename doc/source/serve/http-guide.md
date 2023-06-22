@@ -85,17 +85,9 @@ Serve offers websocket support via FastAPI:
 :language: python
 ```
 
-Decorate the function that handles websocket requests using `@app.websocket`. Read more about FastAPI websockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
+Decorate the function that handles websocket requests with `@app.websocket`. Read more about FastAPI websockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
 
-:::{tip}
-Install the `websockets` package to query the Serve deployment:
-
-```
-pip install websockets
-```
-:::
-
-Query the deployment using the `websockets` package:
+Query the deployment using the `websockets` package (`pip install websockets`):
 
 ```{literalinclude} doc_code/http_guide/websockets_example.py
 :start-after: __websocket_serve_app_start__
