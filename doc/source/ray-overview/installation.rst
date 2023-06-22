@@ -496,3 +496,27 @@ that you've cloned the git repository.
 .. code-block:: bash
 
   python -m pytest -v python/ray/tests/test_mini.py
+
+
+Installed Python dependencies
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Our docker images are shipped with pre-installed Python dependencies
+required for Ray and its libraries.
+
+We publish the dependencies that are installed in our ``ray`` and ``ray-ml``
+Docker images for Python 3.9.
+
+.. tabs::
+
+    .. group-tab:: ray (Python 3.9)
+
+        Ray version: 2.5.1 (`a03efd9 <https://github.com/ray-project/ray/commit/a03efd9931128d387649dd48b0e4864b43d3bfb4>`_)
+
+        .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
+
+    .. group-tab:: ray-ml (Python 3.9)
+
+        Ray version: 2.5.1 (`a03efd9 <https://github.com/ray-project/ray/commit/a03efd9931128d387649dd48b0e4864b43d3bfb4>`_)
+
+        .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt
