@@ -55,6 +55,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
     msgpack_deserialize,
     get_all_node_ids,
+    check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 from ray.serve._private import deployment_scheduler
@@ -306,10 +307,6 @@ class ActorReplicaWrapper:
         """Returns the relative log file path of the actor, None if not placed."""
         return self._log_file_path
 
-    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
-        ready, _ = ray.wait([obj_ref], timeout=0)
-        return len(ready) == 1
-
     def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
@@ -517,9 +514,7 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if self._allocated_obj_ref is None or not self._check_obj_ref_ready(
-            self._allocated_obj_ref
-        ):
+        if self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(self._allocated_obj_ref):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         try:
@@ -539,7 +534,7 @@ class ActorReplicaWrapper:
             return ReplicaStartupStatus.FAILED, str(e.as_instanceof_cause())
 
         # Check whether relica initialization has completed.
-        replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
+        replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
@@ -601,7 +596,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-            stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
+            stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
                 try:
@@ -635,7 +630,7 @@ class ActorReplicaWrapper:
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
-        elif self._check_obj_ref_ready(self._health_check_ref):
+        elif check_obj_ref_ready_nowait(self._health_check_ref):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
@@ -1361,7 +1356,8 @@ class DeploymentState:
         self._set_target_state(new_config)
 
     def delete(self) -> None:
-        self._set_target_state_deleting()
+        if not self._target_state.deleting:
+            self._set_target_state_deleting()
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
