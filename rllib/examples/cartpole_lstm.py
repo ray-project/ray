@@ -44,7 +44,6 @@ if __name__ == "__main__":
 
     configs = {
         "PPO": {
-            "num_sgd_iter": 5,
             "model": {
                 "vf_share_layers": True,
             },
