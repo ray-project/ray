@@ -1,5 +1,5 @@
 import ray
-from typing import Callable, Dict, Tuple, Optional, List
+from typing import Callable, Dict, Tuple, Optional, List, Union
 from dataclasses import dataclass
 from collections import defaultdict
 from ray._raylet import GcsClient
@@ -74,7 +74,13 @@ class DeploymentScheduler:
         else:
             self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
-    def on_deployment_created(self, deployment_name, scheduling_policy):
+    def on_deployment_created(
+        self,
+        deployment_name: str,
+        scheduling_policy: Union[
+            SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
+        ],
+    ):
         """This is called whenver a new deployment is created."""
         assert deployment_name not in self._pending_replicas
         assert deployment_name not in self._launching_replicas
@@ -82,7 +88,7 @@ class DeploymentScheduler:
         assert deployment_name not in self._running_replicas
         self._deployments[deployment_name] = scheduling_policy
 
-    def on_deployment_deleted(self, deployment_name):
+    def on_deployment_deleted(self, deployment_name: str):
         """This is called whenver a deployment is deleted."""
         assert not self._pending_replicas[deployment_name]
         del self._pending_replicas[deployment_name]
@@ -98,14 +104,14 @@ class DeploymentScheduler:
 
         del self._deployments[deployment_name]
 
-    def on_replica_stopping(self, deployment_name, replica_name):
+    def on_replica_stopping(self, deployment_name: str, replica_name: str):
         """This is called whenver a deployment replica is being stopped."""
         self._pending_replicas[deployment_name].pop(replica_name, None)
         self._launching_replicas[deployment_name].pop(replica_name, None)
         self._recovering_replicas[deployment_name].discard(replica_name)
         self._running_replicas[deployment_name].pop(replica_name, None)
 
-    def on_replica_running(self, deployment_name, replica_name, node_id):
+    def on_replica_running(self, deployment_name: str, replica_name: str, node_id: str):
         """This is called whenver a deployment replica is running with known node id."""
         assert replica_name not in self._pending_replicas[deployment_name]
 
@@ -114,7 +120,7 @@ class DeploymentScheduler:
 
         self._running_replicas[deployment_name][replica_name] = node_id
 
-    def on_replica_recovering(self, deployment_name, replica_name):
+    def on_replica_recovering(self, deployment_name: str, replica_name: str):
         """This is called whenver a deployment replica is recovering."""
         assert replica_name not in self._pending_replicas[deployment_name]
         assert replica_name not in self._launching_replicas[deployment_name]

@@ -822,15 +822,15 @@ class DeploymentReplica(VersionedReplica):
         """Returns the node id of the actor, None if not placed."""
         return self._actor.node_id
 
-    def start(self, deployment_info: DeploymentInfo):
+    def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """
         Start a new actor for current DeploymentReplica instance.
         """
-        deployment_upscale_request = self._actor.start(deployment_info)
+        replica_scheduling_request = self._actor.start(deployment_info)
         self._start_time = time.time()
         self._prev_slow_startup_warning_time = time.time()
         self.update_actor_details(start_time_s=self._start_time)
-        return deployment_upscale_request
+        return replica_scheduling_request
 
     def reconfigure(self, version: DeploymentVersion) -> bool:
         """
@@ -1217,7 +1217,7 @@ class DeploymentState:
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
-    def notify_running_replicas_changed(self):
+    def notify_running_replicas_changed(self) -> None:
         self._long_poll_host.notify_changed(
             (LongPollNamespace.RUNNING_REPLICAS, self._name),
             self.get_running_replica_infos(),
@@ -1477,7 +1477,9 @@ class DeploymentState:
 
         return self._stop_or_update_outdated_version_replicas(max_to_stop)
 
-    def _scale_deployment_replicas(self):
+    def _scale_deployment_replicas(
+        self,
+    ) -> Tuple[List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Scale the given deployment to the number of replicas."""
 
         assert (
@@ -1557,7 +1559,7 @@ class DeploymentState:
                 deployment_name=self._name, num_to_stop=to_remove
             )
 
-        return (upscale, downscale)
+        return upscale, downscale
 
     def _check_curr_status(self) -> Tuple[bool, bool]:
         """Check the current deployment status.
@@ -1719,7 +1721,7 @@ class DeploymentState:
 
         return slow_replicas
 
-    def stop_replicas(self, replicas_to_stop):
+    def stop_replicas(self, replicas_to_stop) -> None:
         for replica in self._replicas.pop():
             if replica.replica_tag in replicas_to_stop:
                 self._stop_replica(replica)
@@ -1865,7 +1867,9 @@ class DeploymentState:
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
-    def update(self) -> Tuple[bool, bool]:
+    def update(
+        self,
+    ) -> Tuple[bool, bool, List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
@@ -2011,7 +2015,9 @@ class DriverDeploymentState(DeploymentState):
         pending_replicas = num_nodes - new_running_replicas - old_running_replicas
         return max(rollout_size - pending_replicas, 0)
 
-    def update(self) -> Tuple[bool, bool]:
+    def update(
+        self,
+    ) -> Tuple[bool, bool, List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
         """Returns (deleted, any_replicas_recovering)."""
         try:
             self._check_and_update_replicas()
