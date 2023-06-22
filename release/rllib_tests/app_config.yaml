@@ -13,11 +13,6 @@ debian_packages:
 
 python:
   pip_packages:
-  ## These dependencies should be handled by requirements_rllib.txt and
-  ## requirements_ml_docker.txt and removed here
-  - gymnasium[atari,mujoco]==0.28.1
-  - ale-py==0.8.1
-  - mujoco-py<2.2,>=2.1
   # AutoROM downloads ROMs via torrent when they are built. The torrent is unreliable,
   # so we built it for py3 and use that instead. This wheel was tested for python 3.7, 3.8,
   # and 3.9.

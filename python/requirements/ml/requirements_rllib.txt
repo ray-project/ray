@@ -7,7 +7,7 @@ gymnasium[atari]==0.28.1
 imageio==2.31.1
 ale_py==0.8.1
 # For testing MuJoCo envs with gymnasium.
-mujoco==2.3.5
+mujoco-py<2.2,>=2.1
 dm_control==1.0.12
 
 # For tests on PettingZoo's multi-agent envs.

@@ -18,6 +18,9 @@ RUN sudo apt-get update \
         libgtk2.0-dev \
         libgl1-mesa-glx \
         libosmesa6 \
+        libosmesa6-dev \
+        libglfw3 \
+        patchelf \
         zlib1g-dev \
         libgl1-mesa-dev \
         unzip \
@@ -48,7 +51,13 @@ RUN sudo apt-get update \
         requirements*.txt \
     && sudo apt-get clean
 
+# MuJoCo Installation.
 ENV MUJOCO_GL=osmesa
+RUN wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+RUN mkdir ~/.mujoco
+RUN mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
+RUN cd ~/.mujoco
+RUN tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
 
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
