@@ -387,12 +387,6 @@ def get_appo_tf_policy(name: str, base: type) -> type:
             return sample_batch
 
         @override(base)
-        def extra_action_out_fn(self) -> Dict[str, TensorType]:
-            extra_action_fetches = super().extra_action_out_fn()
-            extra_action_fetches[SampleBatch.VF_PREDS] = self.model.value_function()
-            return extra_action_fetches
-
-        @override(base)
         def get_batch_divisibility_req(self) -> int:
             return self.config["rollout_fragment_length"]
 
