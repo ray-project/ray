@@ -227,10 +227,10 @@
   frequency: nightly
   team: ml
   cluster:
-    byod:
-      type: gpu
-      pip:
-        - xgboost_ray
+#    byod:
+#      type: gpu
+#      pip:
+#        - xgboost_ray
     cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
