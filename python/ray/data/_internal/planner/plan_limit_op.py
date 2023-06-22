@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from ray.data._internal.execution.operators.one_to_one_operator import LimitOperator
+from ray.data._internal.execution.operators.limit_operator import LimitOperator
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces import PhysicalOperator

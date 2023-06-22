@@ -136,7 +136,7 @@
     - unset CC CXX && bazel test --config=ci --config=ubsan $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
-      -- //:all -//:core_worker_test -//:logging_test -//:ray_syncer_test
+      -- //:all -//:core_worker_test -//src/ray/util/tests:logging_test -//:ray_syncer_test
 
 - label: ":cpp: Tests (TSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
@@ -146,7 +146,7 @@
     - bazel test --config=ci --config=tsan-clang $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
-      -- //:all -//:core_worker_test -//:event_test -//:gcs_actor_manager_test
+      -- //:all -//:core_worker_test -//src/ray/util/tests:event_test -//:gcs_actor_manager_test
       -//:gcs_placement_group_manager_test -//:gcs_placement_group_scheduler_test
       -//:gcs_server_rpc_test -//:gcs_client_test -//:metric_exporter_client_test
       -//:stats_test -//:worker_pool_test -//:ray_syncer_test
@@ -212,7 +212,7 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
-- label: ":python: Minimal install 3.7"
+- label: ":python: Minimal install Python {{matrix}}"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
   instance_size: medium
   commands:
@@ -525,7 +525,7 @@
     - >-
       set -x;
       {
-        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... python/ray/tests/ray_lightning/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
         python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials,-hdfs python/ray/air/... &&
         python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials,-hdfs python/ray/train/... &&
         python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
