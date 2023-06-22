@@ -320,6 +320,7 @@ class DataIterator(abc.ABC):
             )
 
         if collate_fn is None:
+
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()
