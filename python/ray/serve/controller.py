@@ -187,6 +187,9 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        logger.debug(
+            f"Received autoscaling metrics: {data} at timestamp {send_timestamp}"
+        )
         self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
@@ -702,6 +705,8 @@ class ServeController:
                 status=app_status_info.status,
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
+                # This can be none if the app was deployed through
+                # serve.run, or if the app is in deleting state
                 deployed_app_config=self.get_app_config(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name

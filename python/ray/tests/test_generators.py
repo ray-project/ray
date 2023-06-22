@@ -243,7 +243,7 @@ def test_dynamic_generator_retry_exception(
 def test_dynamic_generator(
     ray_start_regular, use_actors, store_in_plasma, num_returns_type
 ):
-    if use_actors:
+    if not use_actors:
 
         @ray.remote(num_returns=num_returns_type)
         def dynamic_generator(num_returns, store_in_plasma):
@@ -498,7 +498,7 @@ def test_dynamic_generator_reconstruction_nondeterministic(
         assert_no_leak()
 
 
-@pytest.mark.parametrize("num_returns_type", ["streaming"])
+@pytest.mark.parametrize("num_returns_type", ["dynamic", "streaming"])
 def test_dynamic_generator_reconstruction_fails(ray_start_cluster, num_returns_type):
     config = {
         "health_check_failure_threshold": 10,

@@ -35,13 +35,26 @@ class TestStateMachine:
     def __init__(self, test: Test) -> None:
         self.test = test
         self.test_results = test.get_test_results()
-        if not self.ray_repo:
+        TestStateMachine._init_ray_repo()
+        TestStateMachine._init_ray_buildkite()
+
+    @classmethod
+    def _init_ray_repo(cls):
+        if not cls.ray_repo:
             github_token = get_secret_token(AWS_SECRET_GITHUB)
-            self.ray_repo = Github(github_token).get_repo(RAY_REPO)
-        if not self.ray_buildkite:
+            cls.ray_repo = Github(github_token).get_repo(RAY_REPO)
+
+    @classmethod
+    def get_ray_repo(cls):
+        cls._init_ray_repo()
+        return cls.ray_repo
+
+    @classmethod
+    def _init_ray_buildkite(cls):
+        if not cls.ray_buildkite:
             buildkite_token = get_secret_token(AWS_SECRET_BUILDKITE)
-            self.ray_buildkite = Buildkite()
-            self.ray_buildkite.set_access_token(buildkite_token)
+            cls.ray_buildkite = Buildkite()
+            cls.ray_buildkite.set_access_token(buildkite_token)
 
     def move(self) -> None:
         """
@@ -51,6 +64,7 @@ class TestStateMachine:
         to_state = self._next_state(from_state)
         self.test.set_state(to_state)
         self._move_hook(from_state, to_state)
+        self._state_hook(to_state)
 
     def _next_state(self, current_state) -> TestState:
         """
@@ -103,6 +117,15 @@ class TestStateMachine:
             self._close_github_issue()
             self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
 
+    def _state_hook(self, state: TestState) -> None:
+        """
+        Action performed when test is in a particular state. This is where we do things
+        to keep an invariant for a state. For example, we can keep the github issue open
+        if the test is failing.
+        """
+        if state == TestState.JAILED:
+            self._keep_github_issue_open()
+
     def _jail_test(self) -> None:
         """
         Notify github issue owner that the test is jailed
@@ -140,7 +163,7 @@ class TestStateMachine:
             "master",
             message=f"[ray-test-bot] {self.test.get_name()} failing",
             env={
-                "REPORT_TO_RAY_TEST_DB": "1",
+                "UPDATE_TEST_STATE_MACHINE": "1",
             },
         )
         failing_commit = self.test_results[0].commit
@@ -206,6 +229,19 @@ class TestStateMachine:
         issue.create_comment(f"Test passed on latest run: {self.test_results[0].url}")
         issue.edit(state="closed")
         self.test.pop(Test.KEY_GITHUB_ISSUE_NUMBER, None)
+
+    def _keep_github_issue_open(self) -> None:
+        github_issue_number = self.test.get(Test.KEY_GITHUB_ISSUE_NUMBER)
+        if not github_issue_number:
+            return
+        issue = self.ray_repo.get_issue(github_issue_number)
+        if issue.state == "open":
+            return
+        issue.edit(state="open")
+        issue.create_comment(
+            "Re-opening issue as test is still failing. "
+            f"Latest run: {self.test_results[0].url}"
+        )
 
     def _jailed_to_passing(self) -> bool:
         return len(self.test_results) > 0 and self.test_results[0].is_passing()

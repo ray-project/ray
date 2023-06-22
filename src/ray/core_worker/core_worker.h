@@ -360,15 +360,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
-  /// Create the ObjectRefStream of generator_id.
-  ///
-  /// It is a pass-through method. See TaskManager::CreateObjectRefStream
-  /// for details.
-  ///
-  /// \param[in] generator_id The object ref id of the streaming
-  /// generator task.
-  void CreateObjectRefStream(const ObjectID &generator_id);
-
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
   ///
@@ -384,10 +375,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /// Read the next index of a ObjectRefStream of generator_id without
+  /// consuming an index.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return A object reference of the next index.
+  /// It should not be nil.
   rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
 
-  /// Delete the ObjectRefStream of generator_id
-  /// created by CreateObjectRefStream.
+  /// Delete the ObjectRefStream that was
+  /// created upon the initial task
+  /// submission.
   ///
   /// It is a pass-through method. See TaskManager::DelObjectRefStream
   /// for details.
@@ -1517,12 +1515,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       return false;
     }
   }
-
-  /// Request the spillage of an object that we own from the primary that hosts
-  /// the primary copy to spill.
-  void SpillOwnedObject(const ObjectID &object_id,
-                        const std::shared_ptr<RayObject> &obj,
-                        std::function<void()> callback);
 
   const CoreWorkerOptions options_;
 

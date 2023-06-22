@@ -110,6 +110,7 @@ from ray.includes.common cimport (
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     kResourceUnitScaling,
     kWorkerSetupHookKeyName,
+    PythonCheckGcsHealth,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -220,7 +221,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class ObjectRefStreamEneOfStreamError(RayError):
+class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
@@ -293,10 +294,11 @@ class StreamingObjectRefGenerator:
         self.worker.check_connected()
         core_worker = self.worker.core_worker
 
-        ref = core_worker.peek_object_ref_stream(
+        # Wait for the next ObjectRef to become ready.
+        expected_ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         ready, unready = ray.wait(
-            [ref], timeout=timeout_s, fetch_local=False)
+            [expected_ref], timeout=timeout_s, fetch_local=False)
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -304,18 +306,21 @@ class StreamingObjectRefGenerator:
             ref = core_worker.try_read_next_object_ref_stream(
                 self._generator_ref)
             assert not ref.is_nil()
-        except ObjectRefStreamEneOfStreamError:
+        except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
-                # Exception has been returned. raise StopIteration.
+                # Exception has been returned.
                 raise StopIteration
 
             try:
-                ray.get(ref)
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                ray.get(self._generator_ref)
             except Exception as e:
                 self._generator_task_exception = e
-                return ref
+                return self._generator_ref
             else:
-                # meaning the task succeed without failure raise StopIteration.
+                # The task finished without an exception.
                 raise StopIteration
         return ref
 
@@ -329,6 +334,7 @@ class StreamingObjectRefGenerator:
 
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
+        # TODO(swang): Avoid fetching the value.
         ready, unready = await asyncio.wait([ref], timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
@@ -337,114 +343,28 @@ class StreamingObjectRefGenerator:
             ref = core_worker.try_read_next_object_ref_stream(
                 self._generator_ref)
             assert not ref.is_nil()
-        except ObjectRefStreamEneOfStreamError:
+        except ObjectRefStreamEndOfStreamError:
             if self._generator_task_exception:
                 # Exception has been returned. raise StopIteration.
                 raise StopAsyncIteration
 
             try:
-                await ref
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                await self._generator_ref
             except Exception as e:
                 self._generator_task_exception = e
-                return ref
+                return self._generator_ref
             else:
                 # meaning the task succeed without failure raise StopIteration.
                 raise StopAsyncIteration
 
         return ref
 
-    # async def _handle_next_async(self):
-    #     try:
-    #         return self._handle_next()
-    #     except ObjectRefStreamEneOfStreamError:
-    #         raise StopAsyncIteration
-
-    # def _handle_next_sync(self):
-    #     try:
-    #         return self._handle_next()
-    #     except ObjectRefStreamEneOfStreamError:
-    #         raise StopIteration
-
-    # def _handle_next(self):
-    #     """Get the next item from the ObjectRefStream.
-
-    #     This API return immediately all the time. It returns a nil object
-    #     if it doesn't have the next item ready. It raises
-    #     ObjectRefStreamEneOfStreamError if there's nothing more to read.
-    #     If there's a next item, it will return a object ref.
-    #     """
-    #     if hasattr(self.worker, "core_worker"):
-    #         obj = self.worker.core_worker.try_read_next_object_ref_stream(
-    #             self._generator_ref)
-    #         return obj
-    #     else:
-    #         raise ValueError(
-    #             "Cannot access the core worker. "
-    #             "Did you already shutdown Ray via ray.shutdown()?")
-
-    # def _handle_error(
-    #         self,
-    #         is_async: bool,
-    #         last_time: int,
-    #         timeout_s: float,
-    #         unexpected_network_failure_timeout_s: float):
-    #     """Handle the error case of next APIs.
-
-    #     Return None if there's no error. Returns a ref if
-    #     the ref is supposed to be return.
-    #     """
-    #     if self._generator_task_exception:
-    #         # The generator task has failed already.
-    #         # We raise StopIteration
-    #         # to conform the next interface in Python.
-    #         if is_async:
-    #             raise StopAsyncIteration
-    #         else:
-    #             raise StopIteration
-    #     else:
-    #         # Otherwise, we should ray.get on the generator
-    #         # ref to find if the task has a system failure.
-    #         # Return the generator ref that contains the system
-    #         # error as soon as possible.
-    #         r, _ = ray.wait([self._generator_ref], timeout=0)
-    #         if len(r) > 0:
-    #             try:
-    #                 ray.get(r)
-    #             except Exception as e:
-    #                 # If it has failed, return the generator task ref
-    #                 # so that the ref will raise an exception.
-    #                 self._generator_task_exception = e
-    #                 return self._generator_ref
-    #             finally:
-    #                 if self._generator_task_completed_time is None:
-    #                     self._generator_task_completed_time = time.time()
-
-    #     # Currently, since the ordering of intermediate result report
-    #     # is not guaranteed, it is possible that althoug the task
-    #     # has succeeded, all of the object references are not reported
-    #     # (e.g., when there are network failures).
-    #     # If all the object refs are not reported to the generator
-    #     # within 30 seconds, we consider is as an unreconverable error.
-    #     if self._generator_task_completed_time:
-    #         if (time.time() - self._generator_task_completed_time
-    #                 > unexpected_network_failure_timeout_s):
-    #             # It means the next wasn't reported although the task
-    #             # has been terminated 30 seconds ago.
-    #             self._generator_task_exception = AssertionError
-    #             assert False, (
-    #                 "Unexpected network failure occured. "
-    #                 f"Task ID: {self._generator_ref.task_id().hex()}"
-    #             )
-
-    #     if timeout_s != -1 and time.time() - last_time > timeout_s:
-    #         return ObjectRef.nil()
-
-    #     return None
-
     def __del__(self):
         if hasattr(self.worker, "core_worker"):
-            # The stream is created when a task is first submitted via
-            # CreateObjectRefStream.
+            # The stream is created when a task is first submitted.
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
@@ -468,7 +388,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEneOfStreamError(message)
+        raise ObjectRefStreamEndOfStreamError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
@@ -2111,9 +2031,6 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
 
-        # Only start import thread after job_config is initialized
-        ray._private.worker.start_import_thread()
-
         job_config_initialized = True
 
 
@@ -2580,46 +2497,6 @@ cdef class GcsLogSubscriber(_GcsSubscriber):
         }
 
 
-cdef class GcsFunctionKeySubscriber(_GcsSubscriber):
-    """Subscriber to function（and actor class) dependency keys. Thread safe.
-
-    Usage example:
-        subscriber = GcsFunctionKeySubscriber()
-        # Subscribe to the function key channel.
-        subscriber.subscribe()
-        ...
-        while running:
-            key = subscriber.poll()
-            ......
-        # Unsubscribe from the function key channel.
-        subscriber.close()
-    """
-
-    def __init__(self, address, worker_id=None):
-        self._construct(address, RAY_PYTHON_FUNCTION_CHANNEL, worker_id)
-
-    def poll(self, timeout=None):
-        """Polls for new function key messages.
-
-        Returns:
-            A byte string of function key.
-            None if polling times out or subscriber closed.
-        """
-        cdef:
-            CPythonFunction python_function
-            c_string key_id
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-
-        with nogil:
-            check_status(self.inner.get().PollFunctionKey(
-                &key_id, timeout_ms, &python_function))
-
-        if python_function.key() == b"":
-            return None
-        else:
-            return python_function.key()
-
-
 # This class should only be used for tests
 cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
     """Subscriber to actor updates. Thread safe.
@@ -2661,6 +2538,44 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
+
+
+def check_health(address: str, timeout=2, skip_version_check=False):
+    """Checks Ray cluster health, before / without actually connecting to the
+    cluster via ray.init().
+
+    Args:
+        address: Ray cluster / GCS address string, e.g. ip:port.
+        timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
+    Returns:
+        Returns True if the cluster is running and has matching Ray version.
+        Returns False if no service is running.
+        Raises an exception otherwise.
+    """
+
+    gcs_address, gcs_port = address.split(":")
+
+    cdef:
+        c_string c_gcs_address = gcs_address
+        int c_gcs_port = int(gcs_port)
+        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        c_string c_ray_version = ray.__version__
+        c_bool c_skip_version_check = skip_version_check
+        c_bool c_is_healthy = True
+
+    try:
+        with nogil:
+            check_status(PythonCheckGcsHealth(
+                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
+                c_skip_version_check, c_is_healthy))
+    except RpcError:
+        traceback.print_exc()
+    except RaySystemError as e:
+        raise RuntimeError(str(e))
+
+    return c_is_healthy
 
 
 cdef class CoreWorker:
