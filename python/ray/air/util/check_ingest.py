@@ -83,7 +83,6 @@ class DummyTrainer(DataParallelTrainer):
                     prefetch_batches=prefetch_batches,
                     prefetch_blocks=prefetch_blocks,
                     batch_size=batch_size,
-                    batch_format="numpy",
                 ):
                     batch_delay = time.perf_counter() - batch_start
                     batch_delays.append(batch_delay)
