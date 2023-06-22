@@ -1744,7 +1744,8 @@ class Dataset:
                 "`distinct` currently only suports Datasets with one single column, "
                 "please apply `select_columns` before `distinct`."
             )
-        return self.groupby(columns[0]).count().drop_columns(["count()"])
+        column = columns[0]
+        return self.groupby(column).count().select_columns([column])
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
