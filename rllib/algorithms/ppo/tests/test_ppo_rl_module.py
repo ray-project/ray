@@ -22,7 +22,7 @@ from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 _, tf, _ = try_import_tf()
-torch = try_import_torch()
+torch, nn = try_import_torch()
 
 
 def get_expected_module_config(
@@ -120,7 +120,7 @@ def _get_input_batch_from_obs(framework, obs, lstm):
         }
     else:
         batch = {
-            SampleBatch.OBS: tf.convert_to_tensor([obs]),
+            SampleBatch.OBS: tf.convert_to_tensor(obs)[None],
         }
     if lstm:
         batch[SampleBatch.OBS] = batch[SampleBatch.OBS][None]
@@ -182,15 +182,12 @@ class TestPPO(unittest.TestCase):
 
     def test_forward_train(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        frameworks = ["torch", "tf2"]
+        frameworks = ["tf2", "torch"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
-        lstm = [True, False]
+        lstm = [False, True]
         config_combinations = [frameworks, env_names, lstm]
         for config in itertools.product(*config_combinations):
             fw, env_name, lstm = config
-            if lstm and fw == "tf2":
-                # LSTM not implemented in TF2 yet
-                continue
             print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
             # TODO(Artur): Figure out why this is needed and fix it.
             if env_name.startswith("ALE/"):
@@ -216,14 +213,19 @@ class TestPPO(unittest.TestCase):
 
             if lstm:
                 state_in = module.get_initial_state()
-                state_in = tree.map_structure(
-                    lambda x: x[None], convert_to_torch_tensor(state_in)
-                )
+                if fw == "torch":
+                    state_in = tree.map_structure(
+                        lambda x: x[None], convert_to_torch_tensor(state_in)
+                    )
+                else:
+                    state_in = tree.map_structure(lambda x: tf.convert_to_tensor(x)[
+                        None], state_in)
                 initial_state = state_in
 
             while tstep < 10:
-                input_batch = _get_input_batch_from_obs(fw, obs)
-                input_batch[STATE_IN] = state_in
+                input_batch = _get_input_batch_from_obs(fw, obs, lstm=lstm)
+                if lstm:
+                    input_batch[STATE_IN] = state_in
 
                 fwd_out = module.forward_exploration(input_batch)
                 action_dist_cls = module.get_exploration_action_dist_cls()
@@ -233,6 +235,10 @@ class TestPPO(unittest.TestCase):
                 _action = action_dist.sample()
                 action = convert_to_numpy(_action[0])
                 action_logp = convert_to_numpy(action_dist.logp(_action)[0])
+                if lstm:
+                    # Since this inference, fwd out should only contain one action
+                    assert len(action) == 1
+                    action = action[0]
                 new_obs, reward, terminated, truncated, _ = env.step(action)
                 new_obs = preprocessor.transform(new_obs)
                 output_batch = {
@@ -262,6 +268,11 @@ class TestPPO(unittest.TestCase):
                 }
                 if lstm:
                     fwd_in[STATE_IN] = initial_state
+                    # If we test lstm, the collected timesteps make up only one batch
+                    fwd_in = {
+                        k: torch.unsqueeze(v, 0) if k != STATE_IN else v for k, v in
+                        fwd_in.items()
+                    }
 
                 # forward train
                 # before training make sure module is on the right device
@@ -281,6 +292,11 @@ class TestPPO(unittest.TestCase):
                 )
                 if lstm:
                     fwd_in[STATE_IN] = initial_state
+                    # If we test lstm, the collected timesteps make up only one batch
+                    fwd_in = {
+                        k: tf.expand_dims(v, 0) if k != STATE_IN else v for k, v in
+                        fwd_in.items()
+                    }
 
                 with tf.GradientTape() as tape:
                     fwd_out = module.forward_train(fwd_in)
