@@ -123,7 +123,7 @@ test_core() {
     msys)
       args+=(
         -//:core_worker_test
-        -//:event_test
+        -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_health_check_manager_test
@@ -202,8 +202,7 @@ test_python() {
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
+      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
@@ -261,19 +260,16 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0
-  local flush_logs=0
+  local TEST_WHEEL_RESULT=0
 
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
-  fi
+  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
 
-  if [[ 0 -ne "${flush_logs}" ]]; then
+  if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
 
-  return "${result}"
+  return "${TEST_WHEEL_RESULT}"
 }
 
 install_npm_project() {
@@ -309,6 +305,9 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
+  _bazel_build_protobuf
+  install_ray
+
   (
     cd "${WORKSPACE_DIR}"/doc
     if [ "${OSTYPE}" = msys ]; then
@@ -329,16 +328,6 @@ check_sphinx_links() {
       FAST=True make linkcheck
     fi
   )
-}
-
-install_go() {
-  local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
-
-  if [ -z "${GOPATH-}" ]; then
-    GOPATH="${GOPATH:-${HOME}/go_dir}"
-    export GOPATH
-  fi
 }
 
 _bazel_build_before_install() {
@@ -426,6 +415,8 @@ validate_wheels_commit_str() {
 }
 
 build_wheels_and_jars() {
+  _bazel_build_before_install
+
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
@@ -535,17 +526,22 @@ lint_annotations() {
 }
 
 lint_bazel() {
-  # Run buildifier without affecting external environment variables
-  (
-    mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
+  if [[ ! "${OSTYPE}" =~ ^linux ]]; then
+    echo "Bazel lint not supported on non-linux systems."
+    exit 1
+  fi
+  if [[ "$(uname -m)" != "x86_64" ]]; then
+    echo "Bazel lint only supported on x86_64."
+    exit 1
+  fi
 
-    # Build buildifier
-    go install github.com/bazelbuild/buildtools/buildifier@latest
+  LINT_BAZEL_TMP="$(mktemp -d)"
+  curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
+    -o "${LINT_BAZEL_TMP}/buildifier"
+  chmod +x "${LINT_BAZEL_TMP}/buildifier"
+  BUILDIFIER="${LINT_BAZEL_TMP}/buildifier" "${ROOT_DIR}/lint/bazel-format.sh"
 
-    # Now run buildifier
-    "${ROOT_DIR}"/lint/bazel-format.sh
-  )
+  rm -rf "${LINT_BAZEL_TMP}"  # Clean up
 }
 
 lint_bazel_pytest() {
@@ -647,7 +643,6 @@ _lint() {
 }
 
 lint() {
-  install_go
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
@@ -738,27 +733,15 @@ init() {
 }
 
 build() {
-  if [ "${LINT-}" != 1 ]; then
-    _bazel_build_before_install
-  else
-    _bazel_build_protobuf
-  fi
-
-  if [[ "${NEED_WHEELS}" != "true" ]]; then
-    install_ray
-    if [ "${LINT-}" = 1 ]; then
-      # Try generating Sphinx documentation. To do this, we need to install Ray first.
-      build_sphinx_docs
-    fi
-  fi
-
-  if [ "${LINT-}" = 1 ]; then
-    install_go
-  fi
-
   if [[ "${NEED_WHEELS}" == "true" ]]; then
     build_wheels_and_jars
+    return
   fi
+
+  # Build and install ray into the system.
+  # For building the wheel, see build_wheels_and_jars.
+  _bazel_build_before_install
+  install_ray
 }
 
 run_minimal_test() {

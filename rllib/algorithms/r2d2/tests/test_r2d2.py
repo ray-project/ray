@@ -79,7 +79,7 @@ class TestR2D2(unittest.TestCase):
         num_iterations = 1
 
         # Test building an R2D2 agent in all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()
