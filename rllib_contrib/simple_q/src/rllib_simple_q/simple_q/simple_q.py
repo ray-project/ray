@@ -12,13 +12,14 @@ See `simple_q_[tf|torch]_policy.py` for the definition of the policy loss.
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from rllib_simple_q.simple_q.simple_q_tf_policy import (
     SimpleQTF1Policy,
     SimpleQTF2Policy,
 )
 from rllib_simple_q.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
+
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy.policy import Policy
@@ -30,9 +31,9 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_TARGET_UPDATES,
+    SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
     TARGET_NET_UPDATE_TIMER,
-    SAMPLE_TIMER,
 )
 from ray.rllib.utils.replay_buffers.utils import (
     update_priorities_in_replay_buffer,

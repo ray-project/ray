@@ -4,13 +4,14 @@ import logging
 from typing import Any, Dict, List, Tuple, Type, Union
 
 from rllib_simple_q.simple_q.utils import make_q_models
+
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.torch.torch_action_dist import (
     TorchCategorical,
     TorchDistributionWrapper,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.torch_mixins import TargetNetworkMixin, LearningRateSchedule
+from ray.rllib.policy.torch_mixins import LearningRateSchedule, TargetNetworkMixin
 from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch

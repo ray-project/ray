@@ -4,15 +4,16 @@ import logging
 from typing import Dict, List, Tuple, Type, Union
 
 from rllib_simple_q.simple_q.utils import make_q_models
+
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
 from ray.rllib.policy.dynamic_tf_policy_v2 import DynamicTFPolicyV2
 from ray.rllib.policy.eager_tf_policy_v2 import EagerTFPolicyV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_mixins import (
+    LearningRateSchedule,
     TargetNetworkMixin,
     compute_gradients,
-    LearningRateSchedule,
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf

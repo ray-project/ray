@@ -1,9 +1,9 @@
 from typing import Optional, Type
 
 from rllib_qmix.qmix.qmix_policy import QMixTorchPolicy
+from rllib_simple_q.simple_q.simple_q import SimpleQ, SimpleQConfig
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from rllib_simple_q.simple_q.simple_q import SimpleQ, SimpleQConfig
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy.policy import Policy

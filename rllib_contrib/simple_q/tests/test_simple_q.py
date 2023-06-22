@@ -1,24 +1,24 @@
 import unittest
 
 import numpy as np
-
-import ray
 import rllib_simple_q.simple_q.simple_q as simple_q
 from rllib_simple_q.simple_q.simple_q_tf_policy import SimpleQTF2Policy
 from rllib_simple_q.simple_q.simple_q_torch_policy import SimpleQTorchPolicy
+
+import ray
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.metrics.learner_info import (
+    DEFAULT_POLICY_ID,
+    LEARNER_INFO,
+    LEARNER_STATS_KEY,
+)
 from ray.rllib.utils.numpy import fc, huber_loss, one_hot
 from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
     framework_iterator,
-)
-from ray.rllib.utils.metrics.learner_info import (
-    LEARNER_INFO,
-    LEARNER_STATS_KEY,
-    DEFAULT_POLICY_ID,
 )
 
 tf1, tf, tfv = try_import_tf()

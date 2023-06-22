@@ -1,10 +1,11 @@
 import unittest
 
-import ray
-from ray.tune import register_env
 import rllib_simple_q.simple_q.simple_q as simple_q
+
+import ray
 from ray.rllib.examples.env.deterministic_envs import create_cartpole_deterministic
 from ray.rllib.utils.test_utils import check_reproducibilty
+from ray.tune import register_env
 
 
 class TestReproSimpleQ(unittest.TestCase):
@@ -33,7 +34,8 @@ class TestReproSimpleQ(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
