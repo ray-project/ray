@@ -301,6 +301,16 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
+py_test(
+    name = "learning_tests_stateless_cartpole_appo_vtrace",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
 # ARS
 py_test(
     name = "learning_tests_cartpole_ars",
@@ -2092,6 +2102,13 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_learner_compile",
+    tags = ["team:rllib", "core", "ray_data"],
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
+)
+
+py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -3703,7 +3720,7 @@ py_test(
 )
 
 # Taking out this test for now: Mixed torch- and tf- policies within the same
-# Trainer never really worked.
+# Algorithm never really worked.
 # py_test(
 #     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
 #     main = "examples/multi_agent_two_trainers.py",
