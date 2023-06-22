@@ -27,6 +27,7 @@ from ray.serve._private.http_util import (
     receive_http_body,
     Response,
     set_socket_reuse_port,
+    validate_http_proxy_callback_return,
 )
 from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
 from ray.serve._private.constants import (
@@ -35,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -43,7 +45,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters, call_function_from_import_path
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -621,6 +623,19 @@ class HTTPProxyActor:
         if http_middlewares is None:
             http_middlewares = []
 
+        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+            logger.info(
+                "Calling user-provided callback from import path "
+                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+            )
+            middlewares = validate_http_proxy_callback_return(
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+                )
+            )
+
+            http_middlewares.extend(middlewares)
+
         self.host = host
         self.port = port
         self.root_path = root_path
@@ -630,6 +645,7 @@ class HTTPProxyActor:
         self.app = HTTPProxy(controller_name)
 
         self.wrapped_app = self.app
+
         for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 

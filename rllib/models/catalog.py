@@ -436,7 +436,7 @@ class ModelCatalog:
             action_space: Action space of the target gym env.
             num_outputs: The size of the output vector of the model.
             model_config: The "model" sub-config dict
-                within the Trainer's config dict.
+                within the Algorithm's config dict.
             framework: One of "tf2", "tf", "torch", or "jax".
             name: Name (scope) for the model.
             model_interface: Interface required for the model
@@ -944,7 +944,7 @@ class ModelCatalog:
 
         Args:
             config: The "model" sub-config dict
-                within the Trainer's config dict.
+                within the Algorithm's config dict.
             action_space: The action space of the model, whose config are
                     validated.
             framework: One of "jax", "tf2", "tf", or "torch".
