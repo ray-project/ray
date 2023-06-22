@@ -110,7 +110,7 @@ class AccelerateTrainer(TorchTrainer):
     It is tested with ``accelerate==0.17.1``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn as nn
@@ -131,7 +131,7 @@ class AccelerateTrainer(TorchTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 30
             num_workers = 3
 
             # Define your network structure
@@ -147,6 +147,7 @@ class AccelerateTrainer(TorchTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
                 # Initialize the Accelerator
                 accelerator = Accelerator()
@@ -198,9 +199,9 @@ class AccelerateTrainer(TorchTrainer):
                         ),
                     )
 
-            torch.manual_seed(42)
+
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
