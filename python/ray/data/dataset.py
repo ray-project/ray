@@ -481,7 +481,7 @@ class Dataset:
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Dataset(num_blocks=1, num_rows=1, schema={item: int64})
+            +- Dataset(num_blocks=..., num_rows=1, schema={item: int64})
 
 
         Args:
@@ -754,7 +754,7 @@ class Dataset:
             >>> ds
             MapBatches(<lambda>)
             +- Dataset(
-                  num_blocks=10,
+                  num_blocks=...,
                   num_rows=10,
                   schema={col1: int64, col2: int64, col3: int64}
                )
@@ -1701,7 +1701,7 @@ class Dataset:
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
             Aggregate
-            +- Dataset(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
+            +- Dataset(num_blocks=..., num_rows=100, schema={A: int64, B: int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -3290,7 +3290,7 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_blocks=1,
+               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -3321,7 +3321,7 @@ class Dataset:
             >>> ds
             Concatenator
             +- Dataset(
-                  num_blocks=1,
+                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,

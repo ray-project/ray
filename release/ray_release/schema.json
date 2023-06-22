@@ -109,8 +109,8 @@
 						"gpu"
 					]
 				},
-				"pre_run_cmds": {
-					"type": "array"
+				"post_build_script":{
+					"type": "string"
 				},
 				"pip": {
 					"type": "array"
