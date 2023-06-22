@@ -1950,6 +1950,12 @@ def status(address: str, redis_password: str, verbose: bool):
     if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
+
+    if ray._config.enable_autoscaler_v2():
+        from ray.autoscaler.v2.sdk import get_cluster_status 
+        print(get_cluster_status(address=address).to_str(verbose=verbose))
+        return
+
     gcs_client = ray._raylet.GcsClient(address=address)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = ray.experimental.internal_kv._internal_kv_get(
@@ -1959,6 +1965,7 @@ def status(address: str, redis_password: str, verbose: bool):
         ray_constants.DEBUG_AUTOSCALING_ERROR
     )
     print(debug_status(status, error, verbose=verbose))
+
 
 
 @cli.command(hidden=True)

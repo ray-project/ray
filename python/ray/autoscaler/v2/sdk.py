@@ -4,17 +4,24 @@ import ray
 import ray._private.ray_constants as ray_constants
 from ray.core.generated.experimental import autoscaler_pb2, autoscaler_pb2_grpc
 
+DEFAULT_GRPC_AUTOSCALER_TIMEOUT_S = 10
 
-def _autoscaler_state_service_stub():
+class RayClusterState:
+    pass
+
+
+def _autoscaler_state_service_stub(gcs_address=None):
     """Get the grpc stub for the autoscaler state service"""
-    gcs_address = ray.get_runtime_context().gcs_address
+    if gcs_address is None:
+        gcs_address = ray.get_runtime_context().gcs_address
+
     gcs_channel = ray._private.utils.init_grpc_channel(
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
     )
     return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)
 
 
-def request_cluster_resources(to_request: List[dict], timeout: int = 10):
+def request_cluster_resources(to_request: List[dict], timeout: int = DEFAULT_GRPC_AUTOSCALER_TIMEOUT_S):
     """Request resources from the autoscaler.
 
     This will add a cluster resource constraint to GCS. GCS will asynchronously
@@ -49,3 +56,17 @@ def request_cluster_resources(to_request: List[dict], timeout: int = 10):
     )
 
     stub.RequestClusterResourceConstraint(request, timeout=timeout)
+
+
+def get_cluster_status(gcs_address: str, timeout: int = DEFAULT_GRPC_AUTOSCALER_TIMEOUT_S) -> RayClusterState:
+
+    stub = _autoscaler_state_service_stub(gcs_address)
+
+    request = autoscaler_pb2.GetClusterStatusRequest()
+    
+    reply = stub.GetClusterStatus(request, timeout=timeout)
+
+    # Parse to RayClusterState
+    print(reply)
+    cluster_state = RayClusterState()
+    return cluster_state

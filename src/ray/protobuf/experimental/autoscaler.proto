@@ -212,6 +212,15 @@ message RequestClusterResourceConstraintRequest {
 
 message RequestClusterResourceConstraintReply {}
 
+message GetClusterStateRequest {}
+
+message GetClusterStateReply {
+  // The current autoscaler state.
+  AutoscalingState autoscaling_state = 1;
+  // The current cluster resource state.
+  ClusterResourceState cluster_resource_state = 2;
+}
+
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
