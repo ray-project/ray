@@ -153,6 +153,9 @@ ppo-stateless-cartpole:
             attention_position_wise_mlp_dim: 32
         # Double batch size (2 GPUs).
         train_batch_size: 8000
+    # TODO (Artur): Enable RLModule once LSTM is supported
+    _enable_rl_module_api: false
+    _enable_learner_api: false
 
 # TODO (Kourosh): Activate these tests back when the new modeling stack is merged
 # r2d2-stateless-cartpole:
