@@ -106,7 +106,8 @@ DEFAULT_HEALTH_CHECK_PERIOD_S = 10
 DEFAULT_HEALTH_CHECK_TIMEOUT_S = 30
 DEFAULT_MAX_CONCURRENT_QUERIES = 100
 
-# HTTP Proxy health check period
+# HTTP Proxy health check configs
+PROXY_HEALTH_CHECK_TIMEOUT_S = 10
 PROXY_HEALTH_CHECK_PERIOD_S = (
     float(os.environ.get("RAY_SERVE_PROXY_HEALTH_CHECK_PERIOD_S", "10")) or 10
 )
@@ -127,6 +128,10 @@ SERVE_HANDLE_JSON_KEY = "__SerializedServeHandle__"
 
 # The time in seconds that the Serve client waits before rechecking deployment state
 CLIENT_POLLING_INTERVAL_S: float = 1
+
+# The time in seconds that the Serve client waits before checking if
+# deployment has been created
+CLIENT_CHECK_CREATION_POLLING_INTERVAL_S: float = 0.1
 
 # Handle metric push interval. (This interval will affect the cold start time period)
 HANDLE_METRIC_PUSH_INTERVAL_S = 10
@@ -200,4 +205,13 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
     os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
+)
+
+# Serve HTTP proxy callback import path.
+RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH", None
+)
+# Serve controller callback import path.
+RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
+    "RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH", None
 )

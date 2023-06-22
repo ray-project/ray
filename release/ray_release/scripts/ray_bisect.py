@@ -8,7 +8,10 @@ from typing import Dict, List, Set
 
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
-from ray_release.byod.build import build_anyscale_byod_images
+from ray_release.byod.build import (
+    build_anyscale_base_byod_images,
+    build_anyscale_custom_byod_image,
+)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     parse_python_version,
@@ -162,7 +165,8 @@ def _trigger_test_run(
     if test.is_byod_cluster():
         ray_wheels_url = None
         os.environ["COMMIT_TO_TEST"] = commit
-        build_anyscale_byod_images([test])
+        build_anyscale_base_byod_images([test])
+        build_anyscale_custom_byod_image(test)
     else:
         ray_wheels_url = find_and_wait_for_ray_wheels_url(
             commit, timeout=DEFAULT_WHEEL_WAIT_TIMEOUT, python_version=python_version
