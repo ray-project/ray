@@ -220,8 +220,9 @@ class TestPPO(unittest.TestCase):
                         lambda x: x[None], convert_to_torch_tensor(state_in)
                     )
                 else:
-                    state_in = tree.map_structure(lambda x: tf.convert_to_tensor(x)[
-                        None], state_in)
+                    state_in = tree.map_structure(
+                        lambda x: tf.convert_to_tensor(x)[None], state_in
+                    )
                 initial_state = state_in
 
             while tstep < 10:
@@ -272,8 +273,8 @@ class TestPPO(unittest.TestCase):
                     fwd_in[STATE_IN] = initial_state
                     # If we test lstm, the collected timesteps make up only one batch
                     fwd_in = {
-                        k: torch.unsqueeze(v, 0) if k != STATE_IN else v for k, v in
-                        fwd_in.items()
+                        k: torch.unsqueeze(v, 0) if k != STATE_IN else v
+                        for k, v in fwd_in.items()
                     }
 
                 # forward train
@@ -296,8 +297,8 @@ class TestPPO(unittest.TestCase):
                     fwd_in[STATE_IN] = initial_state
                     # If we test lstm, the collected timesteps make up only one batch
                     fwd_in = {
-                        k: tf.expand_dims(v, 0) if k != STATE_IN else v for k, v in
-                        fwd_in.items()
+                        k: tf.expand_dims(v, 0) if k != STATE_IN else v
+                        for k, v in fwd_in.items()
                     }
 
                 with tf.GradientTape() as tape:

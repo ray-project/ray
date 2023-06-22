@@ -175,21 +175,32 @@ class TfGRUEncoder(TfModel, Encoder):
         # Maybe create a tokenizer
         if config.tokenizer_config is not None:
             self.tokenizer = config.tokenizer_config.build(framework="tf2")
+            # For our first input dim, we infer from the tokenizer.
+            # This is necessary because we need to build the layers in order to be
+            # able to get/set weights directly after instantiation.
+            input_dims = (1,) + tuple(
+                self.tokenizer.output_specs[ENCODER_OUT].full_shape
+            )
         else:
             self.tokenizer = None
+            input_dims = (
+                1,
+                1,
+            ) + tuple(config.input_dims)
 
         # Create the tf GRU layers.
         self.grus = []
         for _ in range(config.num_layers):
-            self.grus.append(
-                tf.keras.layers.GRU(
-                    config.hidden_dim,
-                    time_major=not config.batch_major,
-                    use_bias=config.use_bias,
-                    return_sequences=True,
-                    return_state=True,
-                )
+            layer = tf.keras.layers.GRU(
+                config.hidden_dim,
+                time_major=not config.batch_major,
+                use_bias=config.use_bias,
+                return_sequences=True,
+                return_state=True,
             )
+            layer.build(input_dims)
+            input_dims = (1, 1, config.hidden_dim)
+            self.grus.append(layer)
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -245,10 +256,6 @@ class TfGRUEncoder(TfModel, Encoder):
             # Otherwise, just use the raw observations.
             out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
 
-        # Push observations through the tokenizer if we built one.
-        if self.tokenizer is not None:
-            out = self.tokenizer(out)
-
         # States are batch-first when coming in. Make them layers-first.
         states_in = tree.map_structure(
             lambda s: tf.transpose(s, perm=[1, 0] + list(range(2, len(s.shape)))),
@@ -289,7 +296,10 @@ class TfLSTMEncoder(TfModel, Encoder):
             )
         else:
             self.tokenizer = None
-            input_dims = (1,) + tuple(config.input_dims)
+            input_dims = (
+                1,
+                1,
+            ) + tuple(config.input_dims)
 
         # Create the tf LSTM layers.
         self.lstms = []
