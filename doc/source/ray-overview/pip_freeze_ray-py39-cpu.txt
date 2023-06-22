@@ -3,7 +3,7 @@ aiohttp==3.8.4
 aiohttp-cors==0.7.0
 aiorwlock==1.3.0
 aiosignal==1.3.1
-anyio==3.6.2
+anyio==3.7.0
 applicationinsights==0.11.10
 argcomplete==1.12.3
 async-timeout==4.0.2
@@ -11,7 +11,7 @@ attrs==23.1.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.26.4
+azure-core==1.27.1
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
 azure-mgmt-core==1.4.0
@@ -22,44 +22,45 @@ bcrypt==4.0.1
 blessed==1.20.0
 boltons @ file:///croot/boltons_1677628692245/work
 boto3==1.26.82
-botocore==1.29.134
+botocore==1.29.157
 brotlipy==0.7.0
-cachetools==5.3.0
+cachetools==5.3.1
 certifi @ file:///croot/certifi_1683875369620/work/certifi
 cffi @ file:///tmp/abs_98z5h56wf8/croots/recipe/cffi_1659598650955/work
 charset-normalizer @ file:///tmp/build/80754af9/charset-normalizer_1630003229654/work
 click==8.1.3
 cloudpickle==2.2.1
 colorful==0.5.5
-conda==23.3.1
+conda @ file:///croot/conda_1685025188142/work
 conda-content-trust @ file:///tmp/abs_5952f1c8-355c-4855-ad2e-538535021ba5h26t22e5/croots/recipe/conda-content-trust_1658126371814/work
 conda-package-handling @ file:///croot/conda-package-handling_1666940373510/work
 cryptography==38.0.1
 Cython==0.29.32
-Deprecated==1.2.13
+Deprecated==1.2.14
 distlib==0.3.6
 dm-tree==0.1.8
-fastapi==0.95.1
-filelock==3.12.0
-flatbuffers==23.5.9
+exceptiongroup==1.1.1
+fastapi==0.97.0
+filelock==3.12.2
+flatbuffers==23.5.26
 flit_core @ file:///opt/conda/conda-bld/flit-core_1644941570762/work/source/flit_core
 frozenlist==1.3.3
-fsspec==2023.5.0
-google-api-core==2.11.0
+fsspec==2023.6.0
+google-api-core==2.11.1
 google-api-python-client==1.7.8
-google-auth==2.18.0
+google-auth==2.20.0
 google-auth-httplib2==0.1.0
 google-oauth==1.0.1
-googleapis-common-protos==1.59.0
+googleapis-common-protos==1.59.1
 gpustat==1.1
-grpcio==1.51.3
+grpcio==1.50.0
 Gymnasium==0.26.3
 gymnasium-notices==0.0.1
 h11==0.14.0
 httplib2==0.22.0
 humanfriendly==10.0
 idna @ file:///croot/idna_1666125576474/work
-imageio==2.28.1
+imageio==2.31.1
 importlib-metadata==6.0.1
 isodate==0.6.1
 jmespath==1.0.1
@@ -67,10 +68,9 @@ jsonpatch @ file:///tmp/build/80754af9/jsonpatch_1615747632069/work
 jsonpointer==2.1
 jsonschema==4.17.3
 knack==0.10.1
-kubernetes==26.1.0
 lazy_loader==0.2
 lz4==4.3.2
-markdown-it-py==2.2.0
+markdown-it-py==3.0.0
 mdurl==0.1.2
 msal==1.18.0b1
 msal-extensions==1.0.0
@@ -79,76 +79,76 @@ msrest==0.7.1
 msrestazure==0.6.4
 multidict==6.0.4
 networkx==3.1
-numpy==1.24.3
+numpy==1.25.0
 nvidia-ml-py==11.525.112
 oauthlib==3.2.2
 opencensus==0.11.2
 opencensus-context==0.1.3
-opentelemetry-api==1.17.0
-opentelemetry-exporter-otlp==1.17.0
-opentelemetry-exporter-otlp-proto-grpc==1.17.0
-opentelemetry-exporter-otlp-proto-http==1.17.0
-opentelemetry-proto==1.17.0
-opentelemetry-sdk==1.17.0
-opentelemetry-semantic-conventions==0.38b0
+opentelemetry-api==1.18.0
+opentelemetry-exporter-otlp==1.18.0
+opentelemetry-exporter-otlp-proto-common==1.18.0
+opentelemetry-exporter-otlp-proto-grpc==1.18.0
+opentelemetry-exporter-otlp-proto-http==1.18.0
+opentelemetry-proto==1.18.0
+opentelemetry-sdk==1.18.0
+opentelemetry-semantic-conventions==0.39b0
 packaging==21.3
-pandas==2.0.1
+pandas==2.0.2
 paramiko==2.12.0
 Pillow==9.5.0
 pkginfo==1.9.6
-platformdirs==3.5.1
+platformdirs==3.7.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.7.0
-prometheus-client==0.16.0
-protobuf==3.20.3
+prometheus-client==0.17.0
+protobuf==4.23.3
 psutil==5.9.5
 py-spy==0.3.14
-pyarrow==12.0.0
+pyarrow==12.0.1
 pyasn1==0.5.0
 pyasn1-modules==0.3.0
 pycosat @ file:///croot/pycosat_1666805502580/work
 pycparser @ file:///tmp/build/80754af9/pycparser_1636541352034/work
-pydantic==1.10.7
+pydantic==1.10.9
 Pygments==2.15.1
 PyJWT==2.7.0
 PyNaCl==1.5.0
 pyOpenSSL==22.1.0
-pyparsing==3.0.9
+pyparsing==3.1.0
 pyrsistent==0.19.3
 PySocks @ file:///tmp/build/80754af9/pysocks_1605305812635/work
 python-dateutil==2.8.2
 pytz==2023.3
 PyWavelets==1.4.1
 PyYAML==6.0
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=18f90c534ae6ac6bf925fb2e5a2cdcbf994fdfe0e9d8a5baad5fa1176d2cecfd
 redis==3.5.3
 requests @ file:///croot/requests_1682607517574/work
 requests-oauthlib==1.3.1
-rich==13.3.5
+rich==13.4.2
 rsa==4.9
 ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
 ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
 s3transfer==0.6.1
-scikit-image==0.20.0
-scipy==1.9.1
+scikit-image==0.21.0
+scipy==1.10.1
 six==1.13.0
 smart-open==6.3.0
 sniffio==1.3.0
-starlette==0.26.1
+starlette==0.27.0
 tabulate==0.9.0
-tensorboardX==2.6
+tensorboardX==2.6.1
 tifffile==2023.4.12
 toolz @ file:///croot/toolz_1667464077321/work
 tqdm @ file:///croot/tqdm_1679561862951/work
 typer==0.9.0
-typing_extensions==4.5.0
+typing_extensions==4.6.3
 tzdata==2023.3
 uritemplate==3.0.1
-urllib3 @ file:///croot/urllib3_1680254681959/work
+urllib3 @ file:///croot/urllib3_1686163155763/work
 uvicorn==0.22.0
 virtualenv==20.21.0
 wcwidth==0.2.6
-websocket-client==1.5.1
 wrapt==1.15.0
 yarl==1.9.2
 zipp @ file:///croot/zipp_1672387121353/work
