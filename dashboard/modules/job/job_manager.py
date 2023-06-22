@@ -308,6 +308,7 @@ class JobSupervisor:
                 {
                     "runtime_env": self._get_driver_runtime_env(resources_specified),
                     "metadata": self._metadata,
+                    "_client_job": True,
                 }
             ),
             # Always set RAY_ADDRESS as find_bootstrap_address address for

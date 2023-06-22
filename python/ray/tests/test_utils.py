@@ -106,12 +106,9 @@ class TestImportAttr(unittest.TestCase):
         from ray._private.utils import import_attr
 
         full_path = "resources.foo.bar"
-        dashboard_path = "/ray/dashboard"
-        sys.path.append(dashboard_path)
 
-        # Test import succeeded and dashboard no longer sys.path.
+        # Test import succeeded.
         import_attr(full_path=full_path)
-        assert dashboard_path not in sys.path
 
     def test_valid_one_colons_full_path(self):
         """Test when full_path is valid and has one colon.
@@ -121,12 +118,9 @@ class TestImportAttr(unittest.TestCase):
         from ray._private.utils import import_attr
 
         full_path = "resources.foo:bar"
-        dashboard_path = "/ray/dashboard"
-        sys.path.append(dashboard_path)
 
-        # Test import succeeded and dashboard no longer sys.path.
+        # Test import succeeded.
         import_attr(full_path=full_path)
-        assert dashboard_path not in sys.path
 
 
 if __name__ == "__main__":

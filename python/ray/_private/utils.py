@@ -1169,9 +1169,6 @@ def import_attr(full_path: str):
         MyClass = import_attr("module.submodule.MyClass")
         from module.submodule import MyClass
 
-    Another side effect on this is it will drop the `ray/dashboard` from `sys.path` so
-    the import won't collide with user's modules.
-
     Returns:
         Imported attr
     """
@@ -1189,12 +1186,6 @@ def import_attr(full_path: str):
         last_period_idx = full_path.rfind(".")
         module_name = full_path[:last_period_idx]
         attr_name = full_path[last_period_idx + 1 :]
-
-    # `ray/dashboard` took the import precedence and can collide user's modules.
-    # Drop `ray/dashboard` in sys.path to avoid the import collision.
-    for path in sys.path:
-        if path.endswith("ray/dashboard"):
-            sys.path.remove(path)
 
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
