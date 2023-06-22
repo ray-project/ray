@@ -139,7 +139,7 @@ class ExecutionPlan:
         # Whether the corresponding dataset is generated from a pipeline.
         # Currently, when this is True, this skips the new execution plan optimizer.
         # TODO(scottjlee): remove this once we remove DatasetPipeline.
-        self._generated_from_pipeline = True
+        self._generated_from_pipeline = False
 
     def __repr__(self) -> str:
         return (
