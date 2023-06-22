@@ -669,6 +669,11 @@ def shutdown(address: str, yes: bool):
     ),
 )
 @click.option(
+    "--multi-app",
+    is_flag=True,
+    help="Generate a multi-application config from multiple targets.",
+)
+@click.option(
     "--single-app",
     is_flag=True,
     help="Generate a single-application config from one target.",
@@ -678,8 +683,21 @@ def build(
     app_dir: str,
     kubernetes_format: bool,
     output_path: Optional[str],
+    # This is no longer used, it is only kept here to avoid breaking existing CLI usage
+    multi_app: bool,
     single_app: bool,
 ):
+    # Add logger messages for users who are still using --multi-app
+    if multi_app:
+        cli_logger.warning(
+            "`serve build` now generates a config in multi-application format by "
+            "default. The flag `--multi-app` is now redundant and will be removed soon."
+        )
+        if single_app:
+            raise click.ClickException(
+                "You cannot specify both `--single-app` and `--multi-app`."
+            )
+
     sys.path.insert(0, app_dir)
 
     def build_app_config(import_path: str, _kubernetes_format: bool, name: str = None):
