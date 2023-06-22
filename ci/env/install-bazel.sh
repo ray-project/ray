@@ -37,11 +37,11 @@ if [[ "${BAZEL_CONFIG_ONLY-}" != "1" ]]; then
     set +x
     missing_symlinks=()
     while read -r mode _ _ path; do
-      if [ "${mode}" = 120000 ]; then
+      if [[ "${mode}" == 120000 ]]; then
         test -L "${path}" || missing_symlinks+=("${path}")
       fi
     done
-    if [ ! 0 -eq "${#missing_symlinks[@]}" ]; then
+    if [[ ! 0 -eq "${#missing_symlinks[@]}" ]]; then
       echo "error: expected symlink: ${missing_symlinks[*]}" 1>&2
       echo "For a correct build, please run 'git config --local core.symlinks true' and re-run git checkout." 1>&2
       false
@@ -54,7 +54,7 @@ if [[ "${BAZEL_CONFIG_ONLY-}" != "1" ]]; then
     curl -f -s -L -R -o "${target}" "https://github.com/bazelbuild/bazelisk/releases/download/${BAZELISK_VERSION}/bazelisk-linux-amd64"
   else
     # Buildkite mac instances
-    if [[ -n "${BUILDKITE-}" && "${platform}" = "darwin" ]]; then
+    if [[ -n "${BUILDKITE-}" && "${platform}" == "darwin" ]]; then
       mkdir -p "$HOME/bin"
       # Add bazel to the path.
       # shellcheck disable=SC2016
