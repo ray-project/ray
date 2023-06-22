@@ -107,5 +107,11 @@ def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
     )
 
 
+def test_is_stable() -> None:
+    assert Test().is_stable()
+    assert Test(stable=True).is_stable()
+    assert not Test(stable=False).is_stable()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
