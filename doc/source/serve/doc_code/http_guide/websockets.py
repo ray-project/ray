@@ -13,7 +13,7 @@ app = FastAPI()
 @serve.ingress(app)
 class EchoServer:
     @app.websocket("/")
-    async def ws_handler(self, ws: WebSocket):
+    async def echo(self, ws: WebSocket):
         await ws.accept()
 
         try:
@@ -22,7 +22,6 @@ class EchoServer:
                 await ws.send_text(text)
         except WebSocketDisconnect:
             print("Client disconnected.")
-
 
 serve_app = serve.run(EchoServer.bind())
 # __websocket_serve_app_end__
