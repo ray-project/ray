@@ -83,8 +83,13 @@ class ImpalaTfLearner(TfLearner):
         )
 
     @override(TfLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: ImpalaLearnerHyperparameters,
+        batch: NestedDict,
+        fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
         values = fwd_out[SampleBatch.VF_PREDS]
         target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
@@ -104,19 +109,23 @@ class ImpalaTfLearner(TfLearner):
             recurrent_seq_len=self.recurrent_seq_len,
             drop_last=self.vtrace_drop_last_ts,
         )
-        values_time_major = make_time_major(
-            values,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
-        )
-        bootstrap_value = values_time_major[-1]
         rewards_time_major = make_time_major(
             batch[SampleBatch.REWARDS],
             trajectory_len=self.rollout_frag_or_episode_len,
             recurrent_seq_len=self.recurrent_seq_len,
             drop_last=self.vtrace_drop_last_ts,
         )
+        values_time_major = make_time_major(
+            values,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
+        )
+        bootstrap_values_time_major = make_time_major(
+            batch[SampleBatch.VALUES_BOOTSTRAPPED],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
+        )
+        bootstrap_value = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.

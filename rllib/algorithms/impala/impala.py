@@ -113,7 +113,6 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace = True
         self.vtrace_clip_rho_threshold = 1.0
         self.vtrace_clip_pg_rho_threshold = 1.0
-        self.vtrace_drop_last_ts = True
         self.num_multi_gpu_tower_stacks = 1
         self.minibatch_buffer_size = 1
         self.num_sgd_iter = 1
@@ -161,6 +160,7 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Deprecated value.
         self.num_data_loader_buffers = DEPRECATED_VALUE
+        self.vtrace_drop_last_ts = DEPRECATED_VALUE
 
     @override(AlgorithmConfig)
     def training(
@@ -169,7 +169,6 @@ class ImpalaConfig(AlgorithmConfig):
         vtrace: Optional[bool] = NotProvided,
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
-        vtrace_drop_last_ts: Optional[bool] = NotProvided,
         gamma: Optional[float] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
@@ -195,6 +194,8 @@ class ImpalaConfig(AlgorithmConfig):
         _separate_vf_optimizer: Optional[bool] = NotProvided,
         _lr_vf: Optional[float] = NotProvided,
         after_train_step: Optional[Callable[[dict], None]] = NotProvided,
+        # deprecated.
+        vtrace_drop_last_ts=None,
         **kwargs,
     ) -> "ImpalaConfig":
         """Sets the training related configuration.
@@ -203,13 +204,6 @@ class ImpalaConfig(AlgorithmConfig):
             vtrace: V-trace params (see vtrace_tf/torch.py).
             vtrace_clip_rho_threshold:
             vtrace_clip_pg_rho_threshold:
-            vtrace_drop_last_ts: If True, drop the last timestep for the vtrace
-                calculations, such that all data goes into the calculations as [B x T-1]
-                (+ the bootstrap value). This is the default and legacy RLlib behavior,
-                however, could potentially have a destabilizing effect on learning,
-                especially in sparse reward or reward-at-goal environments.
-                False for not dropping the last timestep.
-                System params.
             gamma: Float specifying the discount factor of the Markov Decision process.
             num_multi_gpu_tower_stacks: For each stack of multi-GPU towers, how many
                 slots should we reserve for parallel data loading? Set this to >1 to
@@ -276,6 +270,16 @@ class ImpalaConfig(AlgorithmConfig):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if vtrace_drop_last_ts is not None:
+            deprecation_warning(
+                old="vtrace_drop_last_ts",
+                help="The v-trace operations in RLlib have been enhanced and we are "
+                "now using proper value bootstrapping at the end of each "
+                "trajectory, such that no timesteps in our loss functions have to "
+                "be dropped anymore.",
+                error=True,
+            )
+
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
@@ -286,12 +290,6 @@ class ImpalaConfig(AlgorithmConfig):
             self._learner_hps.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-            self._learner_hps.vtrace_clip_pg_rho_threshold = (
-                vtrace_clip_pg_rho_threshold
-            )
-        if vtrace_drop_last_ts is not NotProvided:
-            self.vtrace_drop_last_ts = vtrace_drop_last_ts
-            self._learner_hps.vtrace_drop_last_ts = vtrace_drop_last_ts
         if num_multi_gpu_tower_stacks is not NotProvided:
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
