@@ -79,8 +79,29 @@ Support for WebSockets is experimental. To enable this feature, set `RAY_SERVE_E
 
 Serve offers websocket support via FastAPI:
 
+```{literalinclude} doc_code/http_guide/websockets_example.py
+:start-after: __websocket_serve_app_start__
+:end-before: __websocket_serve_app_end__
+:language: python
+```
 
+Decorate the function that handles websocket requests using `@app.websocket`. Read more about FastAPI websockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
 
+:::{tip}
+Install the `websockets` package to query the Serve deployment:
+
+```
+pip install websockets
+```
+:::
+
+Query the deployment using the `websockets` package:
+
+```{literalinclude} doc_code/http_guide/websockets_example.py
+:start-after: __websocket_serve_app_start__
+:end-before: __websocket_serve_app_end__
+:language: python
+```
 
 (serve-http-streaming-response)=
 ## Streaming Responses
