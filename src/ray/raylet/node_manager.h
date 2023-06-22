@@ -89,9 +89,6 @@ struct NodeManagerConfig {
   WorkerCommandMap worker_commands;
   /// The native library path which includes the core libraries.
   std::string native_library_path;
-  /// If true, starts a RuntimeEnvService in Raylet. Otherwise, starts a RuntimeEnvAgent
-  /// in DashboardAgent in Python.
-  bool runtime_env_service_in_raylet;
   /// The command used to start agent.
   std::string agent_command;
   /// The time between reports resources in milliseconds.
@@ -732,10 +729,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
-
-  /// The agent manager RPC service.
-  std::unique_ptr<rpc::AgentManagerServiceHandler> agent_manager_service_handler_;
-  rpc::AgentManagerGrpcService agent_manager_service_;
 
   /// The Runtime Env Manager RPC service.
   std::unique_ptr<rpc::RuntimeEnvServiceHandler> runtime_env_service_hander_;

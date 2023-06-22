@@ -17,7 +17,6 @@
 #include <thread>
 
 #include "ray/common/ray_config.h"
-#include "ray/raylet/runtime_env_manager_client.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/logging.h"
@@ -26,59 +25,6 @@
 
 namespace ray {
 namespace raylet {
-
-namespace {
-
-class AgentManagerAsRuntimeEnvManagerClient : public RuntimeEnvManagerClient {
- public:
-  AgentManagerAsRuntimeEnvManagerClient(AgentManager *agent_manager)
-      : agent_manager_(agent_manager) {}
-  void GetOrCreateRuntimeEnv(const JobID &job_id,
-                             const std::string &serialized_runtime_env,
-                             const rpc::RuntimeEnvConfig &runtime_env_config,
-                             const std::string &serialized_allocated_resource_instances,
-                             GetOrCreateRuntimeEnvCallback callback) override {
-    return agent_manager_->GetOrCreateRuntimeEnv(job_id,
-                                                 serialized_runtime_env,
-                                                 runtime_env_config,
-                                                 serialized_allocated_resource_instances,
-                                                 std::move(callback));
-  }
-  virtual void DeleteRuntimeEnvIfPossible(
-      const std::string &serialized_runtime_env,
-      DeleteRuntimeEnvIfPossibleCallback callback) override {
-    return agent_manager_->DeleteRuntimeEnvIfPossible(serialized_runtime_env,
-                                                      std::move(callback));
-  }
-
- private:
-  AgentManager *agent_manager_;
-};
-
-}  // namespace
-
-void AgentManager::HandleRegisterAgent(rpc::RegisterAgentRequest request,
-                                       rpc::RegisterAgentReply *reply,
-                                       rpc::SendReplyCallback send_reply_callback) {
-  reported_agent_ip_address_ = request.agent_ip_address();
-  reported_agent_port_ = request.agent_port();
-  reported_agent_id_ = request.agent_id();
-  // TODO(SongGuyang): We should remove this after we find better port resolution.
-  // Note: `agent_port_` should be 0 if the grpc port of agent is in conflict.
-  if (reported_agent_port_ != 0) {
-    runtime_env_agent_client_ = runtime_env_agent_client_factory_(
-        reported_agent_ip_address_, reported_agent_port_);
-    RAY_LOG(INFO) << "HandleRegisterAgent, ip: " << reported_agent_ip_address_
-                  << ", port: " << reported_agent_port_ << ", id: " << reported_agent_id_;
-  } else {
-    RAY_LOG(WARNING) << "The GRPC port of the Ray agent is invalid (0), ip: "
-                     << reported_agent_ip_address_ << ", id: " << reported_agent_id_
-                     << ". The agent client in the raylet has been disabled.";
-    disable_agent_client_ = true;
-  }
-  reply->set_status(rpc::AGENT_RPC_STATUS_OK);
-  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-}
 
 void AgentManager::StartAgent() {
   if (options_.agent_commands.empty()) {
@@ -139,29 +85,10 @@ void AgentManager::StartAgent() {
     SetThreadName("agent.monitor");
     RAY_LOG(INFO) << "Monitor agent process with id " << agent_id << ", register timeout "
                   << RayConfig::instance().agent_register_timeout_ms() << "ms.";
-    auto timer = delay_executor_(
-        [this, child, agent_id]() mutable {
-          if (reported_agent_id_ != agent_id) {
-            if (reported_agent_id_ == 0) {
-              RAY_LOG(WARNING) << "Agent process expected id " << agent_id
-                               << " timed out before registering. ip "
-                               << reported_agent_ip_address_ << ", id "
-                               << reported_agent_id_;
-            } else {
-              RAY_LOG(WARNING) << "Agent process expected id " << agent_id
-                               << " but got id " << reported_agent_id_
-                               << ", this is a fatal error";
-            }
-            child.Kill();
-          }
-        },
-        RayConfig::instance().agent_register_timeout_ms());
 
     int exit_code = child.Wait();
-    timer->cancel();
     RAY_LOG(INFO) << "Agent process with id " << agent_id << " exited, exit code "
-                  << exit_code << ". ip " << reported_agent_ip_address_ << ". id "
-                  << reported_agent_id_;
+                  << exit_code << ".";
 
     RAY_LOG(ERROR)
         << "The raylet exited immediately because the Ray agent failed. "
@@ -184,126 +111,6 @@ void AgentManager::StartAgent() {
     delay_executor_([]() { QuickExit(); }, /*ms*/ 10000);
   });
   monitor_thread.detach();
-}
-
-void AgentManager::GetOrCreateRuntimeEnv(
-    const JobID &job_id,
-    const std::string &serialized_runtime_env,
-    const rpc::RuntimeEnvConfig &runtime_env_config,
-    const std::string &serialized_allocated_resource_instances,
-    GetOrCreateRuntimeEnvCallback callback) {
-  // If the agent cannot be started, fail the request.
-  if (!should_start_agent_) {
-    std::stringstream str_stream;
-    str_stream << "Not all required Ray dependencies for the runtime_env "
-                  "feature were found. To install the required dependencies, "
-               << "please run `pip install \"ray[default]\"`.";
-    const auto &error_message = str_stream.str();
-    RAY_LOG(ERROR) << error_message;
-    // Execute the callback after the currently executing callback finishes.  Otherwise
-    // the task may be erased from the dispatch queue during the queue iteration in
-    // ClusterTaskManager::DispatchScheduledTasksToWorkers(), invalidating the iterator
-    // and causing a segfault.
-    delay_executor_(
-        [callback = std::move(callback), error_message] {
-          callback(/*successful=*/false,
-                   /*serialized_runtime_env_context=*/"",
-                   /*setup_error_message*/ error_message);
-        },
-        0);
-    return;
-  }
-
-  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the
-  // agent has failed.
-  if (runtime_env_agent_client_ == nullptr) {
-    // If the grpc service of agent is invalid, fail the request.
-    if (disable_agent_client_) {
-      std::stringstream str_stream;
-      str_stream
-          << "Failed to create runtime environment for job " << job_id
-          << " because the Ray agent couldn't be started due to the port conflict. See "
-             "`dashboard_agent.log` for more details. To solve the problem, start Ray "
-             "with a hard-coded agent port. `ray start --dashboard-agent-grpc-port "
-             "[port]` and make sure the port is not used by other processes.";
-      const auto &error_message = str_stream.str();
-      RAY_LOG(ERROR) << error_message;
-      RAY_LOG(DEBUG) << "Serialized runtime env for job " << job_id << ": "
-                     << serialized_runtime_env;
-      delay_executor_(
-          [callback = std::move(callback), error_message] {
-            callback(/*successful=*/false,
-                     /*serialized_runtime_env_context=*/"{}",
-                     /*setup_error_message*/ error_message);
-          },
-          0);
-      return;
-    }
-
-    RAY_LOG_EVERY_MS(INFO, 3 * 10 * 1000)
-        << "Runtime env agent is not registered yet. Will retry "
-           "GetOrCreateRuntimeEnv for job_id "
-        << job_id << " later";
-    RAY_LOG_EVERY_MS(DEBUG, 3 * 10 * 1000)
-        << "Serialized runtime env for job " << job_id << ": " << serialized_runtime_env;
-    delay_executor_(
-        [this,
-         job_id,
-         serialized_runtime_env,
-         runtime_env_config,
-         serialized_allocated_resource_instances,
-         callback = std::move(callback)] {
-          GetOrCreateRuntimeEnv(job_id,
-                                serialized_runtime_env,
-                                runtime_env_config,
-                                serialized_allocated_resource_instances,
-                                callback);
-        },
-        RayConfig::instance().agent_manager_retry_interval_ms());
-    return;
-  }
-  RuntimeEnvManagerClient::Create(runtime_env_agent_client_)
-      ->GetOrCreateRuntimeEnv(job_id,
-                              serialized_runtime_env,
-                              runtime_env_config,
-                              serialized_allocated_resource_instances,
-                              callback);
-}
-
-void AgentManager::DeleteRuntimeEnvIfPossible(
-    const std::string &serialized_runtime_env,
-    DeleteRuntimeEnvIfPossibleCallback callback) {
-  if (disable_agent_client_) {
-    RAY_LOG(ERROR)
-        << "Failed to delete runtime environment URI because the Ray agent couldn't be "
-           "started due to the port conflict. See `dashboard_agent.log` for more "
-           "details. To solve the problem, start Ray with a hard-coded agent port. `ray "
-           "start --dashboard-agent-grpc-port [port]` and make sure the port is not used "
-           "by other processes.";
-    RAY_LOG(DEBUG) << "Serialized runtime env for failed URI deletion: "
-                   << serialized_runtime_env;
-    delay_executor_([callback = std::move(callback)] { callback(false); }, 0);
-    return;
-  }
-  // `runtime_env_agent_client_` should be `nullptr` when the agent is starting or the
-  // agent has failed.
-  if (runtime_env_agent_client_ == nullptr) {
-    RAY_LOG(INFO) << "Runtime env agent is not registered yet. Will retry "
-                     "DeleteRuntimeEnvIfPossible later.";
-    delay_executor_(
-
-        [this, serialized_runtime_env, callback = std::move(callback)] {
-          DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
-        },
-        RayConfig::instance().agent_manager_retry_interval_ms());
-    return;
-  }
-  RuntimeEnvManagerClient::Create(runtime_env_agent_client_)
-      ->DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
-}
-
-std::shared_ptr<RuntimeEnvManagerClient> AgentManager::GetRuntimeEnvManagerClient() {
-  return std::make_shared<AgentManagerAsRuntimeEnvManagerClient>(this);
 }
 
 }  // namespace raylet

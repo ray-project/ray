@@ -248,9 +248,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
       node_manager_service_(io_service, *this),
-      agent_manager_service_handler_(
-          new DefaultAgentManagerServiceHandler(agent_manager_)),
-      agent_manager_service_(io_service, *agent_manager_service_handler_),
       runtime_env_service_hander_(nullptr),
       runtime_env_service_(nullptr),
       local_object_manager_(
@@ -377,7 +374,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);
-  node_manager_server_.RegisterService(agent_manager_service_);
   if (RayConfig::instance().use_ray_syncer()) {
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
@@ -406,26 +402,16 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-      },
-      /*runtime_env_agent_factory=*/
-      [this](const std::string &ip_address, int port) {
-        RAY_CHECK(!ip_address.empty())
-            << "ip_address: " << ip_address << " port: " << port;
-        return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
-            new rpc::RuntimeEnvAgentClient(ip_address, port, client_call_manager_));
       });
 
-  if (config.runtime_env_service_in_raylet) {
-    runtime_env_service_hander_ = std::make_unique<RuntimeEnvManager>();
-    runtime_env_service_ = std::make_unique<rpc::RuntimeEnvGrpcService>(
-        io_service, *runtime_env_service_hander_);
-    node_manager_server_.RegisterService(*runtime_env_service_);
-    runtime_env_manager_client_ =
-        RuntimeEnvManagerClient::Create(std::make_shared<rpc::RuntimeEnvAgentClient>(
-            config.node_manager_address, config.node_manager_port, client_call_manager_));
-  } else {
-    runtime_env_manager_client_ = agent_manager_->GetRuntimeEnvManagerClient();
-  }
+  runtime_env_service_hander_ = std::make_unique<RuntimeEnvManager>();
+  runtime_env_service_ = std::make_unique<rpc::RuntimeEnvGrpcService>(
+      io_service, *runtime_env_service_hander_);
+  node_manager_server_.RegisterService(*runtime_env_service_);
+  runtime_env_manager_client_ =
+      RuntimeEnvManagerClient::Create(std::make_shared<rpc::RuntimeEnvAgentClient>(
+          config.node_manager_address, config.node_manager_port, client_call_manager_));
+
   worker_pool_.SetRuntimeEnvManagerClient(runtime_env_manager_client_);
   worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },

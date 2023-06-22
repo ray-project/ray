@@ -24,16 +24,3 @@ enum AgentRpcStatus {
   AGENT_RPC_STATUS_FAILED = 1;
 }
 
-message RegisterAgentRequest {
-  int32 agent_id = 1;
-  int32 agent_port = 2;
-  string agent_ip_address = 3;
-}
-
-message RegisterAgentReply {
-  AgentRpcStatus status = 1;
-}
-
-service AgentManagerService {
-  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentReply);
-}

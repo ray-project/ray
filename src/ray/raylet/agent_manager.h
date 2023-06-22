@@ -14,16 +14,13 @@
 
 #pragma once
 
+#include <boost/asio/deadline_timer.hpp>
 #include <csignal>
 #include <string>
 #include <utility>
 #include <vector>
 
 #include "ray/common/id.h"
-#include "ray/raylet/runtime_env_manager_client.h"
-#include "ray/rpc/agent_manager/agent_manager_client.h"
-#include "ray/rpc/agent_manager/agent_manager_server.h"
-#include "ray/rpc/runtime_env/runtime_env_client.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -33,11 +30,13 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
                                                                    uint32_t delay_ms)>
     DelayExecutorFn;
 
-typedef std::function<std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
-    const std::string &ip_address, int port)>
-    RuntimeEnvAgentClientFactoryFn;
-
-class AgentManager : public rpc::AgentManagerServiceHandler {
+// Manages a separate "Agent" process. In constructor (or the `StartAgnet` method) it
+// starts a process with `agent_commands` plus some additional arguments. The started
+// Agent is typically `ray/dashboard/agent.py`.
+//
+// The started process fate-shares with the raylet. i.e. when the process fails to start
+// or exits, we SIGTERM the raylet.
+class AgentManager {
  public:
   struct Options {
     const NodeID node_id;
@@ -46,76 +45,22 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   explicit AgentManager(Options options,
                         DelayExecutorFn delay_executor,
-                        RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory,
                         bool start_agent = true /* for test */)
-      : options_(std::move(options)),
-        delay_executor_(std::move(delay_executor)),
-        runtime_env_agent_client_factory_(std::move(runtime_env_agent_client_factory)) {
+      : options_(std::move(options)), delay_executor_(std::move(delay_executor)) {
     if (start_agent) {
       StartAgent();
     }
   }
-
-  void HandleRegisterAgent(rpc::RegisterAgentRequest request,
-                           rpc::RegisterAgentReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Request agent to increase the runtime env reference. This API is not idempotent.
-  /// \param[in] job_id The job id which the runtime env belongs to.
-  /// \param[in] serialized_runtime_env The serialized runtime environment.
-  /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
-  /// instances.
-  /// \param[in] callback The callback function.
-  virtual void GetOrCreateRuntimeEnv(
-      const JobID &job_id,
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      const std::string &serialized_allocated_resource_instances,
-      GetOrCreateRuntimeEnvCallback callback);
-
-  /// Request agent to decrease the runtime env reference. This API is not idempotent.
-  /// \param[in] serialized_runtime_env The serialized runtime environment.
-  /// \param[in] callback The callback function.
-  virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                          DeleteRuntimeEnvIfPossibleCallback callback);
-
-  // Wraps this AgentManager to a RuntimeEnvManagerClient. The caller must ensure the
-  // Client lives shorter than this AgentManager.
-  std::shared_ptr<RuntimeEnvManagerClient> GetRuntimeEnvManagerClient();
 
  private:
   void StartAgent();
 
  private:
   Options options_;
-  pid_t reported_agent_id_ = 0;
-  int reported_agent_port_ = 0;
   /// Whether or not we intend to start the agent.  This is false if we
   /// are missing Ray Dashboard dependencies, for example.
   bool should_start_agent_ = true;
-  std::string reported_agent_ip_address_;
   DelayExecutorFn delay_executor_;
-  RuntimeEnvAgentClientFactoryFn runtime_env_agent_client_factory_;
-  std::shared_ptr<rpc::RuntimeEnvAgentClientInterface> runtime_env_agent_client_;
-  /// When the grpc port of agent is invalid, set this flag to indicate that agent client
-  /// is disable.
-  bool disable_agent_client_ = false;
-};
-
-class DefaultAgentManagerServiceHandler : public rpc::AgentManagerServiceHandler {
- public:
-  explicit DefaultAgentManagerServiceHandler(std::shared_ptr<AgentManager> &delegate)
-      : delegate_(delegate) {}
-
-  void HandleRegisterAgent(rpc::RegisterAgentRequest request,
-                           rpc::RegisterAgentReply *reply,
-                           rpc::SendReplyCallback send_reply_callback) override {
-    RAY_CHECK(delegate_ != nullptr);
-    delegate_->HandleRegisterAgent(request, reply, send_reply_callback);
-  }
-
- private:
-  std::shared_ptr<AgentManager> &delegate_;
 };
 
 }  // namespace raylet
