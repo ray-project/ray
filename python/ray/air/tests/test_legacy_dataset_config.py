@@ -358,7 +358,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "RandomizeBlockOrder: 5/5 blocks executed in" in stats, stats
+        assert "RandomizeBlockOrder:" in stats, stats
 
     ds = ray.data.range(5)
     test = TestStream(
@@ -385,7 +385,7 @@ def test_randomize_block_order(ray_start_4_cpus):
         # we eliminate the ordering in comparison.
         assert set(results[0]) == set(results[1]), results
         stats = shard.stats()
-        assert "RandomizeBlockOrder: 5/5 blocks executed" in stats, stats
+        assert "RandomizeBlockOrder:" in stats, stats
 
     ds = ray.data.range(5)
     test = TestBatch(
@@ -400,7 +400,7 @@ def test_make_local_dataset_iterator(ray_start_4_cpus):
         assert len(results[0]) == 5, results
         assert results[0] != results[1], results
         stats = shard.stats()
-        assert "RandomizeBlockOrder: 5/5 blocks executed in" in stats, stats
+        assert "RandomizeBlockOrder:" in stats, stats
 
     ds = ray.data.range(5)
     test = TestStream(

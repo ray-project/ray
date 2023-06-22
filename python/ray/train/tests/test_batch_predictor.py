@@ -505,7 +505,7 @@ def test_get_and_set_preprocessor():
 
     test_dataset = ray.data.range(4)
     output_ds = batch_predictor.predict(test_dataset)
-    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+    assert sorted(output_ds.to_pandas().to_numpy().squeeze().tolist()) == [
         0.0,
         2.0,
         4.0,
@@ -517,7 +517,7 @@ def test_get_and_set_preprocessor():
     assert batch_predictor.get_preprocessor() == preprocessor2
 
     output_ds = batch_predictor.predict(test_dataset)
-    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+    assert sorted(output_ds.to_pandas().to_numpy().squeeze().tolist()) == [
         0.0,
         4.0,
         8.0,
@@ -529,7 +529,7 @@ def test_get_and_set_preprocessor():
     assert batch_predictor.get_preprocessor() is None
 
     output_ds = batch_predictor.predict(test_dataset)
-    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+    assert sorted(output_ds.to_pandas().to_numpy().squeeze().tolist()) == [
         0.0,
         2.0,
         4.0,

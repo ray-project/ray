@@ -21,7 +21,9 @@ from ray.data.tests.util import extract_values
 
 def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
     planner = Planner()
-    read_op = Read(datasource=ParquetDatasource(), read_tasks=[])
+    read_op = Read(
+        datasource=ParquetDatasource(), read_tasks=[], estimated_num_blocks=0
+    )
     op = RandomizeBlocks(
         read_op,
         seed=0,
@@ -36,7 +38,7 @@ def test_randomize_blocks_operator(ray_start_regular_shared, enable_optimizer):
 
 
 def test_randomize_block_order_rule():
-    read = Read(datasource=ParquetDatasource(), read_tasks=[])
+    read = Read(datasource=ParquetDatasource(), read_tasks=[], estimated_num_blocks=0)
     operator1 = RandomizeBlocks(input_op=read, seed=None)
     operator2 = RandomizeBlocks(input_op=operator1, seed=None)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
@@ -59,7 +61,7 @@ def test_randomize_block_order_rule():
 
 
 def test_randomize_block_order_rule_seed():
-    read = Read(datasource=ParquetDatasource(), read_tasks=[])
+    read = Read(datasource=ParquetDatasource(), read_tasks=[], estimated_num_blocks=0)
     operator1 = RandomizeBlocks(input_op=read, seed=None)
     operator2 = RandomizeBlocks(input_op=operator1, seed=2)
     operator3 = MapBatches(input_op=operator2, fn=lambda x: x)
@@ -86,7 +88,7 @@ def test_randomize_block_order_rule_seed():
 
 
 def test_randomize_block_order_after_repartition():
-    read = Read(datasource=ParquetDatasource(), read_tasks=[])
+    read = Read(datasource=ParquetDatasource(), read_tasks=[], estimated_num_blocks=0)
     operator1 = RandomizeBlocks(input_op=read)
     operator2 = Repartition(input_op=operator1, num_outputs=1, shuffle=False)
     operator3 = RandomizeBlocks(input_op=operator2)
