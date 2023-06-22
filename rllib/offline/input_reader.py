@@ -80,8 +80,9 @@ class InputReader(metaclass=ABCMeta):
         # This is because SampleBatches used to only hold numpy arrays, but since our
         # RNN efforts under RLModules, we also allow lists.
         keys = [
-            k for k in sorted(batch.keys()) if np.issubdtype(np.array(batch[k]).dtype,
-                                                             np.number)
+            k
+            for k in sorted(batch.keys())
+            if np.issubdtype(np.array(batch[k]).dtype, np.number)
         ]
         dtypes = [batch[k].dtype for k in keys]
         shapes = {k: (-1,) + s[1:] for (k, s) in [(k, batch[k].shape) for k in keys]}
