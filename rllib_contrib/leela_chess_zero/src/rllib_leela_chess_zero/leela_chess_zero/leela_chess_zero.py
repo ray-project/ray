@@ -1,32 +1,6 @@
 import logging
 from typing import List, Optional, Type, Union
 
-from ray.rllib.algorithms.algorithm import Algorithm
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.execution.rollout_ops import (
-    synchronous_parallel_sample,
-)
-from ray.rllib.execution.train_ops import (
-    train_one_step,
-)
-from ray.rllib.utils.typing import ResultDict
-from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.models.modelv2 import restore_original_dimensions
-from ray.rllib.models.torch.torch_action_dist import TorchCategorical
-from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
-from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.metrics import (
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
-
 from rllib_leela_chess_zero.leela_chess_zero.leela_chess_zero_model import (
     LeelaChessZeroModel,
 )
@@ -34,6 +8,28 @@ from rllib_leela_chess_zero.leela_chess_zero.leela_chess_zero_policy import (
     LeelaChessZeroPolicy,
 )
 from rllib_leela_chess_zero.leela_chess_zero.mcts import MCTS
+
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.execution.train_ops import train_one_step
+from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.models.modelv2 import restore_original_dimensions
+from ray.rllib.models.torch.torch_action_dist import TorchCategorical
+from ray.rllib.policy.policy import Policy
+from ray.rllib.policy.sample_batch import concat_samples
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.metrics import (
+    NUM_AGENT_STEPS_SAMPLED,
+    NUM_ENV_STEPS_SAMPLED,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+)
+from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
+from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
+from ray.rllib.utils.typing import ResultDict
 
 torch, nn = try_import_torch()
 

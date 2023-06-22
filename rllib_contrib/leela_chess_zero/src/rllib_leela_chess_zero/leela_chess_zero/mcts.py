@@ -3,10 +3,10 @@ Mcts implementation modified from
 https://github.com/brilee/python_uct/blob/master/numpy_impl.py
 """
 import collections
+import copy
 import math
 
 import numpy as np
-import copy
 
 
 class Node:

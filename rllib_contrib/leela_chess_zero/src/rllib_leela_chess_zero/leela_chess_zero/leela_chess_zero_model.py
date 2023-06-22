@@ -1,10 +1,10 @@
 import numpy as np
 
-from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
-from ray.rllib.utils.typing import TensorType, ModelConfigDict
-from ray.rllib.utils.annotations import override
 from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import ModelConfigDict, TensorType
 
 torch, nn = try_import_torch()
 F = nn.functional

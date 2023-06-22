@@ -1,15 +1,13 @@
 import unittest
 
-import ray
 import rllib_leela_chess_zero.leela_chess_zero.leela_chess_zero as lz
 from rllib_leela_chess_zero.leela_chess_zero.leela_chess_zero_model import (
     LeelaChessZeroModel,
 )
+
+import ray
 from ray.rllib.examples.env.pettingzoo_chess import MultiAgentChess
-from ray.rllib.utils.test_utils import (
-    check_train_results,
-    framework_iterator,
-)
+from ray.rllib.utils.test_utils import check_train_results, framework_iterator
 
 
 class TestLeelaChessZero(unittest.TestCase):
@@ -47,7 +45,8 @@ class TestLeelaChessZero(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

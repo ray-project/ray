@@ -1,12 +1,11 @@
 import numpy as np
+from rllib_leela_chess_zero.leela_chess_zero.mcts import Node, RootParentNode
 
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.torch_policy import TorchPolicy
-from rllib_leela_chess_zero.leela_chess_zero.mcts import Node, RootParentNode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
-
 
 torch, _ = try_import_torch()
 
