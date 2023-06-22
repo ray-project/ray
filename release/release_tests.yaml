@@ -5750,8 +5750,6 @@
   team: data
   python: "3.8"
   cluster:
-    byod: 
-      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
 
