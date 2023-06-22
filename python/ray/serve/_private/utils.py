@@ -37,8 +37,10 @@ from ray.serve._private.constants import (
     RAY_GCS_RPC_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
+from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
+from ray._private.utils import import_attr
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
 import __main__
@@ -502,6 +504,12 @@ def dict_keys_snake_to_camel_case(snake_dict: dict) -> dict:
     return camel_dict
 
 
+def check_obj_ref_ready_nowait(obj_ref: ObjectRef) -> bool:
+    """Check if ray object reference is ready without waiting for it."""
+    finished, _ = ray.wait([obj_ref], timeout=0)
+    return len(finished) == 1
+
+
 serve_telemetry_tag_map = {
     "SERVE_API_VERSION": TagKey.SERVE_API_VERSION,
     "SERVE_NUM_DEPLOYMENTS": TagKey.SERVE_NUM_DEPLOYMENTS,
@@ -638,3 +646,29 @@ class MetricsPusher:
     def __del__(self):
         self.stop_event.set()
         self.pusher_thread.join()
+
+
+def call_function_from_import_path(import_path: str) -> Any:
+    """Call the function given import path.
+
+    Args:
+        import_path: The import path of the function to call.
+    Raises:
+        ValueError: If the import path is invalid.
+        TypeError: If the import path is not callable.
+        RuntimeError: if the function raise exeception during execution.
+    Returns:
+        The result of the function call.
+    """
+    try:
+        callback_func = import_attr(import_path)
+    except Exception as e:
+        raise ValueError(f"The import path {import_path} cannot be imported: {e}")
+
+    if not callable(callback_func):
+        raise TypeError(f"The import path {import_path} is not callable.")
+
+    try:
+        return callback_func()
+    except Exception as e:
+        raise RuntimeError(f"The function {import_path} raised an exception: {e}")
