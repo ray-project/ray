@@ -3,6 +3,7 @@ import sys
 from typing import List, Optional
 
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -1418,6 +1419,33 @@ def test_streaming_executor(
         result.extend(batch)
     assert sorted(result) == list(range(1, 100)), result
     _check_usage_record(["ReadRange", "MapBatches", "Filter", "RandomShuffle"])
+
+
+def test_schema_partial_execution(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    fields = [
+        ("sepal.length", pa.float64()),
+        ("sepal.width", pa.float64()),
+        ("petal.length", pa.float64()),
+        ("petal.width", pa.float64()),
+        ("variety", pa.string()),
+    ]
+    ds = ray.data.read_parquet(
+        "example://iris.parquet",
+        schema=pa.schema(fields),
+    ).map_batches(lambda x: x)
+
+    iris_schema = ds.schema()
+    assert iris_schema == ray.data.dataset.Schema(pa.schema(fields))
+    # Verify that ds.schema() executes only the first block, and not the
+    # entire Dataset.
+    assert ds._plan._in_blocks._num_blocks == 1
+    assert str(ds._plan._logical_plan.dag) == (
+        "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
+    )
 
 
 if __name__ == "__main__":
