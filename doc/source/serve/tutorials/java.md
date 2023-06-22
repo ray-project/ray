@@ -54,7 +54,7 @@ First, we can extract the indicator calculation of each institution into a separ
 :start-after: docs-strategy-start
 ```
 
-Next, we start the Ray Serve runtime and deploy `StrategyOnRayServe` as a deployment.
+Next, we start the Ray Serve runtime and deploy `StrategyCalcOnRayServe` as a deployment.
 
 ```{literalinclude} ../../../../java/serve/src/test/java/io/ray/serve/docdemo/StrategyCalcOnRayServe.java
 :end-before: docs-deploy-end
