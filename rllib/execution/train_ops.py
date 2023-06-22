@@ -172,7 +172,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     load_timer.push_units_processed(train_batch.count)
     learn_timer.push_units_processed(train_batch.count)
 
-    # TODO: Move this into Trainer's `training_iteration` method for
+    # TODO: Move this into Algorithm's `training_step` method for
     #  better transparency.
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
