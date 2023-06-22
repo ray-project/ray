@@ -83,7 +83,7 @@ def auto_fold_unfold_time(input_spec: str):
                 # Call the actual wrapped function
                 outputs = func(self, reshaped_inputs, **kwargs)
                 # Attempt to unfold the time dimension.
-                return outputs.reshape(tuple([b, t]) + tuple(outputs.shape[1:]))
+                return outputs.reshape((b, t) + tuple(outputs.shape[1:]))
             # If above we could validate the spec, we can call the actual wrapped
             # function.
             return func(self, input_data, **kwargs)

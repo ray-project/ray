@@ -84,7 +84,8 @@ class CustomTorchTokenizer(TorchModel, Encoder):
         # config so that this code is more reusable.
         output_dim = self.config.output_dims[0]
         return SpecDict(
-            {ENCODER_OUT: TensorSpec("b, d", d=output_dim, framework="torch")})
+            {ENCODER_OUT: TensorSpec("b, d", d=output_dim, framework="torch")}
+        )
 
     def _forward(self, inputs: dict, **kwargs):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
@@ -104,7 +105,9 @@ class CustomTfTokenizer(TfModel, Encoder):
 
     def get_output_specs(self):
         output_dim = self.config.output_dims[0]
-        return SpecDict({ENCODER_OUT: TensorSpec("b, d", d=output_dim, framework="tf2")})
+        return SpecDict(
+            {ENCODER_OUT: TensorSpec("b, d", d=output_dim, framework="tf2")}
+        )
 
     def _forward(self, inputs: dict, **kwargs):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
@@ -113,6 +116,7 @@ class CustomTfTokenizer(TfModel, Encoder):
 # Since RLlib decides during runtime which framework we use, we need to provide a
 # model config that is buildable depending on the framework. The recurrent models
 # will consume this config during runtime and build our custom tokenizer accordingly.
+
 
 @dataclass
 class CustomTokenizerConfig(ModelConfig):
@@ -132,17 +136,19 @@ class CustomTokenizerConfig(ModelConfig):
 # place our tokenizer inside of it, so we use the Catalog here for demonstration
 # purposes.
 
+
 class CustomPPOCatalog(PPOCatalog):
     # Note that RLlib expects this to be a classmethod.
     @classmethod
-    def get_tokenizer_config(cls,
+    def get_tokenizer_config(
+        cls,
         observation_space,
         model_config_dict,
         view_requirements=None,
     ) -> ModelConfig:
         return CustomTokenizerConfig(
             input_dims=observation_space.shape,
-            output_dims=(64, ),
+            output_dims=(64,),
         )
 
 
@@ -163,11 +169,11 @@ if __name__ == "__main__":
                 "vf_share_layers": False,
                 "use_lstm": True,
                 "lstm_cell_size": 256,
-                "fcnet_hiddens": [256]
+                "fcnet_hiddens": [256],
             },
             gamma=0.9,
             entropy_coeff=0.001,
-            vf_loss_coeff=1e-5
+            vf_loss_coeff=1e-5,
         )
         .rl_module(
             rl_module_spec=SingleAgentRLModuleSpec(catalog_class=CustomPPOCatalog)
