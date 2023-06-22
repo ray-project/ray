@@ -216,7 +216,7 @@ class ExecutionPlan:
         if dataset_blocks is None:
             num_blocks = "?"
         else:
-            num_blocks = dataset_blocks.initial_num_blocks()
+            num_blocks = dataset_blocks.estimated_num_blocks()
         dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
             classname, num_blocks, count, schema_str
         )

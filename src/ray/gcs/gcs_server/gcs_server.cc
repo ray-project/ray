@@ -373,12 +373,16 @@ void GcsServer::InitClusterTaskManager() {
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
+  auto client_factory = [this](const rpc::Address &address) {
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+  };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
                                                      gcs_publisher_,
                                                      *runtime_env_manager_,
                                                      *function_manager_,
-                                                     kv_manager_->GetInstance());
+                                                     kv_manager_->GetInstance(),
+                                                     client_factory);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
