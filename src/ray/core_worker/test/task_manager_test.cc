@@ -1289,6 +1289,12 @@ TEST_F(TaskManagerTest, TestObjectRefStreamBasic) {
   manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
 
   ObjectID obj_id;
+  // Verify PeekObjectRefStream is idempotent and doesn't consume indexes.
+  for (auto i = 0; i < 10; i++) {
+    obj_id = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_EQ(obj_id, dynamic_return_ids[0]);
+  }
+
   for (auto i = 0; i < last_idx; i++) {
     // READ * 2
     auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);

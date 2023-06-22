@@ -308,10 +308,13 @@ class StreamingObjectRefGenerator:
                 raise StopIteration
 
             try:
-                ray.get(ref)
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                ray.get(self._generator_ref)
             except Exception as e:
                 self._generator_task_exception = e
-                return ref
+                return self._generator_ref
             else:
                 # The task finished without an exception.
                 raise StopIteration
@@ -345,10 +348,13 @@ class StreamingObjectRefGenerator:
                 raise StopAsyncIteration
 
             try:
-                await ref
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                await self._generator_ref
             except Exception as e:
                 self._generator_task_exception = e
-                return ref
+                return self._generator_ref
             else:
                 # meaning the task succeed without failure raise StopIteration.
                 raise StopAsyncIteration

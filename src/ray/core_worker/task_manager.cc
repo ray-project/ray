@@ -32,10 +32,16 @@ const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 std::vector<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   std::vector<ObjectID> result;
-  for (const auto &it : item_index_to_refs_) {
-    const auto &index = it.first;
-    const auto &object_id = it.second;
+  for (int64_t index = 0; index <= max_index_seen_; index++) {
+    const auto &object_id = GetObjectRefAtIndex(index);
+    if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
+      RAY_LOG(ERROR) << "SANG-TODO 1 " << index << " id: " << object_id;
+      continue;
+    }
+    RAY_LOG(ERROR) << "SANG-TODO 2 " << index << " id: " << object_id;
+
     if (index >= next_index_) {
+      RAY_LOG(ERROR) << "SANG-TODO 3 " << index << " id: " << object_id;
       result.push_back(object_id);
     }
   }
@@ -76,6 +82,7 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
 ObjectID ObjectRefStream::PeekNextItem() { return GetObjectRefAtIndex(next_index_); }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
+  // Write to a stream if the object ID is not consumed yet.
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     temporarily_owned_refs_.insert(object_id);
     return true;
@@ -89,6 +96,10 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
   if (end_of_stream_index_ != -1 && item_index >= end_of_stream_index_) {
     RAY_CHECK(next_index_ <= end_of_stream_index_);
     // Ignore the index after the end of the stream index.
+    // It can happen if the stream is marked as ended
+    // and a new item is written. E.g., Report RPC sent ->
+    // worker crashes -> worker crash detected (task failed)
+    // -> report RPC received.
     return false;
   }
 
@@ -101,24 +112,8 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
     temporarily_owned_refs_.erase(object_id);
   }
   refs_written_to_stream_.insert(object_id);
-
-  auto it = item_index_to_refs_.find(item_index);
-  if (it != item_index_to_refs_.end()) {
-    // It means the when a task is retried it returns a different object id
-    // for the same index, which means the task was not deterministic.
-    // Fail the owner if it happens.
-    // It can happen if the second try is none determinstic and
-    // execute more ray.put, which modifies the put index that
-    // can return a different object ref.
-    RAY_CHECK_EQ(object_id, it->second)
-        << "The task has been retried with none deterministic task return ids. Previous "
-           "return id: "
-        << it->second << ". New task return id: " << object_id
-        << ". It means a undeterministic task has been retried. Disable the retry "
-           "feature using `max_retries=0` (task) or `max_task_retries=0` (actor).";
-  }
-  item_index_to_refs_.emplace(item_index, object_id);
   max_index_seen_ = std::max(max_index_seen_, item_index);
+  RAY_LOG(ERROR) << "SANG-TODO max index seen updated: " << max_index_seen_;
   return true;
 }
 
@@ -136,7 +131,6 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   end_of_stream_index_ = std::max(max_index_seen_ + 1, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
-  item_index_to_refs_.emplace(end_of_stream_index_, end_of_stream_id);
   *object_id_in_last_index = end_of_stream_id;
   return;
 }
@@ -476,9 +470,9 @@ ObjectID TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
            "and not removed.";
     next_object_id = stream_it->second.PeekNextItem();
   }
-  // Own the ref it if we haven't yet.
-  // OwnDynamicStreamingTaskReturnRef is idempotent.
-  reference_counter_->OwnDynamicStreamingTaskReturnRef(next_object_id, generator_id);
+  // Temporarily own the ref since the corresponding reference is probably
+  // not reported yet.
+  TemporarilyOwnGeneratorReturnRefIfNeeded(next_object_id, generator_id);
   return next_object_id;
 }
 
@@ -499,9 +493,9 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
       return;
     }
 
-    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
-                   << end_of_stream_index;
     stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
+                   << ". Last object id: " << last_object_id;
   }
 
   if (!last_object_id.IsNil()) {
@@ -596,7 +590,7 @@ bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &objec
 
   // We shouldn't hold a lock when calling refernece counter API.
   if (inserted_to_stream) {
-    RAY_LOG(INFO) << "Added streaming ref " << object_id;
+    RAY_LOG(DEBUG) << "Added streaming ref " << object_id;
     reference_counter_->OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
     return true;
   }

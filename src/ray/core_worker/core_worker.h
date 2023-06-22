@@ -375,6 +375,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
+  /// Read the next index of a ObjectRefStream of generator_id without
+  /// consuming an index.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return A object reference of the next index.
+  /// It should not be nil.
   rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Delete the ObjectRefStream that was

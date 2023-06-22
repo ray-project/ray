@@ -151,10 +151,6 @@ class ObjectRefStream {
   const ObjectID generator_id_;
   const TaskID generator_task_id_;
 
-  /// The item_index -> object reference ids.
-  /// TODO(swang): A contiguous range of indices is reserved for streaming
-  /// return IDs, so this and refs_written_to_stream_ can be removed.
-  absl::flat_hash_map<int64_t, ObjectID> item_index_to_refs_;
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
   absl::flat_hash_set<ObjectID> temporarily_owned_refs_;
@@ -171,7 +167,7 @@ class ObjectRefStream {
   /// this in case the first execution fails mid-generator, and the second task
   /// ends with fewer returns. Then, we mark one past this index as the end of
   /// the stream.
-  int64_t max_index_seen_ = 0;
+  int64_t max_index_seen_ = -1;
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -254,6 +250,30 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                            const rpc::Address &worker_addr,
                            bool is_application_error) override;
 
+  /**
+   * The below APIs support streaming generator.
+   *
+   * - The stream must be created when a task is submitted first time. The stream
+   * must be deleted by the language frontend when the stream
+   * is not used anymore. The APIs guarantee to clean up object references
+   * associated with the stream.
+   * - The generator return values are reported via HandleReportGeneratorItemReturns.
+   * The report ordering is not guaranteed. HandleReportGeneratorItemReturns
+   * must handle the out of ordering report correctly.
+   * - Streaming generator return reference IDs are deterministic.
+   * Ray preserves first `max_num_generator_returns` indexes for a streaming
+   * generator returns.
+   * - MarkEndOfStream must be called when a task finishes or fails.
+   * Once this API is called, the stream will contain the sentinel object
+   * that raises END_OF_STREAMING_GENERATOR error at the end of the stream.
+   * The language frontend can catch this error and take proper actions.
+   * - The generator's first return value contains an exception
+   * if the task fails by a system error. Otherwise, it contains nothing.
+   *
+   * Reference implementation of streaming generator using the following APIs
+   * is available from `_raylet.StreamingObjectRefGenerator`.
+   */
+
   /// Handle the generator task return so that it will be accessible
   /// via TryReadObjectRefStream.
   ///
@@ -314,6 +334,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
   /// Read object reference of the next index from the
   /// object stream of a generator_id.
+  ///
+  /// This API consumes the next index, meaning it is not idempotent.
+  /// If you don't want to consume the next index, use PeekObjectRefStream.
   /// This API always return immediately.
   ///
   /// The caller should ensure the ObjectRefStream is already
@@ -326,6 +349,15 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return ObjectRefEndOfStream if it reaches to EoF. Ok otherwise.
   Status TryReadObjectRefStream(const ObjectID &generator_id, ObjectID *object_id_out);
 
+  /// Read the next index of a ObjectRefStream of generator_id without
+  /// consuming an index.
+  ///
+  /// This API must be idempotent.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return A object reference of the next index.
+  /// It should not be nil.
   ObjectID PeekObjectRefStream(const ObjectID &generator_id);
 
   /// Returns true if task can be retried.
@@ -668,6 +700,16 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \param task_entry Task entry for the corresponding task attempt
   void MarkTaskRetryOnFailed(TaskEntry &task_entry, const rpc::RayErrorInfo &error_info);
 
+  /// Mark the stream is ended.
+  /// The end of the stream always contains a "sentinel object" passed
+  /// via end_of_stream_obj.
+  ///
+  /// \param generator_id The object ref id of the streaming
+  /// generator task.
+  /// \param end_of_stream_index The index of the end of the stream.
+  /// If -1 is specified, it will mark the current last index as end of stream.
+  /// this should be used when a task fails (which means we know the task won't
+  /// report any more generator return values).
   void MarkEndOfStream(const ObjectID &generator_id, int64_t end_of_stream_index)
       LOCKS_EXCLUDED(mu_);
 
