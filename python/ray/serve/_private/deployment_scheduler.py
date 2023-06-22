@@ -16,7 +16,7 @@ class DriverDeploymentSchedulingPolicy:
 
 
 @dataclass
-class DeploymentUpscaleRequest:
+class ReplicaSchedulingRequest:
     """Request to schedule a single replica.
 
     The scheduler is responsible for scheduling
@@ -124,22 +124,23 @@ class DeploymentScheduler:
 
     def schedule(
         self,
-        upscales: List[DeploymentUpscaleRequest],
-        downscales: List[DeploymentDownscaleRequest],
+        upscales: Dict[str, List[ReplicaSchedulingRequest]],
+        downscales: Dict[str, DeploymentDownscaleRequest],
     ):
         """This is called for each update cycle to do batch scheduling.
 
         Args:
-            upscales: a list of replicas to schedule.
-            downscales: a list of downscale requests.
+            upscales: a dict of deployment name to a list of replicas to schedule.
+            downscales: a dict of deployment name to a downscale request.
 
         Returns:
             The replicas to stop for each deployment.
         """
-        for upscale in upscales:
-            self._pending_replicas[upscale.deployment_name][
-                upscale.replica_name
-            ] = upscale
+        for upscale in upscales.values():
+            for replica_scheduling_request in upscale:
+                self._pending_replicas[replica_scheduling_request.deployment_name][
+                    replica_scheduling_request.replica_name
+                ] = replica_scheduling_request
 
         for deployment_name, pending_replicas in self._pending_replicas.items():
             if not pending_replicas:
@@ -157,7 +158,7 @@ class DeploymentScheduler:
                 self._schedule_driver_deployment(deployment_name)
 
         deployment_to_replicas_to_stop = {}
-        for downscale in downscales:
+        for downscale in downscales.values():
             deployment_to_replicas_to_stop[
                 downscale.deployment_name
             ] = self._get_replicas_to_stop(
@@ -170,17 +171,17 @@ class DeploymentScheduler:
         for pending_replica_name in list(
             self._pending_replicas[deployment_name].keys()
         ):
-            pending_replica = self._pending_replicas[deployment_name][
+            replica_scheduling_request = self._pending_replicas[deployment_name][
                 pending_replica_name
             ]
 
-            actor_handle = pending_replica.actor_def.options(
+            actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy="SPREAD",
-                **pending_replica.actor_options,
-            ).remote(*pending_replica.actor_init_args)
+                **replica_scheduling_request.actor_options,
+            ).remote(*replica_scheduling_request.actor_init_args)
             del self._pending_replicas[deployment_name][pending_replica_name]
             self._launching_replicas[deployment_name][pending_replica_name] = None
-            pending_replica.on_scheduled(actor_handle)
+            replica_scheduling_request.on_scheduled(actor_handle)
 
     def _schedule_driver_deployment(self, deployment_name):
         if self._recovering_replicas[deployment_name]:
@@ -204,22 +205,22 @@ class DeploymentScheduler:
             if not unscheduled_nodes:
                 return
 
-            pending_replica = self._pending_replicas[deployment_name][
+            replica_scheduling_request = self._pending_replicas[deployment_name][
                 pending_replica_name
             ]
 
             target_node_id = unscheduled_nodes.pop()
-            actor_handle = pending_replica.actor_def.options(
+            actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     target_node_id, soft=False
                 )
-                ** pending_replica.actor_options,
-            ).remote(*pending_replica.actor_init_args)
+                ** replica_scheduling_request.actor_options,
+            ).remote(*replica_scheduling_request.actor_init_args)
             del self._pending_replicas[deployment_name][pending_replica_name]
             self._launching_replicas[deployment_name][
                 pending_replica_name
             ] = target_node_id
-            pending_replica.on_scheduled(actor_handle)
+            replica_scheduling_request.on_scheduled(actor_handle)
 
     def _get_replicas_to_stop(self, deployment_name, max_num_to_stop):
         """Prioritize replicas that have fewest copies on a node.

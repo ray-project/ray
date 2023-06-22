@@ -17,7 +17,7 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.deployment_scheduler import (
-    DeploymentUpscaleRequest,
+    ReplicaSchedulingRequest,
 )
 from ray.serve._private.deployment_state import (
     ActorReplicaWrapper,
@@ -179,7 +179,7 @@ class MockReplicaActorWrapper:
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
-        return DeploymentUpscaleRequest(
+        return ReplicaSchedulingRequest(
             deployment_name=self._deployment_name,
             replica_name=self._replica_tag,
             actor_def=None,
@@ -262,12 +262,18 @@ class MockDeploymentScheduler:
         self.replicas[deployment_name].add(replica_name)
 
     def schedule(self, upscales, downscales):
-        for upscale in upscales:
-            assert upscale.replica_name not in self.replicas[upscale.deployment_name]
-            self.replicas[upscale.deployment_name].add(upscale.replica_name)
+        for upscale in upscales.values():
+            for replica_scheduling_request in upscale:
+                assert (
+                    replica_scheduling_request.replica_name
+                    not in self.replicas[replica_scheduling_request.deployment_name]
+                )
+                self.replicas[replica_scheduling_request.deployment_name].add(
+                    replica_scheduling_request.replica_name
+                )
 
         deployment_to_replicas_to_stop = defaultdict(set)
-        for downscale in downscales:
+        for downscale in downscales.values():
             replica_iter = iter(self.replicas[downscale.deployment_name])
             for _ in range(downscale.num_to_stop):
                 deployment_to_replicas_to_stop[downscale.deployment_name].add(
@@ -636,7 +642,9 @@ def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_sta
 
     # Single replica should be created.
     _, _, upscale, _ = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(upscale, [])
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
 
     # update() should not transition the state if the replica isn't ready.
@@ -654,7 +662,7 @@ def test_create_delete_single_replica(mock_get_all_node_ids, mock_deployment_sta
     deployment_state.delete()
     _, _, _, downscale = deployment_state.update()
     replicas_to_stop = deployment_state._deployment_scheduler.schedule(
-        [], [downscale] if downscale else []
+        {}, {deployment_state._name: downscale} if downscale else {}
     )[deployment_state._name]
     deployment_state.stop_replicas(replicas_to_stop)
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STOPPING, 1)])
@@ -681,13 +689,15 @@ def test_force_kill(mock_get_all_node_ids, mock_deployment_state):
     # Create and delete the deployment.
     deployment_state.deploy(b_info_1)
     _, _, upscale, _ = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(upscale, [])
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state.update()
     deployment_state.delete()
     _, _, _, downscale = deployment_state.update()
     replicas_to_stop = deployment_state._deployment_scheduler.schedule(
-        [], [downscale] if downscale else []
+        {}, {deployment_state._name: downscale} if downscale else {}
     )[deployment_state._name]
     deployment_state.stop_replicas(replicas_to_stop)
 
@@ -735,7 +745,9 @@ def test_redeploy_same_version(mock_get_all_node_ids, mock_deployment_state):
     assert updating
 
     _, _, upscale, _ = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(upscale, [])
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(
         deployment_state,
         version=b_version_1,
@@ -794,7 +806,9 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     assert updating
 
     _, _, upscale, _ = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(upscale, [])
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
@@ -814,7 +828,9 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     ]._actor.set_done_stopping()
     # Now that the old replica has stopped, the new replica should be started.
     _, _, upscale, _ = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(upscale, [])
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
@@ -843,7 +859,9 @@ def test_redeploy_no_version(mock_get_all_node_ids, mock_deployment_state):
     ]._actor.set_done_stopping()
 
     _, _, upscale, _ = deployment_state.update()
-    deployment_state._deployment_scheduler.schedule(upscale, [])
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     check_counts(deployment_state, total=1, by_state=[(ReplicaState.STARTING, 1)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
@@ -865,7 +883,10 @@ def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
     updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(
         deployment_state,
         version=b_version_1,
@@ -894,11 +915,12 @@ def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
     deployment_state._replicas.get(states=[ReplicaState.STOPPING])[
         0
     ]._actor.set_done_stopping()
-    deployment_state.update()
-    check_counts(deployment_state, total=0)
 
     # Now that the old replica has stopped, the new replica should be started.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(
         deployment_state,
         version=b_version_2,
@@ -940,10 +962,10 @@ def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
         0
     ]._actor.set_done_stopping()
 
-    deployment_state.update()
-    check_counts(deployment_state, total=0)
-
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     check_counts(
         deployment_state,
@@ -952,7 +974,7 @@ def test_redeploy_new_version(mock_get_all_node_ids, mock_deployment_state):
         by_state=[(ReplicaState.STARTING, 1)],
     )
 
-    deleted, _ = deployment_state.update()
+    deleted, _, _, _ = deployment_state.update()
     assert not deleted
     check_counts(
         deployment_state,

@@ -61,7 +61,7 @@ from ray.serve._private import deployment_scheduler
 from ray.serve._private.deployment_scheduler import (
     SpreadDeploymentSchedulingPolicy,
     DriverDeploymentSchedulingPolicy,
-    DeploymentUpscaleRequest,
+    ReplicaSchedulingRequest,
     DeploymentDownscaleRequest,
 )
 
@@ -310,7 +310,7 @@ class ActorReplicaWrapper:
         ready, _ = ray.wait([obj_ref], timeout=0)
         return len(ready) == 1
 
-    def start(self, deployment_info: DeploymentInfo) -> DeploymentUpscaleRequest:
+    def start(self, deployment_info: DeploymentInfo) -> ReplicaSchedulingRequest:
         """Start the current DeploymentReplica instance.
 
         The replica will be in the STARTING and PENDING_ALLOCATION states
@@ -401,7 +401,7 @@ class ActorReplicaWrapper:
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
-        return DeploymentUpscaleRequest(
+        return ReplicaSchedulingRequest(
             deployment_name=self.deployment_name,
             replica_name=self.replica_tag,
             actor_def=actor_def,
@@ -1960,7 +1960,7 @@ class DriverDeploymentState(DeploymentState):
         # Test mock purpose
         return get_all_node_ids(self._gcs_client)
 
-    def _deploy_driver(self) -> List[DeploymentUpscaleRequest]:
+    def _deploy_driver(self) -> List[ReplicaSchedulingRequest]:
         """Deploy the driver deployment to each node."""
         upscale = []
         num_existing_replicas = self._replicas.count()
@@ -2406,8 +2406,8 @@ class DeploymentStateManager:
         deleted_tags = []
         any_recovering = False
         running_replica_infos_before_update = self.get_running_replica_infos()
-        upscales = []
-        downscales = []
+        upscales = {}
+        downscales = {}
 
         for deployment_name, deployment_state in self._deployment_states.items():
             if deployment_state.should_autoscale():
@@ -2425,9 +2425,9 @@ class DeploymentStateManager:
 
             deleted, recovering, upscale, downscale = deployment_state.update()
             if upscale:
-                upscales.extend(upscale)
+                upscales[deployment_name] = upscale
             if downscale:
-                downscales.append(downscale)
+                downscales[deployment_name] = downscale
 
             if deleted:
                 deleted_tags.append(deployment_name)
