@@ -8,7 +8,7 @@ import math
 import pickle
 import random
 import sys
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Union
+from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -74,6 +74,47 @@ class Query:
         scanner.clear()
 
 
+class ReplicaWrapper(ABC):
+    @property
+    def replica_id(self) -> str:
+        pass
+
+    async def get_queue_len(self) -> Tuple[str, int, bool]:
+        pass
+
+    def send_query(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        pass
+
+
+class ActorReplicaWrapper:
+    def __init__(self, replica_info: RunningReplicaInfo):
+        self.replica_info = replica_info
+
+    @property
+    def replica_id(self) -> str:
+        return self.replica_info.replica_tag
+
+    async def get_queue_len(self) -> Tuple[str, int, bool]:
+        print(self.replica_info)
+        print(self.replica_info.actor_handle)
+        return await self.replica_info.actor_handle.get_num_ongoing_requests.remote()
+
+    def send_query(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        print(self.replica_info)
+        print(self.replica_info.actor_handle)
+        return self.replica_info.actor_handle.handle_request_streaming.options(
+            num_returns="streaming"  # TODO: switch based on streaming.
+        ).remote(
+            pickle.dumps(query.metadata),
+            *query.args,
+            **query.kwargs,
+        )
+
+
 class ReplicaScheduler(ABC):
     async def assign_replica(
         self, query: Query
@@ -84,29 +125,65 @@ class ReplicaScheduler(ABC):
         pass
 
 
-class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
-    """Round-robins requests across a set of actor replicas using streaming calls."""
+class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
+    """TODO."""
 
-    def __init__(self, event_loop: asyncio.AbstractEventLoop, deployment_name: str):
+    backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
+
+    def __init__(
+        self,
+        event_loop: asyncio.AbstractEventLoop,
+        deployment_name: str,
+        backoff_sequence: List[float] = None,
+    ):
         self._loop = event_loop
         self._deployment_name = deployment_name
         self._replica_id_set: Set[str] = set()
-        self._replicas: Dict[str, RunningReplicaInfo] = {}
+        self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = asyncio.Event()
 
         self._scheduling_tasks: Set[asyncio.Task] = set()
         self._pending_assignment_futures: List[asyncio.Future] = []
+
+    @property
+    def num_pending_assignments(self) -> int:
+        return len(self._pending_assignment_futures)
+
+    @property
+    def curr_scheduling_tasks(self) -> int:
+        return len(self._scheduling_tasks)
+
+    @property
+    def max_scheduling_tasks(self) -> int:
+        return 2 * len(self._replicas)
+
+    @property
+    def target_scheduling_tasks(self) -> int:
+        return min(self.num_pending_assignments, self.max_scheduling_tasks)
+
+    def update_replicas(self, replicas: List[ReplicaWrapper]):
+        self._replicas = {r.replica_id: r for r in replicas}
+        new_replica_ids = set(self._replicas.keys())
+        if new_replica_ids != self._replica_id_set:
+            self._replica_id_set = new_replica_ids
+            logger.info(
+                "Got updated replicas for deployment "
+                f"{self._deployment_name}: {new_replica_ids}.",
+                extra={"log_to_stderr": False},
+            )
+
+        self._replicas_updated_event.set()
+        self.maybe_start_scheduling_tasks()
+
+    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
     async def choose_two_gen(self) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """TODO.
 
         TODO:
             - blacklist replicas so we don't try the same ones repeatedly?
-            - add exponential backoff.
-            - should we give up if we try N replicas without succeeding, or just keep trying?
-              Safer to keep retrying with exponential backoff (people spam massive queues today).
         """
-        sleep_steps_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
         curr_iteration = 0
         while True:
             while len(self._replicas) == 0:
@@ -125,21 +202,20 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            sleep_s = sleep_steps_s[min(curr_iteration, len(sleep_steps_s) - 1)]
-            print(f"Sleeping for {sleep_s}s.")
+            sleep_s = self.backoff_sequence_s[
+                min(curr_iteration, len(self.backoff_sequence_s) - 1)
+            ]
+            # print(f"Sleeping for {sleep_s}s.")
             await asyncio.sleep(sleep_s)
             curr_iteration += 1
 
     async def select_replica(
-        self, replicas: List[RunningReplicaInfo]
-    ) -> Optional[RunningReplicaInfo]:
-        tasks = [r.actor_handle.get_num_ongoing_requests.remote() for r in replicas]
+        self, replicas: List[ReplicaWrapper]
+    ) -> Optional[ReplicaWrapper]:
+        tasks = [r.get_queue_len() for r in replicas]
         done, pending = await asyncio.wait(
             tasks, timeout=0.1, return_when=asyncio.ALL_COMPLETED
         )
-
-        if len(done) == 0:
-            print("NO TASKS FINISHED")
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
@@ -148,7 +224,8 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 print(f"Exception: {task.exception()}")
             else:
                 replica_id, queue_len, accepted = task.result()
-                print(replica_id, "queue_len:", queue_len)
+                print(task.result())
+                # print(replica_id, "queue_len:", queue_len)
                 if accepted and queue_len < lowest_queue_len:
                     chosen_replica_id = replica_id
                     lowest_queue_len = queue_len
@@ -169,67 +246,51 @@ class RoundRobinStreamingReplicaScheduler(ReplicaScheduler):
                 fut.set_result(replica)
                 break
 
-        return len(self._scheduling_tasks) <= self.target_running_scheduling_tasks()
+        return len(self._scheduling_tasks) <= self.target_scheduling_tasks
 
     async def try_schedule(self):
         curr_task = asyncio.current_task().get_name()
-        # print(curr_task, "try_schedule entered")
+        print(curr_task, "try_schedule entered")
         keep_scheduling = True
         while keep_scheduling:
             async for candidates in self.choose_two_gen():
+                print("GOT CANDIDATES", candidates)
                 replica = await self.select_replica(candidates)
+                print("GOT REPLICA", replica)
                 if replica is not None:
                     keep_scheduling = self.schedule_replica(replica)
                     print(curr_task, "Got replica! Keep scheduling?", keep_scheduling)
                     break
 
         self._scheduling_tasks.remove(asyncio.current_task())
-        # print(curr_task, "try_schedule exited")
+        print(curr_task, "try_schedule exited")
 
-    def target_running_scheduling_tasks(self) -> int:
-        return min(len(self._pending_assignment_futures), 2 * len(self._replicas))
-
-    def maybe_start_schedule_tasks(self):
-        curr_running_tasks = len(self._scheduling_tasks)
-        tasks_to_start = self.target_running_scheduling_tasks() - curr_running_tasks
+    def maybe_start_scheduling_tasks(self):
+        tasks_to_start = self.target_scheduling_tasks - self.curr_scheduling_tasks
         print(f"Starting {tasks_to_start} tasks!")
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.try_schedule()),
             )
 
-    async def assign_replica(
-        self, query: Query
-    ) -> "ray._raylet.StreamingObjectRefGenerator":
+    async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
+        """TODO."""
         fut = asyncio.Future()
         self._pending_assignment_futures.append(fut)
         try:
-            self.maybe_start_schedule_tasks()
+            self.maybe_start_scheduling_tasks()
             replica = await fut
         except asyncio.CancelledError:
             fut.cancel()
 
-        return replica.actor_handle.handle_request_streaming.options(
-            num_returns="streaming"
-        ).remote(
-            pickle.dumps(query.metadata),
-            *query.args,
-            **query.kwargs,
-        )
+        return replica
 
-    def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
-        self._replicas = {r.replica_tag: r for r in running_replicas}
-        new_replica_ids = set(self._replicas.keys())
-        if new_replica_ids != self._replica_id_set:
-            self._replica_id_set = new_replica_ids
-            logger.info(
-                "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_ids}.",
-                extra={"log_to_stderr": False},
-            )
-
-        self._replicas_updated_event.set()
-        self.maybe_start_schedule_tasks()
+    async def assign_replica(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        replica = await self.choose_replica_for_query(query)
+        print("GOT REPLICA", replica)
+        return replica.send_query(query)
 
 
 class RoundRobinReplicaScheduler(ReplicaScheduler):
@@ -490,7 +551,7 @@ class Router:
         """
         self._event_loop = event_loop
         if _stream:
-            self._replica_scheduler = RoundRobinStreamingReplicaScheduler(
+            self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop, deployment_name
             )
         else:
