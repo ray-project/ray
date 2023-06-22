@@ -219,8 +219,8 @@ class DeploymentScheduler:
             actor_handle = replica_scheduling_request.actor_def.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     target_node_id, soft=False
-                )
-                ** replica_scheduling_request.actor_options,
+                ),
+                **replica_scheduling_request.actor_options,
             ).remote(*replica_scheduling_request.actor_init_args)
             del self._pending_replicas[deployment_name][pending_replica_name]
             self._launching_replicas[deployment_name][
