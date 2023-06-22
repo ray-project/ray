@@ -206,7 +206,9 @@ const formatStateCountsToProgress = (stateCounts: {
   const formattedProgress: TaskProgress = {};
   Object.entries(stateCounts).forEach(([state, count]) => {
     const key: keyof TaskProgress =
-      TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus] ?? "numUnknown";
+      (TASK_STATE_NAME_TO_PROGRESS_KEY[
+        state as TypeTaskStatus
+      ] as keyof TaskProgress) ?? "numUnknown";
 
     formattedProgress[key] = (formattedProgress[key] ?? 0) + count;
   });

@@ -50,6 +50,7 @@ const columns = [
   "Disk(root)",
   "Sent",
   "Received",
+  "Custom Resources",
 ];
 
 export const brpcLinkChanger = (href: string) => {

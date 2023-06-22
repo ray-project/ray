@@ -39,6 +39,57 @@ const useStyle = makeStyles((theme) => ({
   },
 }));
 
+export const formatNodeStatus = (cluster_status: string) => {
+  // ==== auto scaling status
+  // Node status
+  // ....
+  // Resources
+  // ....
+  const sections = cluster_status.split("Resources");
+  return formatClusterStatus(
+    "Node Status",
+    sections[0].split("Node status")[1],
+  );
+};
+
+export const formatResourcesStatus = (cluster_status: string) => {
+  // ==== auto scaling status
+  // Node status
+  // ....
+  // Resources
+  // ....
+  const sections = cluster_status.split("Resources");
+  return formatClusterStatus("Resource Status", sections[1]);
+};
+
+export const formatClusterStatus = (title: string, cluster_status: string) => {
+  const cluster_status_rows = cluster_status.split("\n");
+
+  return (
+    <div>
+      <Box marginBottom={2}>
+        <Typography variant="h6">{title}</Typography>
+      </Box>
+      {cluster_status_rows.map((i, key) => {
+        // Format the output.
+        // See format_info_string in util.py
+        if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
+          // Ignore separators
+          return null;
+        } else if (i.endsWith(":")) {
+          return (
+            <div key={key}>
+              <b>{i}</b>
+            </div>
+          );
+        } else {
+          return <div key={key}>{i}</div>;
+        }
+      })}
+    </div>
+  );
+};
+
 export const JobDetailChartsPage = () => {
   const classes = useStyle();
   const { job, msg, isLoading, params } = useJobDetail();
@@ -52,57 +103,6 @@ export const JobDetailChartsPage = () => {
   const [actorTableExpanded, setActorTableExpanded] = useState(false);
   const actorTableRef = useRef<HTMLDivElement>(null);
   const { cluster_status } = useRayStatus();
-
-  const formatNodeStatus = (cluster_status: string) => {
-    // ==== auto scaling status
-    // Node status
-    // ....
-    // Resources
-    // ....
-    const sections = cluster_status.split("Resources");
-    return formatClusterStatus(
-      "Node Status",
-      sections[0].split("Node status")[1],
-    );
-  };
-
-  const formatResourcesStatus = (cluster_status: string) => {
-    // ==== auto scaling status
-    // Node status
-    // ....
-    // Resources
-    // ....
-    const sections = cluster_status.split("Resources");
-    return formatClusterStatus("Resource Status", sections[1]);
-  };
-
-  const formatClusterStatus = (title: string, cluster_status: string) => {
-    const cluster_status_rows = cluster_status.split("\n");
-
-    return (
-      <div>
-        <Box marginBottom={2}>
-          <Typography variant="h6">{title}</Typography>
-        </Box>
-        {cluster_status_rows.map((i, key) => {
-          // Format the output.
-          // See format_info_string in util.py
-          if (i.startsWith("-----") || i.startsWith("=====") || i === "") {
-            // Ignore separators
-            return null;
-          } else if (i.endsWith(":")) {
-            return (
-              <div key={key}>
-                <b>{i}</b>
-              </div>
-            );
-          } else {
-            return <div key={key}>{i}</div>;
-          }
-        })}
-      </div>
-    );
-  };
 
   if (!job) {
     return (
