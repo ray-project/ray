@@ -514,7 +514,9 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(self._allocated_obj_ref):
+        if self._allocated_obj_ref is None or not check_obj_ref_ready_nowait(
+            self._allocated_obj_ref
+        ):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         try:
@@ -1176,7 +1178,6 @@ class DeploymentState:
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
                 self._target_state.version,
-                self._deployment_scheduler,
             )
             new_deployment_replica.recover()
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
