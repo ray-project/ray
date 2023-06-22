@@ -126,8 +126,29 @@ class ReplicaScheduler(ABC):
 
 
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
-    """TODO."""
+    """Chooses a replica for each request using the "power of two choices" procedure.
 
+    Requests are scheduled in FIFO order.
+
+    When a request comes in, two replicas are chosen randomly as candidates. The queue
+    length of each replicas is requested from it via a control message.
+
+    The replica responds with two items: (queue_length, accepted). Only replicas that
+    accept the request are considered; between those, the one with the lower queue length
+    is chosen.
+
+    In the case when neither replica accepts the request (e.g., their queues are full),
+    the procedure is repeated with backoff. This backoff repeats indefinitely until a
+    replica is chosen, so the caller should use timeouts and cancellation to avoid hangs.
+
+    Each request being scheduled may spawn an independent task that runs the scheduling
+    procedure concurrently. This task will not necessarily satisfy the request that
+    started it (in order to maintain the FIFO order). The total number of tasks is capped
+    at (2 * num_replicas).
+    """
+
+    # The sequence of backoff timeouts to use when all replicas' queues are full.
+    # The last item in the list is the max timeout and will be used repeatedly.
     backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
 
     def __init__(
@@ -138,6 +159,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ):
         self._loop = event_loop
         self._deployment_name = deployment_name
+
+        # Current replicas available to be scheduled.
+        # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = asyncio.Event()
@@ -176,6 +200,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self.maybe_start_scheduling_tasks()
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
+        """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
     async def choose_two_gen(self) -> AsyncGenerator[List[RunningReplicaInfo], None]:
@@ -184,7 +209,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         TODO:
             - blacklist replicas so we don't try the same ones repeatedly?
         """
-        curr_iteration = 0
+        backoff_index = 0
         while True:
             while len(self._replicas) == 0:
                 logger.info(
@@ -202,12 +227,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            sleep_s = self.backoff_sequence_s[
-                min(curr_iteration, len(self.backoff_sequence_s) - 1)
-            ]
-            # print(f"Sleeping for {sleep_s}s.")
-            await asyncio.sleep(sleep_s)
-            curr_iteration += 1
+            await asyncio.sleep(self.backoff_sequence_s[backoff_index])
+            backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
     async def select_replica(
         self, replicas: List[ReplicaWrapper]
