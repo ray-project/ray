@@ -66,7 +66,7 @@ transform datasets. Ray executes transformations in parallel for performance.
 .. testoutput::
 
     MaterializedDataset(
-       num_blocks=1,
+       num_blocks=...,
        num_rows=150,
        schema={
           sepal length (cm): double,
@@ -147,7 +147,7 @@ or remote filesystems.
 
     import os
 
-    transformed_ds.write_parquet("/tmp/iris")
+    transformed_ds.repartition(1).write_parquet("/tmp/iris")
 
     print(os.listdir("/tmp/iris"))
 

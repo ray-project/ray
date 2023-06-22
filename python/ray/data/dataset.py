@@ -1,4 +1,5 @@
 import collections
+import copy
 import html
 import itertools
 import logging
@@ -27,7 +28,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
@@ -56,6 +56,9 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
+)
+from ray.data._internal.logical.operators.n_ary_operator import (
+    Union as UnionLogicalOperator,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
@@ -88,14 +91,12 @@ from ray.data._internal.util import (
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
-    STRICT_MODE_EXPLANATION,
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
     DataBatch,
-    StrictModeError,
     T,
     U,
     UserDefinedFunction,
@@ -244,9 +245,6 @@ class Dataset:
         """
         assert isinstance(plan, ExecutionPlan), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
-
-        if ray.util.log_once("strict_mode_explanation"):
-            logger.warning(STRICT_MODE_EXPLANATION)
 
         self._plan = plan
         self._uuid = uuid4().hex
@@ -483,7 +481,7 @@ class Dataset:
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Dataset(num_blocks=1, num_rows=1, schema={item: int64})
+            +- Dataset(num_blocks=..., num_rows=1, schema={item: int64})
 
 
         Args:
@@ -756,7 +754,7 @@ class Dataset:
             >>> ds
             MapBatches(<lambda>)
             +- Dataset(
-                  num_blocks=10,
+                  num_blocks=...,
                   num_rows=10,
                   schema={col1: int64, col2: int64, col3: int64}
                )
@@ -1615,14 +1613,25 @@ class Dataset:
         if has_nonlazy:
             blocks = []
             metadata = []
-            for bl in bls:
+            ops_to_union = []
+            for idx, bl in enumerate(bls):
                 if isinstance(bl, LazyBlockList):
                     bs, ms = bl._get_blocks_with_metadata()
                 else:
+                    assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
+                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
+                if isinstance(op_logical_plan, LogicalPlan):
+                    ops_to_union.append(op_logical_plan.dag)
+                else:
+                    ops_to_union.append(None)
                 blocks.extend(bs)
                 metadata.extend(ms)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
+
+            logical_plan = None
+            if all(ops_to_union):
+                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1650,6 +1659,16 @@ class Dataset:
                 owned_by_consumer=owned_by_consumer,
             )
 
+            logical_plan = self._logical_plan
+            logical_plans = [
+                getattr(union_ds, "_logical_plan", None) for union_ds in datasets
+            ]
+            if all(logical_plans):
+                op = UnionLogicalOperator(
+                    *[plan.dag for plan in logical_plans],
+                )
+                logical_plan = LogicalPlan(op)
+
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
@@ -1669,6 +1688,7 @@ class Dataset:
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
+            logical_plan,
         )
 
     def groupby(self, key: Optional[str]) -> "GroupedData":
@@ -1681,7 +1701,7 @@ class Dataset:
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
             Aggregate
-            +- Dataset(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
+            +- Dataset(num_blocks=..., num_rows=100, schema={A: int64, B: int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -2207,15 +2227,11 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        ctx = DataContext.get_current()
         base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
-        if ctx.strict_mode:
-            if base_schema:
-                return Schema(base_schema)
-            else:
-                return None
+        if base_schema:
+            return Schema(base_schema)
         else:
-            return base_schema
+            return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -2664,13 +2680,11 @@ class Dataset:
                 write each dataset block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-        context = DataContext.get_current()
-        if context.strict_mode and not column:
-            raise StrictModeError(
+        if column is None:
+            raise ValueError(
                 "In Ray 2.5, the column must be specified "
                 "(e.g., `write_numpy(column='data')`)."
             )
-        column = column or TENSOR_COLUMN_NAME
 
         self.write_datasource(
             NumpyDatasource(),
@@ -3276,7 +3290,7 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_blocks=1,
+               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -3307,7 +3321,7 @@ class Dataset:
             >>> ds
             Concatenator
             +- Dataset(
-                  num_blocks=1,
+                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,
@@ -4136,7 +4150,8 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4205,58 +4220,11 @@ class Dataset:
 
     @Deprecated(message="The batch format is no longer exposed as a public API.")
     def default_batch_format(self) -> Type:
-        context = DataContext.get_current()
-        if context.strict_mode:
-            raise StrictModeError("default_batch_format() is not allowed in Ray 2.5")
-
-        import pandas as pd
-        import pyarrow as pa
-
-        schema = self.schema()
-        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
-
-        if isinstance(schema, type):
-            return list
-
-        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
-            if schema.names == [TENSOR_COLUMN_NAME]:
-                return np.ndarray
-            return pd.DataFrame
+        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
 
     @Deprecated(message="The dataset format is no longer exposed as a public API.")
     def dataset_format(self) -> BlockFormat:
-        context = DataContext.get_current()
-        if context.strict_mode:
-            raise StrictModeError("dataset_format() is not allowed in Ray 2.5")
-
-        if context.use_streaming_executor:
-            raise DeprecationWarning(
-                "`dataset_format` is deprecated for streaming execution. To use "
-                "`dataset_format`, you must explicitly enable bulk execution by "
-                "setting `use_streaming_executor` to False in the `DataContext`"
-            )
-
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset."
-            )
-
-        try:
-            import pyarrow as pa
-
-            if isinstance(schema, pa.Schema):
-                return BlockFormat.ARROW
-        except ModuleNotFoundError:
-            pass
-        from ray.data._internal.pandas_block import PandasBlockSchema
-
-        if isinstance(schema, PandasBlockSchema):
-            return BlockFormat.PANDAS
-        return BlockFormat.SIMPLE
+        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
