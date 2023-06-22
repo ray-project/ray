@@ -226,6 +226,7 @@ class HyperBandScheduler(FIFOScheduler):
         if bracket.continue_trial(trial):
             return TrialScheduler.CONTINUE
 
+        logger.debug(f"Processing bracket after trial {trial} result")
         action = self._process_bracket(trial_runner, bracket)
         logger.debug(
             f"{action} for {trial} on "
@@ -242,7 +243,17 @@ class HyperBandScheduler(FIFOScheduler):
         Trials will be successively halved. If bracket is done, all
         non-running trials will be stopped and cleaned up,
         and during each halving phase, bad trials will be stopped while good
-        trials will return to "PENDING"."""
+        trials will return to "PENDING".
+
+        Note some implicit conditions here: In ``on_trial_result`` a trial is
+        either continued (e.g. if it didn't reach the time threshold for the bracket)
+        or this method (``_process_bracket``) is called. If there are other trials left
+        that still haven't reached the threshold, the trial is PAUSED. This means
+        that when the bracket is actually processed (``bracket.cur_iter_done``), there
+        is at most one RUNNING trial (which is the trial that is currently processed)
+        and the rest are either PAUSED (as explained above) or TERMINATED/ERRORED
+        (if they finish separately).
+        """
 
         action = TrialScheduler.PAUSE
         if bracket.cur_iter_done():
@@ -250,18 +261,37 @@ class HyperBandScheduler(FIFOScheduler):
                 bracket.cleanup_full(trial_runner)
                 return TrialScheduler.STOP
 
+            bracket.is_being_processed = True
+
             good, bad = bracket.successive_halving(self._metric, self._metric_op)
+
+            logger.debug(
+                f"Processing {len(good)} good and {len(bad)} bad trials in "
+                f"bracket {bracket}.\n"
+                f"Good: {good}\nBad: {bad}"
+            )
+
             # kill bad trials
             self._num_stopped += len(bad)
             for t in bad:
                 if t.status == Trial.PAUSED:
+                    logger.debug(f"Stopping other trial {str(t)}")
                     trial_runner.stop_trial(t)
                 elif t.status == Trial.RUNNING:
+                    # See the docstring: There can only be at most one RUNNING
+                    # trial, which is the current trial.
+                    logger.debug(f"Stopping current trial {str(t)}")
                     bracket.cleanup_trial(t)
                     action = TrialScheduler.STOP
                 else:
+                    # Trials cannot be ERROR/TERMINATED, as then they would have
+                    # been removed from the bracket (in `bracket.cleanup_trial`).
+                    # Trials cannot be PENDING, as then they wouldn't have reported
+                    # enough results to finish the bracket, and it wouldn't be
+                    # processed.
                     raise TuneError(
-                        f"Trial with unexpected bad status " f"encountered: {t.status}"
+                        f"Trial with unexpected bad status encountered: "
+                        f"{str(t)} is {t.status}"
                     )
 
             # ready the good trials - if trial is too far ahead, don't continue
@@ -274,9 +304,13 @@ class HyperBandScheduler(FIFOScheduler):
                         "If you encounter this, please file an issue on the Ray Github."
                     )
                     if t.status == Trial.PAUSED:
+                        logger.debug(f"Unpausing trial {str(t)}")
                         self._unpause_trial(trial_runner, t)
                         trial_runner._set_trial_status(t, Trial.PENDING)
                     elif t.status == Trial.RUNNING:
+                        # See the docstring: There can only be at most one RUNNING
+                        # trial, which is the current trial.
+                        logger.debug(f"Continuing current trial {str(t)}")
                         action = TrialScheduler.CONTINUE
                     # else: PENDING trial (from a previous unpause) should stay as is.
         return action
@@ -292,7 +326,8 @@ class HyperBandScheduler(FIFOScheduler):
         not finished."""
         bracket, _ = self._trial_info[trial]
         bracket.cleanup_trial(trial)
-        if not bracket.finished():
+        if not bracket.finished() and not bracket.is_being_processed:
+            logger.debug(f"Processing bracket after trial {trial} removed")
             self._process_bracket(trial_runner, bracket)
 
     def on_trial_complete(
@@ -395,6 +430,7 @@ class _Bracket:
         self._total_work = self._calculate_total_work(self._n0, self._r0, s)
         self._completed_progress = 0
         self.stop_last_trials = stop_last_trials
+        self.is_being_processed = False
 
     def add_trial(self, trial: Trial):
         """Add trial to bracket assuming bracket is not filled.
