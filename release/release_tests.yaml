@@ -6142,8 +6142,7 @@
   cluster:
     byod:
       type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
+      post_build_script: byod_data_pipelined_test.sh
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
@@ -6175,8 +6174,7 @@
       runtime_env:
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
+      post_build_script: byod_data_pipelined_test.sh
     cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
 
@@ -6480,11 +6478,10 @@
   cluster:
     byod:
       type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
       runtime_env:
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
+      post_build_script: byod_data_pipelined_test.sh
     cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
 
