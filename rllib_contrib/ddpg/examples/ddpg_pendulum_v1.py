@@ -1,9 +1,17 @@
+import argparse
+
 from rllib_ddpg.ddpg import DDPG, DDPGConfig
 
 import ray
 from ray import air, tune
+from ray.rllib.utils.test_utils import check_learning_achieved
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--run-as-test", action="store_true", default=False)
+
 
 if __name__ == "__main__":
+    args = parser.parse_args()
     ray.init()
 
     config = (
@@ -46,16 +54,20 @@ if __name__ == "__main__":
     )
 
     num_iterations = 100
+    stop_reward = -320
 
     tuner = tune.Tuner(
         DDPG,
         param_space=config.to_dict(),
         run_config=air.RunConfig(
             stop={
-                "sampler_results/episode_reward_mean": -320,
+                "sampler_results/episode_reward_mean": stop_reward,
                 "timesteps_total": 30000,
             },
             failure_config=air.FailureConfig(fail_fast="raise"),
         ),
     )
     results = tuner.fit()
+
+    if args.run_as_test:
+        check_learning_achieved(results, stop_reward)
