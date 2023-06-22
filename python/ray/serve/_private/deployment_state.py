@@ -1128,6 +1128,12 @@ class DeploymentState:
             tag_keys=("deployment", "replica", "application"),
         )
 
+        # Whether the multiplexed model ids have been updated since the last
+        # time we checked.
+        self._multiplexed_model_ids_updated = False
+
+        self._last_notified_running_replica_infos: List[RunningReplicaInfo] = []
+
     def should_autoscale(self) -> bool:
         """
         Check if the deployment is under autoscaling
@@ -1218,10 +1224,19 @@ class DeploymentState:
         return [replica.actor_details for replica in self._replicas.get()]
 
     def notify_running_replicas_changed(self) -> None:
+        running_replica_infos = self.get_running_replica_infos()
+        if (
+            set(self._last_notified_running_replica_infos) == set(running_replica_infos)
+            and not self._multiplexed_model_ids_updated
+        ):
+            return
+
         self._long_poll_host.notify_changed(
             (LongPollNamespace.RUNNING_REPLICAS, self._name),
-            self.get_running_replica_infos(),
+            running_replica_infos,
         )
+        self._last_notified_running_replica_infos = running_replica_infos
+        self._multiplexed_model_ids_updated = False
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
@@ -1919,6 +1934,7 @@ class DeploymentState:
         for replica in self._replicas.get():
             if replica.replica_tag == replica_name:
                 replica.record_multiplexed_model_ids(multiplexed_model_ids)
+                self._multiplexed_model_ids_updated = True
                 return
         logger.warn(f"Replia {replica_name} not found in deployment {self._name}")
 
@@ -2408,7 +2424,6 @@ class DeploymentStateManager:
         """
         deleted_tags = []
         any_recovering = False
-        running_replica_infos_before_update = self.get_running_replica_infos()
         upscales = {}
         downscales = {}
 
@@ -2449,10 +2464,7 @@ class DeploymentStateManager:
             self._deployment_states[deployment_name].stop_replicas(replicas_to_stop)
 
         for deployment_name, deployment_state in self._deployment_states.items():
-            if set(running_replica_infos_before_update[deployment_name]) != set(
-                deployment_state.get_running_replica_infos()
-            ):
-                deployment_state.notify_running_replicas_changed()
+            deployment_state.notify_running_replicas_changed()
 
         for tag in deleted_tags:
             self._deployment_scheduler.on_deployment_deleted(tag)
