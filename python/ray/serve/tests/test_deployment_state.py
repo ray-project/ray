@@ -1012,7 +1012,10 @@ def test_deploy_new_config_same_code_version(
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Create the replica initially.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state.update()
     check_counts(
@@ -1073,7 +1076,10 @@ def test_deploy_new_config_same_code_version_2(
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Create the replica initially.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(
         deployment_state,
         version=b_version_1,
@@ -1097,13 +1103,6 @@ def test_deploy_new_config_same_code_version_2(
     )
 
     deployment_state._replicas.get()[0]._actor.set_ready()
-    deployment_state.update()
-    check_counts(
-        deployment_state,
-        version=b_version_1,
-        total=1,
-        by_state=[(ReplicaState.RUNNING, 1)],
-    )
     deployment_state.update()
     check_counts(
         deployment_state,
@@ -1137,7 +1136,10 @@ def test_deploy_new_config_new_version(mock_get_all_node_ids, mock_deployment_st
     assert updating
 
     # Create the replica initially.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     deployment_state._replicas.get()[0]._actor.set_ready()
     deployment_state.update()
     check_counts(
@@ -1164,13 +1166,12 @@ def test_deploy_new_config_new_version(mock_get_all_node_ids, mock_deployment_st
     deployment_state._replicas.get(states=[ReplicaState.STOPPING])[
         0
     ]._actor.set_done_stopping()
-    deployment_state.update()
-    assert deployment_state._replicas.count() == 0
-    check_counts(deployment_state, total=0)
-    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Now the new version should be started.
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     deployment_state._replicas.get(states=[ReplicaState.STARTING])[0]._actor.set_ready()
     check_counts(
         deployment_state,
@@ -1178,6 +1179,7 @@ def test_deploy_new_config_new_version(mock_get_all_node_ids, mock_deployment_st
         total=1,
         by_state=[(ReplicaState.STARTING, 1)],
     )
+    assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
     # Check that the new version is now running.
     deployment_state.update()
@@ -1201,7 +1203,10 @@ def test_initial_deploy_no_throttling(mock_get_all_node_ids, mock_deployment_sta
     updating = deployment_state.deploy(b_info_1)
     assert updating
 
-    deployment_state.update()
+    _, _, upscale, _ = deployment_state.update()
+    deployment_state._deployment_scheduler.schedule(
+        {deployment_state._name: upscale}, {}
+    )
     check_counts(deployment_state, total=10, by_state=[(ReplicaState.STARTING, 10)])
     assert deployment_state.curr_status_info.status == DeploymentStatus.UPDATING
 
