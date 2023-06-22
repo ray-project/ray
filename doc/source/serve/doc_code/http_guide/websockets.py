@@ -1,3 +1,5 @@
+# flake8: noqa
+
 # __websocket_serve_app_start__
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
@@ -6,10 +8,10 @@ from ray import serve
 
 app = FastAPI()
 
+
 @serve.deployment
 @serve.ingress(app)
 class EchoServer:
-
     @app.websocket("/")
     async def ws_handler(self, ws: WebSocket):
         await ws.accept()
@@ -20,6 +22,7 @@ class EchoServer:
                 await ws.send_text(text)
         except WebSocketDisconnect:
             print("Client disconnected.")
+
 
 serve_app = serve.run(EchoServer.bind())
 # __websocket_serve_app_end__
