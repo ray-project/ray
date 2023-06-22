@@ -169,7 +169,13 @@ def is_process_listen_to_port(pid, port):
 
 
 def redis_alive(port, enable_tls):
-    import redis
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
 
     params = {}
     if enable_tls:
