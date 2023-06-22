@@ -23,11 +23,12 @@ import sys
 import yaml
 
 import ray
-from ray.tune import run_experiments
+from ray.air.integrations.wandb import WandbLoggerCallback
 from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -62,6 +63,12 @@ parser.add_argument(
     type=int,
     default=1,
     help="The number of seeds/samples to run with the given experiment config.",
+)
+parser.add_argument(
+    "--wandb-key",
+    type=str,
+    default=None,
+    help="The WandB API key to use for uploading results.",
 )
 parser.add_argument(
     "--override-mean-reward",
@@ -168,6 +175,16 @@ if __name__ == "__main__":
             print("== Test config ==")
             print(yaml.dump(experiments))
 
+        callbacks = None
+        if args.wandb_key is not None:
+            callbacks = [WandbLoggerCallback(
+                api_key=args.wandb_key,
+                project=(
+                    exp["run"] + "_" + exp["env"] if config_is_python
+                    else list(experiments.keys())[0]
+                ),
+            )]
+
         # Try running each test 3 times and make sure it reaches the given
         # reward.
         passed = False
@@ -180,7 +197,9 @@ if __name__ == "__main__":
                 ray.init()
             else:
                 try:
-                    trials = run_experiments(experiments, resume=False, verbose=2)
+                    trials = run_experiments(
+                        experiments, resume=False, verbose=2, callbacks=callbacks
+                    )
                 finally:
                     ray.shutdown()
                     _register_all()
