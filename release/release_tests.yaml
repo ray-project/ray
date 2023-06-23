@@ -727,7 +727,6 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  jailed: true
 
   frequency: nightly
   python: "3.8"
@@ -760,7 +759,6 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  jailed: true
 
   frequency: nightly
   python: "3.8"
@@ -793,7 +791,6 @@
   working_dir: air_tests/air_benchmarks/mlperf-train
 
   stable: false
-  jailed: true
 
   frequency: nightly
   team: data
@@ -4064,11 +4061,6 @@
   team: rllib
   python: "3.8"
   cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -5000,7 +4992,6 @@
   working_dir: nightly_tests
 
   stable: false 
-  jailed: true
 
   python: "3.8"
   frequency: nightly
@@ -5253,7 +5244,6 @@
   working_dir: air_tests
 
   stable: false
-  jailed: true
 
   frequency: nightly
   team: core
@@ -6142,8 +6132,7 @@
   cluster:
     byod:
       type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
+      post_build_script: byod_data_pipelined_test.sh
     cluster_env: pipelined_training_app.yaml
     cluster_compute: pipelined_training_compute.yaml
 
@@ -6175,8 +6164,7 @@
       runtime_env:
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
+      post_build_script: byod_data_pipelined_test.sh
     cluster_env: pipelined_ingestion_app.yaml
     cluster_compute: pipelined_ingestion_compute.yaml
 
@@ -6480,11 +6468,10 @@
   cluster:
     byod:
       type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
       runtime_env:
         - RAY_lineage_pinning_enabled=1
         - RAY_record_ref_creation_sites=1
+      post_build_script: byod_data_pipelined_test.sh
     cluster_env: dataset/pipelined_ingestion_app.yaml
     cluster_compute: dataset/pipelined_ingestion_compute.yaml
 
