@@ -1016,6 +1016,7 @@ class AirResultProgressCallback(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
+        print("")
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
@@ -1028,10 +1029,11 @@ class AirResultProgressCallback(Callback):
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             f"{self._addressing_tmpl.format(trial)} "
-            f"completed training after {finished_iter} iterations "
+            f"completed after {finished_iter} iterations "
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
+        print("")
 
     def on_checkpoint(
         self,
@@ -1052,6 +1054,7 @@ class AirResultProgressCallback(Callback):
             f"saved a checkpoint for iteration {saved_iter} "
             f"at: {checkpoint.dir_or_data}"
         )
+        print("")
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
@@ -1068,6 +1071,7 @@ class AirResultProgressCallback(Callback):
                 f"{self._addressing_tmpl.format(trial)} "
                 f"started without custom configuration."
             )
+        print("")
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
