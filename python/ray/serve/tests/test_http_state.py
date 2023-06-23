@@ -110,7 +110,12 @@ def _update_and_check_http_state(
 ):
     http_state.update(**kwargs)
     proxy_states = http_state._proxy_states
-    return all([proxy_states[node_ids[idx]].status == statuses[idx] for idx in range(len(node_ids))])
+    return all(
+        [
+            proxy_states[node_ids[idx]].status == statuses[idx]
+            for idx in range(len(node_ids))
+        ]
+    )
 
 
 def test_node_selection(all_nodes, mock_get_all_node_ids):
@@ -622,7 +627,7 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     )
 
     # All nodes are active
-    active_nodes = set([node_id for node_id, _ in all_nodes])
+    active_nodes = {node_id for node_id, _ in all_nodes}
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn HEALTHY.

@@ -10,11 +10,9 @@ from typing import Dict, List, Set, Tuple
 import ray
 from ray.actor import ActorHandle
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.utils import get_or_create_event_loop
 
 from ray._raylet import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
-from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
     PROXY_HEALTH_CHECK_TIMEOUT_S,
@@ -289,18 +287,23 @@ class HTTPState:
             for node_id, state in self._proxy_states.items()
         }
 
-    def update(self, active_nodes: Set[NodeId] = set()):
+    def update(self, active_nodes: Set[NodeId] = None):
         """Update the state of all HTTP proxies.
 
         Start proxies on all nodes if not already exist and stop the proxies on nodes
         that are no longer exist. Update all proxy states. Kill and restart
         unhealthy proxies.
         """
+        # Ensure head node is always active.
+        if active_nodes is None:
+            active_nodes = {self._head_node_id}
+        else:
+            active_nodes.add(self._head_node_id)
+
         self._start_proxies_if_needed()
         self._stop_proxies_if_needed()
         for node_id, proxy_state in self._proxy_states.items():
             draining = node_id not in active_nodes
-            draining = draining if self._head_node_id != node_id else False
             proxy_state.update(draining)
 
     def _get_target_nodes(self) -> List[Tuple[str, str]]:
