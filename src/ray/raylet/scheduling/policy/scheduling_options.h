@@ -79,10 +79,10 @@ struct SchedulingOptions {
                                         bool spill_on_unavailable = false,
                                         bool fail_on_unavailable = false) {
     if (spill_on_unavailable) {
-      RAY_CHECK(soft);
+      RAY_CHECK(soft) << "spill_on_unavailable only works with soft == true";
     }
     if (fail_on_unavailable) {
-      RAY_CHECK(!soft);
+      RAY_CHECK(!soft) << "fail_on_unavailable only works with soft == false";
     }
     SchedulingOptions scheduling_options =
         Hybrid(avoid_local_node, require_node_available);
