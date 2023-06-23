@@ -1645,9 +1645,9 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        f"The Deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with the deployment "
-                        "constructor or the initial health check failing. See "
+                        f"The deployment failed to start {failed_to_start_count} times "
+                        "in a row. This may be due to a problem with its "
+                        "constructor or initial health check failing. See "
                         "controller logs for details. Retrying after "
                         f"{self._backoff_time_s} seconds. Error:\n"
                         f"{self._replica_constructor_error_msg}"
