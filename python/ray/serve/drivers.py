@@ -37,6 +37,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
         self,
         dags: Union[RayServeDAGHandle, Dict[str, RayServeDAGHandle]],
         http_adapter: Optional[Union[str, Callable]] = None,
+        healthcheck_endpoint: Optional[str] = None,
     ):
         """Create a DAGDriver.
 
@@ -44,7 +45,25 @@ class DAGDriver(ASGIAppReplicaWrapper):
             dags: a handle to a Ray Serve DAG or a dictionary of handles.
             http_adapter: a callable function or import string to convert
                 HTTP requests to Ray Serve input.
+            healthcheck_endpoint: an endpoint that can be queried to get the
+                health of this DAGDriver replica. Should start with '/'.
+                Returns 200 response if this replica is running successfully.
         """
+
+        if healthcheck_endpoint is not None and not healthcheck_endpoint.startswith(
+            "/"
+        ):
+            raise ValueError(
+                f'Got invalid healthcheck_endpoint "{healthcheck_endpoint}". '
+                'healthcheck_endpoint must start with "/"'
+            )
+        if isinstance(dags, dict) and healthcheck_endpoint in dags.keys():
+            raise ValueError(
+                f'Got same endpoint "{healthcheck_endpoint}" as '
+                "healthcheck_endpoint and dags dictionary. The "
+                "healthcheck_endpoint must be unique. It cannot be reused "
+                "for an app."
+            )
 
         record_serve_tag("SERVE_DAG_DRIVER_USED", "1")
         if http_adapter is not None:
@@ -54,6 +73,12 @@ class DAGDriver(ASGIAppReplicaWrapper):
         http_adapter = load_http_adapter(http_adapter)
         app = FastAPI()
 
+        if healthcheck_endpoint is not None:
+
+            @app.get(healthcheck_endpoint)
+            async def handle_request():
+                return "healthy"
+
         if isinstance(dags, dict):
             self.dags = dags
             for route in dags.keys():
@@ -61,7 +86,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
                 def endpoint_create(route):
                     @app.get(f"{route}")
                     @app.post(f"{route}")
-                    async def handle_request(inp=Depends(http_adapter)):
+                    async def handle_request(inp=Depends(http_adapter)):  # noqa: F811
                         return await self.predict_with_route(
                             route, inp  # noqa: B023 function redefinition
                         )
@@ -77,7 +102,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
             # Single dag case, we will receive all prefix route
             @app.get(self.MATCH_ALL_ROUTE_PREFIX)
             @app.post(self.MATCH_ALL_ROUTE_PREFIX)
-            async def handle_request(inp=Depends(http_adapter)):
+            async def handle_request(inp=Depends(http_adapter)):  # noqa: F811
                 return await self.predict(inp)
 
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))

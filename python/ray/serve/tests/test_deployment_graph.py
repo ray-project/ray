@@ -465,7 +465,7 @@ def test_unsupported_remote():
         _ = func.bind().remote()
 
 
-def test_suprious_call(serve_instance):
+def test_spurious_call(serve_instance):
     # https://github.com/ray-project/ray/issues/24116
 
     @serve.deployment
@@ -522,6 +522,65 @@ def test_sharing_call_for_broadcast(serve_instance):
 
     handle = serve.run(DAGDriver.bind(dag))
     assert ray.get(handle.predict.remote(1)) == 4
+
+
+class TestDagDriverHealthCheck:
+    def test_healthcheck_endpoint(self, serve_instance):
+        @serve.deployment
+        def hello(*args):
+            return "hello"
+
+        app = DAGDriver.bind(hello.bind(), healthcheck_endpoint="/healthy")
+        serve.run(app)
+        assert requests.get("http://localhost:8000/healthy").json() == "healthy"
+        assert requests.get("http://localhost:8000/").json() == "hello"
+        assert requests.get("http://localhost:8000/arbitrary").json() == "hello"
+
+    def test_healthcheck_endpoint_with_dag_routes(self, serve_instance):
+        @serve.deployment
+        class Hello:
+            def __init__(self, id: int):
+                self.id = id
+
+            def __call__(self, request):
+                return f"hello{self.id}"
+
+        app = DAGDriver.bind(
+            {"/hello1": Hello.bind(1), "/hello2": Hello.bind(2)},
+            healthcheck_endpoint="/healthy",
+        )
+        serve.run(app)
+        assert requests.get("http://localhost:8000/healthy").json() == "healthy"
+        assert requests.get("http://localhost:8000/hello1").json() == "hello1"
+        assert requests.get("http://localhost:8000/hello2").json() == "hello2"
+        assert requests.get("http://localhost:8000/").json()["detail"] == "Not Found"
+
+    def test_healthcheck_endpoint_with_overlapping_dag_routes(self, serve_instance):
+        @serve.deployment
+        def hello(*args):
+            return "hello"
+
+        app = DAGDriver.bind(
+            {"/hello1": hello.bind(), "/healthy": hello.bind()},
+            healthcheck_endpoint="/healthy",
+        )
+
+        # Serve should fail to deploy since an app has the same endpoint as
+        # the driver's health check.
+        with pytest.raises(RuntimeError):
+            serve.run(app)
+
+    def test_invalid_healthcheck_endpoint_routes(self, serve_instance):
+        @serve.deployment
+        def hello(*args):
+            return "hello"
+
+        app = DAGDriver.bind(hello.bind(), healthcheck_endpoint="healthy")
+
+        # Serve should fail to deploy since the healthcheck_endpoint doesn't
+        # start with "/"
+        with pytest.raises(RuntimeError):
+            serve.run(app)
 
 
 if __name__ == "__main__":
