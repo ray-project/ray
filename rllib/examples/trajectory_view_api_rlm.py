@@ -83,6 +83,8 @@ if __name__ == "__main__":
         ),
     ).fit()
 
+    #TODO (Artur): Add inference code here and include in docs
+
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)
 
