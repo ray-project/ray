@@ -755,7 +755,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
         RAY_CHECK_EQ(reply.return_objects_size(), 1);
         for (size_t i = 0; i < spec.NumStreamingGeneratorReturns(); i++) {
           const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-          RAY_LOG(DEBUG) << "Failing streamed object " << generator_return_id;
+          RAY_CHECK_EQ(reply.return_objects_size(), 1);
           const auto &return_object = reply.return_objects(0);
           HandleTaskReturn(generator_return_id,
                            return_object,
