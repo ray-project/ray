@@ -121,6 +121,32 @@ doctest(
 )
 
 # --------------------------------------------------------------------
+# Benchmarks
+#
+# Tag: benchmark
+#
+# This is smoke-testing the benchmark scripts.
+# --------------------------------------------------------------------
+py_test(
+    name = "torch_compile_inference_bm",
+    main = "benchmarks/torch_compile/run_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
+    size = "small",
+    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "torch_compile_ppo_with_inference",
+    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
+    size = "medium",
+    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
+    args = ["--smoke-test"]
+)
+
+
+# --------------------------------------------------------------------
 # Algorithms learning regression tests.
 #
 # Tag: learning_tests
@@ -298,6 +324,16 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
+py_test(
+    name = "learning_tests_stateless_cartpole_appo_vtrace",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -3710,7 +3746,7 @@ py_test(
 )
 
 # Taking out this test for now: Mixed torch- and tf- policies within the same
-# Algorothm never really worked.
+# Algorithm never really worked.
 # py_test(
 #     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
 #     main = "examples/multi_agent_two_trainers.py",
