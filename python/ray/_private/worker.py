@@ -58,6 +58,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._raylet import StreamingObjectRefGenerator
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -2464,7 +2465,7 @@ def get(
     with profiling.profile("ray.get"):
         # TODO(sang): Should make StreamingObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+        if isinstance(object_refs, StreamingObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2606,8 +2607,9 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of object refs for objects that may
-            or may not be ready. Note that these IDs must be unique.
+        object_refs: List of :class:`~ObjectRefs` or
+            :class:`~StreamingObjectRefGenerators` for objects that may or may
+            not be ready. Note that these must be unique.
         num_returns: The number of object refs that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
@@ -2638,14 +2640,20 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef):
+    if isinstance(object_refs, ObjectRef) or isinstance(
+        object_refs, StreamingObjectRefGenerator
+    ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
+            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
+            f"{object_refs}"
         )
 
     if not isinstance(object_refs, list):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, " f"got {type(object_refs)}"
+            "wait() expected a list of ray.ObjectRef or "
+            "ray.StreamingObjectRefGenerator, "
+            f"got {type(object_refs)}"
         )
 
     if timeout is not None and timeout < 0:
@@ -2654,13 +2662,16 @@ def wait(
         )
 
     for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef):
+        if not isinstance(object_ref, ObjectRef) and not isinstance(
+            object_ref, StreamingObjectRefGenerator
+        ):
             raise TypeError(
-                "wait() expected a list of ray.ObjectRef, "
+                "wait() expected a list of ray.ObjectRef or "
+                "ray.StreamingObjectRefGenerator, "
                 f"got list containing {type(object_ref)}"
             )
-
     worker.check_connected()
+
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
         # TODO(rkn): This is a temporary workaround for

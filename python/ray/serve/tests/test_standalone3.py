@@ -20,6 +20,7 @@ from ray._private.test_utils import (
 from ray.cluster_utils import AutoscalingCluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     SERVE_DEFAULT_APP_NAME,
 )
@@ -161,6 +162,10 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     indirect=True,
 )
 @pytest.mark.parametrize("crash", [True, False])
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="No retries w/ new behavior.",
+)
 def test_http_request_number_of_retries(ray_instance, crash):
     """Test HTTP proxy retry requests."""
 
