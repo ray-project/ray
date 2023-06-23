@@ -183,7 +183,6 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
-    "ray-references/api/ray-observability/state/doc/ray.*",
     "cluster/running-applications/doc/ray.*",
 ]
 
