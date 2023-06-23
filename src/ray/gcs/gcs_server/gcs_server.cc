@@ -265,7 +265,7 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_node_manager_ = std::make_shared<GcsNodeManager>(
+  gcs_node_manager_ = std::make_unique<GcsNodeManager>(
       gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
@@ -630,7 +630,7 @@ void GcsServer::InitGcsTaskManager() {
 
 void GcsServer::InitMonitorServer() {
   monitor_server_ = std::make_unique<GcsMonitorServer>(
-      gcs_node_manager_,
+      *gcs_node_manager_,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       gcs_resource_manager_,
       gcs_placement_group_manager_);
