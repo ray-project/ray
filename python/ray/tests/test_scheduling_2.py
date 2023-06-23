@@ -472,6 +472,29 @@ def test_node_affinity_scheduling_strategy_spill_on_unavailable(ray_start_cluste
     assert target_node_id != soft_node_id
 
 
+def test_node_affinity_scheduling_strategy_fail_on_unavailable(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init(address=cluster.address)
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def get_node_id(self):
+            return ray.get_runtime_context().get_node_id()
+
+    a1 = Actor.remote()
+    target_node_id = ray.get(a1.get_node_id.remote())
+
+    a2 = Actor.options(
+        scheduling_strategy=NodeAffinitySchedulingStrategy(
+            target_node_id, soft=False, _fail_on_unavailable=True
+        )
+    ).remote()
+
+    with pytest.raises(ray.exceptions.ActorUnschedulableError):
+        ray.get(a2.get_node_id.remote())
+
+
 @pytest.mark.parametrize("connect_to_client", [True, False])
 def test_spread_scheduling_strategy(ray_start_cluster, connect_to_client):
     cluster = ray_start_cluster

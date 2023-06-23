@@ -178,6 +178,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         void set_node_id(const c_string& node_id)
         void set_soft(c_bool soft)
         void set_spill_on_unavailable(c_bool spill_on_unavailable)
+        void set_fail_on_unavailable(c_bool fail_on_unavailable)
     cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
         CSchedulingStrategy()
         void clear_scheduling_strategy()
