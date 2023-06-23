@@ -302,7 +302,9 @@ class JobSupervisor:
             "auto", ray.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
-        logger.warning(f"gene_test _get_driver_env_vars is called: {self._get_driver_runtime_env(resources_specified)}")
+        logger.warning(
+            f"gene_test _get_driver_env_vars is called: {self._get_driver_runtime_env(resources_specified)}"
+        )
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(

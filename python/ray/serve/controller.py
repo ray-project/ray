@@ -834,7 +834,9 @@ def deploy_serve_application(
 
         # Import and build the application.
         try:
-            app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
+            app = call_app_builder_with_args_if_necessary(
+                import_attr(import_path), args
+            )
         except Exception:
             import sys
 

@@ -2159,7 +2159,9 @@ def connect(
 
     worker.ray_debugger_external = ray_debugger_external
 
-    logger.warning(f"gene_test after namespace: {job_config} {namespace} {job_config._client_job} {mode} {job_config.runtime_env}")
+    logger.warning(
+        f"gene_test after namespace: {job_config} {namespace} {job_config._client_job} {mode} {job_config.runtime_env}"
+    )
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
@@ -2187,7 +2189,7 @@ def connect(
         # are the same.
         # When using an interactive shell, there is no script directory.
         code_paths = []
-        if not interactive_mode and not namespace.endswith('dashboard'):
+        if not interactive_mode and not namespace.endswith("dashboard"):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
@@ -2200,7 +2202,9 @@ def connect(
         if job_config._client_job and not job_config._runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.append(current_directory)
-        print(f"gene_test {job_config._client_job} {job_config._runtime_env_has_working_dir()} {code_paths}")
+        print(
+            f"gene_test {job_config._client_job} {job_config._runtime_env_has_working_dir()} {code_paths}"
+        )
         if len(code_paths) != 0:
             job_config._py_driver_sys_path.extend(code_paths)
 
