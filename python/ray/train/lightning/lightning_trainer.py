@@ -336,19 +336,26 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: A dictionary of Datasets to use for training.
+        datasets: A dictionary of Ray Datasets to use for training.
             Use the key "train" to denote which dataset is the training
             dataset and (optionally) key "val" to denote the validation
-            dataset. If a ``preprocessor`` is provided and has not already
-            been fit, it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
-        datasets_iter_config: Configurations for iterating over input Datasets.
-            This configuration is only valid when `datasets` argument is provided to
-            the LightningTrainer. Otherwise, LightningTrainer will use datamodule
-            or dataloaders specified in ``LightningConfig.trainer_init_config``.
-            For valid arguments to pass, please refer to:
+            dataset. Internally, LightningTrainer shards the training dataset
+            across all workers, and creates a PyTorch Dataloader for each shard.
+
+            If a ``preprocessor`` is provided, all datasets will be
+            transformed by it. If the ``preprocessor`` has not already
+            been fit, it will be fit on the training dataset.
+        datasets_iter_config: Configuration for iterating over the input ray datasets.
+            You can configure the per-device batch size, prefetch batch size, collate
+            function, and more. For valid arguments to pass, please refer to:
             :py:meth:`Dataset.iter_torch_batches
             <ray.data.Dataset.iter_torch_batches>`
+
+            Note that you must specify this configurations if the `datasets` argument
+            is provided to the LightningTrainer. Otherwise, LightningTrainer will use
+            datamodule or dataloaders specified in
+            ``LightningConfig.trainer_init_config``.
+
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -375,6 +382,13 @@ class LightningTrainer(TorchTrainer):
             ptl_ckpt_config=ptl_ckpt_config,
             air_ckpt_config=run_config.checkpoint_config,
         )
+
+        if datasets and not datasets_iter_config:
+            raise RuntimeError(
+                "No `datasets_iter_config` provided for the input `datasets`!"
+                "Please refer to the API of `ray.data.Dataset.iter_torch_batches`"
+                "for all valid arguments."
+            )
 
         # Auto-fill AIR CheckpointConfig from lightning checkpoint config
         if run_config.checkpoint_config == CheckpointConfig():
