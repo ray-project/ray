@@ -14,6 +14,7 @@ from ray_release.result import (
     Result,
 )
 from ray_release.logger import logger
+from ray_release.util import dict_hash
 
 AWS_BUCKET = "ray-ci-results"
 AWS_TEST_KEY = "ray_tests"
@@ -108,6 +109,12 @@ class Test(dict):
         issue = ray_github.get_issue(issue_number)
         return issue.state == "open"
 
+    def is_stable(self) -> bool:
+        """
+        Returns whether this test is stable.
+        """
+        return self.get("stable", True)
+
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.
@@ -125,13 +132,13 @@ class Test(dict):
             return None
         return self["cluster"]["byod"].get("type", "cpu")
 
-    def get_byod_pre_run_cmds(self) -> List[str]:
+    def get_byod_post_build_script(self) -> Optional[str]:
         """
-        Returns the list of pre-run commands for the BYOD cluster.
+        Returns the post-build script for the BYOD cluster.
         """
         if not self.is_byod_cluster():
-            return []
-        return self["cluster"]["byod"].get("pre_run_cmds", [])
+            return None
+        return self["cluster"]["byod"].get("post_build_script")
 
     def get_byod_runtime_env(self) -> Dict[str, str]:
         """
@@ -200,7 +207,7 @@ class Test(dict):
         """
         return self.get("python", ".".join(str(v) for v in DEFAULT_PYTHON_VERSION))
 
-    def get_byod_image_tag(self) -> str:
+    def get_byod_base_image_tag(self) -> str:
         """
         Returns the byod image tag to use for this test.
         """
@@ -223,6 +230,17 @@ class Test(dict):
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"{ray_version}-{python_version}{image_suffix}"
 
+    def get_byod_image_tag(self) -> str:
+        """
+        Returns the byod custom image tag to use for this test.
+        """
+        if not self.require_custom_byod_image():
+            return self.get_byod_base_image_tag()
+        custom_info = {
+            "post_build_script": self.get_byod_post_build_script(),
+        }
+        return f"{self.get_byod_base_image_tag()}-{dict_hash(custom_info)}"
+
     def get_byod_repo(self) -> str:
         """
         Returns the byod repo to use for this test.
@@ -238,7 +256,21 @@ class Test(dict):
         Returns the ray docker image to use for this test.
         """
         ray_project = "ray-ml" if self.get_byod_type() == "gpu" else "ray"
-        return f"rayproject/{ray_project}:{self.get_byod_image_tag()}"
+        return f"rayproject/{ray_project}:{self.get_byod_base_image_tag()}"
+
+    def get_anyscale_base_byod_image(self) -> str:
+        """
+        Returns the anyscale byod image to use for this test.
+        """
+        return (
+            f"{DATAPLANE_ECR}/{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
+        )
+
+    def require_custom_byod_image(self) -> bool:
+        """
+        Returns whether this test requires a custom byod image.
+        """
+        return self.get_byod_post_build_script() is not None
 
     def get_anyscale_byod_image(self) -> str:
         """
