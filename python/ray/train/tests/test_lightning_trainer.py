@@ -198,7 +198,7 @@ def test_trainer_with_categorical_ray_data(ray_start_6_cpus_2_gpus, accelerator)
     assert results.checkpoint
 
 
-def test_trainer_configs():
+def test_trainer_checkpoint_configs():
     num_epochs = 1
     batch_size = 8
     input_dim = 32
@@ -209,9 +209,7 @@ def test_trainer_configs():
 
     config_builder = (
         LightningConfigBuilder()
-        .module(
-            LinearModule, input_dim=input_dim, output_dim=output_dim, strategy="fsdp"
-        )
+        .module(LinearModule, input_dim=input_dim, output_dim=output_dim)
         .trainer(max_epochs=num_epochs, accelerator="gpu")
         .strategy("fsdp")
         .checkpointing(monitor="metric_a", mode="min", save_top_k=3, save_last=True)
@@ -239,11 +237,12 @@ def test_trainer_configs():
     assert air_ckpt_config.checkpoint_score_order == "min"
     assert air_ckpt_config.num_to_keep is None
 
+
+def test_trainer_dataset_iter_config():
     # Test missing datasets_iter_config
     with pytest.raises(RuntimeError, match="No `datasets_iter_config` provided"):
-        trainer = LightningTrainer(
-            lightning_config=config_builder.build(),
-            scaling_config=scaling_config,
+        LightningTrainer(
+            scaling_config=ray.air.ScalingConfig(num_workers=2),
             datasets={"train": ray.data.range(100)},
         )
 

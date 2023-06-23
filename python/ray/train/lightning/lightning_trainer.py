@@ -1,6 +1,7 @@
 import os
 import pytorch_lightning as pl
 
+from copy import deepcopy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 from pytorch_lightning.plugins.environments import ClusterEnvironment
@@ -102,12 +103,12 @@ class LightningConfigBuilder:
     def trainer(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
-        Note that you don't have to specify the `strategy`, `device` and `num_nodes`
-        arguments here, since the ``LightningTrainer`` creates a PyTorch Lightning
-        Strategy object with the configurations specified in the `.strategy()`
-        method. The `device` and `num_nodes` are also configured automatically by the
-        LightningTrainer. If no configuration is specified, it creates a DDPStrategy
-        by default.
+        Note that you don't have to specify the ``strategy``, ``device`` and
+        ``num_nodes`` arguments here, since the ``LightningTrainer`` creates
+        a PyTorch Lightning Strategy object with the configurations specified
+        in the `.strategy()` method. The ``device`` and ``num_nodes`` are also
+        configured automatically by the LightningTrainer. If no configuration
+        is specified, it creates a ``DDPStrategy`` by default.
 
         For ``accelerator``, currently only ``"cpu"`` and ``"gpu"`` are supported.
 
@@ -352,16 +353,17 @@ class LightningTrainer(TorchTrainer):
             The datasets will be transformed by ``preprocessor`` if it is provided.
             If the ``preprocessor`` has not already been fit, it will be fit on the
             training dataset.
+
+            If ``datasets`` is not specified, ``LightningTrainer`` will use datamodule
+            or dataloaders specified in ``LightningConfigBuilder.fit_params`` instead.
         datasets_iter_config: Configuration for iterating over the input ray datasets.
             You can configure the per-device batch size, prefetch batch size, collate
             function, and more. For valid arguments to pass, please refer to:
             :py:meth:`Dataset.iter_torch_batches
             <ray.data.Dataset.iter_torch_batches>`
 
-            Note that you must specify `datasets_iter_config` if the `datasets` argument
-            is provided to the LightningTrainer. Otherwise, LightningTrainer will use
-            datamodule or dataloaders specified in
-            ``LightningConfigBuilder.fit_params``.
+            Note that if you provide a ``datasets`` parameter, you must always specify
+            ``datasets_iter_config`` for it.
 
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
@@ -381,13 +383,13 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        run_config = run_config or RunConfig()
+        run_config = deepcopy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
         if datasets and not datasets_iter_config:
             raise RuntimeError(
                 "No `datasets_iter_config` provided for the input `datasets`!"
-                "Please refer to the API of `ray.data.Dataset.iter_torch_batches`"
+                "Please refer to the API of `ray.data.DataIterator.iter_torch_batches`"
                 "for all valid arguments."
             )
 
