@@ -2688,15 +2688,12 @@ class TestActorReplicaWrapper:
 
 
 @patch.object(DriverDeploymentState, "_get_all_node_ids")
-def test_get_node_ids_with_running_replicas(
-    mock_get_all_node_ids, mock_deployment_state_manager_full
-):
-    """Test get_running_replica_node_ids() and get_node_ids_with_running_replicas() are
-    collecting the correct node ids
+def test_get_active_node_ids(mock_get_all_node_ids, mock_deployment_state_manager_full):
+    """Test get_active_node_ids() are collecting the correct node ids
 
     When there are no running replicas, both methods should return empty results. When
     the replicas are in the RUNNING state, get_running_replica_node_ids() should return
-    a list of all node ids. `get_node_ids_with_running_replicas()` should return a set
+    a list of all node ids. `get_active_node_ids()` should return a set
     of all node ids.
     """
     node_ids = ("node1", "node2", "node2")
@@ -2712,8 +2709,8 @@ def test_get_node_ids_with_running_replicas(
     deployment_state = deployment_state_manager._deployment_states[tag]
     assert updating
 
-    # When the replicas are in the STARTING state, both `get_running_replica_node_ids()`
-    # and `get_node_ids_with_running_replicas()` should returning empty results.
+    # When the replicas are in the STARTING state, `get_active_node_ids()` should
+    # return a set of node ids.
     deployment_state_manager.update()
     check_counts(
         deployment_state,
@@ -2722,17 +2719,17 @@ def test_get_node_ids_with_running_replicas(
         by_state=[(ReplicaState.STARTING, 3)],
     )
     mocked_replicas = deployment_state._replicas.get()
-    assert deployment_state.get_running_replica_node_ids() == set()
-    assert deployment_state_manager.get_node_ids_with_running_replicas() == set()
-
-    # When the replicas are in RUNNING state, `get_running_replica_node_ids()` should
-    # return the same results as `node_ids` in a list.
-    # `get_node_ids_with_running_replicas()` should return a set of `node_ids`.
     for idx, mocked_replica in enumerate(mocked_replicas):
-        mocked_replica._actor.set_ready()
         mocked_replica._actor.set_scheduling_strategy(
             NodeAffinitySchedulingStrategy(node_id=node_ids[idx], soft=True)
         )
+    assert deployment_state.get_active_node_ids() == set(node_ids)
+    assert deployment_state_manager.get_active_node_ids() == set(node_ids)
+
+    # When the replicas are in RUNNING state, `get_active_node_ids()` should
+    # return a set of `node_ids`.
+    for mocked_replica in mocked_replicas:
+        mocked_replica._actor.set_ready()
     deployment_state_manager.update()
     check_counts(
         deployment_state,
@@ -2740,10 +2737,22 @@ def test_get_node_ids_with_running_replicas(
         version=version1,
         by_state=[(ReplicaState.RUNNING, 3)],
     )
-    assert deployment_state.get_running_replica_node_ids() == set(node_ids)
-    assert deployment_state_manager.get_node_ids_with_running_replicas() == set(
-        node_ids
+    assert deployment_state.get_active_node_ids() == set(node_ids)
+    assert deployment_state_manager.get_active_node_ids() == set(node_ids)
+
+    # When the replicas are in the STOPPING state, `get_active_node_ids()` should
+    # return empty set.
+    for _ in mocked_replicas:
+        deployment_state._stop_one_running_replica_for_testing()
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=3,
+        version=version1,
+        by_state=[(ReplicaState.STOPPING, 3)],
     )
+    assert deployment_state.get_active_node_ids() == set()
+    assert deployment_state_manager.get_active_node_ids() == set()
 
 
 if __name__ == "__main__":
