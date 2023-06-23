@@ -290,14 +290,6 @@ py_test(
 )
 
 py_test(
-    name = "test_splitblocks",
-    size = "medium",
-    srcs = ["tests/test_splitblocks.py"],
-    tags = ["team:data", "exclusive"],
-    deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test(
     name = "test_execution_optimizer",
     size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
