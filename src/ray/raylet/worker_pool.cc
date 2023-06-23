@@ -1015,8 +1015,14 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
-    int64_t now = get_time_();
-    idle_of_all_languages_.emplace_back(worker, now);
+    if (found) {
+      // If the worker was just started, then it has been idle "forever". We
+      // should consider it first when choosing which idle workers to kill
+      // because it is cold.
+      idle_of_all_languages_.push_front(std::make_pair(worker, -1));
+    } else {
+      idle_of_all_languages_.emplace_back(worker, get_time_());
+    }
   } else if (!found) {
     RAY_LOG(INFO) << "Worker not returned to the idle pool after being used. This may "
                      "cause a worker leak, worker id:"
@@ -1047,7 +1053,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       KillIdleWorker(idle_worker, it->second);
       it = idle_of_all_languages_.erase(it);
     } else {
-      if (now - it->second >
+      if (it->second == -1 || now - it->second >
           RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
         // The job has not yet finished and the worker has been idle for longer
         // than the timeout.
@@ -1071,7 +1077,7 @@ void WorkerPool::TryKillingIdleWorkers() {
                  << ", num workers desired " << num_desired_idle_workers;
   while (num_killable_idle_workers > num_desired_idle_workers &&
          it != idle_of_all_languages_.end()) {
-    if (now - it->second >
+    if (it->second == -1 || now - it->second >
         RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
