@@ -38,7 +38,7 @@ class LightGBMTrainer(GBDTTrainer):
         `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import ray
 

@@ -33,7 +33,7 @@ class XGBoostTrainer(GBDTTrainer):
         `XGBoost documentation <https://xgboost.readthedocs.io>`__.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import ray
 
