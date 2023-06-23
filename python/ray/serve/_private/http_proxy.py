@@ -71,9 +71,11 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
-        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
-        "future versions."
+        "been deprecated. Please set `request_timeout_s` in your Serve config's "
+        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
+        "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
+        "ema.request_timeout_s"
     )
 
 
@@ -167,7 +169,9 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(self, controller_name: str, request_timeout_s: Optional[float] = None):
+        self.request_timeout_s = request_timeout_s
+
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
@@ -477,14 +481,14 @@ class HTTPProxy:
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
                 _, request_timed_out = await asyncio.wait(
-                    [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                    [object_ref], timeout=self.request_timeout_s
                 )
                 if request_timed_out:
                     logger.info(
-                        "Request didn't finish within "
-                        f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
-                        "with another replica. You can modify this timeout by "
-                        'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                        f"Request didn't finish within {self.request_timeout_s} seconds"
+                        ". Retrying with another replica. You can modify this timeout "
+                        'by setting "request_timeout_s" in your Serve config\'s '
+                        "`http_options` field."
                     )
                     backoff = True
                 else:
@@ -614,6 +618,7 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
+        request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
@@ -642,7 +647,12 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(
+            controller_name=controller_name,
+            request_timeout_s=(
+                request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            ),
+        )
 
         self.wrapped_app = self.app
 
