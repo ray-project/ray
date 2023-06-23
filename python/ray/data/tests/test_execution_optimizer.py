@@ -1442,7 +1442,7 @@ def test_schema_partial_execution(
     # entire Dataset.
     assert ds._plan._in_blocks._num_blocks == 1
     assert str(ds._plan._logical_plan.dag) == (
-        "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
+        "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )
 
 
