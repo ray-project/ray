@@ -217,12 +217,10 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
     async def hi_gen_async():
         yield "first result"
         raise Exception("raised in generator")
-        yield "never reached"
 
     def hi_gen_sync():
         yield "first result"
         raise Exception("raised in generator")
-        yield "never reached"
 
     if use_fastapi:
         app = FastAPI()

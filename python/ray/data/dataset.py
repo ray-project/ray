@@ -346,7 +346,6 @@ class Dataset:
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
 
@@ -481,7 +480,7 @@ class Dataset:
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Dataset(num_blocks=..., num_rows=1, schema={item: int64})
+            +- Dataset(num_blocks=1, num_rows=1, schema={item: int64})
 
 
         Args:
@@ -754,7 +753,7 @@ class Dataset:
             >>> ds
             MapBatches(<lambda>)
             +- Dataset(
-                  num_blocks=...,
+                  num_blocks=10,
                   num_rows=10,
                   schema={col1: int64, col2: int64, col3: int64}
                )
@@ -831,7 +830,6 @@ class Dataset:
                 :meth:`~Dataset.map_batches` instead.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
 
@@ -889,7 +887,6 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_filter_fn()
 
@@ -1701,7 +1698,7 @@ class Dataset:
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
             Aggregate
-            +- Dataset(num_blocks=..., num_rows=100, schema={A: int64, B: int64})
+            +- Dataset(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1719,6 +1716,35 @@ class Dataset:
             _validate_key_fn(self.schema(fetch_if_missing=True), key)
 
         return GroupedData(self, key)
+
+    def distinct(self) -> "Dataset":
+        """Remove duplicate rows from the :class:`~ray.data.Dataset`.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
+            >>> ds.distinct().take_all()
+            [{'item': 1}, {'item': 2}, {'item': 3}]
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        .. note:: Currently distinct only supports
+            :class:`~ray.data.Dataset` with one single column.
+
+        Returns:
+            A new :class:`~ray.data.Dataset` with distinct rows.
+        """
+        columns = self.columns(fetch_if_missing=True)
+        assert columns is not None
+        if len(columns) > 1:
+            # TODO(hchen): Remove this limitation once groupby supports
+            # multiple columns.
+            raise NotImplementedError(
+                "`distinct` currently only supports Datasets with one single column, "
+                "please apply `select_columns` before `distinct`."
+            )
+        column = columns[0]
+        return self.groupby(column).count().select_columns([column])
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
@@ -3290,7 +3316,7 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_blocks=...,
+               num_blocks=1,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -3321,7 +3347,7 @@ class Dataset:
             >>> ds
             Concatenator
             +- Dataset(
-                  num_blocks=...,
+                  num_blocks=1,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,
@@ -4403,14 +4429,6 @@ class Dataset:
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
-
-    def _warn_slow(self):
-        if ray.util.log_once("dataset_slow_warned"):
-            logger.warning(
-                "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. If you're using a vectorized transformation, "
-                "consider using `.map_batches()` instead."
-            )
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
