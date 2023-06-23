@@ -456,7 +456,7 @@ def _render_table_item(
     elif isinstance(item, dict):
         flattened = flatten_dict(item)
         for k, v in sorted(flattened.items()):
-            yield key + "/" + k, _max_len(v)
+            yield key + "/" + str(k), _max_len(v)
 
     else:
         yield key, _max_len(item, 20)
