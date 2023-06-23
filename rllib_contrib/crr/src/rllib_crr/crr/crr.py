@@ -91,6 +91,8 @@ class CRRConfig(AlgorithmConfig):
         tau: Optional[float] = NotProvided,
         td_error_loss_fn: Optional[str] = NotProvided,
         categorical_distribution_temperature: Optional[float] = NotProvided,
+        actor_lr: Optional[float] = NotProvided,
+        critic_lr: Optional[float] = NotProvided,
         **kwargs,
     ) -> "CRRConfig":
 
@@ -146,6 +148,8 @@ class CRRConfig(AlgorithmConfig):
                 by Categorical action distribution. A valid temperature is in the range
                 of [0, 1]. Note that this mostly affects evaluation since critic error
                 uses selected action for return calculation.
+            actor_lr: Learning rate for the actor.
+            critic_lr: Learning rate for the critic.
             **kwargs: forward compatibility kwargs
 
         Returns:
@@ -183,6 +187,10 @@ class CRRConfig(AlgorithmConfig):
             self.categorical_distribution_temperature = (
                 categorical_distribution_temperature
             )
+        if actor_lr is not NotProvided:
+            self.actor_lr = actor_lr
+        if critic_lr is not NotProvided:
+            self.critic_lr = critic_lr
 
         return self
 
