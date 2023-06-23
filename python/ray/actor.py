@@ -1405,7 +1405,6 @@ def exit_actor():
         exit.is_ray_terminate = True
         exit.ray_terminate_msg = "exit_actor() is called."
         raise exit
-        assert False, "This process should have terminated."
     else:
         raise TypeError(
             "exit_actor API is called on a non-actor worker, "
