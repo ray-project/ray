@@ -377,18 +377,18 @@ class LightningTrainer(TorchTrainer):
         run_config = run_config or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
-        ptl_ckpt_config = lightning_config["_model_checkpoint_config"]
-        self._check_checkpoint_configs(
-            ptl_ckpt_config=ptl_ckpt_config,
-            air_ckpt_config=run_config.checkpoint_config,
-        )
-
         if datasets and not datasets_iter_config:
             raise RuntimeError(
                 "No `datasets_iter_config` provided for the input `datasets`!"
                 "Please refer to the API of `ray.data.Dataset.iter_torch_batches`"
                 "for all valid arguments."
             )
+
+        ptl_ckpt_config = lightning_config["_model_checkpoint_config"]
+        self._check_checkpoint_configs(
+            ptl_ckpt_config=ptl_ckpt_config,
+            air_ckpt_config=run_config.checkpoint_config,
+        )
 
         # Auto-fill AIR CheckpointConfig from lightning checkpoint config
         if run_config.checkpoint_config == CheckpointConfig():
