@@ -562,7 +562,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
         self.assertEqual(len(grouped["y"]), 1)
 
     def testGetStep(self):
-        test = Test(
+        test = MockTest(
             {
                 "name": "test",
                 "frequency": "nightly",
@@ -691,7 +691,7 @@ class BuildkiteSettingsTest(unittest.TestCase):
             with open(cluster_config_smoke_path, "w") as fp:
                 yaml.safe_dump(cluster_config_smoke, fp)
 
-            test = Test(
+            test = MockTest(
                 {
                     "name": "test_1",
                     "cluster": {"cluster_compute": cluster_config_full_path},
@@ -707,14 +707,14 @@ class BuildkiteSettingsTest(unittest.TestCase):
             self.assertEquals(step["concurrency_group"], "small")
 
     def testStepQueueClient(self):
-        test_regular = Test(
+        test_regular = MockTest(
             {
                 "name": "test",
                 "frequency": "nightly",
                 "run": {"script": "test_script.py"},
             }
         )
-        test_client = Test(
+        test_client = MockTest(
             {
                 "name": "test",
                 "frequency": "nightly",
