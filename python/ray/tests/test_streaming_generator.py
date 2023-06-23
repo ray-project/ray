@@ -50,6 +50,9 @@ class MockedWorker:
         """
         self.core_worker = None
 
+    def check_connected(self):
+        return True
+
 
 @pytest.fixture
 def mocked_worker():
