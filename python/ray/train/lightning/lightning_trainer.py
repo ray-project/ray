@@ -220,7 +220,7 @@ class LightningTrainer(TorchTrainer):
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``LightningConfigBuilder.module()``.
 
-    For data ingestion, the LightningTrainer will then either convert the Dataset
+    For data ingestion, the LightningTrainer will then either convert the Ray Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
     datamodule or dataloaders if provided by users.
 
@@ -384,17 +384,10 @@ class LightningTrainer(TorchTrainer):
                 "for all valid arguments."
             )
 
-        ptl_ckpt_config = lightning_config["_model_checkpoint_config"]
-        self._check_checkpoint_configs(
-            ptl_ckpt_config=ptl_ckpt_config,
+        run_config.checkpoint_config = self._unify_checkpoint_configs(
+            ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
             air_ckpt_config=run_config.checkpoint_config,
         )
-
-        # Auto-fill AIR CheckpointConfig from lightning checkpoint config
-        if run_config.checkpoint_config == CheckpointConfig():
-            run_config.checkpoint_config = self._build_checkpoint_config(
-                ptl_ckpt_config=ptl_ckpt_config
-            )
 
         # Disable strict checking to prevent validation errors against metrics that
         # are reported at different frequencies. This works here because the Trainer
@@ -420,10 +413,11 @@ class LightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def _check_checkpoint_configs(
+    def _unify_checkpoint_configs(
         self, ptl_ckpt_config: Dict, air_ckpt_config: CheckpointConfig
-    ):
-        """Check if configs are set correctly"""
+    ) -> CheckpointConfig:
+        """Unify the Lightning checkpointing config and the AIR CheckpointConfig."""
+
         ptl_ckpt_metric = ptl_ckpt_config.get("monitor", None)
         air_ckpt_metric = air_ckpt_config.checkpoint_score_attribute
 
@@ -445,13 +439,16 @@ class LightningTrainer(TorchTrainer):
                 "through `LightningConfigBuilder.checkpointing()`."
             )
 
-    def _build_checkpoint_config(self, ptl_ckpt_config: Dict) -> CheckpointConfig:
-        save_top_k = ptl_ckpt_config.get("save_top_k", 1)
-        return CheckpointConfig(
-            num_to_keep=None if save_top_k == -1 else save_top_k,
-            checkpoint_score_attribute=ptl_ckpt_config.get("monitor", None),
-            checkpoint_score_order=ptl_ckpt_config.get("mode", "min"),
-        )
+        # Auto-fill the AIR CheckpointConfig if the user didn't specify it.
+        if air_ckpt_config == CheckpointConfig():
+            save_top_k = ptl_ckpt_config.get("save_top_k", 1)
+            return CheckpointConfig(
+                num_to_keep=None if save_top_k == -1 else save_top_k,
+                checkpoint_score_attribute=ptl_ckpt_config.get("monitor", None),
+                checkpoint_score_order=ptl_ckpt_config.get("mode", "min"),
+            )
+        else:
+            return air_ckpt_config
 
     @PublicAPI(stability="alpha")
     @classmethod
