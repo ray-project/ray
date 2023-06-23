@@ -1,6 +1,6 @@
 # Alpha Star (Asynchronous Advantage Actor-Critic)
 
-[Alpha Star](https://www.deepmind.com/blog/alphastar-grandmaster-level-in-starcraft-ii-using-multi-agent-reinforcement-learning) 
+[Alpha Star](https://www.deepmind.com/blog/alphastar-grandmaster-level-in-starcraft-ii-using-multi-agent-reinforcement-learning) Implementation of Deepmind's Alpha Star using RLlib.
 
 
 ## Installation
