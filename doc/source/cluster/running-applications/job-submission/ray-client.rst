@@ -1,7 +1,7 @@
 .. _ray-client-ref:
 
-Ray Client: Interactive Development
-===================================
+Ray Client
+==========
 
 **What is the Ray Client?**
 
@@ -26,8 +26,12 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    do_work.remote(2)
    #....
 
+
 When to use Ray Client
 ----------------------
+
+.. note::
+   Ray Client has architectural limitations and may not work as expected when using Ray for ML workloads (like Ray Tune or Ray Train). Use :ref:`Ray Jobs API<jobs-overview>` for interactive development on ML projects.
 
 Ray Client can be used when you want to connect an interactive Python shell to a **remote** cluster.
 
