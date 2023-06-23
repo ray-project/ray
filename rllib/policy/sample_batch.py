@@ -1149,7 +1149,17 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
-            data = tree.map_structure(lambda value: value[start:stop], self)
+            def map_(value):
+                if isinstance(value, np.ndarray):
+                    return value[start:stop]
+                else:
+                    # Since infos should be stored as lists and not arrays,
+                    # we return the values here and slice them separately
+                    # TODO(Artur): Clean this hack up.
+                    return value
+
+            data = tree.map_structure(map_, self)
+
             return SampleBatch(
                 data,
                 _is_training=self.is_training,
