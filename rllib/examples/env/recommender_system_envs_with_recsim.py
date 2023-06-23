@@ -1,4 +1,4 @@
-"""Examples for RecSim envs ready to be used by RLlib Trainers
+"""Examples for RecSim envs ready to be used by RLlib Algorithms.
 
 RecSim is a configurable recommender systems simulation platform.
 Source: https://github.com/google-research/recsim
