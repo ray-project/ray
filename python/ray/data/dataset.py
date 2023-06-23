@@ -1730,7 +1730,8 @@ class Dataset:
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
-        .. note:: Currently distinct only supports :class:`~ray.data.Dataset`s with one single column.
+        .. note:: Currently distinct only supports
+            :class:`~ray.data.Dataset` with one single column.
 
         Returns:
             A new :class:`~ray.data.Dataset` with distinct rows.
