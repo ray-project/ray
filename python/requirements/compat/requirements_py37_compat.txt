@@ -1,0 +1,24 @@
+# Latest ML dependencies available for Python 3.7
+# This is the "upper bound" for requirements available
+# for Python 3.7. The "lower bound" is defined in
+# requirements_legacy_compat.txt.
+
+# ML libraries
+torch==1.13.0
+tensorflow==2.11.0
+tensorflow-probability==0.19.0
+keras==2.11.0
+
+# Torch addons
+torchvision==0.14.0
+
+pytorch-lightning==1.6.5
+
+# Upstream libraries
+lightgbm_ray==0.1.8
+xgboost_ray==0.1.15
+
+# Datasets
+pyarrow==6.0.1
+
+ray[tune,data]

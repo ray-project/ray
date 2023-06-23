@@ -14,7 +14,7 @@ from ray._raylet import GcsClient
 from ray.serve.config import HTTPOptions, DeploymentMode
 from ray.serve._private.constants import (
     ASYNC_CONCURRENCY,
-    DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+    PROXY_HEALTH_CHECK_TIMEOUT_S,
     SERVE_LOGGER_NAME,
     SERVE_PROXY_NAME,
     SERVE_NAMESPACE,
@@ -181,16 +181,24 @@ class HTTPProxyState:
                     self.try_update_status(HTTPProxyStatus.UNHEALTHY)
             elif (
                 time.time() - self._last_health_check_time
-                > DEFAULT_HEALTH_CHECK_TIMEOUT_S
+                > PROXY_HEALTH_CHECK_TIMEOUT_S
             ):
                 # Health check hasn't returned and the timeout is up, consider it
                 # failed.
                 self._health_check_obj_ref = None
                 logger.warning(
                     "Didn't receive health check response for HTTP proxy "
-                    f"{self._node_id} after {DEFAULT_HEALTH_CHECK_TIMEOUT_S}s"
+                    f"{self._node_id} after {PROXY_HEALTH_CHECK_TIMEOUT_S}s"
                 )
                 self.try_update_status(HTTPProxyStatus.UNHEALTHY)
+            else:
+                # This return is important to not trigger a new health check when
+                # there is an in progress health check. When the health check object
+                # is still in progress and before the timeout is triggered, we will
+                # do an early return here to signal the completion of this update call
+                # and to prevent another health check object from recreated in the
+                # code below.
+                return
 
         # If there's no active in-progress health check and it has been more than 10
         # seconds since the last health check, perform another health check.
@@ -324,7 +332,6 @@ class HTTPState:
             lifetime="detached" if self._detached else None,
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=-1,
-            max_task_retries=-1,
             scheduling_strategy=NodeAffinitySchedulingStrategy(node_id, soft=False),
         ).remote(
             self._config.host,

@@ -62,7 +62,8 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
-      std::function<bool(void)> get_pull_manager_at_capacity = nullptr);
+      std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
+      const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
   /// Schedule the specified resources to the cluster nodes.
   ///

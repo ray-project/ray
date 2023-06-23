@@ -11,7 +11,10 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
-from ray_release.byod.build import build_anyscale_byod_images
+from ray_release.byod.build import (
+    build_anyscale_base_byod_images,
+    build_anyscale_custom_byod_image,
+)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
@@ -92,9 +95,7 @@ def main(
         # the modules are reloaded and use the newest files, instead of
         # old ones, which may not have the changes introduced on the
         # checked out branch.
-        cmd = [sys.executable, __file__, "--no-clone-repo"]
-        if test_collection_file:
-            cmd += ["--test-collection-file", test_collection_file]
+        cmd = _get_rerun_cmd(test_collection_file, run_jailed_tests)
         subprocess.run(cmd, capture_output=False, check=True)
         return
     elif repo:
@@ -152,8 +153,12 @@ def main(
             "Empty test collection. The selected frequency or filter did "
             "not return any tests to run. Adjust your filters."
         )
-    logger.info("Build anyscale BYOD images")
-    build_anyscale_byod_images([test for test, _ in filtered_tests])
+    tests = [test for test, _ in filtered_tests]
+    logger.info("Build anyscale base BYOD images")
+    build_anyscale_base_byod_images(tests)
+    logger.info("Build anyscale custom BYOD images")
+    for test in tests:
+        build_anyscale_custom_byod_image(test)
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
@@ -240,6 +245,18 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
+
+
+def _get_rerun_cmd(
+    test_collection_file: Optional[str] = None,
+    run_jailed_tests: bool = False,
+):
+    cmd = [sys.executable, __file__, "--no-clone-repo"]
+    if test_collection_file:
+        cmd += ["--test-collection-file", test_collection_file]
+    if run_jailed_tests:
+        cmd += ["--run-jailed-tests"]
+    return cmd
 
 
 if __name__ == "__main__":
