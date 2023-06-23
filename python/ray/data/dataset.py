@@ -2228,7 +2228,11 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
         ctx = DataContext.get_current()
-        if ctx.optimizer_enabled and isinstance(self._plan._logical_plan, LogicalPlan):
+        if (
+            ctx.optimizer_enabled
+            and not self._plan._generated_from_pipeline
+            and isinstance(self._plan._logical_plan, LogicalPlan)
+        ):
             # If we are using the new execution plan optimizer, lazily
             # execute only the first block when getting the schema.
             # We achieve this by creating a copy of the logical plan,
