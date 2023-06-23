@@ -205,7 +205,7 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-harvest-interval.patch",
             "@com_github_ray_project_ray//thirdparty/patches:opencensus-cpp-shutdown-api.patch",
         ],
-        patch_args = ["-p1"],        
+        patch_args = ["-p1"],
     )
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
@@ -239,7 +239,7 @@ def ray_deps_setup():
             "@com_github_ray_project_ray//thirdparty/patches:grpc-python.patch",
         ],
     )
-    
+
     http_archive(
         name = "openssl",
         strip_prefix = "openssl-1.1.1f",
@@ -249,7 +249,7 @@ def ray_deps_setup():
         ],
         build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
     )
-    
+
     http_archive(
         name = "rules_foreign_cc",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
@@ -340,8 +340,8 @@ def ray_deps_setup():
 
         # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
         # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
-        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
-        strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
+        url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/3dddf205a1f5cde20faf2444c1757abe0564ff4c.tar.gz",
+        strip_prefix = "bazel-compile-commands-extractor-3dddf205a1f5cde20faf2444c1757abe0564ff4c",
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
-        sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
+        sha256 = "3cd0e49f0f4a6d406c1d74b53b7616f5e24f5fd319eafc1bf8eee6e14124d115",
     )

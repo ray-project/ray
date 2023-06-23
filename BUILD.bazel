@@ -13,6 +13,7 @@ load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace")
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -2897,4 +2898,11 @@ genrule(
         echo "$${PWD}" > $@
     """,
     local = 1,
+)
+
+# Run `bazel run //:refresh_compile_commands` to generate the `compile_commands.json` file.
+refresh_compile_commands(
+    name = "refresh_compile_commands",
+    # targets should include all C++ code.
+    targets = ["//:ray_pkg"],
 )

@@ -26,7 +26,7 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 versions.check(minimum_bazel_version = "5.4.0")
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
-# Just run `bazel run @hedron_compile_commands//:refresh_all`
+# Just run `bazel run //:refresh_compile_commands`
 load("@hedron_compile_commands//:workspace_setup.bzl", "hedron_compile_commands_setup")
 
 hedron_compile_commands_setup()
