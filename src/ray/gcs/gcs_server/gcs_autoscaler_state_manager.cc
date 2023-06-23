@@ -49,19 +49,6 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
-void GcsAutoscalerStateManager::HandleGetClusterStatus(
-    rpc::autoscaler::GetClusterStatusRequest request,
-    rpc::autoscaler::GetClusterStatusReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto ray_resource_state = reply->mutable_cluster_resource_state();
-  MakeClusterResourceStateInternal(ray_resource_state);
-
-  if (autoscaling_state_) {
-    reply->mutable_autoscaling_state()->CopyFrom(*autoscaling_state_);
-  }
-  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-}
-
 void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::autoscaler::ReportAutoscalingStateRequest request,
     rpc::autoscaler::ReportAutoscalingStateReply *reply,

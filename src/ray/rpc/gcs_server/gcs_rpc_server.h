@@ -447,10 +447,6 @@ class AutoscalerStateServiceHandler {
       RequestClusterResourceConstraintRequest request,
       RequestClusterResourceConstraintReply *reply,
       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetClusterStatus(GetClusterStatusRequest request,
-                                     GetClusterStatusReply *reply,
-                                     SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `AutoscalerStateService`.
@@ -472,7 +468,6 @@ class AutoscalerStateGrpcService : public GrpcService {
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterResourceState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportAutoscalingState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(RequestClusterResourceConstraint);
-    AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterStatus);
   }
 
  private:

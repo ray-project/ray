@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List 
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -56,17 +56,3 @@ def request_cluster_resources(to_request: List[dict], timeout: int = DEFAULT_GRP
     )
 
     stub.RequestClusterResourceConstraint(request, timeout=timeout)
-
-
-def get_cluster_status(gcs_address: Optional[str]=None, timeout: int = DEFAULT_GRPC_AUTOSCALER_TIMEOUT_S) -> RayClusterState:
-
-    stub = _autoscaler_state_service_stub(gcs_address)
-
-    request = autoscaler_pb2.GetClusterStatusRequest()
-    
-    reply = stub.GetClusterStatus(request, timeout=timeout)
-
-    # Parse to RayClusterState
-    print(reply)
-    cluster_state = RayClusterState()
-    return cluster_state

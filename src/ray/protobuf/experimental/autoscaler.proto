@@ -212,15 +212,6 @@ message RequestClusterResourceConstraintRequest {
 
 message RequestClusterResourceConstraintReply {}
 
-message GetClusterStatusRequest {}
-
-message GetClusterStatusReply {
-  // The current autoscaler state.
-  AutoscalingState autoscaling_state = 1;
-  // The current cluster resource state.
-  ClusterResourceState cluster_resource_state = 2;
-}
-
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
@@ -230,7 +221,4 @@ service AutoscalerStateService {
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
       returns (RequestClusterResourceConstraintReply);
-  // Obtain the current cluster state, including the autoscaler state (e.g. pending
-  // requests), and the cluster resource state (e.g. ray node states).
-  rpc GetClusterStatus(GetClusterStatusRequest) returns (GetClusterStatusReply);
 }
