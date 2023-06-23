@@ -360,8 +360,9 @@ install_pip_packages() {
     mkdir -p /root/.mujoco
     mv mujoco210-linux-x86_64.tar.gz /root/.mujoco/.
     (cd /root/.mujoco && tar -xf /root/.mujoco/mujoco210-linux-x86_64.tar.gz)
-    echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
-    source /root/.bashrc
+    #echo 'export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-}:/root/.mujoco/mujoco210/bin' >> /root/.bashrc
+    #source /root/.bashrc
+    export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/root/.mujoco/mujoco210/bin
     #export LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin
   fi
 
