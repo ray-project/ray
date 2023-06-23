@@ -103,7 +103,8 @@
 					"type": "string",
 					"enum": [
 						"cpu",
-						"gpu"
+						"gpu",
+						"cu118"
 					]
 				},
 				"post_build_script":{
