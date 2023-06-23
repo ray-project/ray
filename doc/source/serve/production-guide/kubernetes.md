@@ -252,7 +252,7 @@ To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutosca
 
 
 :::{note}
-In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster]((https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster)). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
+In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
 :::
 
 ## Next Steps
