@@ -17,7 +17,13 @@ import numpy as np
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    DataBatch,
+    _apply_strict_mode_batch_format,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
@@ -48,9 +54,9 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_blocks=5, num_rows=5, schema={id: int64})
+        Dataset(num_blocks=..., num_rows=5, schema={id: int64})
         >>> ds.iterator()
-        DataIterator(Dataset(num_blocks=5, num_rows=5, schema={id: int64}))
+        DataIterator(Dataset(num_blocks=..., num_rows=5, schema={id: int64}))
 
     .. tip::
         For debugging purposes, use
@@ -150,6 +156,7 @@ class DataIterator(abc.ABC):
         time_start = time.perf_counter()
 
         block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
+        batch_format = _apply_strict_mode_batch_format(batch_format)
         if use_legacy:
             # Legacy iter_batches does not use metadata.
             def drop_metadata(block_iterator):
@@ -329,7 +336,6 @@ class DataIterator(abc.ABC):
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -406,7 +412,6 @@ class DataIterator(abc.ABC):
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -635,7 +640,7 @@ class DataIterator(abc.ABC):
             ... )
             >>> it = ds.iterator(); it
             DataIterator(Dataset(
-               num_blocks=1,
+               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -666,7 +671,7 @@ class DataIterator(abc.ABC):
             >>> it
             DataIterator(Concatenator
             +- Dataset(
-                  num_blocks=1,
+                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,
@@ -765,7 +770,6 @@ class DataIterator(abc.ABC):
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
-                batch_format="numpy",
             ):
                 assert isinstance(batch, dict)
                 features = convert_batch_to_tensors(

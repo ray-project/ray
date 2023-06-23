@@ -290,6 +290,14 @@ py_test(
 )
 
 py_test(
+    name = "test_splitblocks",
+    size = "medium",
+    srcs = ["tests/test_splitblocks.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_execution_optimizer",
     size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
@@ -374,6 +382,14 @@ py_test(
     name = "test_pipeline_nohang",
     size = "medium",
     srcs = ["tests/test_pipeline_nohang.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_progress_bar",
+    size = "small",
+    srcs = ["tests/test_progress_bar.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
