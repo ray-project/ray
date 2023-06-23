@@ -1064,10 +1064,14 @@ void WorkerPool::TryKillingIdleWorkers() {
     }
   }
 
-  // Iterate through the list and try to kill enough workers so that we are at
-  // the soft limit.
-  auto it = idle_of_all_languages_.begin();
+  // Compute the soft limit for the number of idle workers to keep around.
+  // This assumes the common case where each task requires 1 CPU.
   const int64_t num_cpus_available = get_num_cpus_available_();
+  // If there was a request to prestart some workers to fulfill a task backlog,
+  // we pick the max between the number of prestarted workers and the available
+  // CPUs. This is to ensure that we don't immediately churn prestarted
+  // workers, if the available number of CPUs has decreased since the prestart
+  // request.
   const int64_t num_desired_idle_workers =
       std::max(num_cpus_available, num_workers_to_prestart_);
   RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
@@ -1076,6 +1080,10 @@ void WorkerPool::TryKillingIdleWorkers() {
                  << ", num CPUs available: " << num_cpus_available
                  << ", num workers to prestart: " << num_workers_to_prestart_
                  << ", num workers desired " << num_desired_idle_workers;
+
+  // Iterate through the list and try to kill enough workers so that we are at
+  // the soft limit.
+  auto it = idle_of_all_languages_.begin();
   while (num_killable_idle_workers > num_desired_idle_workers &&
          it != idle_of_all_languages_.end()) {
     if (it->second == -1 ||
@@ -1087,8 +1095,6 @@ void WorkerPool::TryKillingIdleWorkers() {
                      << it->first->GetProcess().GetId();
       KillIdleWorker(it->first, it->second);
       it = idle_of_all_languages_.erase(it);
-      // The job has not yet finished and the worker has been idle for longer
-      // than the timeout.
       num_killable_idle_workers--;
     } else {
       it++;

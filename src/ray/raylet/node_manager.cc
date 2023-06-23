@@ -137,7 +137,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           io_service,
           self_node_id_,
           config.node_manager_address,
-          [this]() {
+          [this, config]() {
             // Callback to determine the maximum number of idle workers to keep
             // around.
             if (config.num_workers_soft_limit >= 0) {
