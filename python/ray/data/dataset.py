@@ -1741,7 +1741,7 @@ class Dataset:
             # TODO(hchen): Remove this limitation once groupby supports
             # multiple columns.
             raise NotImplementedError(
-                "`distinct` currently only suports Datasets with one single column, "
+                "`distinct` currently only supports Datasets with one single column, "
                 "please apply `select_columns` before `distinct`."
             )
         column = columns[0]
