@@ -2232,15 +2232,15 @@ class Dataset:
         ):
             # If we are using the new execution plan optimizer, lazily
             # execute only the first block when getting the schema.
-            # We achieve this by creating a copy of the logical plan,
-            # inserting a Limit[1] operator at the end, and
-            # executing the new plan on a copy of the Dataset.
-            plan_copy = copy.copy(self._plan._logical_plan)
-            plan_with_limit = LogicalPlan(Limit(plan_copy.dag, 1))
+            # We achieve this by creating a copy of the plan,
+            # appending a Limit[1] operator in its logical plan,
+            # then executing the new plan.
+            logical_plan_copy = copy.copy(self._plan._logical_plan)
+            logical_plan_with_limit = LogicalPlan(Limit(logical_plan_copy.dag, 1))
 
-            ds_copy = Dataset.copy(self)
-            ds_copy._plan.link_logical_plan(plan_with_limit)
-            base_schema = ds_copy._plan.schema(fetch_if_missing=fetch_if_missing)
+            plan_copy = self._plan.copy()
+            plan_copy.link_logical_plan(logical_plan_with_limit)
+            base_schema = plan_copy.schema(fetch_if_missing=fetch_if_missing)
         else:
             base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
