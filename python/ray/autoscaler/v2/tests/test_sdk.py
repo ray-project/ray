@@ -10,8 +10,9 @@ from ray._private.test_utils import wait_for_condition
 from ray.autoscaler.v2.sdk import (
     _autoscaler_state_service_stub,
     request_cluster_resources,
+    get_cluster_status,
 )
-from ray.autoscaler.v2.tests.util import get_cluster_resource_state
+from ray.autoscaler.v2.tests.util import get_cluster_resource_state, report_autoscaling_state
 from ray.core.generated.experimental.autoscaler_pb2 import GetClusterResourceStateReply
 
 
@@ -61,6 +62,20 @@ def test_request_cluster_resources_basic(shutdown_only):
         return True
 
     wait_for_condition(verify)
+
+
+def test_ray_status_basic(shutdown_only):
+    ray.init(num_cpus=1)
+
+    # Report autoscaling state
+    stub = _autoscaler_state_service_stub()
+    report_autoscaling_state(stub, [{ "instance_type_name": "worker_nodes1", "count": 1, "ray_node_type_name": "worker" }])
+
+    result = get_cluster_status()    
+
+    print(result)
+
+    assert False
 
 
 if __name__ == "__main__":
