@@ -307,6 +307,7 @@ def _setup_redis(request):
 
         for proc in processes:
             proc.process.kill()
+        kill_all_redis_server()
 
 
 @pytest.fixture
