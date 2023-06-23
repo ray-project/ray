@@ -1,0 +1,6 @@
+http_options:
+  request_timeout_s: 0.1
+applications:
+  - name: "app1"
+    import_path: ray.serve.tests.test_config_files.http_option_app_sleeps.sleep_node
+    route_prefix: /app1

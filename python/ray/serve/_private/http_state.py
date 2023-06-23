@@ -340,6 +340,7 @@ class HTTPState:
             controller_name=self._controller_name,
             node_ip_address=node_ip_address,
             http_middlewares=self._config.middlewares,
+            request_timeout_s=self._config.request_timeout_s,
         )
         return proxy
 
