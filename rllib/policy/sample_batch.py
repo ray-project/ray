@@ -1756,24 +1756,3 @@ def convert_ma_batch_to_sample_batch(batch: SampleBatchType) -> SampleBatch:
                 "Load single-agent data instead to resolve this."
             )
     return batch
-
-
-def add_batch_dim(struct, dim_size):
-    """Return the given structure with an additional batch dimension."""
-    if isinstance(struct, Mapping):
-        return tree.map_structure(
-            lambda s: add_batch_dim(s, dim_size),
-            struct,
-        )
-    elif struct is None:
-        return None
-    elif isinstance(struct, np.ndarray):
-        return np.repeat(np.expand_dims(struct, axis=0), axis=0, repeats=dim_size)
-    elif isinstance(struct, torch.Tensor):
-        return torch.repeat_interleave(
-            torch.unsqueeze(struct, dim=0), dim=0, repeats=dim_size
-        )
-    elif isinstance(struct, tf.Tensor):
-        return tf.repeat(tf.expand_dims(struct, axis=0), axis=0, repeats=dim_size)
-    else:
-        raise ValueError("Unsupported type: {}".format(type(struct)))
