@@ -102,6 +102,17 @@ def _update_and_check_proxy_status(state: HTTPProxyState, status: HTTPProxyStatu
     return state.status == status
 
 
+def _update_and_check_http_state(
+    http_state: HTTPState,
+    node_ids: List[str],
+    statuses: List[HTTPProxyStatus],
+    **kwargs,
+):
+    http_state.update(**kwargs)
+    proxy_states = http_state._proxy_states
+    return all([proxy_states[node_ids[idx]].status == statuses[idx] for idx in range(len(node_ids))])
+
+
 def test_node_selection(all_nodes, mock_get_all_node_ids):
     # Test NoServer
     state = _make_http_state(HTTPOptions(location=DeploymentMode.NoServer))
@@ -572,56 +583,56 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed(setup_controller
     assert proxy_state._consecutive_health_check_failures == 0
 
 
-def test_update_draining(mock_get_all_node_ids, setup_controller):
-    """Test _update_draining() method
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
+def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
+    """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
-    worker node http proxy should change to draining.
+    worker node http proxy should change to draining. When update nodes to active, head
+    node http proxy should continue to be healthy while worker node http proxy should
+    be healthy.
     """
-    worker_node_id = "worker-node-id-0"
+    worker_node_id = all_nodes[1][0]
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
 
-    # Setup http proxy for head node
-    state._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(
-        proxy_actor_class=HTTPProxyActor,
-        status=HTTPProxyStatus.HEALTHY,
-        node_id=HEAD_NODE_ID,
-        host="localhost",
-        port=8000,
-        root_path="/",
-        controller_name=SERVE_CONTROLLER_NAME,
-        node_ip_address="foo",
-    )
-    # Setup http proxy for a worker node
-    state._proxy_states[worker_node_id] = _create_http_proxy_state(
-        proxy_actor_class=HTTPProxyActor,
-        status=HTTPProxyStatus.HEALTHY,
-        node_id=worker_node_id,
-        host="localhost",
-        port=8000,
-        root_path="/",
-        controller_name=SERVE_CONTROLLER_NAME,
-        node_ip_address="bar",
-    )
+    for node_id, node_ip_address in all_nodes:
+        state._proxy_states[node_id] = _create_http_proxy_state(
+            proxy_actor_class=HTTPProxyActor,
+            status=HTTPProxyStatus.HEALTHY,
+            node_id=node_id,
+            host="localhost",
+            port=8000,
+            root_path="/",
+            controller_name=SERVE_CONTROLLER_NAME,
+            node_ip_address=node_ip_address,
+        )
 
-    # Update flag for no nodes draining
-    for node_id in [HEAD_NODE_ID, worker_node_id]:
-        proxy = state._proxy_states[node_id]
-        proxy._update_draining(set(HEAD_NODE_ID))
-        proxy.update()
+    # No active nodes
+    active_nodes = set()
 
-    # Head node proxy should continue to be HEALTHY
+    # Head node proxy should continue to be HEALTHY.
+    # Worker node proxy should turn DRAINING.
     wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=state._proxy_states[HEAD_NODE_ID],
-        status=HTTPProxyStatus.HEALTHY,
+        condition_predictor=_update_and_check_http_state,
+        timeout=15,
+        http_state=state,
+        node_ids=[HEAD_NODE_ID, worker_node_id],
+        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING],
+        active_nodes=active_nodes,
     )
 
-    # Worker node proxy should turn DRAINING
+    # All nodes are active
+    active_nodes = set([node_id for node_id, _ in all_nodes])
+
+    # Head node proxy should continue to be HEALTHY.
+    # Worker node proxy should turn HEALTHY.
     wait_for_condition(
-        condition_predictor=_update_and_check_proxy_status,
-        state=state._proxy_states[worker_node_id],
-        status=HTTPProxyStatus.DRAINING,
+        condition_predictor=_update_and_check_http_state,
+        timeout=15,
+        http_state=state,
+        node_ids=[HEAD_NODE_ID, worker_node_id],
+        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.HEALTHY],
+        active_nodes=active_nodes,
     )
 
 

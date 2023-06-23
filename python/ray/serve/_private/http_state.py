@@ -62,14 +62,6 @@ class HTTPProxyState:
             actor_name=self._actor_name,
             status=self._status,
         )
-        self._long_poll_client = LongPollClient(
-            ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
-            {
-                LongPollNamespace.ACTIVE_NODES: self._update_draining,
-            },
-            call_in_event_loop=get_or_create_event_loop(),
-        )
-        self._draining = False
 
     @property
     def actor_handle(self) -> ActorHandle:
@@ -91,15 +83,6 @@ class HTTPProxyState:
         """Sets _status and updates _actor_details with the new status."""
         self._status = status
         self.update_actor_details(status=self._status)
-
-    def _update_draining(self, active_nodes: Set[NodeId]):
-        """Update draining flag on http proxy state.
-
-        This is a callback for when controller detects there being a change in active
-        nodes. Each http proxy state will check if it's nodes is still active and set
-        draining flag accordingly. DRAINING status will be set in the update() call.
-        """
-        self._draining = self._node_id not in active_nodes
 
     def try_update_status(self, status: HTTPProxyStatus):
         """Try update with the new status and only update when the conditions are met.
@@ -140,7 +123,7 @@ class HTTPProxyState:
         details_kwargs.update(kwargs)
         self._actor_details = HTTPProxyDetails(**details_kwargs)
 
-    def update(self):
+    def update(self, draining: bool = False):
         """Update the status of the current HTTP proxy.
 
         1) When the HTTP proxy is already shutting down, do nothing.
@@ -172,7 +155,7 @@ class HTTPProxyState:
                     worker_id, log_file_path = json.loads(ray.get(finished[0]))
                     status = (
                         HTTPProxyStatus.HEALTHY
-                        if not self._draining
+                        if not draining
                         else HTTPProxyStatus.DRAINING
                     )
                     self.try_update_status(status)
@@ -207,7 +190,7 @@ class HTTPProxyState:
                     ray.get(finished[0])
                     status = (
                         HTTPProxyStatus.HEALTHY
-                        if not self._draining
+                        if not draining
                         else HTTPProxyStatus.DRAINING
                     )
                     self.try_update_status(status)
@@ -306,7 +289,7 @@ class HTTPState:
             for node_id, state in self._proxy_states.items()
         }
 
-    def update(self):
+    def update(self, active_nodes: Set[NodeId] = set()):
         """Update the state of all HTTP proxies.
 
         Start proxies on all nodes if not already exist and stop the proxies on nodes
@@ -315,8 +298,10 @@ class HTTPState:
         """
         self._start_proxies_if_needed()
         self._stop_proxies_if_needed()
-        for proxy_state in self._proxy_states.values():
-            proxy_state.update()
+        for node_id, proxy_state in self._proxy_states.items():
+            draining = node_id not in active_nodes
+            draining = draining if self._head_node_id != node_id else False
+            proxy_state.update(draining)
 
     def _get_target_nodes(self) -> List[Tuple[str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP servers on."""

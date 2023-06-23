@@ -318,7 +318,7 @@ class ServeController:
             # info about available deployments & their replicas.
             if self.http_state and self.done_recovering_event.is_set():
                 try:
-                    self.http_state.update()
+                    self.http_state.update(active_nodes=self._active_nodes)
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
