@@ -19,7 +19,7 @@ Considering your use case, you can choose the right level of abstraction:
 
 (serve-http)=
 ## Calling Deployments via HTTP
-When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) will be exposed over HTTP.
+When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) is exposed over HTTP.
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_starlette__
