@@ -24,20 +24,98 @@ namespace asio = boost::asio;
 
 namespace ray {
 
+
+void PluginManager::LoadObjectStorePlugin(const std::string plugin_name) {
+
+using ObjectStoreRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)();
+using ObjectStoreClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
+
+  RAY_LOG(INFO) << " yiweizh: Calling LoadOBjectStorePlugin with name " << plugin_name;
+  void *handle = dlopen(plugin_name.c_str(), RTLD_NOW);
+  if (!handle) {
+    std::cerr << "Failed to load shared library: " << dlerror() << std::endl;
+    return;
+  }
+
+  ObjectStoreClientCreator client_creator = reinterpret_cast<ObjectStoreClientCreator>(dlsym(handle, "CreateNewStoreClient"));
+  //std::shared_ptr<plasma::ObjectStoreClientInterface> client_creator =
+      //reinterpret_cast<std::shared_ptr<plasma::ObjectStoreClientInterface>>(dlsym(handle, "CreateNewStoreClient"));
+  if (!client_creator) {
+    std::cerr << "Failed to get CreateNewStoreClient function: " << dlerror()
+              << std::endl;
+    dlclose(handle);
+    return;
+  }
+
+  ObjectStoreRunnerCreator runner_creator = reinterpret_cast<ObjectStoreRunnerCreator>(dlsym(handle, "CreateNewStoreRunner"));
+
+  //std::unique_ptr<plasma::ObjectStoreRunnerInterface> runner_creator =
+      //reinterpret_cast<std::unique_ptr<plasma::ObjectStoreRunnerInterface>>(dlsym(handle, "CreateNewStoreRunner"));
+  if (!runner_creator) {
+    std::cerr << "Failed to get CreateNewStoreRunner function: " << dlerror()
+              << std::endl;
+    dlclose(handle);
+    return;
+  }
+
+  std::shared_ptr<plasma::ObjectStoreClientInterface> client = client_creator();
+  std::unique_ptr<plasma::ObjectStoreRunnerInterface> runner = std::move(runner_creator());
+//   PluginManagerObjectStore plugin_object_store;
+//   plugin_object_store.client_ = client_creator;
+//   plugin_object_store.runner_ = std::move(runner_creator);
+//   object_stores_[plugin_name] = plugin_object_store;
+  object_stores_[plugin_name] = PluginManagerObjectStore{
+    client,
+    std::move(runner)
+  };
+  dlclose(handle);
+  return;
+}
+
+std::shared_ptr<plasma::ObjectStoreClientInterface> PluginManager::CreateObjectStoreClientInstance(
+    const std::string &name) {
+  return object_stores_[name].client_; 
+}
+
+std::unique_ptr<plasma::ObjectStoreRunnerInterface> PluginManager::CreateObjectStoreRunnerInstance(
+    const std::string &name) {
+  return std::move(object_stores_[name].runner_);
+}
+
+void PluginManager::SetDefaultObjectStores(const ObjectManagerConfig config) {
+    RAY_LOG(INFO) << "Entering PluginManager::SetDefaultObjectStore";
+    object_stores_["default"] = PluginManagerObjectStore{
+        std::make_shared<plasma::PlasmaClient>(),
+        std::make_unique<plasma::PlasmaStoreRunner>(config.store_socket_name,
+                                                    config.object_store_memory,
+                                                    config.huge_pages,
+                                                    config.plasma_directory,
+                                                    config.fallback_directory)
+    };
+}
+
+
+
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
+                                     std::unique_ptr<plasma::ObjectStoreRunnerInterface> store_runner,
                                      SpillObjectsCallback spill_objects_callback,
                                      std::function<void()> object_store_full_callback,
                                      AddObjectCallback add_object_callback,
                                      DeleteObjectCallback delete_object_callback) {
-  plasma::plasma_store_runner.reset(
-      new plasma::PlasmaStoreRunner(config.store_socket_name,
-                                    config.object_store_memory,
-                                    config.huge_pages,
-                                    config.plasma_directory,
-                                    config.fallback_directory));
+  //plasma::plasma_store_runner.reset(
+    //   new plasma::PlasmaStoreRunner(config.store_socket_name,
+    //                                 config.object_store_memory,
+    //                                 config.huge_pages,
+    //                                 config.plasma_directory,
+    //                                 config.fallback_directory));
+  plasma::plasma_store_runner = std::move(store_runner);
+
   // Initialize object store.
-  store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start,
+  std::map<std::string, std::string> emptyMap;
+  // store_thread_ = std::thread(&plasma::PlasmaStoreRunner::Start,
+  store_thread_ = std::thread(&plasma::ObjectStoreRunnerInterface::Start,
                               plasma::plasma_store_runner.get(),
+                              std::ref(emptyMap),
                               spill_objects_callback,
                               object_store_full_callback,
                               add_object_callback,
@@ -70,8 +148,10 @@ ObjectManager::ObjectManager(
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(object_directory),
+      plugin_manager_(PluginManager::GetInstance(config)),
       object_store_internal_(std::make_unique<ObjectStoreRunner>(
           config,
+          std::move(plugin_manager_.CreateObjectStoreRunnerInstance(config.plugin_name)),
           spill_objects_callback,
           object_store_full_callback,
           /*add_object_callback=*/
@@ -94,7 +174,8 @@ ObjectManager::ObjectManager(
                 },
                 "ObjectManager.ObjectDeleted");
           })),
-      buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      // buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      buffer_pool_store_client_(plugin_manager_.CreateObjectStoreClientInstance(config.plugin_name)),
       buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
       object_manager_server_("ObjectManager",
@@ -108,11 +189,13 @@ ObjectManager::ObjectManager(
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
-  RAY_LOG(INFO) << "yiweizh: Starting ObjectManager with ID " << self_node_id;
-  RAY_LOG(INFO) << "yiweizh: Start to initialize PluginManager" ;
 
-  auto &plugin_manager_ = PluginManager::GetInstance();
-  plugin_manager_.LoadObjectStorePlugin(config_.plugin_name);
+  // RAY_LOG(INFO) << "yiweizh: Starting ObjectManager with ID " << self_node_id;
+  RAY_LOG(INFO) << "yiweizh: Start to initialize PluginManager, plugin_name input: " << config_.plugin_name ;
+  // auto &plugin_manager_ = PluginManager::GetInstance();
+  // plugin_manager_.LoadObjectStorePlugin(config_.plugin_name);
+  //buffer_pool_store_client_ = plugin_manager_.CreateObjectStoreClientInstance(config_.plugin_name);
+  //buffer_pool_ = ObjectBufferPool(buffer_pool_store_client_, config_.object_chunk_size);
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
@@ -165,7 +248,7 @@ void ObjectManager::Stop() {
 }
 
 bool ObjectManager::IsPlasmaObjectSpillable(const ObjectID &object_id) {
-  return plasma::plasma_store_runner->IsPlasmaObjectSpillable(object_id);
+  return plasma::plasma_store_runner->IsObjectSpillable(object_id);
 }
 
 void ObjectManager::RunRpcService(int index) {

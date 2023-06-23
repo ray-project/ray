@@ -339,7 +339,7 @@ cc_library(
         "src/ray/object_manager/plasma/plasma_generated.h",
         "src/ray/object_manager/plasma/protocol.h",
         "src/ray/object_manager/plasma/shared_memory.h",
-	"src/ray/object_manager/plasma/object_store_client_interface.h",
+        "src/ray/object_manager/plasma/object_store_client_interface.h",
     ] + select({
         "@bazel_tools//src/conditions:windows": [
         ],
@@ -389,6 +389,7 @@ cc_library(
         "src/ray/object_manager/plasma/stats_collector.h",
         "src/ray/object_manager/plasma/store.h",
         "src/ray/object_manager/plasma/store_runner.h",
+        "src/ray/object_manager/plasma/object_store_runner_interface.h",
         "src/ray/thirdparty/dlmalloc.c",
     ],
     copts = PLASMA_COPTS,

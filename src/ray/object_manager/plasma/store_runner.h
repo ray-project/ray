@@ -8,31 +8,37 @@
 #include "ray/common/file_system_monitor.h"
 #include "ray/object_manager/plasma/plasma_allocator.h"
 #include "ray/object_manager/plasma/store.h"
+#include "ray/object_manager/plasma/object_store_runner_interface.h"
 
 namespace plasma {
 
-class PlasmaStoreRunner {
+class PlasmaStoreRunner : public ObjectStoreRunnerInterface {
  public:
   PlasmaStoreRunner(std::string socket_name,
                     int64_t system_memory,
                     bool hugepages_enabled,
                     std::string plasma_directory,
                     std::string fallback_directory);
-  void Start(ray::SpillObjectsCallback spill_objects_callback,
-             std::function<void()> object_store_full_callback,
-             ray::AddObjectCallback add_object_callback,
-             ray::DeleteObjectCallback delete_object_callback);
-  void Stop();
+  void Start(const std::map<std::string, std::string>& params,
+                     ray::SpillObjectsCallback spill_objects_callback,
+                     std::function<void()> object_store_full_callback,
+                     ray::AddObjectCallback add_object_callback,
+                     ray::DeleteObjectCallback delete_object_callback) override;
+  void Stop() override;
+  
+  bool IsObjectSpillable(const ObjectID &object_id) override;
 
-  bool IsPlasmaObjectSpillable(const ObjectID &object_id);
+  int64_t GetConsumedBytes() override;
 
-  int64_t GetConsumedBytes();
-  int64_t GetFallbackAllocated() const;
+  int64_t GetFallbackAllocated() const override;
 
-  void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {
+  void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const override {
     main_service_.post([this, callback]() { store_->GetAvailableMemory(callback); },
-                       "PlasmaStoreRunner.GetAvailableMemory");
+                        "PlasmaStoreRunner.GetAvailableMemory");
   }
+
+  int64_t GetTotalMemorySize() const override { return system_memory_; };
+  int64_t GetMaxMemorySize() const override { return system_memory_; };
 
  private:
   void Shutdown();
@@ -53,6 +59,7 @@ class PlasmaStoreRunner {
 // 2) The thirdparty dlmalloc library cannot be contained in a local variable,
 //    so even we use a local variable for plasma store, it does not provide
 //    better isolation.
-extern std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
+//extern std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
+extern std::unique_ptr<ObjectStoreRunnerInterface> plasma_store_runner;
 
-}  // namespace plasma
+} // namespace plasma

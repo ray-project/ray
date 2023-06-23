@@ -80,7 +80,8 @@ PlasmaStoreRunner::PlasmaStoreRunner(std::string socket_name,
   fallback_directory_ = fallback_directory;
 }
 
-void PlasmaStoreRunner::Start(ray::SpillObjectsCallback spill_objects_callback,
+void PlasmaStoreRunner::Start(const std::map<std::string, std::string>& params,
+                              ray::SpillObjectsCallback spill_objects_callback,
                               std::function<void()> object_store_full_callback,
                               ray::AddObjectCallback add_object_callback,
                               ray::DeleteObjectCallback delete_object_callback) {
@@ -137,7 +138,7 @@ void PlasmaStoreRunner::Shutdown() {
   }
 }
 
-bool PlasmaStoreRunner::IsPlasmaObjectSpillable(const ObjectID &object_id) {
+bool PlasmaStoreRunner::IsObjectSpillable(const ObjectID &object_id) {
   return store_->IsObjectSpillable(object_id);
 }
 
@@ -148,6 +149,7 @@ int64_t PlasmaStoreRunner::GetFallbackAllocated() const {
   return allocator_ ? allocator_->FallbackAllocated() : 0;
 }
 
-std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
-
+//std::unique_ptr<PlasmaStoreRunner> plasma_store_runner;
+std::unique_ptr<ObjectStoreRunnerInterface> plasma_store_runner;
 }  // namespace plasma
+

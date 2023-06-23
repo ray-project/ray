@@ -116,7 +116,7 @@ int main(int argc, char *argv[]) {
   const std::string resource_dir = FLAGS_resource_dir;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
-  const std::string plugin_name = FLAGS_plugin_name;
+  const std::string plugin_name = (FLAGS_plugin_name == "None") ? "default" : FLAGS_plugin_name;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;

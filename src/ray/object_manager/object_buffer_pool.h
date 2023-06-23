@@ -28,7 +28,7 @@
 #include "ray/common/status.h"
 #include "ray/object_manager/memory_object_reader.h"
 #include "ray/object_manager/plasma/object_store_client_interface.h"
-
+#include "ray/object_manager/plasma/object_store_runner_interface.h"
 
 namespace ray {
 
