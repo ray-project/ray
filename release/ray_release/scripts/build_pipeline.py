@@ -56,10 +56,18 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     default=False,
     help=("Will run jailed tests."),
 )
+@click.option(
+    "--run-unstable-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Will run unstable tests."),
+)
 def main(
     test_collection_file: Optional[str] = None,
     no_clone_repo: bool = False,
     run_jailed_tests: bool = False,
+    run_unstable_tests: bool = False,
 ):
     settings = get_pipeline_settings()
 
@@ -95,7 +103,7 @@ def main(
         # the modules are reloaded and use the newest files, instead of
         # old ones, which may not have the changes introduced on the
         # checked out branch.
-        cmd = _get_rerun_cmd(test_collection_file, run_jailed_tests)
+        cmd = _get_rerun_cmd(test_collection_file, run_jailed_tests, run_unstable_tests)
         subprocess.run(cmd, capture_output=False, check=True)
         return
     elif repo:
@@ -146,6 +154,7 @@ def main(
         test_attr_regex_filters=test_attr_regex_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
+        run_unstable_tests=run_unstable_tests,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
@@ -250,12 +259,15 @@ def main(
 def _get_rerun_cmd(
     test_collection_file: Optional[str] = None,
     run_jailed_tests: bool = False,
+    run_unstable_tests: bool = False,
 ):
     cmd = [sys.executable, __file__, "--no-clone-repo"]
     if test_collection_file:
         cmd += ["--test-collection-file", test_collection_file]
     if run_jailed_tests:
         cmd += ["--run-jailed-tests"]
+    if run_unstable_tests:
+        cmd += ["--run-unstable-tests"]
     return cmd
 
 
