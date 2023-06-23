@@ -64,11 +64,10 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
   // Right now, this info will only be used for observability, i.e. ray status.
 
   // Never seen any autoscaling state before - so just takes this.
-  if (autoscaling_state_ == nullptr) {
-    autoscaling_state_ = std::make_unique<rpc::AutoscalingState>();
-    autoscaling_state_->CopyFrom(request.autoscaling_state());
-
+  if (!autoscaling_state_.has_value()) {
+    autoscaling_state_ = std::move(request.autoscaling_state());
     send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+    return;
   }
 
   // We have a state cached. We discard the incoming state if it's older than the
@@ -85,7 +84,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
   }
 
   // We should overwrite the cache version.
-  autoscaling_state_->CopyFrom(request.autoscaling_state());
+  autoscaling_state_ = std::move(request.autoscaling_state());
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 

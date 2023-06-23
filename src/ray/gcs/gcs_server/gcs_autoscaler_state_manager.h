@@ -133,7 +133,7 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
       absl::nullopt;
 
   /// Cached autoscaling state.
-  std::unique_ptr<rpc::AutoscalingState> autoscaling_state_ = nullptr;
+  absl::optional<rpc::AutoscalingState> autoscaling_state_ = absl::nullopt;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };

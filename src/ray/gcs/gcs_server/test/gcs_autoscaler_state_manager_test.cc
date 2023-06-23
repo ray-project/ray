@@ -562,7 +562,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
   // Empty autoscaling state.
   {
     const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
-    ASSERT_EQ(autoscaling_state, nullptr);
+    ASSERT_EQ(autoscaling_state, absl::nullopt);
   }
 
   // Return the updated state.
@@ -572,7 +572,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
     ReportAutoscalingState(actual_state);
 
     const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
-    ASSERT_NE(autoscaling_state, nullptr);
+    ASSERT_NE(autoscaling_state, absl::nullopt);
     ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 1);
   }
 
@@ -583,7 +583,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
     ReportAutoscalingState(state);
 
     const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
-    ASSERT_NE(autoscaling_state, nullptr);
+    ASSERT_NE(autoscaling_state, absl::nullopt);
     ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 1);
   }
 
@@ -594,7 +594,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
     ReportAutoscalingState(state);
 
     const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
-    ASSERT_NE(autoscaling_state, nullptr);
+    ASSERT_NE(autoscaling_state, absl::nullopt);
     ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 2);
   }
 }
