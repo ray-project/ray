@@ -179,7 +179,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::vector<FixedPoint> AddAvailableResourceInstances(
       const std::vector<FixedPoint> &available,
       const std::vector<FixedPoint> &local_total,
-      std::vector<FixedPoint> &local_available) const;
+      std::vector<FixedPoint> &local_available,
+      bool *is_idle) const;
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -258,7 +259,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
 
-  absl::optional<int64_t> GetResourceIdleTime() const;
+  absl::optional<absl::Time> GetResourceIdleTime() const;
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
@@ -290,6 +291,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
+  FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
 };
 
 }  // end namespace ray

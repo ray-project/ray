@@ -34,8 +34,8 @@ LocalResourceManager::LocalResourceManager(
   local_resources_.available = TaskResourceInstances(node_resources.available);
   local_resources_.total = TaskResourceInstances(node_resources.total);
   const auto now = absl::Now();
-  for (const auto &resource_id : local_resources_.total) {
-    resources_last_idle_time_[resource_id.first] = now;
+  for (const auto &resource_id : local_resources_.total.ResourceIds()) {
+    resources_last_idle_time_[resource_id] = now;
   }
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
@@ -123,6 +123,8 @@ bool LocalResourceManager::AllocateResourceInstances(
     std::vector<FixedPoint> *allocation) const {
   allocation->resize(available.size());
   FixedPoint remaining_demand = demand;
+
+  RAY_LOG(INFO) << "Allocating " << demand << " from " << available.size();
 
   if (available.size() == 1) {
     // This resource has just an instance.
@@ -290,7 +292,7 @@ void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resourc
   resources_last_idle_time_[resource_id] = absl::Now();
 }
 
-absl::optional<abls::TIme> LocalResourceManager::GetResourceIdleTime() const {
+absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
   // If all the resources are idle.
   absl::Time all_idle_time = absl::InfinitePast();
 
@@ -370,9 +372,11 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     // would need to plumb the info out of the object store directly.
     if (used == 0.0) {
       // Set it to idle as of now.
+      RAY_LOG(INFO) << "Object store memory is idle.";
       resources_last_idle_time_[ResourceID::ObjectStoreMemory()] = absl::Now();
     } else {
       // Clear the idle info since we know it's being used.
+      RAY_LOG(INFO) << "Object store memory is not idle.";
       resources_last_idle_time_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
     }
   }
