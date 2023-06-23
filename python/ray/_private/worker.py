@@ -1268,7 +1268,6 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    logger.warning(f"gene_test in_init: {job_config} {runtime_env}, {namespace}")
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
     else:
@@ -2135,7 +2134,6 @@ def connect(
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
     gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
-    logger.warning(f"gene_test in_worker: {job_config}, {os.getcwd()}")
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2145,8 +2143,6 @@ def connect(
         # The namespace field of job config may have already been set in code
         # paths such as the client.
         job_config.set_ray_namespace(namespace)
-        if namespace.endswith("dashboard"):
-            job_config._client_job = True
 
     # Make sure breakpoint() in the user's code will
     # invoke the Ray debugger if we are in a worker or actor process
@@ -2159,9 +2155,6 @@ def connect(
 
     worker.ray_debugger_external = ray_debugger_external
 
-    logger.warning(
-        f"gene_test after namespace: {job_config} {namespace} {job_config._client_job} {mode} {job_config.runtime_env}"
-    )
     # If it's a driver and it's not coming from ray client, we'll prepare the
     # environment here. If it's ray client, the environment will be prepared
     # at the server side.
@@ -2188,8 +2181,9 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
         code_paths = []
-        if not interactive_mode and not namespace.endswith("dashboard"):
+        if not interactive_mode and not (namespace and namespace.endswith("dashboard")):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
@@ -2199,12 +2193,9 @@ def connect(
                 code_paths.append(script_directory)
         # In client mode, if we use runtime envs with "working_dir", then
         # it'll be handled automatically.  Otherwise, add the current dir.
-        if job_config._client_job and not job_config._runtime_env_has_working_dir():
+        if not job_config._client_job and not job_config._runtime_env_has_working_dir():
             current_directory = os.path.abspath(os.path.curdir)
             code_paths.append(current_directory)
-        print(
-            f"gene_test {job_config._client_job} {job_config._runtime_env_has_working_dir()} {code_paths}"
-        )
         if len(code_paths) != 0:
             job_config._py_driver_sys_path.extend(code_paths)
 
