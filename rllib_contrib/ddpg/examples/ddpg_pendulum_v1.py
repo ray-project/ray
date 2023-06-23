@@ -6,12 +6,19 @@ import ray
 from ray import air, tune
 from ray.rllib.utils.test_utils import check_learning_achieved
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--run-as-test", action="store_true", default=False)
+
+def get_cli_args():
+    """Create CLI parser and return parsed arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-as-test", action="store_true", default=False)
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+    return args
 
 
 if __name__ == "__main__":
-    args = parser.parse_args()
+    get_cli_args()
+
     ray.init()
 
     config = (
