@@ -576,6 +576,7 @@
     - pip install -r python/requirements/compat/requirements_py37_compat.txt
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_env=LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin
       --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 
@@ -592,6 +593,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
+      --test_env=LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin
       --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-tf_only,-tf2_only
       --test_arg=--framework=torch
       rllib/...
@@ -610,6 +612,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
+      --test_env=LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin
       --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-torch_only
       --test_arg=--framework=tf2
       rllib/...
