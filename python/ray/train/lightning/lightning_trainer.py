@@ -109,8 +109,7 @@ class LightningConfigBuilder:
         LightningTrainer. If no configuration is specified, it creates a DDPStrategy
         by default.
 
-        For `accelerator` types, we currently only support `cpu` and `gpu`. Please
-        choose one of them.
+        For ``accelerator``, currently only ``"cpu"`` and ``"gpu"`` are supported.
 
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
