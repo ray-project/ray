@@ -385,6 +385,7 @@ class HTTPState:
             node_ip_address=node_ip_address,
             node_id=node_id,
             http_middlewares=self._config.middlewares,
+            request_timeout_s=self._config.request_timeout_s,
         )
         return proxy
 
