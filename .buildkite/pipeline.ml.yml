@@ -571,4 +571,5 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - (cd rllib_contrib/alpha_star && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/alpha_star/tests/test_alpha_star.py -s
+    - pytest rllib_contrib/alpha_star/tests/
+    - python rllib_contrib_alpha_star/examples/multi-agent-cartpole-alpha-star.py --run-as-test
