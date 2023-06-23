@@ -285,6 +285,7 @@ class DashboardHead:
             self.metrics = None
         else:
             from ray._private.gcs_utils import GcsAioClient
+
             self.gcs_aio_client = GcsAioClient(
                 address=gcs_address, nums_reconnect_retry=0
             )
