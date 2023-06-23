@@ -2181,8 +2181,9 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
         code_paths = []
-        if not interactive_mode:
+        if not interactive_mode and not (namespace and namespace.endswith("dashboard")):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
