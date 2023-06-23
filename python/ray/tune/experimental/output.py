@@ -1069,7 +1069,7 @@ class AirResultProgressCallback(Callback):
         else:
             print(
                 f"{self._addressing_tmpl.format(trial)} "
-                f"started without custom configuration.\n"
+                f"started without custom configuration."
             )
         print("")
 
