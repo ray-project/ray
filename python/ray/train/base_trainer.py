@@ -152,6 +152,10 @@ class BaseTrainer(abc.ABC):
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
 
+    .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         scaling_config: Configuration for how to scale training.

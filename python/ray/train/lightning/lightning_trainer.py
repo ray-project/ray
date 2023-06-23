@@ -80,6 +80,11 @@ class LightningConfigBuilder:
                 .checkpointing(monitor="loss", save_top_k=2, mode="min")
                 .build()
             )
+
+        .. testoutput::
+            :hide:
+
+            ...
     """
 
     def __init__(self) -> None:

@@ -211,6 +211,11 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
             )
             result = trainer.fit()
 
+        .. testoutput::
+            :hide:
+
+            ...
+
     Args:
         trainer_init_per_worker: The function that returns an instantiated
             ``transformers.Trainer`` object and takes in the following arguments:

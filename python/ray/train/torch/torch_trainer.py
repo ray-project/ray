@@ -229,6 +229,11 @@ class TorchTrainer(DataParallelTrainer):
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
 
+        .. testoutput::
+            :hide:
+
+            ...
+
     Args:
 
         train_loop_per_worker: The training function to execute.

@@ -143,6 +143,11 @@ class DataParallelTrainer(BaseTrainer):
         )
         result = trainer.fit()
 
+    .. testoutput::
+            :hide:
+
+            ...
+
     **How do I develop on top of DataParallelTrainer?**
 
     In many cases, using DataParallelTrainer directly is sufficient to execute
