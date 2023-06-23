@@ -1032,7 +1032,7 @@ class AirResultProgressCallback(Callback):
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             f"{self._addressing_tmpl.format(trial)} "
-            f"completed training after {finished_iter} iterations "
+            f"completed after {finished_iter} iterations "
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
