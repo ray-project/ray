@@ -169,7 +169,7 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str, request_timeout_s: float):
+    def __init__(self, controller_name: str, request_timeout_s: Optional[float] = None):
         self.request_timeout_s = request_timeout_s
 
         # Set the controller name so that serve will connect to the
@@ -618,7 +618,7 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
-        request_timeout_s: float,
+        request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
