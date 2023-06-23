@@ -187,7 +187,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   WorkerPool(instrumented_io_context &io_service,
              const NodeID node_id,
              const std::string node_address,
-             int num_workers_soft_limit,
+             const std::function<int64_t()> &get_num_cpus_available,
              int num_prestarted_python_workers,
              int maximum_startup_concurrency,
              int min_worker_port,
@@ -450,6 +450,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
+  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
+
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
@@ -706,6 +708,22 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::string node_address_;
   /// The soft limit of the number of registered workers.
   int num_workers_soft_limit_;
+  /// The number of workers that should be prestarted.
+  /// We record this after requests to prestart workers to make sure that we do
+  /// not prematurely kill prestarted workers.
+  /// This is reset after the same time interval used to kill idle workers, to
+  /// make sure that we eventually kill pre-started workers that are never
+  /// going to be used.
+  /// TODO(swang): This does not differentiate between idle workers of
+  /// different languages.
+  int64_t num_workers_to_prestart_ = -1;
+  /// Whether to reset the num_workers_to_prestart_ variable.
+  /// We use this flag to make sure that we will try to fulfill a request to
+  /// prestart a worker for at least the idle worker timeout.
+  bool reset_num_workers_to_prestart_ = true;
+  /// A callback to get the number of CPUs available. We use this to determine
+  /// how many idle workers to keep around.
+  std::function<int64_t()> get_num_cpus_available_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.
@@ -743,11 +761,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
-
-  /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
-  /// for lookup performance.
-  absl::flat_hash_map<std::shared_ptr<WorkerInterface>, int64_t>
-      idle_of_all_languages_map_;
 
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
