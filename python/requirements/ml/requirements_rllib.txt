@@ -18,7 +18,7 @@ chess==1.7.0
 pymunk==6.2.1
 supersuit==3.8.0; python_version >= '3.7'
 tinyscaler==1.2.6
-shimmy==1.1.0
+shimmy
 
 # Kaggle envs.
 kaggle_environments==1.7.11
