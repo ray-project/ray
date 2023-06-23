@@ -60,8 +60,8 @@ if __name__ == "__main__":
         config.model["vf_share_layers"] = True
         config.vf_loss_coeff = 0.0001
     elif args.run == "IMPALA":
-        config.num_workers = 2
-        config.num_gpus = 0
+        config.rollouts(num_rollout_workers=2)
+        config.resources(num_gpus=0)
         config.vf_loss_coeff = 0.01
 
     stop = {
