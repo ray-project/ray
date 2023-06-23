@@ -4064,11 +4064,6 @@
   team: rllib
   python: "3.8"
   cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_rllib_test.sh
-      runtime_env:
-        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
