@@ -20,6 +20,7 @@ import argparse
 import os
 from pathlib import Path
 import sys
+import re
 import yaml
 
 import ray
@@ -180,8 +181,8 @@ if __name__ == "__main__":
             callbacks = [WandbLoggerCallback(
                 api_key=args.wandb_key,
                 project=(
-                    exp["run"] + "_" + exp["env"] if config_is_python
-                    else list(experiments.keys())[0]
+                    exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
+                    if config_is_python else list(experiments.keys())[0]
                 ),
             )]
 
