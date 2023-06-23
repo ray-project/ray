@@ -53,6 +53,9 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::autoscaler::ReportAutoscalingStateRequest request,
     rpc::autoscaler::ReportAutoscalingStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  // TODO(rickyx): We should handle the infeasible requests in the future.
+  // Right now, this info will only be used for observability, i.e. ray status.
+
   // Never seen any autoscaling state before - so just takes this.
   if (autoscaling_state_ == nullptr) {
     autoscaling_state_ = std::make_unique<rpc::AutoscalingState>();
