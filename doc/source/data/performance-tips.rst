@@ -135,7 +135,8 @@ By default, Ray Data automatically selects the read ``parallelism`` according to
 4. The parallelism is truncated to ``min(num_files, parallelism)``.
 
 Occasionally, it is advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
-For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
+For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created. Note that read tasks can produce multiple output
+blocks per file in order to satisfy the requested parallelism.
 
 Tuning Read Resources
 ~~~~~~~~~~~~~~~~~~~~~
