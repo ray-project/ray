@@ -1902,12 +1902,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
 
-    // If it is a generator task, create a object ref stream.
-    // The language frontend is responsible for calling DeleteObjectRefStream.
-    if (task_spec.IsStreamingGenerator()) {
-      CreateObjectRefStream(task_spec.ReturnId(0));
-    }
-
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -2233,12 +2227,6 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
-
-    // If it is a generator task, create a object ref stream.
-    // The language frontend is responsible for calling DeleteObjectRefStream.
-    if (task_spec.IsStreamingGenerator()) {
-      CreateObjectRefStream(task_spec.ReturnId(0));
-    }
 
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
@@ -2751,10 +2739,6 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   return status;
 }
 
-void CoreWorker::CreateObjectRefStream(const ObjectID &generator_id) {
-  task_manager_->CreateObjectRefStream(generator_id);
-}
-
 void CoreWorker::DelObjectRefStream(const ObjectID &generator_id) {
   task_manager_->DelObjectRefStream(generator_id);
 }
@@ -2763,14 +2747,18 @@ Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
                                           rpc::ObjectReference *object_ref_out) {
   ObjectID object_id;
   const auto &status = task_manager_->TryReadObjectRefStream(generator_id, &object_id);
-  if (!status.ok()) {
-    return status;
-  }
-
   RAY_CHECK(object_ref_out != nullptr);
   object_ref_out->set_object_id(object_id.Binary());
   object_ref_out->mutable_owner_address()->CopyFrom(rpc_address_);
   return status;
+}
+
+rpc::ObjectReference CoreWorker::PeekObjectRefStream(const ObjectID &generator_id) {
+  auto object_id = task_manager_->PeekObjectRefStream(generator_id);
+  rpc::ObjectReference object_ref;
+  object_ref.set_object_id(object_id.Binary());
+  object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+  return object_ref;
 }
 
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
@@ -2840,20 +2828,17 @@ Status CoreWorker::ReportGeneratorItemReturns(
     const ObjectID &generator_id,
     const rpc::Address &caller_address,
     int64_t item_index,
-    uint64_t attempt_number,
-    bool finished) {
+    uint64_t attempt_number) {
   RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
-                 << " finished: " << finished << ", id: " << dynamic_return_object.first;
+                 << ", id: " << dynamic_return_object.first;
   rpc::ReportGeneratorItemReturnsRequest request;
   request.mutable_worker_addr()->CopyFrom(rpc_address_);
   request.set_item_index(item_index);
-  request.set_finished(finished);
   request.set_generator_id(generator_id.Binary());
   request.set_attempt_number(attempt_number);
   auto client = core_worker_client_pool_->GetOrConnect(caller_address);
 
   if (!dynamic_return_object.first.IsNil()) {
-    RAY_CHECK_EQ(finished, false);
     auto return_object_proto = request.add_dynamic_return_objects();
     SerializeReturnObject(
         dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
@@ -2866,9 +2851,6 @@ Status CoreWorker::ReportGeneratorItemReturns(
     reference_counter_->PopAndClearLocalBorrowers(
         {dynamic_return_object.first}, &borrowed_refs, &deleted);
     memory_store_->Delete(deleted);
-  } else {
-    // fininshed must be set when dynamic_return_object is nil.
-    RAY_CHECK_EQ(finished, true);
   }
 
   client->ReportGeneratorItemReturns(
