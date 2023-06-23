@@ -471,7 +471,7 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   resources_data.set_resources_available_changed(true);
 
   const auto now = absl::Now();
-  resources_data.set_resources_idle_duration_ms(
+  resources_data.set_idle_duration_ms(
       absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
 
   msg.set_node_id(local_node_id_.Binary());
