@@ -157,9 +157,7 @@ WorkerPool::~WorkerPool() {
 void WorkerPool::Start() {
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
-        [this] {
-          TryKillingIdleWorkers();
-        },
+        [this] { TryKillingIdleWorkers(); },
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");
   }
@@ -1058,12 +1056,11 @@ void WorkerPool::TryKillingIdleWorkers() {
 
   // Compute the soft limit for the number of idle workers to keep around.
   // This assumes the common case where each task requires 1 CPU.
-  const int64_t num_cpus_available = get_num_cpus_available_();
-  RAY_LOG(INFO) << "Idle workers: " << idle_of_all_languages_.size()
+  const auto num_desired_idle_workers = get_num_cpus_available_();
+  RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
                  << ", idle workers that are eligible to kill: "
                  << num_killable_idle_workers
-                 << ", num CPUs available: " << num_cpus_available
-                 << ", num workers desired " << num_desired_idle_workers;
+                 << ", num desired workers : " << num_desired_idle_workers;
 
   // Iterate through the list and try to kill enough workers so that we are at
   // the soft limit.
@@ -1074,9 +1071,9 @@ void WorkerPool::TryKillingIdleWorkers() {
         now - it->second >
             RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       RAY_LOG(INFO) << "Number of idle workers " << num_killable_idle_workers
-                     << " is larger than the number of desired workers "
-                     << num_desired_idle_workers << " killing idle worker with PID "
-                     << it->first->GetProcess().GetId();
+                    << " is larger than the number of desired workers "
+                    << num_desired_idle_workers << " killing idle worker with PID "
+                    << it->first->GetProcess().GetId();
       KillIdleWorker(it->first, it->second);
       it = idle_of_all_languages_.erase(it);
       num_killable_idle_workers--;

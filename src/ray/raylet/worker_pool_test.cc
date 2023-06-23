@@ -133,7 +133,7 @@ class WorkerPoolMock : public WorkerPool {
             io_service,
             NodeID::FromRandom(),
             "",
-            []() { return POOL_SIZE_SOFT_LIMIT; },
+            [this]() { return num_available_cpus_; },
             PYTHON_PRESTART_WORKERS,
             MAXIMUM_STARTUP_CONCURRENCY,
             0,
@@ -380,6 +380,8 @@ class WorkerPoolMock : public WorkerPool {
     promise.get_future().get();
     return popped_worker;
   }
+
+  int num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
  private:
   Process last_worker_process_;
@@ -664,7 +666,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
   // No more needed.
   worker_pool_->PrestartWorkers(task_spec, 1);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
-  // Capped by soft limit of 5.
+  // Capped by soft limit.
   worker_pool_->PrestartWorkers(task_spec, 20);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
 }
@@ -1251,6 +1253,15 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
+
+  // Try decreasing and increasing the soft limit.
+  worker_pool_->num_available_cpus_ = 2;
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), worker_pool_->num_available_cpus_);
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[3]->WorkerId());
+  mock_rpc_client_it->second->ExitReplyFailed();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
+  worker_pool_->num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
   // Start two IO workers. These don't count towards the limit.
   {
