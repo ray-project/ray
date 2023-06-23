@@ -102,10 +102,15 @@ class LightningConfigBuilder:
     def trainer(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
-        Note that you don't have to specify the `strategy` argument here since the
-        ``LightningTrainer`` creates a PyTorch Lightning Strategy object with the
-        configurations specified in the `.strategy()` method. If no configuration
-        is specified, it creates a DDPStrategy by default.
+        Note that you don't have to specify the `strategy`, `device` and `num_nodes`
+        arguments here, since the ``LightningTrainer`` creates a PyTorch Lightning
+        Strategy object with the configurations specified in the `.strategy()`
+        method. The `device` and `num_nodes` are also configured automatically by the
+        LightningTrainer. If no configuration is specified, it creates a DDPStrategy
+        by default.
+
+        For `accelerator` types, we currently only support `cpu` and `gpu`. Please
+        choose one of them.
 
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
