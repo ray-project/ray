@@ -1045,8 +1045,6 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
 
     # Force reads.
     blocks = ds.get_internal_block_refs()
-    assert len(blocks) == 2
-
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
     locations = []

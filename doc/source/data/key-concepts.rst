@@ -30,7 +30,7 @@ blocks need to be materialized in the cluster memory at once.
 Reading Data
 ============
 
-Dataset uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces an output block:
+Dataset uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces one or more output blocks:
 
 .. image:: images/dataset-read.svg
    :align: center
@@ -38,7 +38,7 @@ Dataset uses Ray tasks to read data from remote storage in parallel. Each read t
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
 
-You can manually specify the number of read tasks, but the final parallelism is always capped by the number of files in the underlying dataset.
+You can increase or decrease the number of output blocks by changing the ``parallelism`` parameter.
 
 For an in-depth guide on creating datasets, read :ref:`Loading Data <loading_data>`.
 
