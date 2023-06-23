@@ -3,7 +3,7 @@
 
 * [A3C](./a3c)
 * [MAML](./maml)
-
+* [APEX-DDPG][./apex_ddpg]
 
 
 
