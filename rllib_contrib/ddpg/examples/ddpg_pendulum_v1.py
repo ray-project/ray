@@ -17,7 +17,7 @@ def get_cli_args():
 
 
 if __name__ == "__main__":
-    get_cli_args()
+    args = get_cli_args()
 
     ray.init()
 
