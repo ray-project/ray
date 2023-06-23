@@ -199,6 +199,7 @@ by the following considerations:
   Ray and Autoscaler code versions. Running one autoscaler per Ray cluster and matching the code versions
   ensures compatibility.
 
+(kuberay-autoscaler-with-ray-autoscaler)=
 ### Ray Autoscaler with Kubernetes Cluster Autoscaler
 The Ray Autoscaler and the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler)

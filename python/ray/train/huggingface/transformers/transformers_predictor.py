@@ -34,7 +34,6 @@ except ImportError:
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 try:
-    from transformers import PreTrainedModel, TFPreTrainedModel
     from transformers.pipelines import Pipeline
     from transformers.pipelines import pipeline as pipeline_factory
     from transformers.pipelines.table_question_answering import (
@@ -103,10 +102,6 @@ class TransformersPredictor(Predictor):
         checkpoint: Checkpoint,
         *,
         pipeline_cls: Optional[Type["Pipeline"]] = None,
-        model_cls: Optional[
-            Union[str, Type["PreTrainedModel"], Type["TFPreTrainedModel"]]
-        ] = None,
-        pretrained_model_kwargs: Optional[dict] = None,
         use_gpu: bool = False,
         **pipeline_kwargs,
     ) -> "TransformersPredictor":
@@ -115,7 +110,7 @@ class TransformersPredictor(Predictor):
         The checkpoint is expected to be a result of ``TransformersTrainer``.
 
         Note that the Transformers ``pipeline`` used internally expects to
-        receive raw text. If you have any Preprocessors in Checkpoint
+        recieve raw text. If you have any Preprocessors in Checkpoint
         that tokenize the data, remove them by calling
         ``Checkpoint.set_preprocessor(None)`` beforehand.
 
@@ -126,21 +121,15 @@ class TransformersPredictor(Predictor):
             pipeline_cls: A ``transformers.pipelines.Pipeline`` class to use.
                 If not specified, will use the ``pipeline`` abstraction
                 wrapper.
-            model_cls: A ``transformers.PreTrainedModel`` class to create from
-                the checkpoint.
-            pretrained_model_kwargs: If set and a ``model_cls`` is provided, will
-                be passed to ``TransformersCheckpoint.get_model()``.
             use_gpu: If set, the model will be moved to GPU on instantiation and
                 prediction happens on GPU.
             **pipeline_kwargs: Any kwargs to pass to the pipeline
-                initialization. If ``pipeline_cls`` is None, this must contain
-                the 'task' argument. Can be used
+                initialization. If ``pipeline`` is None, this must contain
+                the 'task' argument. Cannot contain 'model'. Can be used
                 to override the tokenizer with 'tokenizer'. If ``use_gpu`` is
                 True, 'device' will be set to 0 by default, unless 'device_map' is
                 passed.
         """
-        from ray.train.huggingface import TransformersCheckpoint
-
         if TRANSFORMERS_IMPORT_ERROR is not None:
             raise TRANSFORMERS_IMPORT_ERROR
 
@@ -151,39 +140,12 @@ class TransformersPredictor(Predictor):
         if use_gpu and "device_map" not in pipeline_kwargs:
             # default to using the GPU with the first index
             pipeline_kwargs.setdefault("device", 0)
-
-        model = None
-        if model_cls:
-            if not isinstance(checkpoint, TransformersCheckpoint):
-                raise ValueError(
-                    "If `model_cls` is passed, the checkpoint has to be a "
-                    "`TransformersCheckpoint`."
-                )
-            pretrained_model_kwargs = pretrained_model_kwargs or {}
-            model = checkpoint.get_model(model_cls, **pretrained_model_kwargs)
-
-        if pipeline_cls and model:
-            # Custom pipeline is passed and model was retrieved
-            pipeline = pipeline_cls(model, **pipeline_kwargs)
-        else:
-            # Custom pipeline class
-            if pipeline_cls:
-                pipeline_kwargs["pipeline_class"] = pipeline_cls
-
-            if not model:
-                # Infer model from checkpoint
-                with checkpoint.as_directory() as checkpoint_path:
-                    # Tokenizer will be loaded automatically (no need to specify
-                    # `tokenizer=checkpoint_path`)
-                    pipeline = pipeline_factory(
-                        model=checkpoint_path, **pipeline_kwargs
-                    )
-            else:
-                # Use model with default pipeline
-                pipeline = pipeline_factory(model=model, **pipeline_kwargs)
-
+        pipeline_cls = pipeline_cls or pipeline_factory
         preprocessor = checkpoint.get_preprocessor()
-
+        with checkpoint.as_directory() as checkpoint_path:
+            # Tokenizer will be loaded automatically (no need to specify
+            # `tokenizer=checkpoint_path`)
+            pipeline = pipeline_cls(model=checkpoint_path, **pipeline_kwargs)
         return cls(
             pipeline=pipeline,
             preprocessor=preprocessor,

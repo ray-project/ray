@@ -90,6 +90,21 @@ def test_get_anyscale_byod_image():
         ).get_anyscale_byod_image()
         == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
     )
+    assert (
+        _stub_test(
+            {
+                "python": "3.8",
+                "cluster": {
+                    "byod": {
+                        "type": "gpu",
+                        "post_build_script": "foo.sh",
+                    }
+                },
+            }
+        ).get_anyscale_byod_image()
+        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu-"
+        "ab7ed2b7a7e8d3f855a7925b0d296b0f9c75fac91882aba47854d92d27e13e53"
+    )
 
 
 @patch("github.Repository")
@@ -105,6 +120,12 @@ def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
     assert not Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
         mock_repo
     )
+
+
+def test_is_stable() -> None:
+    assert Test().is_stable()
+    assert Test(stable=True).is_stable()
+    assert not Test(stable=False).is_stable()
 
 
 if __name__ == "__main__":

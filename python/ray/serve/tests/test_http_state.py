@@ -453,7 +453,7 @@ def test_http_proxy_state_update_healthy_check_health_always_fails(setup_control
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@patch("ray.serve._private.http_state.DEFAULT_HEALTH_CHECK_TIMEOUT_S", 0.1)
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0.1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_http_proxy_state_check_health_always_timeout_timeout_eq_period(
     setup_controller,
@@ -500,7 +500,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_eq_period(
     assert proxy_state._consecutive_health_check_failures == 3
 
 
-@patch("ray.serve._private.http_state.DEFAULT_HEALTH_CHECK_TIMEOUT_S", 1)
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
 def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_period(
     setup_controller,

@@ -414,6 +414,27 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
 // Restore the compiler alignment to default (8 bytes).
 #pragma pack(pop)
 
+struct SafeClusterID {
+ private:
+  mutable absl::Mutex m_;
+  ClusterID id_ GUARDED_BY(m_);
+
+ public:
+  SafeClusterID(const ClusterID &id) : id_(id) {}
+
+  const ClusterID load() const {
+    absl::MutexLock l(&m_);
+    return id_;
+  }
+
+  ClusterID exchange(const ClusterID &newId) {
+    absl::MutexLock l(&m_);
+    ClusterID old = id_;
+    id_ = newId;
+    return old;
+  }
+};
+
 template <typename T>
 BaseID<T>::BaseID() {
   // Using const_cast to directly change data is dangerous. The cached
