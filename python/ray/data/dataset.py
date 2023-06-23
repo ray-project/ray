@@ -2253,25 +2253,11 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        ctx = DataContext.get_current()
-        if (
-            ctx.optimizer_enabled
-            and not self._plan._generated_from_pipeline
-            and isinstance(self._plan._logical_plan, LogicalPlan)
-        ):
-            # If we are using the new execution plan optimizer, lazily
-            # execute only the first block when getting the schema.
-            # We achieve this by creating a copy of the plan,
-            # appending a Limit[1] operator in its logical plan,
-            # then executing the new plan.
-            logical_plan_copy = copy.copy(self._plan._logical_plan)
-            logical_plan_with_limit = LogicalPlan(Limit(logical_plan_copy.dag, 1))
 
-            plan_copy = self._plan.copy()
-            plan_copy.link_logical_plan(logical_plan_with_limit)
-            base_schema = plan_copy.schema(fetch_if_missing=fetch_if_missing)
-        else:
-            base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        # Lazily execute only the first block to minimize computation.
+        # We achieve this by appending a Limit[1] operation to a copy
+        # of this Dataset, which we then execute to get its schema.
+        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
             return Schema(base_schema)
         else:
