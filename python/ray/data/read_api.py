@@ -17,7 +17,6 @@ import numpy as np
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -102,32 +101,36 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
-    output_arrow_format: bool = False,
+    output_arrow_format: bool = True,
 ) -> MaterializedDataset:
-    """Create a dataset from a list of local Python objects.
+    """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
+
+    Use this method to create small datasets for testing and exploration.
 
     Examples:
-        >>> import ray
-        >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
-        MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
-        >>> ds.take_batch(2) # doctest: +SKIP
-        {"item": array([1, 2])}
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([1, 2, 3, 4, 5])
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            item    int64
 
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
-            Parallelism may be limited by the number of items.
-        output_arrow_format: If True, always return data in Arrow format, raising an
-            error if this is not possible. Defaults to False.
+            Parallelism might be limited by the number of items.
 
     Returns:
-        MaterializedDataset holding the items.
+        A :class:`~ray.data.Dataset` holding the items.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        output_arrow_format = True
-
     import builtins
 
     if parallelism == 0:
@@ -151,32 +154,14 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        if ctx.strict_mode:
-            # In strict mode, we will fallback from Arrow -> Pandas automatically in
-            # the delegating block builder, and never use simple blocks.
-            builder = DelegatingBlockBuilder()
-        elif output_arrow_format:
-            builder = ArrowBlockBuilder()
-        else:
-            builder = DelegatingBlockBuilder()
+        builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
             item = items[j]
-            if ctx.strict_mode:
-                if not isinstance(item, collections.abc.Mapping):
-                    item = {"item": item}
-            else:
-                if output_arrow_format and not isinstance(
-                    item, (collections.abc.Mapping, np.ndarray)
-                ):
-                    raise ValueError(
-                        "Arrow block format can only be used if all items are "
-                        "either dicts or Numpy arrays. Received data of type: "
-                        f"{type(items[j])}. Set `output_arrow_format` to "
-                        "False to not use Arrow blocks."
-                    )
+            if not isinstance(item, collections.abc.Mapping):
+                item = {"item": item}
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
@@ -220,32 +205,18 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
     Returns:
         Dataset producing the integers.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        return read_datasource(
-            RangeDatasource(),
-            parallelism=parallelism,
-            n=n,
-            block_format="arrow",
-            column_name="id",
-        )
-    return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
-    )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="arrow",
-        column_name="value",
+        column_name="id",
     )
+
+
+@Deprecated
+def range_table(n: int, *, parallelism: int = -1) -> Dataset:
+    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
 
 
 @PublicAPI
@@ -279,13 +250,12 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Returns:
         Dataset producing the integers as Arrow tensor records.
     """
-    ctx = ray.data.DataContext.get_current()
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="tensor",
-        column_name="data" if ctx.strict_mode else "__value__",
+        column_name="data",
         tensor_shape=tuple(shape),
     )
 
@@ -1360,16 +1330,7 @@ def read_binary_files(
     Returns:
         Dataset producing records read from the specified paths.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        output_arrow_format = True
-
-    if not output_arrow_format:
-        logger.warning(
-            "read_binary_files() returns Dataset in Python list format as of Ray "
-            "v2.4. Use read_binary_files(output_arrow_format=True) to return "
-            "Dataset in Arrow format.",
-        )
+    output_arrow_format = True
 
     return read_datasource(
         BinaryDatasource(),
