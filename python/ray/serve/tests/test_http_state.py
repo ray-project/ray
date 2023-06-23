@@ -3,6 +3,7 @@ from unittest.mock import patch
 import asyncio
 
 import pytest
+import time
 from typing import Any, List, Tuple
 
 import ray
@@ -559,10 +560,15 @@ def test_unhealthy_retry_correct_number_of_times():
     )
 
     # Ensure _health_check_obj_ref is set again
-    proxy_state.update()
+    def check_health_obj_ref_not_none():
+        proxy_state.update()
+        return proxy_state._health_check_obj_ref is not None
+
+    wait_for_condition(check_health_obj_ref_not_none)
 
     # Fail the next 3 check_health calls should change the status to UNHEALTHY
     for _ in range(3):
+        time.sleep(0.1)
         proxy_state.update()
     assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
 
