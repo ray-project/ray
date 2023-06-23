@@ -137,6 +137,8 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
 
   /// Cached autoscaling state.
   std::unique_ptr<rpc::AutoscalingState> autoscaling_state_ = nullptr;
+
+  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
 
 }  // namespace gcs

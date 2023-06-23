@@ -137,6 +137,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     gcs_resource_manager_->UpdateResourceLoads(data);
   }
 
+  void ReportAutoscalingState(const rpc::autoscaler::AutoscalingState &state) {
+    rpc::autoscaler::ReportAutoscalingStateRequest request;
+    request.mutable_autoscaling_state()->CopyFrom(state);
+    rpc::autoscaler::ReportAutoscalingStateReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    gcs_autoscaler_state_manager_->HandleReportAutoscalingState(
+        request, &reply, send_reply_callback);
+  }
+
   std::string ShapeToString(const rpc::autoscaler::ResourceRequest &request) {
     // Ordered map with bundle name as the key
     std::map<std::string, double> m;
@@ -545,6 +555,47 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
     ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
     CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
                          {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
+  // Empty autoscaling state.
+  {
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_EQ(autoscaling_state, nullptr);
+  }
+
+  // Return the updated state.
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    ReportAutoscalingState(actual_state);
+
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_NE(autoscaling_state, nullptr);
+    ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 1);
+  }
+
+  // Reject an older version.
+  {
+    rpc::autoscaler::AutoscalingState state;
+    state.set_autoscaler_state_version(0);
+    ReportAutoscalingState(state);
+
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_NE(autoscaling_state, nullptr);
+    ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 1);
+  }
+
+  // Update with a new version.
+  {
+    rpc::autoscaler::AutoscalingState state;
+    state.set_autoscaler_state_version(2);
+    ReportAutoscalingState(state);
+
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_NE(autoscaling_state, nullptr);
+    ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 2);
   }
 }
 
