@@ -10,14 +10,17 @@ gsutil
 gym
 gym[atari]
 importlib-metadata
+lightgbm
 memray
 openskill
+petastorm
 protobuf
 pyarrow
 pytest
 semidbm
 scikit-learn
 scipy
+tblib
 tensorboardX
 tensorflow
 terminado
@@ -26,4 +29,5 @@ tqdm
 typer
 wandb
 xarray
+xgboost
 zarr

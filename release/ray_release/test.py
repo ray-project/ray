@@ -109,6 +109,12 @@ class Test(dict):
         issue = ray_github.get_issue(issue_number)
         return issue.state == "open"
 
+    def is_stable(self) -> bool:
+        """
+        Returns whether this test is stable.
+        """
+        return self.get("stable", True)
+
     def is_byod_cluster(self) -> bool:
         """
         Returns whether this test is running on a BYOD cluster.

@@ -154,8 +154,11 @@
 
   frequency: weekly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_horovod_master_test.sh
     cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
@@ -224,6 +227,10 @@
   frequency: nightly
   team: ml
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - xgboost_ray
     cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
@@ -1014,8 +1021,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1045,6 +1054,11 @@
   team: ml
 
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - NCCL_SOCKET_IFNAME=ens
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config_gpu.yaml
     cluster_compute: tpl_gpu_small_aws.yaml
 
@@ -1072,8 +1086,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1101,8 +1117,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1131,8 +1149,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1160,8 +1180,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1190,8 +1212,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1220,8 +1244,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1275,8 +1301,12 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
+      pip:
+        - lightgbm_ray
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1304,8 +1334,12 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
+      pip:
+        - lightgbm_ray
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1333,8 +1367,12 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
+      pip:
+        - lightgbm_ray
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1362,8 +1400,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_small_aws.yaml
 
@@ -1390,8 +1430,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1418,8 +1460,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_test.sh
     cluster_env: app_config.yaml
     cluster_compute: tpl_cpu_moderate_aws.yaml
 
@@ -1452,8 +1496,10 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
@@ -1480,8 +1526,10 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
@@ -1511,8 +1559,11 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_horovod_test.sh
     cluster_env: horovod/app_config.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
@@ -1539,8 +1590,11 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_horovod_master_test.sh
     cluster_env: horovod/app_config_master.yaml
     cluster_compute: horovod/compute_tpl_aws.yaml
 
@@ -1567,8 +1621,12 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
+      type: gpu
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
@@ -1595,8 +1653,12 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - TRAIN_PLACEMENT_GROUP_TIMEOUT_S=2000
+      type: gpu
     cluster_env: train/app_config.yaml
     cluster_compute: train/compute_tpl_aws.yaml
 
@@ -1623,8 +1685,11 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_xgboost_test.sh
     cluster_env: xgboost/app_config_gpu.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
@@ -1651,8 +1716,11 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_xgboost_master_test.sh
     cluster_env: xgboost/app_config_gpu_master.yaml
     cluster_compute: xgboost/tpl_gpu_small_scaling_aws.yaml
 
@@ -1679,8 +1747,13 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tune_rllib/compute_tpl_aws.yaml
 
@@ -1709,8 +1782,9 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1736,8 +1810,9 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1763,8 +1838,9 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1799,8 +1875,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config_ml.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1839,8 +1917,10 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config_ml.yaml
     cluster_compute: tpl_aws_4x2.yaml
 
@@ -1879,8 +1959,9 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x16.yaml
 
@@ -1905,8 +1986,9 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
@@ -1939,8 +2021,9 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x2.yaml
 
@@ -1972,8 +2055,9 @@
 
   frequency: weekly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x32_hd.yaml
 
@@ -2007,8 +2091,9 @@
 
   frequency: weekly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_100x2.yaml
 
@@ -2047,8 +2132,9 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_16x64.yaml
 
@@ -2076,8 +2162,9 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_1x96.yaml
 
@@ -2105,8 +2192,10 @@
 
   frequency: weekly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      post_build_script: byod_xgboost_tune_test.sh
     cluster_env: app_config_data.yaml
     cluster_compute: tpl_16x64.yaml
 
@@ -2141,8 +2230,9 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_16x1.yaml
 
@@ -2178,8 +2268,10 @@
 
   frequency: nightly-3x
   team: ml
-
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
     cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl_aws.yaml
 
@@ -2249,7 +2341,13 @@
 
   frequency: weekly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_3.yaml
 
@@ -2288,7 +2386,13 @@
 
   frequency: weekly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1_large.yaml
 
@@ -2406,7 +2510,13 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: many_ppo.yaml
 
@@ -2565,7 +2675,13 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: ../rllib_tests/app_config.yaml
     cluster_compute: tpl_cpu_1.yaml
 
@@ -2725,7 +2841,10 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl.yaml
 
@@ -3361,8 +3480,11 @@
 
   frequency: nightly
   team: ml
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_horovod_test.sh
     cluster_env: app_config.yaml
     cluster_compute: compute_tpl_aws.yaml
 
@@ -3394,7 +3516,6 @@
 
   frequency: nightly
   team: ml
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: gpu_2x4_t4_aws.yaml
@@ -3429,7 +3550,6 @@
 
   frequency: nightly
   team: ml
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: gpu_1x8_v100_aws.yaml
@@ -3468,8 +3588,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
@@ -3497,8 +3622,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
@@ -3526,8 +3656,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
@@ -3555,7 +3690,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -3581,7 +3715,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -3607,8 +3740,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 32cpus.yaml
 
@@ -3636,7 +3774,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
@@ -3662,7 +3799,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
@@ -3688,7 +3824,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
@@ -3717,7 +3852,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
@@ -3744,7 +3878,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
@@ -3774,7 +3907,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
@@ -3800,8 +3932,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3826,8 +3963,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3852,11 +3994,16 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3884,8 +4031,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3910,8 +4062,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3936,7 +4093,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -3962,7 +4118,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -3991,7 +4146,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4017,8 +4171,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_64cpus.yaml
 
@@ -4043,8 +4202,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_64cpus.yaml
 
@@ -4069,7 +4233,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4095,7 +4258,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4124,7 +4286,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4153,7 +4314,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4179,7 +4339,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
@@ -4208,7 +4367,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
@@ -4232,7 +4390,6 @@
 - name: rllib_learning_tests_ppo_old_stack_tf
   group: RLlib tests
   working_dir: rllib_tests
-
   frequency: nightly
   team: rllib
 
@@ -4265,7 +4422,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
@@ -4291,7 +4447,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4317,8 +4472,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4343,8 +4503,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4372,7 +4537,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4398,8 +4562,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4424,7 +4593,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
@@ -4450,7 +4618,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
@@ -4476,7 +4643,6 @@
 
   frequency: nightly
   team: rllib
-
   cluster:
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
@@ -4502,8 +4668,13 @@
 
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
@@ -4531,8 +4702,13 @@
 
   frequency: weekly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_544_cpus.yaml
 

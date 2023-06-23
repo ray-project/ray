@@ -87,7 +87,7 @@ class GrpcServer {
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
-        cluster_id_{absl::Mutex{}, ClusterID::Nil()},
+        cluster_id_(ClusterID::Nil()),
         is_closed_(true),
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
@@ -148,22 +148,7 @@ class GrpcServer {
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
-  struct SafeClusterID {
-    absl::Mutex m_;
-    ClusterID id GUARDED_BY(m_);
-
-    const ClusterID load() {
-      absl::MutexLock l(&m_);
-      return id;
-    }
-
-    ClusterID exchange(const ClusterID &newId) {
-      absl::MutexLock l(&m_);
-      ClusterID old = id;
-      id = newId;
-      return old;
-    }
-  } cluster_id_;
+  SafeClusterID cluster_id_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
