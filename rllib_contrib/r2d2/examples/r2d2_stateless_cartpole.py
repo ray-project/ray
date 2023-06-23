@@ -1,11 +1,25 @@
+import argparse
+
 from rllib_r2d2.r2d2.r2d2 import R2D2, R2D2Config
 
 import ray
 from ray import air, tune
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import register_env
 
+
+def get_cli_args():
+    """Create CLI parser and return parsed arguments"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--run-as-test", action="store_true", default=False)
+    args = parser.parse_args()
+    print(f"Running with following CLI args: {args}")
+    return args
+
+
 if __name__ == "__main__":
+    args = get_cli_args()
     ray.init()
 
     register_env("stateless_cartpole", lambda env_cfg: StatelessCartPole(env_cfg))
@@ -37,7 +51,12 @@ if __name__ == "__main__":
         .exploration(exploration_config={"epsilon_timesteps": 50000})
     )
 
-    stop = {"sampler_results/episode_reward_mean": 150, "timesteps_total": 1000000}
+    stop_reward = 150
+
+    stop = {
+        "sampler_results/episode_reward_mean": stop_reward,
+        "timesteps_total": 1000000,
+    }
 
     tuner = tune.Tuner(
         R2D2,
@@ -48,4 +67,7 @@ if __name__ == "__main__":
         ),
     )
     results = tuner.fit()
+    if args.run_as_test:
+        check_learning_achieved(results, stop_reward)
+
     ray.shutdown()
