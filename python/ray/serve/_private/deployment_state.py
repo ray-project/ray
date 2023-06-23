@@ -1289,6 +1289,24 @@ class DeploymentState:
 
         logger.info(f"Deploying new version of deployment {self._name}.")
 
+    def _set_target_state_autoscaling(self, num_replicas: int) -> None:
+        """Update the target number of replicas based on an autoscaling decision.
+
+        This differs from _set_target_state because we are updating the
+        target number of replicas base on an autoscaling decision and
+        not a redeployment. This only changes the target num_replicas,
+        and doesn't change the current deployment status.
+        """
+
+        new_info = copy(self._target_state.info)
+        new_info.set_autoscaled_num_replicas(num_replicas)
+        new_info.version = self._target_state.version.code_version
+
+        target_state = DeploymentTargetState.from_deployment_info(new_info)
+
+        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
+        self._target_state = target_state
+
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
@@ -1348,7 +1366,6 @@ class DeploymentState:
         if self._target_state.deleting:
             return
 
-        curr_info = self._target_state.info
         autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.num_replicas,
@@ -1365,12 +1382,7 @@ class DeploymentState:
             f"current handle queued queries: {current_handle_queued_queries}."
         )
 
-        new_config = copy(curr_info)
-        new_config.set_autoscaled_num_replicas(decision_num_replicas)
-        if new_config.version is None:
-            new_config.version = self._target_state.version.code_version
-
-        self._set_target_state(new_config)
+        self._set_target_state_autoscaling(decision_num_replicas)
 
     def delete(self) -> None:
         if not self._target_state.deleting:
@@ -1627,9 +1639,9 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        f"The Deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with the deployment "
-                        "constructor or the initial health check failing. See "
+                        f"The deployment failed to start {failed_to_start_count} times "
+                        "in a row. This may be due to a problem with its "
+                        "constructor or initial health check failing. See "
                         "controller logs for details. Retrying after "
                         f"{self._backoff_time_s} seconds. Error:\n"
                         f"{self._replica_constructor_error_msg}"

@@ -215,7 +215,7 @@ class GlobalState:
         result = defaultdict(list)
         task_events = self.global_state_accessor.get_task_events()
         for i in range(len(task_events)):
-            event = common_pb2.TaskEvents.FromString(task_events[i])
+            event = gcs_pb2.TaskEvents.FromString(task_events[i])
             profile = event.profile_events
             if not profile:
                 continue
