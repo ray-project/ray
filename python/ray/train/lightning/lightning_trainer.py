@@ -342,19 +342,19 @@ class LightningTrainer(TorchTrainer):
             dataset. Internally, LightningTrainer shards the training dataset
             across all workers, and creates a PyTorch Dataloader for each shard.
 
-            If a ``preprocessor`` is provided, all datasets will be
-            transformed by it. If the ``preprocessor`` has not already
-            been fit, it will be fit on the training dataset.
+            The datasets will be transformed by ``preprocessor`` if it is provided.
+            If the ``preprocessor`` has not already been fit, it will be fit on the
+            training dataset.
         datasets_iter_config: Configuration for iterating over the input ray datasets.
             You can configure the per-device batch size, prefetch batch size, collate
             function, and more. For valid arguments to pass, please refer to:
             :py:meth:`Dataset.iter_torch_batches
             <ray.data.Dataset.iter_torch_batches>`
 
-            Note that you must specify this configurations if the `datasets` argument
+            Note that you must specify `datasets_iter_config` if the `datasets` argument
             is provided to the LightningTrainer. Otherwise, LightningTrainer will use
             datamodule or dataloaders specified in
-            ``LightningConfig.trainer_init_config``.
+            ``LightningConfigBuilder.fit_params``.
 
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
