@@ -26,10 +26,7 @@ if __name__ == "__main__":
         .rollouts(num_rollout_workers=0)
         .framework("torch")
         .environment("CartPole-v1")
-        .training(
-            lr=0.001,
-            train_batch_size=40
-        )
+        .training(lr=0.001, train_batch_size=40)
     )
 
     stop_reward = 150
