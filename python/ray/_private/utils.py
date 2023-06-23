@@ -1421,13 +1421,17 @@ def parse_resources_json(
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={resources}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
             cf.bold(
-                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+                f'{command_arg}=\'{{"CustomResource3": 1, "CustomResource2": 2}}\''
             ),
         )
     return resources
@@ -1439,12 +1443,16 @@ def parse_metadata_json(
     try:
         metadata = json.loads(metadata)
         if not isinstance(metadata, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={metadata}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(f'{command_arg}=\'{{"key1": "value1", ' '"key2": "value2"}}\''),
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", "key2": "value2"}}\''),
         )
     return metadata
 
@@ -1925,11 +1933,11 @@ def parse_node_labels_json(
     except Exception as e:
         cli_logger.error(
             "`{}` is not a valid JSON string, detail error:{}",
-            cf.bold(command_arg),
+            cf.bold(f"{command_arg}={labels_json}"),
             str(e),
         )
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", ' '"region": "us"}}\''),
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
         )
     return labels
