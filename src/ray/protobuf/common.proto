@@ -205,6 +205,10 @@ enum ErrorType {
   OUT_OF_MEMORY = 22;
   // We use this error for failure due to node died unexpectedly.
   NODE_DIED = 23;
+  // This is a dummy object used to mark the end of a
+  // ray.StreamingObjectRefGenerator. It should never be returned directly to
+  // application code (instead raise StopIteration).
+  END_OF_STREAMING_GENERATOR = 24;
 }
 
 /// The information per ray error type.
