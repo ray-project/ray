@@ -163,7 +163,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param node_id The id of the current node.
   /// \param node_address The address of the current node.
-  /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_prestarted_python_workers The number of prestarted Python
   /// workers.
   /// \param maximum_startup_concurrency The maximum number of worker processes
@@ -706,8 +705,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
-  /// The soft limit of the number of registered workers.
-  int num_workers_soft_limit_;
   /// The number of workers that should be prestarted.
   /// We record this after requests to prestart workers to make sure that we do
   /// not prematurely kill prestarted workers.

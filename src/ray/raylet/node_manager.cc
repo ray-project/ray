@@ -138,6 +138,13 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           self_node_id_,
           config.node_manager_address,
           [this]() {
+            // Callback to determine the maximum number of idle workers to keep
+            // around.
+            if (config.num_workers_soft_limit >= 0) {
+              return config.num_workers_soft_limit;
+            }
+            // If no limit is provided, use the available number of CPUs,
+            // assuming that each incoming task will likely require 1 CPU.
             // We floor the available CPUs to the nearest integer to avoid starting too
             // many workers when there is less than 1 CPU left. Otherwise, we could end
             // up repeatedly starting the worker, then killing it because it idles for
