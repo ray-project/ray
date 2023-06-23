@@ -453,6 +453,11 @@ def _render_table_item(
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
         yield key, f"{item:.5f}".rstrip("0")
+    elif isinstance(item, dict):
+        flattened = flatten_dict(item)
+        for k, v in sorted(flattened.items()):
+            yield key + "/" + k, _max_len(v)
+
     else:
         yield key, _max_len(item, 20)
 
@@ -470,9 +475,7 @@ def _get_dict_as_table_data(
     upper = []
     lower = []
 
-    flattened = flatten_dict(data)
-
-    for key, value in sorted(flattened.items()):
+    for key, value in sorted(data.items()):
         if include and key not in include:
             continue
         if key in exclude:

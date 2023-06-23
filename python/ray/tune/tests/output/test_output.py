@@ -215,10 +215,11 @@ def test_result_table_no_divison():
             "x": 19.123123123,
             "c": 5,
             "ignore": 9,
+            "nested_ignore": {"value": 5},
             "y": 20,
             "z": {"m": 4, "n": {"o": "p"}},
         },
-        exclude={"ignore"},
+        exclude={"ignore", "nested_ignore"},
     )
 
     assert data == [
@@ -240,10 +241,11 @@ def test_result_table_divison():
             "x": 19.123123123,
             "c": 5,
             "ignore": 9,
+            "nested_ignore": {"value": 5},
             "y": 20,
             "z": {"m": 4, "n": {"o": "p"}},
         },
-        exclude={"ignore"},
+        exclude={"ignore", "nested_ignore"},
         upper_keys={"x", "y", "z", "z/m", "z/n/o"},
     )
 
