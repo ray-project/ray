@@ -1962,7 +1962,6 @@ def status(address: str, redis_password: str, verbose: bool):
     print(debug_status(status, error, verbose=verbose))
 
 
-
 @cli.command(hidden=True)
 @click.option(
     "--stream",

@@ -63,7 +63,6 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
 
-
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

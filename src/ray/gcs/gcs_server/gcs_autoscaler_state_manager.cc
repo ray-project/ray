@@ -42,7 +42,14 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
             last_cluster_resource_state_version_);
   auto state = reply->mutable_cluster_resource_state();
-  MakeClusterResourceStateInternal(state);
+  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
+  state->set_cluster_resource_state_version(
+      IncrementAndGetNextClusterResourceStateVersion());
+
+  GetNodeStates(state);
+  GetPendingResourceRequests(state);
+  GetPendingGangResourceRequests(state);
+  GetClusterResourceConstraints(state);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
@@ -92,18 +99,6 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
-}
-
-void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
-    rpc::autoscaler::ClusterResourceState *state) {
-  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
-  state->set_cluster_resource_state_version(
-      IncrementAndGetNextClusterResourceStateVersion());
-
-  GetNodeStates(state);
-  GetPendingResourceRequests(state);
-  GetPendingGangResourceRequests(state);
-  GetClusterResourceConstraints(state);
 }
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
