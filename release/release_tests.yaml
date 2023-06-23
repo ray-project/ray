@@ -856,6 +856,12 @@
   frequency: weekly
   team: ml
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
     cluster_env: gptj_deepspeed_env.yaml
     cluster_compute: gptj_deepspeed_compute_aws.yaml
 
@@ -899,6 +905,12 @@
   frequency: weekly
   team: ml
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
     cluster_env: 30b_deepspeed_env.yaml
     cluster_compute: 30b_deepspeed_compute.yaml
 
@@ -920,6 +932,8 @@
   frequency: nightly-3x
   team: data
   cluster:
+    byod: 
+      type: gpu
     cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
@@ -944,6 +958,8 @@
   frequency: nightly-3x
   team: ml
   cluster:
+    byod:
+      type: gpu
     cluster_env: ../testing/cluster_envs/02_many_model_training.yaml
     cluster_compute: ../testing/compute_configs/cpu/aws.yaml
 
@@ -968,6 +984,8 @@
   frequency: nightly-3x
   team: serve
   cluster:
+    byod:
+      type: cu118
     cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
 
@@ -4908,6 +4926,8 @@
   python: "3.9"
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config_gpu.yaml
     cluster_compute: only_head_node_1gpu_64cpu.yaml
 

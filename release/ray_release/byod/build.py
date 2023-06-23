@@ -17,8 +17,9 @@ DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
-REQUIREMENTS_BYOD = "requirements_byod.txt"
-REQUIREMENTS_ML_BYOD = "requirements_ml_byod.txt"
+REQUIREMENTS_BYOD = "requirements_byod"
+REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
+PYTHON_VERSION = "3.8"
 
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
@@ -80,9 +81,9 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
         for ray_image, test in to_be_built.items():
             byod_image = test.get_anyscale_base_byod_image()
             byod_requirements = (
-                REQUIREMENTS_BYOD
+                f"{REQUIREMENTS_BYOD}_{test.get('python', PYTHON_VERSION)}.txt"
                 if test.get_byod_type() == "cpu"
-                else REQUIREMENTS_ML_BYOD
+                else f"{REQUIREMENTS_ML_BYOD}_{test.get('python', PYTHON_VERSION)}.txt"
             )
             if _byod_image_exist(test):
                 logger.info(f"Image {byod_image} already exists")
