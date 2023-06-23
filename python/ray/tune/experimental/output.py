@@ -453,6 +453,11 @@ def _render_table_item(
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
         yield key, f"{item:.5f}".rstrip("0")
+    elif isinstance(item, dict):
+        flattened = flatten_dict(item)
+        for k, v in sorted(flattened.items()):
+            yield key + "/" + k, _max_len(v)
+
     else:
         yield key, _max_len(item, 20)
 
@@ -470,9 +475,7 @@ def _get_dict_as_table_data(
     upper = []
     lower = []
 
-    flattened = flatten_dict(data)
-
-    for key, value in sorted(flattened.items()):
+    for key, value in sorted(data.items()):
         if include and key not in include:
             continue
         if key in exclude:
@@ -1016,6 +1019,7 @@ class AirResultProgressCallback(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
+        print("")
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
@@ -1032,6 +1036,7 @@ class AirResultProgressCallback(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
+        print("")
 
     def on_checkpoint(
         self,
@@ -1052,6 +1057,7 @@ class AirResultProgressCallback(Callback):
             f"saved a checkpoint for iteration {saved_iter} "
             f"at: {checkpoint.dir_or_data}"
         )
+        print("")
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
@@ -1066,8 +1072,9 @@ class AirResultProgressCallback(Callback):
         else:
             print(
                 f"{self._addressing_tmpl.format(trial)} "
-                f"started without custom configuration."
+                f"started without custom configuration.\n"
             )
+        print("")
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):
