@@ -702,19 +702,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
-  /// The number of workers that should be prestarted.
-  /// We record this after requests to prestart workers to make sure that we do
-  /// not prematurely kill prestarted workers.
-  /// This is reset after the same time interval used to kill idle workers, to
-  /// make sure that we eventually kill pre-started workers that are never
-  /// going to be used.
-  /// TODO(swang): This does not differentiate between idle workers of
-  /// different languages.
-  int64_t num_workers_to_prestart_ = -1;
-  /// Whether to reset the num_workers_to_prestart_ variable.
-  /// We use this flag to make sure that we will try to fulfill a request to
-  /// prestart a worker for at least the idle worker timeout.
-  bool reset_num_workers_to_prestart_ = true;
   /// A callback to get the number of CPUs available. We use this to determine
   /// how many idle workers to keep around.
   std::function<int64_t()> get_num_cpus_available_;

@@ -158,14 +158,6 @@ void WorkerPool::Start() {
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
     periodical_runner_.RunFnPeriodically(
         [this] {
-          if (reset_num_workers_to_prestart_) {
-            num_workers_to_prestart_ = -1;
-          } else {
-            // On the next interval, reset the number of workers to prestart.
-            // This ensures that we will try to fulfill a request to prestart a
-            // worker for at least the idle worker timeout.
-            reset_num_workers_to_prestart_ = true;
-          }
           TryKillingIdleWorkers();
         },
         RayConfig::instance().kill_idle_workers_interval_ms(),
@@ -1015,13 +1007,13 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   if (!used) {
     // Put the worker to the idle pool.
     state.idle.insert(worker);
+    auto now = get_time_();
     if (found) {
-      // If the worker was just started, then it has been idle "forever". We
-      // should consider it first when choosing which idle workers to kill
-      // because it is cold.
-      idle_of_all_languages_.push_front(std::make_pair(worker, -1));
+      // If the worker was just started, then we should consider it first when
+      // choosing which idle workers to kill because it is cold.
+      idle_of_all_languages_.push_front(std::make_pair(worker, now));
     } else {
-      idle_of_all_languages_.emplace_back(worker, get_time_());
+      idle_of_all_languages_.emplace_back(worker, now);
     }
   } else if (!found) {
     RAY_LOG(INFO) << "Worker not returned to the idle pool after being used. This may "
@@ -1067,18 +1059,10 @@ void WorkerPool::TryKillingIdleWorkers() {
   // Compute the soft limit for the number of idle workers to keep around.
   // This assumes the common case where each task requires 1 CPU.
   const int64_t num_cpus_available = get_num_cpus_available_();
-  // If there was a request to prestart some workers to fulfill a task backlog,
-  // we pick the max between the number of prestarted workers and the available
-  // CPUs. This is to ensure that we don't immediately churn prestarted
-  // workers, if the available number of CPUs has decreased since the prestart
-  // request.
-  const int64_t num_desired_idle_workers =
-      std::max(num_cpus_available, num_workers_to_prestart_);
-  RAY_LOG(DEBUG) << "Idle workers: " << idle_of_all_languages_.size()
+  RAY_LOG(INFO) << "Idle workers: " << idle_of_all_languages_.size()
                  << ", idle workers that are eligible to kill: "
                  << num_killable_idle_workers
                  << ", num CPUs available: " << num_cpus_available
-                 << ", num workers to prestart: " << num_workers_to_prestart_
                  << ", num workers desired " << num_desired_idle_workers;
 
   // Iterate through the list and try to kill enough workers so that we are at
@@ -1089,7 +1073,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     if (it->second == -1 ||
         now - it->second >
             RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-      RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
+      RAY_LOG(INFO) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
                      << num_desired_idle_workers << " killing idle worker with PID "
                      << it->first->GetProcess().GetId();
@@ -1349,11 +1333,6 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
                    << " num idle workers " << state.idle.size()
                    << " num registered workers " << state.registered_workers.size();
     PrestartDefaultCpuWorkers(task_spec.GetLanguage(), num_needed);
-  }
-
-  if (backlog_size > num_workers_to_prestart_) {
-    num_workers_to_prestart_ = desired_usable_workers;
-    reset_num_workers_to_prestart_ = false;
   }
 }
 
