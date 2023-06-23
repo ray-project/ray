@@ -255,6 +255,21 @@ To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutosca
 In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster]((https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster)). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
 :::
 
+## Load balancer
+You can setup ingress to expose your Serve application to the internet. See [example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice-alb-ingress.yaml)
+
+:::{note}
+- Ray Serve provisions an HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
+- Ray Serve uses port 8000 as the default HTTP proxy traffic port. You can change the port by setting `http_options` in the Serve config. Learn more details [here](serve-multi-application)
+:::
+
+## Monitoring
+You can monitor your Serve application using the Ray dashboard.
+Learn more about how to configure & manage dashboard [here](observability-configure-manage-dashboard)
+Learn ray serve dashboard [here](serve-monitoring)
+Learn how to setup Grafana dashboard [here](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/)
+
+
 ## Next Steps
 
 Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
