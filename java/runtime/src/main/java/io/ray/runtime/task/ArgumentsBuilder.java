@@ -14,7 +14,6 @@ import io.ray.runtime.object.ObjectSerializer;
 import io.ray.runtime.util.SystemConfig;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 
 /** Helper methods to convert arguments from/to objects. */
@@ -49,7 +48,7 @@ public class ArgumentsBuilder {
             throw new IllegalArgumentException(
                 String.format(
                     "Can't transfer %s data to %s",
-                    Arrays.toString(value.metadata), language.getValueDescriptor().getName()));
+                    new String(value.metadata), language.getValueDescriptor().getName()));
           }
         }
         if (value.data.length > SystemConfig.getLargestSizePassedByValue()) {
