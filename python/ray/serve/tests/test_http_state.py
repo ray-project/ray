@@ -531,6 +531,42 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed():
     assert proxy_state._consecutive_health_check_failures == 0
 
 
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0)
+@patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0)
+def test_unhealthy_retry_correct_number_of_times():
+    """Test the unhealthy retry logic retires the correct number of times.
+
+    When the health check fails 3 times (default retry threshold), the proxy state
+    should change from HEALTHY to UNHEALTHY.
+    """
+
+    @ray.remote(num_cpus=0)
+    class NewMockHTTPProxyActor:
+        async def ready(self):
+            return json.dumps(["mock_worker_id", "mock_log_file_path"])
+
+        async def check_health(self):
+            await asyncio.sleep(100)
+
+    proxy_state = _create_http_proxy_state(proxy_actor_class=NewMockHTTPProxyActor)
+
+    # Continuously trigger update. The status should change from STARTING to HEALTHY
+    # when ready.
+    wait_for_condition(
+        condition_predictor=_update_and_check_proxy_status,
+        state=proxy_state,
+        status=HTTPProxyStatus.HEALTHY,
+    )
+
+    # Ensure _health_check_obj_ref is set again
+    proxy_state.update()
+
+    # Fail the next 3 check_health calls should change the status to UNHEALTHY
+    for _ in range(3):
+        proxy_state.update()
+    assert proxy_state.status == HTTPProxyStatus.UNHEALTHY
+
+
 if __name__ == "__main__":
     import sys
 
