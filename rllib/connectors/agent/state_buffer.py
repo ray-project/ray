@@ -49,7 +49,7 @@ class StateBufferConnector(AgentConnector):
 
     @override(Connector)
     def in_eval(self):
-        self._states.clear()
+        # self._states.clear()
         super().in_eval()
 
     def reset(self, env_id: str):
