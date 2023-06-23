@@ -302,13 +302,15 @@ class JobSupervisor:
             "auto", ray.worker._global_node._ray_params.temp_dir
         )
         assert ray_addr is not None
+        logger.warning(f"gene_test _get_driver_env_vars is called: {self._get_driver_runtime_env(resources_specified)}")
         return {
             # Set JobConfig for the child process (runtime_env, metadata).
             RAY_JOB_CONFIG_JSON_ENV_VAR: json.dumps(
                 {
                     "runtime_env": self._get_driver_runtime_env(resources_specified),
                     "metadata": self._metadata,
-                    "_client_job": True,
+                    "client_job": True,
+                    # "_py_driver_sys_path": None,
                 }
             ),
             # Always set RAY_ADDRESS as find_bootstrap_address address for
