@@ -71,13 +71,13 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 This is useful for scaling out an existing FastAPI app with no modifications necessary.
 Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
 
-### Websockets
+### WebSockets
 
 ```{warning}
 Support for WebSockets is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
 ```
 
-Serve offers websocket support via FastAPI:
+Serve supports WebSockets via FastAPI:
 
 ```{literalinclude} doc_code/http_guide/websockets_example.py
 :start-after: __websocket_serve_app_start__
@@ -85,13 +85,13 @@ Serve offers websocket support via FastAPI:
 :language: python
 ```
 
-Decorate the function that handles websocket requests with `@app.websocket`. Read more about FastAPI websockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
+Decorate the function that handles WebSocket requests with `@app.websocket`. Read more about FastAPI WebSockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
 
 Query the deployment using the `websockets` package (`pip install websockets`):
 
 ```{literalinclude} doc_code/http_guide/websockets_example.py
-:start-after: __websocket_serve_app_start__
-:end-before: __websocket_serve_app_end__
+:start-after: __websocket_serve_client_start__
+:end-before: __websocket_serve_client_end__
 :language: python
 ```
 
