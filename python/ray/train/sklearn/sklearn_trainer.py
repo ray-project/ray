@@ -63,7 +63,7 @@ class SklearnTrainer(BaseTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
 
