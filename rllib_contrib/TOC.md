@@ -3,6 +3,7 @@
 
 * [A3C](./a3c)
 * [MAML](./maml)
+* [APEX DQN](./apex_dqn/)
 
 
 
