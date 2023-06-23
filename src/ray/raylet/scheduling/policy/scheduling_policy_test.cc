@@ -104,6 +104,13 @@ TEST_F(SchedulingPolicyTest, NodeAffinityPolicyTest) {
   ASSERT_EQ(to_schedule, scheduling::NodeID("unavailable"));
 
   to_schedule = scheduling_policy.Schedule(
+      req,
+      SchedulingOptions::NodeAffinity(
+          false, false, "unavailable", false, false, /*fail_on_unavailable=*/true));
+  // The task is unschedulable since soft is false and fail_on_unavailable is true.
+  ASSERT_TRUE(to_schedule.IsNil());
+
+  to_schedule = scheduling_policy.Schedule(
       req, SchedulingOptions::NodeAffinity(false, false, "unavailable", true, true));
   // The task is scheduled somewhere else since soft is true and spill_on_unavailable is
   // also true.
