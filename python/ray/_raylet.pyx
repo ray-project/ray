@@ -24,7 +24,7 @@ import time
 import traceback
 import _thread
 import typing
-from typing import Union, Awaitable, Callable, Any
+from typing import Union, Awaitable, Callable, Any, Optional
 
 from libc.stdint cimport (
     int32_t,
@@ -221,7 +221,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class ObjectRefStreamEneOfStreamError(RayError):
+class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
@@ -261,9 +261,7 @@ class StreamingObjectRefGenerator:
 
     def _next_sync(
             self,
-            timeout_s: float = -1,
-            sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 30) -> ObjectRef:
+            timeout_s: Optional[float] = None) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -285,150 +283,87 @@ class StreamingObjectRefGenerator:
         Args:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
-            sleep_interval_s: busy waiting interval.
-            unexpected_network_failure_timeout_s: If the
-                task is finished, but the next ref is not
-                available within this time, it will hard fail
-                the generator.
         """
-        obj = self._handle_next_sync()
-        last_time = time.time()
-
-        # The generator ref will be None if the task succeeds.
-        # It will contain an exception if the task fails by
-        # a system error.
-        while obj.is_nil():
-            error_ref = self._handle_error(
-                False,
-                last_time,
-                timeout_s,
-                unexpected_network_failure_timeout_s)
-            if error_ref is not None:
-                return error_ref
-
-            time.sleep(sleep_interval_s)
-            obj = self._handle_next_sync()
-
-        return obj
-
-    async def _next_async(
-            self,
-            timeout_s: float = -1,
-            sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 30):
-        """Same API as _next_sync, but it is for async context."""
-        obj = await self._handle_next_async()
-        last_time = time.time()
-
-        # The generator ref will be None if the task succeeds.
-        # It will contain an exception if the task fails by
-        # a system error.
-        while obj.is_nil():
-            error_ref = self._handle_error(
-                True,
-                last_time,
-                timeout_s,
-                unexpected_network_failure_timeout_s)
-            if error_ref is not None:
-                return error_ref
-
-            await asyncio.sleep(sleep_interval_s)
-            obj = await self._handle_next_async()
-
-        return obj
-
-    async def _handle_next_async(self):
-        try:
-            return self._handle_next()
-        except ObjectRefStreamEneOfStreamError:
-            raise StopAsyncIteration
-
-    def _handle_next_sync(self):
-        try:
-            return self._handle_next()
-        except ObjectRefStreamEneOfStreamError:
-            raise StopIteration
-
-    def _handle_next(self):
-        """Get the next item from the ObjectRefStream.
-
-        This API return immediately all the time. It returns a nil object
-        if it doesn't have the next item ready. It raises
-        ObjectRefStreamEneOfStreamError if there's nothing more to read.
-        If there's a next item, it will return a object ref.
-        """
-        if hasattr(self.worker, "core_worker"):
-            obj = self.worker.core_worker.try_read_next_object_ref_stream(
-                self._generator_ref)
-            return obj
-        else:
+        if not hasattr(self.worker, "core_worker"):
             raise ValueError(
                 "Cannot access the core worker. "
                 "Did you already shutdown Ray via ray.shutdown()?")
+        core_worker = self.worker.core_worker
 
-    def _handle_error(
-            self,
-            is_async: bool,
-            last_time: int,
-            timeout_s: float,
-            unexpected_network_failure_timeout_s: float):
-        """Handle the error case of next APIs.
-
-        Return None if there's no error. Returns a ref if
-        the ref is supposed to be return.
-        """
-        if self._generator_task_exception:
-            # The generator task has failed already.
-            # We raise StopIteration
-            # to conform the next interface in Python.
-            if is_async:
-                raise StopAsyncIteration
-            else:
-                raise StopIteration
-        else:
-            # Otherwise, we should ray.get on the generator
-            # ref to find if the task has a system failure.
-            # Return the generator ref that contains the system
-            # error as soon as possible.
-            r, _ = ray.wait([self._generator_ref], timeout=0)
-            if len(r) > 0:
-                try:
-                    ray.get(r)
-                except Exception as e:
-                    # If it has failed, return the generator task ref
-                    # so that the ref will raise an exception.
-                    self._generator_task_exception = e
-                    return self._generator_ref
-                finally:
-                    if self._generator_task_completed_time is None:
-                        self._generator_task_completed_time = time.time()
-
-        # Currently, since the ordering of intermediate result report
-        # is not guaranteed, it is possible that althoug the task
-        # has succeeded, all of the object references are not reported
-        # (e.g., when there are network failures).
-        # If all the object refs are not reported to the generator
-        # within 30 seconds, we consider is as an unreconverable error.
-        if self._generator_task_completed_time:
-            if (time.time() - self._generator_task_completed_time
-                    > unexpected_network_failure_timeout_s):
-                # It means the next wasn't reported although the task
-                # has been terminated 30 seconds ago.
-                self._generator_task_exception = AssertionError
-                assert False, (
-                    "Unexpected network failure occured. "
-                    f"Task ID: {self._generator_ref.task_id().hex()}"
-                )
-
-        if timeout_s != -1 and time.time() - last_time > timeout_s:
+        # Wait for the next ObjectRef to become ready.
+        expected_ref = core_worker.peek_object_ref_stream(
+            self._generator_ref)
+        ready, unready = ray.wait(
+            [expected_ref], timeout=timeout_s, fetch_local=False)
+        if len(unready) > 0:
             return ObjectRef.nil()
 
-        return None
+        try:
+            ref = core_worker.try_read_next_object_ref_stream(
+                self._generator_ref)
+            assert not ref.is_nil()
+        except ObjectRefStreamEndOfStreamError:
+            if self._generator_task_exception:
+                # Exception has been returned.
+                raise StopIteration
+
+            try:
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                ray.get(self._generator_ref)
+            except Exception as e:
+                self._generator_task_exception = e
+                return self._generator_ref
+            else:
+                # The task finished without an exception.
+                raise StopIteration
+        return ref
+
+    async def _next_async(
+            self,
+            timeout_s: Optional[float] = None,
+            sleep_interval_s: float = 0.0001):
+        """Same API as _next_sync, but it is for async context."""
+        if not hasattr(self.worker, "core_worker"):
+            raise ValueError(
+                "Cannot access the core worker. "
+                "Did you already shutdown Ray via ray.shutdown()?")
+        core_worker = self.worker.core_worker
+
+        ref = core_worker.peek_object_ref_stream(
+            self._generator_ref)
+        # TODO(swang): Avoid fetching the value.
+        ready, unready = await asyncio.wait([ref], timeout=timeout_s)
+        if len(unready) > 0:
+            return ObjectRef.nil()
+
+        try:
+            ref = core_worker.try_read_next_object_ref_stream(
+                self._generator_ref)
+            assert not ref.is_nil()
+        except ObjectRefStreamEndOfStreamError:
+            if self._generator_task_exception:
+                # Exception has been returned. raise StopIteration.
+                raise StopAsyncIteration
+
+            try:
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                await self._generator_ref
+            except Exception as e:
+                self._generator_task_exception = e
+                return self._generator_ref
+            else:
+                # meaning the task succeed without failure raise StopIteration.
+                raise StopAsyncIteration
+
+        return ref
 
     def __del__(self):
         if hasattr(self.worker, "core_worker"):
-            # The stream is created when a task is first submitted via
-            # CreateObjectRefStream.
+            # The stream is created when a task is first submitted.
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
@@ -452,7 +387,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEneOfStreamError(message)
+        raise ObjectRefStreamEndOfStreamError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
@@ -936,6 +871,7 @@ cdef execute_streaming_generator(
         actor_id,
         name_of_concurrency_group_to_execute,
         return_size,
+        uint64_t attempt_number,
         c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error):
@@ -970,6 +906,8 @@ cdef execute_streaming_generator(
             It is used to write an error message.
         actor_id: The ID of the actor. It is used to write an error message.
         return_size: The number of static returns.
+        attempt_number: The number of times the current task is retried.
+            0 means it is the first execution of the task.
         streaming_generator_returns(out): A list of a pair of (ObjectID,
         is_plasma_object) that are generated by a streaming generator
         task.
@@ -1037,7 +975,7 @@ cdef execute_streaming_generator(
                 generator_id,
                 caller_address,
                 generator_index,
-                False)  # finished
+                attempt_number)
             generator_index += 1
             break
         else:
@@ -1069,20 +1007,8 @@ cdef execute_streaming_generator(
                 generator_id,
                 caller_address,
                 generator_index,
-                False)  # finished
+                attempt_number)
             generator_index += 1
-
-    # Report the owner that there's no more objects.
-    logger.debug(
-        "Writes End of stream to a ObjectRefStream "
-        "of an index {}".format(generator_index))
-    CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-        c_pair[CObjectID, shared_ptr[CRayObject]](
-            CObjectID.Nil(), shared_ptr[CRayObject]()),
-        generator_id,
-        caller_address,
-        generator_index,
-        True)  # finished.
 
 
 cdef create_generator_return_obj(
@@ -1348,6 +1274,7 @@ cdef void execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
+        uint64_t attempt_number = core_worker.get_current_task_attempt_number()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
@@ -1514,6 +1441,7 @@ cdef void execute_task(
                                     actor_id,
                                     name_of_concurrency_group_to_execute,
                                     returns[0].size(),
+                                    attempt_number,
                                     streaming_generator_returns,
                                     is_retryable_error,
                                     application_error)
@@ -4092,6 +4020,17 @@ cdef class CoreWorker:
             "",
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
+
+    def peek_object_ref_stream(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            CObjectReference c_object_ref = (
+                CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
+                    c_generator_id))
+
+        return ObjectRef(
+            c_object_ref.object_id(),
+            c_object_ref.owner_address().SerializeAsString())
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

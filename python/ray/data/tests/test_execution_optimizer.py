@@ -896,7 +896,7 @@ def test_sort_operator(ray_start_regular_shared, enable_optimizer):
 
 
 def test_sort_e2e(
-    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, local_path
+    ray_start_regular_shared, enable_optimizer, use_push_based_shuffle, tmp_path
 ):
     ds = ray.data.range(100, parallelism=4)
     ds = ds.random_shuffle()
@@ -904,23 +904,18 @@ def test_sort_e2e(
     assert extract_values("id", ds.take_all()) == list(range(100))
     _check_usage_record(["ReadRange", "RandomShuffle", "Sort"])
 
-    # TODO: write_XXX and from_XXX are not supported yet in new execution plan.
-    # Re-enable once supported.
+    df = pd.DataFrame({"one": list(range(100)), "two": ["a"] * 100})
+    ds = ray.data.from_pandas([df])
+    ds.write_parquet(tmp_path)
 
-    # df = pd.DataFrame({"one": list(range(100)), "two": ["a"] * 100})
-    # ds = ray.data.from_pandas([df])
-    # path = os.path.join(local_path, "test_parquet_dir")
-    # os.mkdir(path)
-    # ds.write_parquet(path)
-
-    # ds = ray.data.read_parquet(path)
-    # ds = ds.random_shuffle()
-    # ds1 = ds.sort("one")
-    # ds2 = ds.sort("one", descending=True)
-    # r1 = ds1.select_columns(["one"]).take_all()
-    # r2 = ds2.select_columns(["one"]).take_all()
-    # assert [d["one"] for d in r1] == list(range(100))
-    # assert [d["one"] for d in r2] == list(reversed(range(100)))
+    ds = ray.data.read_parquet(tmp_path)
+    ds = ds.random_shuffle()
+    ds1 = ds.sort("one")
+    ds2 = ds.sort("one", descending=True)
+    r1 = ds1.select_columns(["one"]).take_all()
+    r2 = ds2.select_columns(["one"]).take_all()
+    assert [d["one"] for d in r1] == list(range(100))
+    assert [d["one"] for d in r2] == list(reversed(range(100)))
 
 
 def test_sort_validate_keys(
