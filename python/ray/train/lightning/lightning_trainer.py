@@ -386,7 +386,7 @@ class LightningTrainer(TorchTrainer):
 
         run_config.checkpoint_config = self._unify_checkpoint_configs(
             ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
-            air_ckpt_config=run_config.checkpoint_config,
+            air_ckpt_config=run_config.checkpoint_config
         )
 
         # Disable strict checking to prevent validation errors against metrics that
