@@ -325,6 +325,10 @@ message GcsNodeInfo {
   // The instance id of the node if it's running on a cloud provider.
   string instance_id = 13;
 
+  // The instance node type of the node if it's running on a cloud provider.
+  // Set through ENV of src/ray/common/constants.h::kNodeTypeNameEnv
+  string node_type_name = 14;
+
   // The unix ms timestamp the node was started at.
   uint64 start_time_ms = 23;
   // The unix ms timestamp the node was ended at.
