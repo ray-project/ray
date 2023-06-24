@@ -180,6 +180,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
+    node_state_proto->set_ray_node_type_name(gcs_node_info.node_type_name());
     node_state_proto->set_node_state_version(last_cluster_resource_state_version_);
     node_state_proto->set_status(status);
 
