@@ -15,10 +15,7 @@ fi
 
 NODE_VERSION="14"
 
-YUM_PKGS=(
-  unzip zip sudo openssl xz
-  java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
-)
+YUM_PKGS=(unzip zip sudo openssl xz)
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   YMB_PKGS+=(
@@ -29,8 +26,6 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
 fi
 
 yum -y install "${YUM_PKGS[@]}"
-
-# /ray/ci/env/install-bazel.sh
 
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x

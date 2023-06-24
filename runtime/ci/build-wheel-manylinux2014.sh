@@ -20,23 +20,6 @@ echo "--- Build dashboard frontend"
   npm run build
 )
 
-## Java parts
-echo "--- Build java parts"
-
-java -version
-JAVA_BIN="$(readlink -f "$(command -v java)")"
-echo "java_bin path ${JAVA_BIN}"
-export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
-
-JAVA_BIN="$(readlink -f "$(command -v java)")"
-echo "java_bin path ${JAVA_BIN}"
-export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
-
-if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
-  bazel build //java:ray_java_pkg
-  unset RAY_INSTALL_JAVA
-fi
-
 echo "--- Build python wheels"
 mkdir -p .whl
 # Python version key, interpreter version code, numpy tuples.
@@ -79,11 +62,7 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
 
     # build ray wheel
     PATH="/opt/python/${PYTHON}/bin:$PATH" \
-    "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
-
-    # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:$PATH" \
-    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
