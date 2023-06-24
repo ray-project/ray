@@ -5,3 +5,7 @@ steps:
       - /bin/bash runtime/ci/build-wheels.sh
     agents:
       queue: "large"
+    artifact_paths:
+      - "/artifats/**/*"
+    env:
+      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"

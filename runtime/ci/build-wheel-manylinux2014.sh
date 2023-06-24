@@ -79,3 +79,5 @@ for path in .whl/*.whl; do
     fi
   fi
 done
+
+cp .whl/*.whl /artifacts/
