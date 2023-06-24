@@ -27,4 +27,4 @@ DOCKER_RUN_ARGS=(
 RAY="$(pwd)"
 
 docker run --rm -w /ray -v "${RAY}":/ray "${DOCKER_RUN_ARGS[@]}" \
-    anyscale/rayforge /ray/runtime/ci/build-wheel-manylinux2014.sh
+    anyscale/rayforge /bin/bash /ray/runtime/ci/build-wheel-manylinux2014.sh
