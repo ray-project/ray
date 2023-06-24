@@ -1,10 +1,8 @@
 steps:
   - name: "Build wheels"
     command:
-      - /bin/bash -c "id"
-      - /bin/bash -c "ls /"
-      - /bin/bash -c "echo $HOME"
-      - sudo echo "hello"
+      - sudo mkdir /artifacts
+      - sudo chown -R buildkite-agent:buildkite-agent /artifacts
       - /bin/bash runtime/ci/build-forge.sh
       - /bin/bash runtime/ci/build-wheels.sh
     agents:
