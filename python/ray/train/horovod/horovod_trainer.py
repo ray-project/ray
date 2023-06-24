@@ -24,12 +24,12 @@ class HorovodTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -47,7 +47,7 @@ class HorovodTrainer(DataParallelTrainer):
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and

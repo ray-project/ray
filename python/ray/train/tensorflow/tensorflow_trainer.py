@@ -22,12 +22,12 @@ class TensorflowTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -55,7 +55,7 @@ class TensorflowTrainer(DataParallelTrainer):
         at the beginning of your ``train_loop_per_worker`` function.
 
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and

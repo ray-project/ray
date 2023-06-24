@@ -121,7 +121,7 @@ class TensorflowPredictor(DLPredictor):
 
         Example:
 
-            .. code-block:: python
+            .. testcode::
 
                 # List outputs are not supported by default TensorflowPredictor.
                 def build_model() -> tf.keras.Model:
@@ -137,7 +137,10 @@ class TensorflowPredictor(DLPredictor):
                             str(i): model_output[i] for i in range(len(model_output))
                         }
 
-                predictor = CustomPredictor(model_definition=build_model)
+                import numpy as np
+                data_batch = np.array([[0.5], [0.6], [0.7]], dtype=np.float32)
+
+                predictor = CustomPredictor(model=build_model())
                 predictions = predictor.predict(data_batch)
 
         Args:
