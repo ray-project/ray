@@ -20,9 +20,15 @@ YUM_PKGS=(
   java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
 )
 
-yum -y install "${YUM_PKGS[@]}"
+if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
+  YMB_PKGS+=(
+    "libasan-4.8.5-44.el7.x86_64"
+    "libubsan-7.3.1-5.10.el7.x86_64"
+    "devtoolset-8-libasan-devel.x86_64"
+  )
+fi
 
-java -version
+yum -y install "${YUM_PKGS[@]}"
 
 # /ray/ci/env/install-bazel.sh
 
@@ -42,3 +48,5 @@ echo "build --config=ci" > ~/.bazelrc
 echo "build --announce_rc" >> ~/.bazelrc
 
 EOF
+
+CMD ["/bin/bash"]
