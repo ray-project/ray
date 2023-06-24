@@ -1,0 +1,13 @@
+steps:
+  - name: "todo"
+    command: "echo todo"
+    plugins:
+      - docker#v3.11.0:
+          image: "830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/forge:0.2.2"
+          propagate-aws-auth-tokens: true
+          environment:
+            - "BUILDKITE"
+            - "BUILDKITE_PIPELINE_ID"
+            - "BUILDKITE_PIPELINE_SLUG"
+          volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock"
