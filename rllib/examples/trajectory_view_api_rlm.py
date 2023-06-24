@@ -8,8 +8,10 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
-from ray.rllib.examples.rl_module.frame_stacking_rlm import \
-    TorchFrameStackingCartPoleRLM, TfFrameStackingCartPoleRLM
+from ray.rllib.examples.rl_module.frame_stacking_rlm import (
+    TorchFrameStackingCartPoleRLM,
+    TfFrameStackingCartPoleRLM,
+)
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
@@ -49,7 +51,11 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ray.init(local_mode=args.local_mode)
 
-    module = TorchFrameStackingCartPoleRLM if args.framework == "torch" else TfFrameStackingCartPoleRLM
+    module = (
+        TorchFrameStackingCartPoleRLM
+        if args.framework == "torch"
+        else TfFrameStackingCartPoleRLM
+    )
 
     # We only need to fill in FrameStackingCartPoleRLM here, RLlib will fill in the
     # defaults for us.
@@ -61,10 +67,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment(StatelessCartPole)
         .framework(args.framework)
-        .training(
-            num_sgd_iter=5,
-            vf_loss_coeff=0.0001
-        )
+        .training(num_sgd_iter=5, vf_loss_coeff=0.0001)
         .rl_module(rl_module_spec=frame_stacking_rlm_spec)
     )
 
@@ -83,7 +86,7 @@ if __name__ == "__main__":
         ),
     ).fit()
 
-    #TODO (Artur): Add inference code here and include in docs
+    # TODO (Artur): Add inference code here and include in docs
 
     if args.as_test:
         check_learning_achieved(results, args.stop_reward)

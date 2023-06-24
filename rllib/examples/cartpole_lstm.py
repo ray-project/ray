@@ -46,13 +46,9 @@ if __name__ == "__main__":
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
 
-    config.environment(
-        env=StatelessCartPole
-    ).resources(
+    config.environment(env=StatelessCartPole).resources(
         num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-    ).framework(
-        args.framework, eager_tracing=args.eager_tracing
-    ).reporting(
+    ).framework(args.framework, eager_tracing=args.eager_tracing).reporting(
         min_time_s_per_iteration=0.1
     )
 

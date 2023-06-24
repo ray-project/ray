@@ -33,7 +33,7 @@ class FrameStackingCartPoleRLMBase(PPORLModule):
             low=config.observation_space.low[0],
             high=config.observation_space.high[0],
             shape=(stacked_obs_space_size,),
-            dtype=config.observation_space.dtype
+            dtype=config.observation_space.dtype,
         )
 
         config.observation_space = stacked_obs_space
@@ -49,8 +49,9 @@ class FrameStackingCartPoleRLMBase(PPORLModule):
 
     def update_default_view_requirements(self, defaults):
         defaults["prev_n_obs"] = ViewRequirement(
-            data_col="obs", shift="-{}:0".format(self.num_frames - 1),
-            space=self.config.observation_space
+            data_col="obs",
+            shift="-{}:0".format(self.num_frames - 1),
+            space=self.config.observation_space,
         )
         return defaults
 
@@ -73,8 +74,10 @@ class FrameStackingCartPoleRLMBase(PPORLModule):
     # The only missing piece is the _preprocess_batch method, which stacks the
     # observations. We implement this in the framework-specific subclasses.
     def _preprocess_batch(self, batch):
-        raise NotImplementedError("You can not use the base class directly, but a "
-                                  "framework-specific subclass.")
+        raise NotImplementedError(
+            "You can not use the base class directly, but a "
+            "framework-specific subclass."
+        )
 
 
 class TorchFrameStackingCartPoleRLM(FrameStackingCartPoleRLMBase, PPOTorchRLModule):
@@ -93,4 +96,3 @@ class TfFrameStackingCartPoleRLM(FrameStackingCartPoleRLMBase, PPOTfRLModule):
         obs = tf.reshape(batch["prev_n_obs"], (shape[0], shape[1] * shape[2]))
         batch[SampleBatch.OBS] = obs
         return batch
-

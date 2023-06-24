@@ -620,6 +620,7 @@ def get_fold_unfold_b_t_dims(b_dim: int, t_dim: int, framework: str):
             return tf.reshape(item, tf.concat([[b_dim], [t_dim], other_dims], axis=0))
 
     elif framework == "torch":
+
         def fold_mapping(item):
             if item is None:
                 # Torch has no representation for `None`, so we return None
@@ -652,10 +653,10 @@ def get_fold_unfold_b_t_dims(b_dim: int, t_dim: int, framework: str):
                 )
             )
             return item.reshape([b_dim, t_dim] + other_dims)
+
     else:
         raise ValueError(f"framework {framework} not implemented!")
 
-    return functools.partial(tree.map_structure,
-                             fold_mapping), functools.partial(
+    return functools.partial(tree.map_structure, fold_mapping), functools.partial(
         tree.map_structure, unfold_mapping
     )

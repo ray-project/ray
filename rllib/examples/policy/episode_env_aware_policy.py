@@ -20,14 +20,16 @@ class StatefulRandomPolicy(RandomPolicy):
         super().__init__(*args, **kwargs)
         config = RLModuleConfig(
             action_space=self.action_space,
-            model_config_dict={"max_seq_len": 50,
-                       "lstm_use_prev_action": False,
-                                                   "lstm_use_prev_reward": False
-                                                   })
+            model_config_dict={
+                "max_seq_len": 50,
+                "lstm_use_prev_action": False,
+                "lstm_use_prev_reward": False,
+            },
+        )
         self.model = StatefulRandomRLModule(config=config)
 
         self.view_requirements = self.model.update_default_view_requirements(
-           self.view_requirements
+            self.view_requirements
         )
 
     @override(Policy)

@@ -322,7 +322,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
                     "use_lstm": True,
                     "max_seq_len": max_seq_len,
                 }
-            )
+            ),
         )
 
         for iteration in range(20):
@@ -352,17 +352,18 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             ppo.PPOConfig()
             .framework("torch")
             .multi_agent(policies=policies, policy_mapping_fn=policy_fn)
-            .training(model={"max_seq_len": max_seq_len}, train_batch_size=2010,
-                      _enable_learner_api=False)
+            .training(
+                model={"max_seq_len": max_seq_len},
+                train_batch_size=2010,
+                _enable_learner_api=False,
+            )
             .rollouts(
                 num_rollout_workers=0,
                 rollout_fragment_length=rollout_fragment_length,
             )
             .environment(normalize_actions=False)
             # The Policy used to be passed in, now we have to pass in the RLModuleSpecs
-            .rl_module(
-                _enable_rl_module_api=False
-            )
+            .rl_module(_enable_rl_module_api=False)
         )
 
         rollout_worker_w_api = RolloutWorker(
@@ -745,13 +746,20 @@ def analyze_rnn_batch_rlm(batch, max_seq_len, view_requirements):
                 if (
                     batch[SampleBatch.AGENT_INDEX][seq_idx][idx]
                     == batch[SampleBatch.AGENT_INDEX][seq_idx][idx - 1]
-                    and batch[SampleBatch.EPS_ID][seq_idx][idx] == batch[SampleBatch.EPS_ID][seq_idx][idx - 1]
+                    and batch[SampleBatch.EPS_ID][seq_idx][idx]
+                    == batch[SampleBatch.EPS_ID][seq_idx][idx - 1]
                 ):
-                    assert batch["unroll_id"][seq_idx][idx - 1] == batch["unroll_id"][seq_idx][idx]
+                    assert (
+                        batch["unroll_id"][seq_idx][idx - 1]
+                        == batch["unroll_id"][seq_idx][idx]
+                    )
                     assert (obs_t == next_obs_t_m_1).all()
                 # Different trajectory.
                 else:
-                    assert batch["unroll_id"][seq_idx][idx - 1] != batch["unroll_id"][seq_idx][idx]
+                    assert (
+                        batch["unroll_id"][seq_idx][idx - 1]
+                        != batch["unroll_id"][seq_idx][idx]
+                    )
                     assert not (obs_t == next_obs_t_m_1).all()
                     assert not (state_in == state_out_t_m_1).all()
 
@@ -767,7 +775,8 @@ def analyze_rnn_batch_rlm(batch, max_seq_len, view_requirements):
                 if (
                     batch[SampleBatch.AGENT_INDEX][seq_idx][idx]
                     == batch[SampleBatch.AGENT_INDEX][seq_idx][idx + 1]
-                    and batch[SampleBatch.EPS_ID][seq_idx][idx] == batch[SampleBatch.EPS_ID][seq_idx][idx + 1]
+                    and batch[SampleBatch.EPS_ID][seq_idx][idx]
+                    == batch[SampleBatch.EPS_ID][seq_idx][idx + 1]
                 ):
                     assert (a_t == prev_actions_t_p_1).all()
                     assert r_t == prev_rewards_t_p_1

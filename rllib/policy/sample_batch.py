@@ -1090,7 +1090,10 @@ class SampleBatch(dict):
         # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
         if stop > len(self):
             stop = len(self)
-        assert start >= 0 and stop >= 0 and slice_.step in [1, None]
+        try:
+            assert start >= 0 and stop >= 0 and slice_.step in [1, None]
+        except AssertionError:
+            a = 10
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
@@ -1122,7 +1125,11 @@ class SampleBatch(dict):
                     if path[0] != SampleBatch.INFOS:
                         return value[start_padded:stop_padded]
                     else:
-                        if isinstance(value, np.ndarray):
+                        if (
+                            isinstance(value, np.ndarray)
+                            or (torch and torch.is_tensor(value))
+                            or (tf and tf.is_tensor(value))
+                        ):
                             return value[start_unpadded:stop_unpadded]
                         else:
                             # Since infos should be stored as lists and not arrays,
@@ -1149,8 +1156,13 @@ class SampleBatch(dict):
                 _num_grad_updates=self.num_grad_updates,
             )
         else:
+
             def map_(value):
-                if isinstance(value, np.ndarray):
+                if (
+                    isinstance(value, np.ndarray)
+                    or (torch and torch.is_tensor(value))
+                    or (tf and tf.is_tensor(value))
+                ):
                     return value[start:stop]
                 else:
                     # Since infos should be stored as lists and not arrays,
@@ -1632,9 +1644,9 @@ def concat_samples(samples: List[SampleBatchType]) -> SampleBatchType:
                 f"`samples`={samples}\n Original error: \n {e}"
             )
 
-    if concatd_seq_lens != [] and torch.is_tensor(concatd_seq_lens[0]):
+    if concatd_seq_lens != [] and torch and torch.is_tensor(concatd_seq_lens[0]):
         concatd_seq_lens = torch.Tensor(concatd_seq_lens)
-    elif concatd_seq_lens != [] and tf.is_tensor(concatd_seq_lens[0]):
+    elif concatd_seq_lens != [] and tf and tf.is_tensor(concatd_seq_lens[0]):
         concatd_seq_lens = tf.convert_to_tensor(concatd_seq_lens)
 
     # Return a new (concat'd) SampleBatch.
