@@ -30,6 +30,9 @@ import { ServeDeploymentRow } from "./ServeDeploymentRow";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    root: {
+      padding: theme.spacing(3),
+    },
     table: {
       tableLayout: "fixed",
     },
@@ -77,7 +80,7 @@ export const ServeApplicationDetailPage = () => {
 
   const appName = application.name ? application.name : "-";
   return (
-    <div>
+    <div className={classes.root}>
       <MetadataSection
         metadataList={[
           {
