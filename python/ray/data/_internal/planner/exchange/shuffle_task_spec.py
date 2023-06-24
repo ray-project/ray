@@ -41,35 +41,45 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         # TODO: Support fusion with other upstream operators.
         stats = BlockExecStats.builder()
         if upstream_map_fn:
-            mapped_blocks = list(upstream_map_fn([block]))
-            assert len(mapped_blocks) == 1, (
-                "Expected upstream_map_fn to return one block, but instead"
-                f" returned {len(mapped_blocks)} blocks"
-            )
-            block = mapped_blocks[0]
-        block = BlockAccessor.for_block(block)
+            blocks = list(upstream_map_fn([block]))
+        else:
+            blocks = [block]
 
-        # Randomize the distribution of records to blocks.
-        if random_shuffle:
-            seed_i = random_seed + idx if random_seed is not None else None
-            block = block.random_shuffle(seed_i)
+        all_slices = []
+        for block in blocks:
             block = BlockAccessor.for_block(block)
 
-        slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
-        slices = []
-        for i in range(output_num_blocks):
-            slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
+            # Randomize the distribution of records to blocks.
+            seed_i = 0
+            if random_shuffle:
+                seed_i = random_seed + idx if random_seed is not None else None
+                block = block.random_shuffle(seed_i)
+                block = BlockAccessor.for_block(block)
 
-        # Randomize the distribution order of the blocks (this prevents empty
-        # outputs when input blocks are very small).
-        if random_shuffle:
-            random = np.random.RandomState(seed_i)
-            random.shuffle(slices)
+            slices = []
+            slice_sz = max(1, math.ceil(block.num_rows() / output_num_blocks))
+            for i in range(output_num_blocks):
+                slices.append(block.slice(i * slice_sz, (i + 1) * slice_sz))
 
-        num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
-        assert num_rows == block.num_rows(), (num_rows, block.num_rows())
-        metadata = block.get_metadata(input_files=None, exec_stats=stats.build())
-        return slices + [metadata]
+            # Randomize the distribution order of the blocks (this prevents empty
+            # outputs when input blocks are very small).
+            if random_shuffle:
+                random = np.random.RandomState(seed_i)
+                random.shuffle(slices)
+            all_slices.extend(slices)
+
+            num_rows = sum(BlockAccessor.for_block(s).num_rows() for s in slices)
+            assert num_rows == block.num_rows(), (num_rows, block.num_rows())
+
+        metadata = BlockAccessor.for_block(blocks[0]).get_metadata(input_files=None, exec_stats=stats.build())
+        assert metadata.num_rows is not None
+        assert metadata.size_bytes is not None
+        for block in blocks[1:]:
+            block = BlockAccessor.for_block(block)
+            block_metadata = block.get_metadata(input_files=None, exec_stats=None)
+            metadata.num_rows += block_metadata.num_rows or 0
+            metadata.size_bytes += block_metadata.size_bytes or 0
+        return all_slices + [metadata]
 
     @staticmethod
     def reduce(

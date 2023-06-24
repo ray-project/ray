@@ -251,7 +251,7 @@ class BlockAccessor:
         """
         raise NotImplementedError
 
-    def slice(self, start: int, end: int, copy: bool) -> Block:
+    def slice(self, start: int, end: int, copy: bool = False) -> Block:
         """Return a slice of this block.
 
         Args:
@@ -343,7 +343,7 @@ class BlockAccessor:
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self, input_files: Optional[List[str]], exec_stats: Optional[BlockExecStats]
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
