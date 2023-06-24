@@ -36,6 +36,9 @@ FAKE_BATCH = {
     SampleBatch.VF_PREDS: np.array(
         list(reversed(range(frag_length))), dtype=np.float32
     ),
+    SampleBatch.VALUES_BOOTSTRAPPED: np.array(
+        list(reversed(range(frag_length))), dtype=np.float32
+    ),
     SampleBatch.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
@@ -116,7 +119,6 @@ class TestAPPOTfLearner(unittest.TestCase):
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
-            .framework(eager_tracing=True)
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)
             .rollouts(
@@ -143,7 +145,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             algo = config.build()
             # Call train while results aren't returned because this is
-            # a asynchronous trainer and results are returned asynchronously.
+            # a asynchronous algorithm and results are returned asynchronously.
             while True:
                 results = algo.train()
                 if results.get("info", {}).get(LEARNER_INFO, {}).get(DEFAULT_POLICY_ID):

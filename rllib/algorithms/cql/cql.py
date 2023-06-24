@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class CQLConfig(SACConfig):
-    """Defines a configuration class from which a CQL Trainer can be built.
+    """Defines a configuration class from which a CQL can be built.
 
     Example:
         >>> from ray.rllib.algorithms.cql import CQLConfig
@@ -49,7 +49,7 @@ class CQLConfig(SACConfig):
         >>> config = config.resources(num_gpus=0)
         >>> config = config.rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
     """
@@ -67,7 +67,7 @@ class CQLConfig(SACConfig):
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
 
-        # Changes to Trainer's/SACConfig's default:
+        # Changes to Algorithm's/SACConfig's default:
 
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0

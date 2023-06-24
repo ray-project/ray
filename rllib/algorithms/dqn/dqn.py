@@ -37,9 +37,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     SAMPLE_TIMER,
 )
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-)
 from ray.rllib.utils.metrics import SYNCH_WORKER_WEIGHTS_TIMER
 from ray.rllib.execution.common import (
     LAST_TARGET_UPDATE_TS,
@@ -70,8 +67,8 @@ class DQNConfig(SimpleQConfig):
         >>> config = config.resources(num_gpus=1)  # doctest: +SKIP
         >>> config = config.rollouts(num_rollout_workers=3)  # doctest: +SKIP
         >>> config = config.environment("CartPole-v1")  # doctest: +SKIP
-        >>> trainer = DQN(config=config)  # doctest: +SKIP
-        >>> trainer.train()  # doctest: +SKIP
+        >>> algo = DQN(config=config)  # doctest: +SKIP
+        >>> algo.train()  # doctest: +SKIP
 
     Example:
         >>> from ray.rllib.algorithms.dqn.dqn import DQNConfig
@@ -475,8 +472,3 @@ class DQN(SimpleQ):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-@Deprecated(new="Sub-class directly from `DQN` and override its methods", error=True)
-class GenericOffPolicyTrainer(SimpleQ):
-    pass

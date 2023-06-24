@@ -548,7 +548,6 @@ class Monitor:
                 time.sleep(2)
 
     def _handle_failure(self, error):
-        logger.exception("Error in monitor loop")
         if (
             self.autoscaler is not None
             and os.environ.get("RAY_AUTOSCALER_FATESHARE_WORKERS", "") == "1"
@@ -595,6 +594,7 @@ class Monitor:
             self._initialize_autoscaler()
             self._run()
         except Exception:
+            logger.exception("Error in monitor loop")
             self._handle_failure(traceback.format_exc())
             raise
 

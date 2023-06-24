@@ -6,10 +6,12 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 import gymnasium as gym
-import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
 from ray.rllib.algorithms.dreamerv3.utils import get_gru_units
+from ray.rllib.utils.framework import try_import_tf
+
+_, tf, _ = try_import_tf()
 
 
 class SequenceModel(tf.keras.Model):
@@ -37,23 +39,23 @@ class SequenceModel(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: Optional[str] = "XS",
+        model_size: Optional[str] = "XS",
         action_space: gym.Space,
         num_gru_units: Optional[int] = None,
     ):
         """Initializes a SequenceModel instance.
 
         Args:
-            model_dimension: The "Model Size" used according to [1] Appendinx B.
+            model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the number of GRU units used.
             action_space: The action space the our environment used.
             num_gru_units: Overrides the number of GRU units (dimension of the h-state).
-                If None, use the value given through `model_dimension`
+                If None, use the value given through `model_size`
                 (see [1] Appendix B).
         """
         super().__init__(name="sequence_model")
 
-        num_gru_units = get_gru_units(model_dimension, override=num_gru_units)
+        num_gru_units = get_gru_units(model_size, override=num_gru_units)
         self.action_space = action_space
 
         # In Danijar's code, there is an additional layer (units=[model_size])
@@ -61,7 +63,7 @@ class SequenceModel(tf.keras.Model):
         # the paper.
         self.pre_gru_layer = MLP(
             num_dense_layers=1,
-            model_dimension=model_dimension,
+            model_size=model_size,
             output_layer_size=None,
         )
         self.gru_unit = tf.keras.layers.GRU(

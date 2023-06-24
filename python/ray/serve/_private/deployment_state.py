@@ -56,6 +56,7 @@ from ray.serve._private.utils import (
     msgpack_serialize,
     msgpack_deserialize,
     get_all_node_ids,
+    check_obj_ref_ready_nowait,
 )
 from ray.serve._private.version import DeploymentVersion, VersionedReplica
 
@@ -338,10 +339,6 @@ class ActorReplicaWrapper:
         """Returns the relative log file path of the actor, None if not placed."""
         return self._log_file_path
 
-    def _check_obj_ref_ready(self, obj_ref: ObjectRef) -> bool:
-        ready, _ = ray.wait([obj_ref], timeout=0)
-        return len(ready) == 1
-
     def start(self, deployment_info: DeploymentInfo):
         """
         Start a new actor for current DeploymentReplica instance.
@@ -536,11 +533,11 @@ class ActorReplicaWrapper:
         """
 
         # Check whether the replica has been allocated.
-        if not self._check_obj_ref_ready(self._allocated_obj_ref):
+        if not check_obj_ref_ready_nowait(self._allocated_obj_ref):
             return ReplicaStartupStatus.PENDING_ALLOCATION, None
 
         # Check whether relica initialization has completed.
-        replica_ready = self._check_obj_ref_ready(self._ready_obj_ref)
+        replica_ready = check_obj_ref_ready_nowait(self._ready_obj_ref)
         # In case of deployment constructor failure, ray.get will help to
         # surface exception to each update() cycle.
         if not replica_ready:
@@ -611,7 +608,7 @@ class ActorReplicaWrapper:
         """Check if the actor has exited."""
         try:
             handle = ray.get_actor(self._actor_name, namespace=SERVE_NAMESPACE)
-            stopped = self._check_obj_ref_ready(self._graceful_shutdown_ref)
+            stopped = check_obj_ref_ready_nowait(self._graceful_shutdown_ref)
             if stopped:
                 ray.kill(handle, no_restart=True)
                 try:
@@ -645,7 +642,7 @@ class ActorReplicaWrapper:
         if self._health_check_ref is None:
             # There is no outstanding health check.
             response = ReplicaHealthCheckResponse.NONE
-        elif self._check_obj_ref_ready(self._health_check_ref):
+        elif check_obj_ref_ready_nowait(self._health_check_ref):
             # Object ref is ready, ray.get it to check for exceptions.
             try:
                 ray.get(self._health_check_ref)
@@ -1289,6 +1286,24 @@ class DeploymentState:
 
         logger.info(f"Deploying new version of deployment {self._name}.")
 
+    def _set_target_state_autoscaling(self, num_replicas: int) -> None:
+        """Update the target number of replicas based on an autoscaling decision.
+
+        This differs from _set_target_state because we are updating the
+        target number of replicas base on an autoscaling decision and
+        not a redeployment. This only changes the target num_replicas,
+        and doesn't change the current deployment status.
+        """
+
+        new_info = copy(self._target_state.info)
+        new_info.set_autoscaled_num_replicas(num_replicas)
+        new_info.version = self._target_state.version.code_version
+
+        target_state = DeploymentTargetState.from_deployment_info(new_info)
+
+        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
+        self._target_state = target_state
+
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
@@ -1348,7 +1363,6 @@ class DeploymentState:
         if self._target_state.deleting:
             return
 
-        curr_info = self._target_state.info
         autoscaling_policy = self._target_state.info.autoscaling_policy
         decision_num_replicas = autoscaling_policy.get_decision_num_replicas(
             curr_target_num_replicas=self._target_state.num_replicas,
@@ -1365,15 +1379,11 @@ class DeploymentState:
             f"current handle queued queries: {current_handle_queued_queries}."
         )
 
-        new_config = copy(curr_info)
-        new_config.set_autoscaled_num_replicas(decision_num_replicas)
-        if new_config.version is None:
-            new_config.version = self._target_state.version.code_version
-
-        self._set_target_state(new_config)
+        self._set_target_state_autoscaling(decision_num_replicas)
 
     def delete(self) -> None:
-        self._set_target_state_deleting()
+        if not self._target_state.deleting:
+            self._set_target_state_deleting()
 
     def _stop_or_update_outdated_version_replicas(self, max_to_stop=math.inf) -> bool:
         """Stop or update replicas with outdated versions.
@@ -1635,9 +1645,9 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        f"The Deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with the deployment "
-                        "constructor or the initial health check failing. See "
+                        f"The deployment failed to start {failed_to_start_count} times "
+                        "in a row. This may be due to a problem with its "
+                        "constructor or initial health check failing. See "
                         "controller logs for details. Retrying after "
                         f"{self._backoff_time_s} seconds. Error:\n"
                         f"{self._replica_constructor_error_msg}"

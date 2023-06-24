@@ -7,20 +7,25 @@ import re
 
 import gymnasium as gym
 import numpy as np
-import tensorflow as tf
 
 from ray.rllib.algorithms.dreamerv3.tf.models.disagree_networks import DisagreeNetworks
-
+from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import ActorNetwork
+from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwork
+from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
+from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import inverse_symlog
+
+_, tf, _ = try_import_tf()
 
 
 class DreamerModel(tf.keras.Model):
     """The main tf-keras model containing all necessary components for DreamerV3.
 
     Includes:
-    - The world model (with encoder, decoder, sequence-model (RSSM), dynamics
-    (prior z-state generating) model, and "posterior" model) for producing dreamed
-    trajectories.
+    - The world model with encoder, decoder, sequence-model (RSSM), dynamics
+    (generates prior z-state), and "posterior" model (generates posterior z-state).
+    Predicts env dynamics and produces dreamed trajectories for actor- and critic
+    learning.
     - The actor network (policy).
     - The critic network for value function prediction.
     """
@@ -28,32 +33,29 @@ class DreamerModel(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_dimension: str = "XS",
+        model_size: str = "XS",
         action_space: gym.Space,
-        batch_size_B,
-        batch_length_T,
-        horizon_H,
-        world_model,
-        actor,
-        critic,
+        world_model: WorldModel,
+        actor: ActorNetwork,
+        critic: CriticNetwork,
         use_curiosity: bool = False,
         intrinsic_rewards_scale: float = 0.1,
     ):
-        """TODO
+        """Initializes a DreamerModel instance.
 
         Args:
-             model_dimension: The "Model Size" used according to [1] Appendinx B.
+             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
              action_space: The action space the our environment used.
+             world_model: The WorldModel component.
+             actor: The ActorNetwork component.
+             critic: The CriticNetwork component.
         """
         super().__init__(name="dreamer_model")
 
-        self.model_dimension = model_dimension
+        self.model_size = model_size
         self.action_space = action_space
         self.use_curiosity = use_curiosity
-        self.batch_size_B = batch_size_B
-        self.batch_length_T = batch_length_T
-        self.horizon_H = horizon_H
 
         self.world_model = world_model
         self.actor = actor
@@ -63,7 +65,7 @@ class DreamerModel(tf.keras.Model):
         if self.use_curiosity:
             self.disagree_nets = DisagreeNetworks(
                 num_networks=8,
-                model_dimension=self.model_dimension,
+                model_size=self.model_size,
                 intrinsic_rewards_scale=intrinsic_rewards_scale,
             )
 
@@ -97,11 +99,11 @@ class DreamerModel(tf.keras.Model):
         actions = self.actor(
             h=results["h_states_BxT"], z=results["z_posterior_states_BxT"]
         )
-        # Actor (with returning distribution).
-        _, distr = self.actor(
+        # Actor (with returning distribution parameters).
+        _, distr_params = self.actor(
             h=results["h_states_BxT"],
             z=results["z_posterior_states_BxT"],
-            return_distribution=True,
+            return_distr_params=True,
         )
         # Critic.
         values = self.critic(
@@ -155,8 +157,11 @@ class DreamerModel(tf.keras.Model):
             is_first=is_first,
         )
         # Compute action using our actor network and the current states.
-        _, distr = self.actor(h=states["h"], z=states["z"], return_distribution=True)
+        _, distr_params = self.actor(
+            h=states["h"], z=states["z"], return_distr_params=True
+        )
         # Use the mode of the distribution (Discrete=argmax, Normal=mean).
+        distr = self.actor.get_action_dist_object(distr_params)
         actions = distr.mode()
         return actions, {"h": states["h"], "z": states["z"], "a": actions}
 
@@ -267,9 +272,9 @@ class DreamerModel(tf.keras.Model):
             timesteps_H: The number of timesteps to dream for.
             gamma: The discount factor gamma.
         """
-        # Dreamed actions (one-hot for discrete actions).
+        # Dreamed actions (one-hot encoded for discrete actions).
         a_dreamed_t0_to_H = []
-        a_dreamed_distributions_t0_to_H = []
+        a_dreamed_dist_params_t0_to_H = []
 
         h = start_states["h"]
         z = start_states["z"]
@@ -281,7 +286,7 @@ class DreamerModel(tf.keras.Model):
 
         # Compute `a` using actor network (already the first step uses a dreamed action,
         # not a sampled one).
-        a, a_dist = self.actor(
+        a, a_dist_params = self.actor(
             # We have to stop the gradients through the states. B/c we are using a
             # differentiable Discrete action distribution (straight through gradients
             # with `a = stop_gradient(sample(probs)) + probs - stop_gradient(probs)`,
@@ -289,10 +294,10 @@ class DreamerModel(tf.keras.Model):
             # term on actions further back in the trajectory.
             h=tf.stop_gradient(h),
             z=tf.stop_gradient(z),
-            return_distribution=True,
+            return_distr_params=True,
         )
         a_dreamed_t0_to_H.append(a)
-        a_dreamed_distributions_t0_to_H.append(a_dist)
+        a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
         for i in range(timesteps_H):
             # Move one step in the dream using the RSSM.
@@ -304,13 +309,13 @@ class DreamerModel(tf.keras.Model):
             z_states_prior_t0_to_H.append(z)
 
             # Compute `a` using actor network.
-            a, a_dist = self.actor(
+            a, a_dist_params = self.actor(
                 h=tf.stop_gradient(h),
                 z=tf.stop_gradient(z),
-                return_distribution=True,
+                return_distr_params=True,
             )
             a_dreamed_t0_to_H.append(a)
-            a_dreamed_distributions_t0_to_H.append(a_dist)
+            a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
         h_states_H_B = tf.stack(h_states_t0_to_H, axis=0)  # (T, B, ...)
         h_states_HxB = tf.reshape(h_states_H_B, [-1] + h_states_H_B.shape.as_list()[2:])
@@ -321,6 +326,7 @@ class DreamerModel(tf.keras.Model):
         )
 
         a_dreamed_H_B = tf.stack(a_dreamed_t0_to_H, axis=0)  # (T, B, ...)
+        a_dreamed_dist_params_H_B = tf.stack(a_dreamed_dist_params_t0_to_H, axis=0)
 
         # Compute r using reward predictor.
         r_dreamed_H_B = tf.reshape(
@@ -389,17 +395,20 @@ class DreamerModel(tf.keras.Model):
         )
 
         ret = {
-            "h_states_t0_to_H_B": h_states_H_B,
-            "z_states_prior_t0_to_H_B": z_states_prior_H_B,
-            "rewards_dreamed_t0_to_H_B": r_dreamed_H_B,
-            "continues_dreamed_t0_to_H_B": c_dreamed_H_B,
-            "actions_dreamed_t0_to_H_B": a_dreamed_H_B,
-            "actions_dreamed_distributions_t0_to_H_B": a_dreamed_distributions_t0_to_H,
-            "values_dreamed_t0_to_H_B": v_dreamed_H_B,
-            "values_symlog_dreamed_logits_t0_to_HxB": v_symlog_dreamed_logits_HxB,
-            "v_symlog_dreamed_ema_t0_to_H_B": v_symlog_dreamed_ema_H_B,
+            "h_states_t0_to_H_BxT": h_states_H_B,
+            "z_states_prior_t0_to_H_BxT": z_states_prior_H_B,
+            "rewards_dreamed_t0_to_H_BxT": r_dreamed_H_B,
+            "continues_dreamed_t0_to_H_BxT": c_dreamed_H_B,
+            "actions_dreamed_t0_to_H_BxT": a_dreamed_H_B,
+            # "actions_dreamed_distributions_t0_to_H_BxT": (
+            #    a_dreamed_distributions_t0_to_H
+            # ),
+            "actions_dreamed_dist_params_t0_to_H_BxT": a_dreamed_dist_params_H_B,
+            "values_dreamed_t0_to_H_BxT": v_dreamed_H_B,
+            "values_symlog_dreamed_logits_t0_to_HxBxT": v_symlog_dreamed_logits_HxB,
+            "v_symlog_dreamed_ema_t0_to_H_BxT": v_symlog_dreamed_ema_H_B,
             # Loss weights for critic- and actor losses.
-            "dream_loss_weights_t0_to_H_B": dream_loss_weights_H_B,
+            "dream_loss_weights_t0_to_H_BxT": dream_loss_weights_H_B,
         }
 
         if self.use_curiosity:
@@ -537,20 +546,20 @@ class DreamerModel(tf.keras.Model):
         # an original time dimension from the real env, from all of which we then branch
         # out our dream trajectories).
         ret = {
-            "h_states_t0_to_H_B": h_states_t0_to_H_B,
-            "z_states_prior_t0_to_H_B": z_states_prior_t0_to_H_B,
+            "h_states_t0_to_H_BxT": h_states_t0_to_H_B,
+            "z_states_prior_t0_to_H_BxT": z_states_prior_t0_to_H_B,
             # Unfold time-ranks in predictions.
-            "rewards_dreamed_t0_to_H_B": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
-            "continues_dreamed_t0_to_H_B": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
+            "rewards_dreamed_t0_to_H_BxT": tf.reshape(r_dreamed_t0_to_HxB, (-1, B)),
+            "continues_dreamed_t0_to_H_BxT": tf.reshape(c_dreamed_t0_to_HxB, (-1, B)),
         }
 
         # Figure out action key (random, sampled from env, dreamed?).
         if use_sampled_actions_in_dream:
-            key = "actions_sampled_t0_to_H_B"
+            key = "actions_sampled_t0_to_H_BxT"
         elif use_random_actions_in_dream:
-            key = "actions_random_t0_to_H_B"
+            key = "actions_random_t0_to_H_BxT"
         else:
-            key = "actions_dreamed_t0_to_H_B"
+            key = "actions_dreamed_t0_to_H_BxT"
         ret[key] = a_t0_to_H_B
 
         # Also provide int-actions, if discrete action space.
