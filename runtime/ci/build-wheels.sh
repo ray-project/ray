@@ -23,7 +23,7 @@ DOCKER_RUN_ARGS=(
 
 RAY="$(pwd)"
 
-ARTIFACTS="/artifacts/${BUILDKIT_BUILD_ID}/${BUILDKITE_JOB_ID}"
+ARTIFACTS="/artifacts/${BUILDKITE_BUILD_ID}/${BUILDKITE_JOB_ID}"
 mkdir -p "${ARTIFACTS}"
 
 docker run --rm -w /ray -v "${RAY}":/ray -v "${ARTIFACTS}:/artifacts" \
