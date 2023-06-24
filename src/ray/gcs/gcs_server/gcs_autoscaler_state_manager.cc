@@ -60,8 +60,32 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
     rpc::autoscaler::ReportAutoscalingStateRequest request,
     rpc::autoscaler::ReportAutoscalingStateReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // Unimplemented.
-  throw std::runtime_error("Unimplemented");
+  // TODO(rickyx): We should handle the infeasible requests in the future.
+  // Right now, this info will only be used for observability, i.e. ray status.
+
+  // Never seen any autoscaling state before - so just takes this.
+  if (!autoscaling_state_.has_value()) {
+    autoscaling_state_ = std::move(request.autoscaling_state());
+    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  // We have a state cached. We discard the incoming state if it's older than the
+  // cached state.
+  if (request.autoscaling_state().autoscaler_state_version() <
+      autoscaling_state_->autoscaler_state_version()) {
+    RAY_LOG(INFO) << "Received an outdated autoscaling state. "
+                  << "Current version: " << autoscaling_state_->autoscaler_state_version()
+                  << ", received version: "
+                  << request.autoscaling_state().autoscaler_state_version()
+                  << ". Discarding incoming request.";
+    send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  // We should overwrite the cache version.
+  autoscaling_state_ = std::move(request.autoscaling_state());
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
 void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
