@@ -10,7 +10,6 @@ export RAY_DEBUG_BUILD=debug
 export BUILD_ONE_PYTHON_ONLY=""
 
 DOCKER_RUN_ARGS=(
-    # -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
     -e "TRAVIS=true"
     -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
     -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
