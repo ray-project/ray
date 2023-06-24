@@ -89,7 +89,7 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states or []
+        self.intial_states = intial_states if intial_states is not None else []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
         self._enable_rl_module_api = _enable_rl_module_api

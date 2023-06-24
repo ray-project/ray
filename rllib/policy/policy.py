@@ -30,6 +30,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
+from ray.rllib.policy.rnn_sequencing import get_fold_unfold_b_t_dims
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -1637,24 +1638,56 @@ class Policy(metaclass=ABCMeta):
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
+            framework = framework or self.model.framework
 
             def _add_time_dimension(inputs):
                 inputs = add_time_dimension(
                     inputs,
                     seq_lens=seq_lens,
-                    framework=framework or self.model.framework,
+                    framework=framework,
                     time_major=self.config.get("model", {}).get("_time_major", False),
                 )
                 return inputs
 
+            def _add_state_out_time_dimension(inputs):
+                # We do a hack here in that we add a time dimension,
+                # even though the tensor already has one. Then, we remove the
+                # original time dimension.
+                v_w_two_time_dims = _add_time_dimension(inputs)
+                if framework == "tf2":
+                    return tf.squeeze(v_w_two_time_dims, axis=2)
+                elif framework == "torch":
+                    # Remove second time dimensions
+                    return torch.squeeze(v_w_two_time_dims, axis=2)
+                elif framework == "np":
+                    shape = v_w_two_time_dims.shape
+                    padded_batch_dim = shape[0]
+                    padded_time_dim = shape[1]
+                    other_dims = shape[3:]
+                    new_shape = (padded_batch_dim, padded_time_dim) + other_dims
+                    return v_w_two_time_dims.reshape(new_shape)
+                else:
+                    raise ValueError(f"Framework {framework} not implemented!")
+
             for k, v in input_dict.items():
                 if k == SampleBatch.INFOS:
                     ret[k] = _add_time_dimension(v)
-                elif k not in (STATE_IN, STATE_OUT, SampleBatch.SEQ_LENS):
-                    ret[k] = tree.map_structure(_add_time_dimension, v)
-                else:
-                    # state in already has time dimension.
+                elif k == SampleBatch.SEQ_LENS:
+                    # sequence lengths have no time dimension
                     ret[k] = v
+                elif k == STATE_IN:
+                    # Assume that batch_repeat_value is max seq len.
+                    # This is commonly the case for STATE_IN
+                    # Values should already have correct batch and time dimension
+                    assert self.view_requirements[k].batch_repeat_value != 1
+                    ret[k] = v
+                elif k == STATE_OUT:
+                    # Assume that batch_repeat_value is 1
+                    # This is commonly the case for STATE_OUT
+                    assert self.view_requirements[k].batch_repeat_value == 1
+                    ret[k] = tree.map_structure(_add_state_out_time_dimension, v)
+                else:
+                    ret[k] = tree.map_structure(_add_time_dimension, v)
 
             return SampleBatch(ret)
         else:

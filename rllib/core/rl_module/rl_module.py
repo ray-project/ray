@@ -464,9 +464,8 @@ class RLModule(abc.ABC):
 
             defaults[STATE_OUT] = ViewRequirement(
                 data_col=STATE_OUT,
-                used_for_compute_actions=True,
+                used_for_compute_actions=False,
                 used_for_training=True,
-                batch_repeat_value=max_seq_len,
                 space=space,
             )
 

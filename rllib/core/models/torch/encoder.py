@@ -25,7 +25,7 @@ from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import get_fold_unfold_b_t_dims
+from ray.rllib.policy.rnn_sequencing import get_fold_unfold_b_t_dims
 
 torch, nn = try_import_torch()
 
@@ -380,7 +380,7 @@ def tokenize(tokenizer: Encoder, inputs: dict) -> dict:
     tokenizer_inputs = {SampleBatch.OBS: obs}
     size = list(obs.size())
     b_dim, t_dim = size[:2]
-    fold, unfold = get_fold_unfold_b_t_dims(b_dim, t_dim)
+    fold, unfold = get_fold_unfold_b_t_dims(b_dim, t_dim, framework="torch")
     # Push through the tokenizer encoder.
     out = tokenizer(fold(tokenizer_inputs))
     out = out[ENCODER_OUT]

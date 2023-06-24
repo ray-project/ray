@@ -605,60 +605,6 @@ def reduce_mean_ignore_inf(x: TensorType, axis: Optional[int] = None) -> TensorT
 
 
 @PublicAPI
-def get_fold_unfold_b_t_dims(b_dim: int, t_dim: int):
-    """Produces two functions to fold/unfold any torch.Tensors in a struct.
-
-    Args:
-        b_dim: The batch dimension to use for folding.
-        t_dim: The time dimension to use for folding.
-
-    Returns:
-        fold: A function that takes a struct of torch.Tensors and reshapes
-            them to have a first dimension of `b_dim * t_dim`.
-        unfold: A function that takes a struct of torch.Tensors and reshapes
-            them to have a first dimension of `b_dim` and a second dimension
-            of `t_dim`.
-    """
-
-    def fold_mapping(item):
-        if item is None:
-            # Torch has no representation for `None`, so we return None
-            return item
-        item = torch.as_tensor(item)
-        size = list(item.size())
-        current_b_dim, current_t_dim = list(size[:2])
-
-        assert (b_dim, t_dim) == (current_b_dim, current_t_dim), (
-            "All tensors in the struct must have the same batch and time "
-            "dimensions. Got {} and {}.".format(
-                (b_dim, t_dim), (current_b_dim, current_t_dim)
-            )
-        )
-
-        other_dims = size[2:]
-        return item.reshape([b_dim * t_dim] + other_dims)
-
-    def unfold_mapping(item):
-        if item is None:
-            return item
-        item = torch.as_tensor(item)
-        size = list(item.size())
-        current_b_dim = size[0]
-        other_dims = size[1:]
-        assert current_b_dim == b_dim * t_dim, (
-            "The first dimension of the tensor must be equal to the product of "
-            "the desired batch and time dimensions. Got {} and {}.".format(
-                current_b_dim, b_dim * t_dim
-            )
-        )
-        return item.reshape([b_dim, t_dim] + other_dims)
-
-    return functools.partial(tree.map_structure, fold_mapping), functools.partial(
-        tree.map_structure, unfold_mapping
-    )
-
-
-@PublicAPI
 def sequence_mask(
     lengths: TensorType,
     maxlen: Optional[int] = None,
