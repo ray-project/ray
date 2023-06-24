@@ -40,11 +40,7 @@ Define a simple "hello world" application, run it locally, and query it over HTT
 
 ::::{tab-set} 
 
-:::{tab-item} More examples
-
-For more examples, select from the tabs.
-
-:::
+## More examples
 
 ::::
 
