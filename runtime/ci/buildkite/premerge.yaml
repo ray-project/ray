@@ -1,18 +1,7 @@
 steps:
-  - name: "todo"
+  - name: "Build wheels"
     command:
       - /bin/bash runtime/ci/build-forge.sh
       - /bin/bash runtime/ci/build-wheels.sh
     agents:
       queue: "large"
-    plugins:
-      - docker#v3.11.0:
-          image: "830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/forge:0.2.2"
-          propagate-aws-auth-tokens: true
-          environment:
-            - "BUILDKITE"
-            - "BUILDKITE_PIPELINE_ID"
-            - "BUILDKITE_PIPELINE_SLUG"
-            - "BUILDKITE_PULL_REQUEST"
-          volumes:
-            - "/var/run/docker.sock:/var/run/docker.sock"
