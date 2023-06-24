@@ -62,7 +62,7 @@ class RayInstaller(object):
                 {
                     "RAY_HEAD_IP": head_node_ip,
                     "RAY_CLOUD_INSTANCE_ID": instance.instance_id,
-                    "RAY_NODE_TYPE_NAME":  instance.instance_type,
+                    "RAY_NODE_TYPE_NAME": instance.instance_type,
                 },
             ),
             runtime_hash=self._config.runtime_hash,
