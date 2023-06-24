@@ -2,4 +2,6 @@
 
 set -euo pipefail
 
-buildkite-agent pipeline upload runtime/ci/buildkite/premerge.yaml
+PIPELINE_YAML="${PIPELINE_YAML:-runtime/ci/buildkite/premerge.yaml}"
+
+buildkite-agent pipeline upload "${PIPELINE_YAML}"
