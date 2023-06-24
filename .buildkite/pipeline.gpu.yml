@@ -1,3 +1,5 @@
+#ci:group=GPU tests
+
 # Todo: Enable once tests are available
 #- label: ":tv: :octopus: Tune GPU tests "
 #  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_TUNE_AFFECTED"]

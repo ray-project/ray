@@ -1,3 +1,5 @@
+#ci:group=ML tests
+
 - label: ":airplane: AIR tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   instance_size: large
