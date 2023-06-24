@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -euxo pipefail
+set -euo pipefail
 
 export TRAVIS_PULL_REQUEST=true
 export TRAVIS_COMMIT="$(git rev-parse HEAD)"
@@ -23,9 +23,6 @@ DOCKER_RUN_ARGS=(
 
 RAY="$(pwd)"
 
-ARTIFACTS="/artifacts/${BUILDKITE_BUILD_ID}/${BUILDKITE_JOB_ID}"
-mkdir -p "${ARTIFACTS}"
-
-docker run --rm -w /ray -v "${RAY}":/ray -v "${ARTIFACTS}:/artifacts" \
+docker run --rm -w /ray -v "${RAY}":/ray -v "${ARTIFACTS_DIR}:/artifacts" \
     "${DOCKER_RUN_ARGS[@]}" \
     anyscale/rayforge /bin/bash /ray/runtime/ci/build-wheel-manylinux2014.sh
