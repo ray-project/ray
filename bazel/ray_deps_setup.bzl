@@ -261,6 +261,7 @@ def ray_deps_setup():
         name = "rules_perl",
         remote = "https://github.com/bazelbuild/rules_perl.git",
         commit = "022b8daf2bb4836ac7a50e4a1d8ea056a3e1e403",
+        shallow_since = "1663780239 -0700",
     )
 
     http_archive(
