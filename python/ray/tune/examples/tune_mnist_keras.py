@@ -85,4 +85,4 @@ if __name__ == "__main__":
     if args.smoke_test:
         ray.init(num_cpus=4)
 
-    tune_mnist(num_training_iterations=5 if args.smoke_test else 300)
+    tune_mnist(num_training_iterations=2 if args.smoke_test else 300)
