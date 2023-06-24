@@ -56,7 +56,7 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f2)"
   NUMPY_VERSION="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f3)"
 
-  echo "---- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
+  echo "--- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
