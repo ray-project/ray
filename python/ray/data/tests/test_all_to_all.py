@@ -217,7 +217,7 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_distinct(ray_start_regular_shared):
+def test_unique(ray_start_regular_shared):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
     assert set(ds.unique("item")) == {1, 2, 3}
 
