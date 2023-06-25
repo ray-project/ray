@@ -1093,10 +1093,6 @@ class SampleBatch(dict):
         # Analogous to `l = [0, 1, 2]; l[:100] -> [0, 1, 2];`.
         if stop > len(self):
             stop = len(self)
-        try:
-            assert start >= 0 and stop >= 0 and slice_.step in [1, None]
-        except AssertionError:
-            a = 10
 
         if (
             self.get(SampleBatch.SEQ_LENS) is not None
