@@ -1717,7 +1717,7 @@ class Dataset:
 
         return GroupedData(self, key)
 
-    def unique(self, on: str) -> List:
+    def unique(self, column: str) -> List:
         """List of unique elements in the given column.
 
         Examples:
@@ -1728,11 +1728,14 @@ class Dataset:
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
+        Args:
+            column (str): The column to collect unique elements over.
+
         Returns:
             A list with unique elements in the given column.
         """
-        ds = self.groupby(on).count().select_columns([on])
-        return [item[on] for item in ds.take_all()]
+        ds = self.groupby(column).count().select_columns([column])
+        return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
