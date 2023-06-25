@@ -1729,7 +1729,7 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            column (str): The column to collect unique elements over.
+            column: The column to collect unique elements over.
 
         Returns:
             A list with unique elements in the given column.
