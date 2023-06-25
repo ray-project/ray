@@ -303,7 +303,7 @@ def get_xpu_visible_devices():
     Returns:
         devices (List[str]): If XPU_VISIBLE_DEVICES is set, return a
             list of strings representing the IDs of the visible XPUs.
-            If it is not set or is set, returns empty list.
+            If it is not set, returns empty list.
     """
     xpu_ids_str = os.environ.get("XPU_VISIBLE_DEVICES", None)
     if xpu_ids_str is None:

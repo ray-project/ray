@@ -303,14 +303,15 @@ def _get_cuda_info(num_gpus):
 def _get_xpu_info(num_xpus):
     """Attempt to process the number of XPUs as GPUs
 
-    Here we use `dpctl` to detect XPU device:
-      Enumrate all device by API dpctl.get_devices
-      Notice that ONEAPI_DEVICE_SELECTOR environment variable should be unset
-      Or dpctl.get_devices will only return filtered device set by ONEAPI_DEVICE_SELECTOR
-    Another method to enumrate XPU device is to use C++ API, maybe can upgrade later
- 
+    XPU detect need oneAPI runtime. Here we enumrate XPU device by two method:
+      1. by using dpctl python API
+      2. by calling system commmand 'sycl-ls'
+
+    Notice that ONEAPI_DEVICE_SELECTOR environment variable should be unset
+    Or dpctl return filtered device by ONEAPI_DEVICE_SELECTOR
+
     Returns:
-        The number of XPUs that detected by dpctl with specific backend and device type
+        The number of XPUs that detected by dpctl or oneAPI with specific backend and device type
     """
     xpu_ids = ray._private.utils.get_xpu_visible_devices()
     if num_xpus is not None and xpu_ids is not None and num_xpus > len(xpu_ids):
@@ -319,15 +320,35 @@ def _get_xpu_info(num_xpus):
                 "but XPU_VISIBLE_DEVICES contains {}.".format(num_xpus, xpu_ids)
                 )
     if num_xpus is None:
+        has_dpctl = True
+        backend = ray_constants.RAY_DEVICE_XPU_BACKEND_TYPE
+        device_type = ray_constants.RAY_DEVICE_XPU_DEVICE_TYPE
         try:
             import dpctl
-            num_xpus = len(dpctl.get_devices(backend=ray_constants.RAY_DEVICE_XPU_BACKEND_TYPE,
-                                             device_type=ray_constants.RAY_DEVICE_XPU_DEVICE_TYPE))
+            num_xpus = len(dpctl.get_devices(backend=backend, device_type=device_type))
         except ImportError:
-            num_xpus = 0
+            has_dpctl = False
+
+        if has_dpctl == False:
+            xpu_env = os.environ.copy()
+            xpu_env["ONEAPI_DEVICE_SELECTOR"] = f"{backend}:{device_type}"
+            xpu_res = subprocess.run("sycl-ls", capture_output=True, env=xpu_env)
+            if xpu_res.returncode == 0:
+                stdout = res.stdout.decode().strip()
+                if stdout != "":
+                    num_xpus = len(stdout.split("\n"))
+                else:
+                    num_xpus = 0
+            else:
+                num_xpus = 0
+                raise ValueError(
+                        f"Attempting to enumrate XPU device by 'sycl-ls', "
+                        "but fail to run 'sycl-ls' with error code {xpu_res.returncode}."
+                        )
 
         if xpu_ids is not None:
             num_xpus = min(num_xpus, len(xpu_ids))
+
     xpu_types = {f"{ray_constants.RESOURCE_CONSTRAINT_PREFIX}" "xpu": 1}
     return num_xpus, xpu_types
 
