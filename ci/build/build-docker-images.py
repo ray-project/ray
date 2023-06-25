@@ -80,22 +80,27 @@ def _with_suffix(tag: str, suffix: Optional[str] = None):
     return tag
 
 
-def _get_branch():
+def _get_branch() -> str:
     branch = os.environ.get("TRAVIS_BRANCH") or os.environ.get("BUILDKITE_BRANCH")
     if not branch:
         print("Branch not found!")
         print(os.environ)
         print("Environment is above ^^")
+        return ""
     return branch
 
 
-def _release_build():
-    branch = _get_branch()
+_BRANCH = _get_branch()
+
+
+def _release_build() -> bool:
+    branch = _BRANCH
     return branch and branch.startswith("releases/")
 
 
-def _valid_branch():
-    return _get_branch() == "master" or _release_build()
+def _valid_branch() -> bool:
+    branch = _BRANCH
+    return branch == "master" or _release_build(branch)
 
 
 def _get_curr_dir():
@@ -205,7 +210,8 @@ def _build_docker_image(
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
-    build_args["PYTHON_MINOR_VERSION"] = py_version[3:]
+    assert(py_version[3:] == "py3")
+    python_minor_version = py_version[3:]
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
         build_args["HOSTTYPE"] = platform.processor()
@@ -215,15 +221,13 @@ def _build_docker_image(
     if image_name == "base-deps":
         base_image = BASE_IMAGES[image_type]
     else:
-        base_image = f"-{py_version}-{device_tag}"
-
-        base_image = _with_suffix(base_image, suffix=suffix)
+        base_image = _with_suffix(f"-{py_version}-{device_tag}", suffix=suffix)
 
     if image_name != "ray-worker-container":
         build_args["BASE_IMAGE"] = base_image
 
     if image_name in ["ray", "ray-deps", "ray-worker-container"]:
-        wheel = _get_wheel_name(build_args["PYTHON_MINOR_VERSION"])
+        wheel = _get_wheel_name(python_minor_version)
         build_args["WHEEL_PATH"] = f".whl/{wheel}"
         # Add pip option "--find-links .whl/" to ensure ray-cpp wheel
         # can be found.
@@ -387,6 +391,7 @@ def build_base_images(py_versions, image_types, suffix):
 
 
 def build_or_pull_base_images(
+    branch: str,
     py_versions: List[str],
     image_types: List[str],
     rebuild_base_images: bool = True,
@@ -480,7 +485,10 @@ def _docker_push(image, tag):
             print(progress_line)
 
 
-def _tag_and_push(full_image_name, old_tag, new_tag, merge_build=False):
+def _tag_and_push(
+    full_image_name: str, old_tag: str, new_tag: str,
+    merge_build:bool = False,
+):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
     if "nightly" in new_tag and _release_build():
@@ -600,7 +608,7 @@ def push_and_tag_images(
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
     if _release_build():
-        release_name = _get_branch()[len("releases/") :]
+        release_name = _BRANCH[len("releases/") :]
         date_tag = release_name + "." + date_tag
         sha_tag = release_name + "." + sha_tag
 
@@ -853,96 +861,97 @@ def main(
     if build_type == HUMAN:
         # If manually triggered, request user for branch and SHA value to use.
         _configure_human_version()
-    if (
+    if not (
         build_type in {HUMAN, MERGE, BUILDKITE, LOCAL}
         or _check_if_docker_files_modified()
         or only_build_worker_container
     ):
-        is_merge = build_type == MERGE
-        # Buildkite is authenticated in the background.
-        if is_merge and not is_buildkite and not is_local:
-            # We do this here because we want to be authenticated for
-            # Docker pulls as well as pushes (to avoid rate-limits).
-            username, password = _get_docker_creds()
-            DOCKER_CLIENT.api.login(username=username, password=password)
-        copy_wheels(build_type == HUMAN)
-        is_base_images_built = build_or_pull_base_images(
-            py_versions, image_types, build_base, suffix=suffix
+        return
+
+    # Starts building!
+
+    is_merge = build_type == MERGE
+    # Buildkite is authenticated in the background.
+    if is_merge and not is_buildkite and not is_local:
+        # We do this here because we want to be authenticated for
+        # Docker pulls as well as pushes (to avoid rate-limits).
+        username, password = _get_docker_creds()
+        DOCKER_CLIENT.api.login(username=username, password=password)
+    copy_wheels(build_type == HUMAN)
+    is_base_images_built = build_or_pull_base_images(
+        py_versions, image_types, build_base, suffix=suffix
+    )
+
+    if only_build_worker_container:
+        build_for_all_versions(
+            "ray-worker-container", py_versions, image_types, suffix=suffix
+        )
+        # TODO Currently don't push ray_worker_container
+        return
+
+    # Build Ray Docker images.
+    all_tagged_images = []
+
+    all_tagged_images += build_for_all_versions(
+        "ray", py_versions, image_types, suffix=suffix
+    )
+
+    # List of images to tag and push to docker hub
+    images_to_tag_and_push = []
+
+    if is_base_images_built:
+        images_to_tag_and_push += ["base-deps", "ray-deps"]
+
+    # Always tag/push ray
+    images_to_tag_and_push += ["ray"]
+
+    # Only build ML Docker images for ML_CUDA_VERSION or cpu.
+    if platform.processor() not in ADDITIONAL_PLATFORMS:
+        ml_image_types = [
+            image_type
+            for image_type in image_types
+            if image_type in [ML_CUDA_VERSION, "cpu"]
+        ]
+    else:
+        # Do not build ray-ml e.g. for arm64
+        ml_image_types = []
+
+    # Only build ray-ml image for pythons in ML_IMAGES_PY_VERSIONS
+    ml_py_versions = [
+        py_version
+        for py_version in py_versions
+        if py_version in ML_IMAGES_PY_VERSIONS
+    ]
+
+    if len(ml_image_types) > 0:
+        prep_ray_ml()
+        all_tagged_images += build_for_all_versions(
+            "ray-ml",
+            ml_py_versions,
+            image_types=ml_image_types,
+            suffix=suffix,
+        )
+        images_to_tag_and_push += ["ray-ml"]
+
+    if is_buildkite:
+        extract_image_infos(
+            all_tagged_images, target_dir="/artifact-mount/.image-info"
         )
 
-        if only_build_worker_container:
-            build_for_all_versions(
-                "ray-worker-container", py_versions, image_types, suffix=suffix
-            )
-            # TODO Currently don't push ray_worker_container
-        else:
-            # Build Ray Docker images.
-            all_tagged_images = []
-
-            all_tagged_images += build_for_all_versions(
-                "ray", py_versions, image_types, suffix=suffix
-            )
-
-            # List of images to tag and push to docker hub
-            images_to_tag_and_push = []
-
-            if is_base_images_built:
-                images_to_tag_and_push += ["base-deps", "ray-deps"]
-
-            # Always tag/push ray
-            images_to_tag_and_push += ["ray"]
-
-            # Only build ML Docker images for ML_CUDA_VERSION or cpu.
-            if platform.processor() not in ADDITIONAL_PLATFORMS:
-                ml_image_types = [
-                    image_type
-                    for image_type in image_types
-                    if image_type in [ML_CUDA_VERSION, "cpu"]
-                ]
-            else:
-                # Do not build ray-ml e.g. for arm64
-                ml_image_types = []
-
-            # Only build ray-ml image for pythons in ML_IMAGES_PY_VERSIONS
-            ml_py_versions = [
-                py_version
-                for py_version in py_versions
-                if py_version in ML_IMAGES_PY_VERSIONS
-            ]
-
-            if len(ml_image_types) > 0:
-                prep_ray_ml()
-                all_tagged_images += build_for_all_versions(
-                    "ray-ml",
-                    ml_py_versions,
-                    image_types=ml_image_types,
-                    suffix=suffix,
-                )
-                images_to_tag_and_push += ["ray-ml"]
-
-            if is_buildkite:
-                extract_image_infos(
-                    all_tagged_images, target_dir="/artifact-mount/.image-info"
-                )
-
-            if build_type in {MERGE, PR}:
-                valid_branch = _valid_branch()
-                if (not valid_branch) and is_merge:
-                    print(f"Invalid Branch found: {_get_branch()}")
-                push_and_tag_images(
-                    py_versions,
-                    image_types,
-                    merge_build=valid_branch and is_merge,
-                    image_list=images_to_tag_and_push,
-                    suffix=suffix,
-                )
-
-        # TODO(ilr) Re-Enable Push READMEs by using a normal password
-        # (not auth token :/)
-        # push_readmes(build_type is MERGE)
+    if build_type in {MERGE, PR}:
+        valid_branch = _valid_branch()
+        if (not valid_branch) and is_merge:
+            print(f"Invalid Branch found: {_get_branch()}")
+        push_and_tag_images(
+            py_versions,
+            image_types,
+            merge_build=valid_branch and is_merge,
+            image_list=images_to_tag_and_push,
+            suffix=suffix,
+        )
 
 
-def fix_docker_images(
+def _fix_docker_images(
     image: str = "ray-ml",
     version: str = "nightly",
     repo: str = DOCKER_HUB_REPO,
@@ -1010,4 +1019,4 @@ if __name__ == "__main__":
     if not fix_image:
         main()
     else:
-        fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))
+        _fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))
