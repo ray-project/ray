@@ -131,7 +131,7 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             "these evenly amongst league- and main-exploiters)!"
         )
 
-        # Build trainer's multiagent config.
+        # Build Algorithm's multiagent config.
         self.config._is_frozen = False
         # Make sure the multiagent config dict has no policies defined:
         assert self.config.policies is None, (

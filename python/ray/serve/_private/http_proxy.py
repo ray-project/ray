@@ -27,6 +27,7 @@ from ray.serve._private.http_util import (
     receive_http_body,
     Response,
     set_socket_reuse_port,
+    validate_http_proxy_callback_return,
 )
 from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
 from ray.serve._private.constants import (
@@ -35,6 +36,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -43,7 +45,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters, call_function_from_import_path
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -69,9 +71,11 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
-        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
-        "future versions."
+        "been deprecated. Please set `request_timeout_s` in your Serve config's "
+        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
+        "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
+        "ema.request_timeout_s"
     )
 
 
@@ -165,7 +169,9 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(self, controller_name: str, request_timeout_s: Optional[float] = None):
+        self.request_timeout_s = request_timeout_s
+
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
@@ -177,6 +183,12 @@ class HTTPProxy:
 
         self.self_actor_handle = ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
+
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+            logger.info(
+                "Experimental streaming feature flag enabled.",
+                extra={"log_to_stderr": False},
+            )
 
         def get_handle(name):
             return serve.context.get_global_client().get_handle(
@@ -469,14 +481,14 @@ class HTTPProxy:
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
                 _, request_timed_out = await asyncio.wait(
-                    [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                    [object_ref], timeout=self.request_timeout_s
                 )
                 if request_timed_out:
                     logger.info(
-                        "Request didn't finish within "
-                        f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
-                        "with another replica. You can modify this timeout by "
-                        'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                        f"Request didn't finish within {self.request_timeout_s} seconds"
+                        ". Retrying with another replica. You can modify this timeout "
+                        'by setting "request_timeout_s" in your Serve config\'s '
+                        "`http_options` field."
                     )
                     backoff = True
                 else:
@@ -606,6 +618,7 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
+        request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
@@ -615,15 +628,34 @@ class HTTPProxyActor:
         if http_middlewares is None:
             http_middlewares = []
 
+        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+            logger.info(
+                "Calling user-provided callback from import path "
+                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+            )
+            middlewares = validate_http_proxy_callback_return(
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+                )
+            )
+
+            http_middlewares.extend(middlewares)
+
         self.host = host
         self.port = port
         self.root_path = root_path
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(
+            controller_name=controller_name,
+            request_timeout_s=(
+                request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            ),
+        )
 
         self.wrapped_app = self.app
+
         for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 

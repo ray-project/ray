@@ -1346,6 +1346,15 @@ def check_dashboard_dependencies_installed() -> bool:
         return False
 
 
+connect_error = (
+    "Unable to connect to GCS (ray head) at {}. "
+    "Check that (1) Ray with matching version started "
+    "successfully at the specified address, (2) this "
+    "node can reach the specified address, and (3) there is "
+    "no firewall setting preventing access."
+)
+
+
 def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
     result = None
     if isinstance(prefix, str):
@@ -1360,12 +1369,7 @@ def internal_kv_list_with_retry(gcs_client, prefix, namespace, num_retries=20):
                 ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV List failed")
             result = None
@@ -1394,12 +1398,7 @@ def internal_kv_get_with_retry(gcs_client, key, namespace, num_retries=20):
                 ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Get failed")
             result = None
@@ -1422,13 +1421,17 @@ def parse_resources_json(
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={resources}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
             cf.bold(
-                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+                f'{command_arg}=\'{{"CustomResource3": 1, "CustomResource2": 2}}\''
             ),
         )
     return resources
@@ -1440,12 +1443,16 @@ def parse_metadata_json(
     try:
         metadata = json.loads(metadata)
         if not isinstance(metadata, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={metadata}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(f'{command_arg}=\'{{"key1": "value1", ' '"key2": "value2"}}\''),
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", "key2": "value2"}}\''),
         )
     return metadata
 
@@ -1468,12 +1475,7 @@ def internal_kv_put_with_retry(gcs_client, key, value, namespace, num_retries=20
                 ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
                 ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
             ):
-                logger.warning(
-                    f"Unable to connect to GCS at {gcs_client.address}. "
-                    "Check that (1) Ray GCS with matching version started "
-                    "successfully at the specified address, and (2) there is "
-                    "no firewall setting preventing access."
-                )
+                logger.warning(connect_error.format(gcs_client.address))
             else:
                 logger.exception("Internal KV Put failed")
             time.sleep(2)
@@ -1931,11 +1933,11 @@ def parse_node_labels_json(
     except Exception as e:
         cli_logger.error(
             "`{}` is not a valid JSON string, detail error:{}",
-            cf.bold(command_arg),
+            cf.bold(f"{command_arg}={labels_json}"),
             str(e),
         )
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", ' '"region": "us"}}\''),
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
         )
     return labels

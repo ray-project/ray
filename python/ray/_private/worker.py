@@ -58,6 +58,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._raylet import StreamingObjectRefGenerator
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -1240,8 +1241,8 @@ def init(
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific
-            conventional location, e.g., "/tmp/ray".
+            directory for the Ray process. Must be an absolute path. Defaults to an
+            OS-specific conventional location, e.g., "/tmp/ray".
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -2463,7 +2464,7 @@ def get(
     with profiling.profile("ray.get"):
         # TODO(sang): Should make StreamingObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+        if isinstance(object_refs, StreamingObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2605,8 +2606,9 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of object refs for objects that may
-            or may not be ready. Note that these IDs must be unique.
+        object_refs: List of :class:`~ObjectRefs` or
+            :class:`~StreamingObjectRefGenerators` for objects that may or may
+            not be ready. Note that these must be unique.
         num_returns: The number of object refs that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
@@ -2637,14 +2639,20 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef):
+    if isinstance(object_refs, ObjectRef) or isinstance(
+        object_refs, StreamingObjectRefGenerator
+    ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
+            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
+            f"{object_refs}"
         )
 
     if not isinstance(object_refs, list):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, " f"got {type(object_refs)}"
+            "wait() expected a list of ray.ObjectRef or "
+            "ray.StreamingObjectRefGenerator, "
+            f"got {type(object_refs)}"
         )
 
     if timeout is not None and timeout < 0:
@@ -2653,13 +2661,16 @@ def wait(
         )
 
     for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef):
+        if not isinstance(object_ref, ObjectRef) and not isinstance(
+            object_ref, StreamingObjectRefGenerator
+        ):
             raise TypeError(
-                "wait() expected a list of ray.ObjectRef, "
+                "wait() expected a list of ray.ObjectRef or "
+                "ray.StreamingObjectRefGenerator, "
                 f"got list containing {type(object_ref)}"
             )
-
     worker.check_connected()
+
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
         # TODO(rkn): This is a temporary workaround for
@@ -2750,7 +2761,8 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
-            "ray.kill() only supported for actors. Got: {}.".format(type(actor))
+            "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
+            "Got: {}.".format(type(actor))
         )
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
@@ -2792,7 +2804,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            f"Got: {type(object_ref)}."
+            f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)
 
