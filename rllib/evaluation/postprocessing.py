@@ -188,7 +188,7 @@ def compute_gae_for_sample_batch(
     sample_batch = compute_bootstrap_value(sample_batch, policy)
 
     vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
-    rewards = np.arrayy(sample_batch[SampleBatch.REWARDS])
+    rewards = np.array(sample_batch[SampleBatch.REWARDS])
     # We need to squeeze out the time dimension if there is one
     # Sanity check that both have the same shape
     assert vf_preds.shape == rewards.shape
@@ -209,7 +209,7 @@ def compute_gae_for_sample_batch(
         use_gae=policy.config["use_gae"],
         use_critic=policy.config.get("use_critic", True),
         vf_preds=vf_preds,
-        rewards=rewards
+        rewards=rewards,
     )
 
     if squeezed:
@@ -264,15 +264,14 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
-
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
-        # Create an input dict according to the Model's requirements.
+        # Create an input dict according to the Policy's requirements.
         input_dict = sample_batch.get_single_step_input_dict(
-            policy.model.view_requirements, index="last"
+            policy.view_requirements, index="last"
         )
         if policy.config.get("_enable_rl_module_api"):
             # TODO(Artur): Clean up.

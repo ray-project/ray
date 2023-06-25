@@ -1129,9 +1129,13 @@ class SampleBatch(dict):
                         return value[start_padded:stop_padded]
                     else:
                         if (
-                            isinstance(value, np.ndarray)
-                            or (torch and torch.is_tensor(value))
-                            or (tf and tf.is_tensor(value))
+                            (isinstance(value, np.ndarray) and value.size() > 0)
+                            or (
+                                torch
+                                and torch.is_tensor(value)
+                                and len(list(value.shape)) > 0
+                            )
+                            or (tf and tf.is_tensor(value) and tf.size(value) > 0)
                         ):
                             return value[start_unpadded:stop_unpadded]
                         else:
