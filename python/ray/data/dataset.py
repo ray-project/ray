@@ -2973,7 +2973,7 @@ class Dataset:
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+            Callable[[Dict[str, np.ndarray]], Any]
         ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
