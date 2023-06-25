@@ -1,13 +1,9 @@
-from typing import Mapping
-
 import numpy as np
 from gymnasium.spaces import Box
 
 from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.base import STATE_OUT
-from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.typing import ViewRequirementsDict
 
 
 class StatefulRandomRLModule(RandomRLModule):

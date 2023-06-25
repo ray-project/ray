@@ -25,10 +25,6 @@ from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import framework_iterator, check
 
-# The new RLModule / Learner API
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
-
 
 class MyCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)

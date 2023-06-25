@@ -1,10 +1,8 @@
 import argparse
 
-import numpy as np
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
@@ -12,7 +10,6 @@ from ray.rllib.examples.rl_module.frame_stacking_rlm import (
     TorchFrameStackingCartPoleRLM,
     TfFrameStackingCartPoleRLM,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.test_utils import check_learning_achieved
 

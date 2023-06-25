@@ -1,4 +1,3 @@
-import functools
 import logging
 from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
 

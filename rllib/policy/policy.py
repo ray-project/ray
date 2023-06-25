@@ -30,7 +30,6 @@ from ray.air.checkpoint import Checkpoint
 from ray.rllib.core.models.base import STATE_IN, STATE_OUT
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
-from ray.rllib.policy.rnn_sequencing import get_fold_unfold_b_t_dims
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch

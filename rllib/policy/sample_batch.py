@@ -4,7 +4,7 @@ import itertools
 import sys
 from numbers import Number
 from typing import Dict, Iterator, Set, Union
-from typing import List, Optional, Mapping
+from typing import List, Optional
 
 import numpy as np
 import tree  # pip install dm_tree

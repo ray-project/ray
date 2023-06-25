@@ -233,10 +233,7 @@ def add_time_dimension(
         )
         return tf.reshape(padded_inputs, new_shape)
     elif framework == "torch":
-        try:
-            padded_inputs = torch.as_tensor(padded_inputs)
-        except Exception:
-            a = 10
+        padded_inputs = torch.as_tensor(padded_inputs)
         padded_batch_size = padded_inputs.shape[0]
 
         # Dynamically reshape the padded batch to introduce a time dimension.
