@@ -139,7 +139,7 @@ To test locally, we run the script with the `serve run` CLI command. This comman
 to our deployment formatted as `module:application`. Make sure to run the command from a directory containing a local copy of this script saved as `serve_quickstart.py`, so it can import the application:
 
 ```console
-$ serve run serve_quickstart:translator_app
+$ serve run serve_deployment:translator_app
 ```
 
 This command will run the `translator_app` application and then block, streaming logs to the console. It can be killed with `Ctrl-C`, which will tear down the application.
@@ -223,10 +223,10 @@ We define the full application as follows:
 deployment_graph = Summarizer.bind(Translator.bind())
 ```
 
-Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `serve_quickstart_composed.py` code:
+Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `graph.py` code:
 
 ```console
-$ serve run serve_quickstart_composed:app
+$ serve run graph:app
 ```
 
 We can use this client script to make requests to the graph:
