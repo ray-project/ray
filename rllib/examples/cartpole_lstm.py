@@ -53,12 +53,12 @@ if __name__ == "__main__":
     )
 
     if args.run == "PPO":
+        config.training(num_sgd_iter=5, vf_loss_coeff=0.0001)
         config.model["vf_share_layers"] = True
-        config.vf_loss_coeff = 0.0001
     elif args.run == "IMPALA":
         config.rollouts(num_rollout_workers=2)
         config.resources(num_gpus=0)
-        config.vf_loss_coeff = 0.01
+        config.training(vf_loss_coeff=0.01)
 
     stop = {
         "training_iteration": args.stop_iters,
