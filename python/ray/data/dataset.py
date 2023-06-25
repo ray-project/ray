@@ -1721,10 +1721,31 @@ class Dataset:
         """List of unique elements in the given column.
 
         Examples:
+
             >>> import ray
             >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
             >>> ds.unique("item")
             [1, 2, 3]
+
+            This function is very useful for computing labels
+            in a machine learning dataset:
+
+            >>> import ray
+            >>> ds = ray.data.read_csv("example://iris.csv")
+            >>> ds.unique("variety")
+            ['Setosa', 'Versicolor', 'Virginica']
+
+            One common use case is to convert the class labels
+            into integers for training and inference:
+
+            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> def preprocessor(df, classes):
+            ...     df["variety"] = df["variety"].map(classes)
+            ...     return df
+            >>> train_ds = ds.map_batches(
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
+            [{'sepal.length': 4.3, 'sepal.width': 3.0, 'petal.length': 1.1, 'petal.width': 0.1, 'variety': 0}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
