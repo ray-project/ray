@@ -105,14 +105,14 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
         request, &reply, send_reply_callback);
   }
 
-  rpc::autoscaler::GetClusterResourceStateReply GetClusterResourceStateSync() {
+  rpc::autoscaler::ClusterResourceState GetClusterResourceStateSync() {
     rpc::autoscaler::GetClusterResourceStateRequest request;
     rpc::autoscaler::GetClusterResourceStateReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
     gcs_autoscaler_state_manager_->HandleGetClusterResourceState(
         request, &reply, send_reply_callback);
-    return reply;
+    return reply.cluster_resource_state();
   }
 
   void UpdateFromResourceReportSync(
@@ -135,6 +135,16 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     rpc::ResourcesData data;
     Mocker::FillResourcesData(data, node_id, demands, resource_load_changed);
     gcs_resource_manager_->UpdateResourceLoads(data);
+  }
+
+  void ReportAutoscalingState(const rpc::autoscaler::AutoscalingState &state) {
+    rpc::autoscaler::ReportAutoscalingStateRequest request;
+    request.mutable_autoscaling_state()->CopyFrom(state);
+    rpc::autoscaler::ReportAutoscalingStateReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+    gcs_autoscaler_state_manager_->HandleReportAutoscalingState(
+        request, &reply, send_reply_callback);
   }
 
   std::string ShapeToString(const rpc::autoscaler::ResourceRequest &request) {
@@ -166,9 +176,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void CheckPendingRequests(
-      const rpc::autoscaler::GetClusterResourceStateReply &reply,
+      const rpc::autoscaler::ClusterResourceState &state,
       const std::unordered_map<std::string, int> &expect_requests_by_count) {
-    auto pending_reqs = reply.pending_resource_requests();
+    auto pending_reqs = state.pending_resource_requests();
     ASSERT_EQ(pending_reqs.size(), expect_requests_by_count.size());
     std::unordered_map<std::string, int> actual_requests_by_count;
     for (int i = 0; i < pending_reqs.size(); i++) {
@@ -214,10 +224,10 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   }
 
   void CheckGangResourceRequests(
-      const rpc::autoscaler::GetClusterResourceStateReply &reply,
+      const rpc::autoscaler::ClusterResourceState &state,
       const std::unordered_map<std::string, std::vector<ResourceBundleMap>>
           &expected_data) {
-    auto pending_reqs = reply.pending_gang_resource_requests();
+    auto pending_reqs = state.pending_gang_resource_requests();
     std::unordered_map<std::string, std::vector<ResourceBundleMap>> actual_data;
     // Parse the data.
     for (const auto &pending_pg_req : pending_reqs) {
@@ -301,9 +311,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
     node->set_instance_id("instance_1");
     AddNode(node);
 
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.node_states_size(), 1);
-    CheckNodeResources(reply.node_states(0),
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states_size(), 1);
+    CheckNodeResources(state.node_states(0),
                        /* available */ {{"CPU", 2}, {"GPU", 1}},
                        /* total */ {{"CPU", 2}, {"GPU", 1}});
   }
@@ -315,9 +325,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
                                  /* total*/ {{"CPU", 2}, {"GPU", 1}},
                                  /* available_changed*/ true);
 
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.node_states_size(), 1);
-    CheckNodeResources(reply.node_states(0),
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states_size(), 1);
+    CheckNodeResources(state.node_states(0),
                        /*total*/ {{"CPU", 2}, {"GPU", 1}},
                        /*available*/ {{"CPU", 1.75}});
   }
@@ -326,8 +336,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
   {
     RemoveNode(NodeID::FromBinary(node->node_id()));
     gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.node_states_size(), 0);
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states_size(), 0);
   }
 }
 
@@ -353,9 +363,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
             {pg2, {4, 5, 6}},
         }));
 
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.node_states_size(), 1);
-    CheckNodeLabels(reply.node_states(0),
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.node_states_size(), 1);
+    CheckNodeLabels(state.node_states(0),
                     {{FormatPlacementGroupLabelName(pg1.Binary()), ""},
                      {FormatPlacementGroupLabelName(pg2.Binary()), ""}});
   }
@@ -371,8 +381,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
 
   // Get empty requests
   {
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.pending_resource_requests_size(), 0);
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.pending_resource_requests_size(), 0);
   }
 
   // Update resource usages.
@@ -387,9 +397,9 @@ TEST_F(GcsAutoscalerStateManagerTest, TestBasicResourceRequests) {
                                                    /* num_infeasible */ 1,
                                                    /* num_backlog */ 1)});
 
-    auto reply = GetClusterResourceStateSync();
+    const auto &state = GetClusterResourceStateSync();
     // Expect each pending resources shape to be num_infeasible + num_backlog.
-    CheckPendingRequests(reply, {{"CPU:1", 1 + 1}, {"CPU:4,GPU:2", 1 + 1}});
+    CheckPendingRequests(state, {{"CPU:1", 1 + 1}, {"CPU:4,GPU:2", 1 + 1}});
   }
 
   // Remove node should clear it.
@@ -425,8 +435,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
                                             rpc::PlacementStrategy::STRICT_SPREAD,
                                             rpc::PlacementGroupTableData::PENDING)});
 
-    auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(reply,
+    auto state = GetClusterResourceStateSync();
+    CheckGangResourceRequests(state,
                               {{GenPlacementConstraintForPlacementGroup(
                                     pg.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
                                     ->DebugString(),
@@ -444,8 +454,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
                                             rpc::PlacementStrategy::STRICT_PACK,
                                             rpc::PlacementGroupTableData::PENDING)});
 
-    auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(reply,
+    auto state = GetClusterResourceStateSync();
+    CheckGangResourceRequests(state,
                               {{GenPlacementConstraintForPlacementGroup(
                                     pg.Binary(), rpc::PlacementStrategy::STRICT_PACK)
                                     ->DebugString(),
@@ -481,8 +491,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsNonStrict) {
                                             rpc::PlacementStrategy::SPREAD,
                                             rpc::PlacementGroupTableData::PENDING)});
 
-    auto reply = GetClusterResourceStateSync();
-    CheckGangResourceRequests(reply,
+    const auto &state = GetClusterResourceStateSync();
+    CheckGangResourceRequests(state,
                               {{/* no pg constraint */ "",
                                 {/* from first */ {{"CPU", 1}, {"GPU", 2}},
                                  /* from second */ {{"TPU", 1}}}}});
@@ -507,10 +517,10 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
         rpc::PlacementStrategy::STRICT_SPREAD,
         rpc::PlacementGroupTableData::RESCHEDULING)});
 
-    auto reply = GetClusterResourceStateSync();
+    const auto &state = GetClusterResourceStateSync();
 
     // CPU_success_2 should not be reported as needed.
-    CheckGangResourceRequests(reply,
+    CheckGangResourceRequests(state,
                               {{GenPlacementConstraintForPlacementGroup(
                                     pg1.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
                                     ->DebugString(),
@@ -521,18 +531,18 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
 TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
   // Get empty cluster resources constraint.
   {
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.cluster_resource_constraints_size(), 0);
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.cluster_resource_constraints_size(), 0);
   }
 
   // Generate one constraint.
   {
     RequestClusterResourceConstraint(
         Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}));
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(reply.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(reply.cluster_resource_constraints(0).min_bundles(0),
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
+    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
+    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
                          {{"CPU", 2}, {"GPU", 1}});
   }
 
@@ -540,11 +550,52 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
   {
     RequestClusterResourceConstraint(
         Mocker::GenClusterResourcesConstraint({{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}));
-    auto reply = GetClusterResourceStateSync();
-    ASSERT_EQ(reply.cluster_resource_constraints_size(), 1);
-    ASSERT_EQ(reply.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(reply.cluster_resource_constraints(0).min_bundles(0),
+    const auto &state = GetClusterResourceStateSync();
+    ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
+    ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
+    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
                          {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestReportAutoscalingState) {
+  // Empty autoscaling state.
+  {
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_EQ(autoscaling_state, absl::nullopt);
+  }
+
+  // Return the updated state.
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    ReportAutoscalingState(actual_state);
+
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_NE(autoscaling_state, absl::nullopt);
+    ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 1);
+  }
+
+  // Reject an older version.
+  {
+    rpc::autoscaler::AutoscalingState state;
+    state.set_autoscaler_state_version(0);
+    ReportAutoscalingState(state);
+
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_NE(autoscaling_state, absl::nullopt);
+    ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 1);
+  }
+
+  // Update with a new version.
+  {
+    rpc::autoscaler::AutoscalingState state;
+    state.set_autoscaler_state_version(2);
+    ReportAutoscalingState(state);
+
+    const auto &autoscaling_state = gcs_autoscaler_state_manager_->autoscaling_state_;
+    ASSERT_NE(autoscaling_state, absl::nullopt);
+    ASSERT_EQ(autoscaling_state->autoscaler_state_version(), 2);
   }
 }
 

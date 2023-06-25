@@ -91,7 +91,7 @@ if __name__ == "__main__":
     )
     results = tuner.fit()
 
-    print("Training completed. Restoring new Trainer for action inference.")
+    print("Training completed. Restoring new Algorithm for action inference.")
     # Get the last checkpoint from the above training run.
     checkpoint = results.get_best_result().checkpoint
     # Create new Algorithm and restore its state from the last checkpoint.

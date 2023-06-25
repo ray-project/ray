@@ -183,30 +183,98 @@ def compute_gae_for_sample_batch(
     Returns:
         The postprocessed, modified SampleBatch (or a new one).
     """
+    # Compute the SampleBatch.VALUES_BOOTSTRAPPED column, which we'll need for the
+    # following `last_r` arg in `compute_advantages()`.
+    sample_batch = compute_bootstrap_value(sample_batch, policy)
+
+    vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
+    rewards = np.arrayy(sample_batch[SampleBatch.REWARDS])
+    # We need to squeeze out the time dimension if there is one
+    # Sanity check that both have the same shape
+    assert vf_preds.shape == rewards.shape
+    if len(vf_preds.shape) == 2:
+        vf_preds = np.squeeze(vf_preds, axis=1)
+        rewards = np.squeeze(rewards, axis=1)
+        squeezed = True
+    else:
+        squeezed = False
+
+    # Adds the policy logits, VF preds, and advantages to the batch,
+    # using GAE ("generalized advantage estimation") or not.
+    batch = compute_advantages(
+        rollout=sample_batch,
+        last_r=sample_batch[SampleBatch.VALUES_BOOTSTRAPPED][-1],
+        gamma=policy.config["gamma"],
+        lambda_=policy.config["lambda"],
+        use_gae=policy.config["use_gae"],
+        use_critic=policy.config.get("use_critic", True),
+        vf_preds=vf_preds,
+        rewards=rewards
+    )
+
+    if squeezed:
+        # If we needed to squeeze rewards and vf_preds, we need to unsqueeze
+        # advantages again for it to have the same shape
+        batch[Postprocessing.ADVANTAGES] = np.expand_dims(
+            batch[Postprocessing.ADVANTAGES], axis=1
+        )
+
+    return batch
+
+
+@DeveloperAPI
+def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> SampleBatch:
+    """Performs a value function computation at the end of a trajectory.
+
+    If the trajectory is terminated (not truncated), will not use the value function,
+    but assume that the value of the last timestep is 0.0.
+    In all other cases, will use the given policy's value function to compute the
+    "bootstrapped" value estimate at the end of the given trajectory. To do so, the
+    very last observation (sample_batch[NEXT_OBS][-1]) and - if applicable -
+    the very last state output (sample_batch[STATE_OUT][-1]) wil be used as inputs to
+    the value function.
+
+    The thus computed value estimate will be stored in a new column of the
+    `sample_batch`: SampleBatch.VALUES_BOOTSTRAPPED. Thereby, values at all timesteps
+    in this column are set to 0.0, except or the last timestep, which receives the
+    computed bootstrapped value.
+    This is done, such that in any loss function (which processes raw, intact
+    trajectories, such as those of IMPALA and APPO) can use this new column as follows:
+
+    Example: numbers=ts in episode, '|'=episode boundary (terminal),
+    X=bootstrapped value (!= 0.0 b/c ts=12 is not a terminal).
+    ts=5 is NOT a terminal.
+    T:                     8   9  10  11  12 <- no terminal
+    VF_PREDS:              .   .   .   .   .
+    VALUES_BOOTSTRAPPED:   0   0   0   0   X
+
+    Args:
+        sample_batch: The SampleBatch (single trajectory) for which to compute the
+            bootstrap value at the end. This SampleBatch will be altered in place
+            (by adding a new column: SampleBatch.VALUES_BOOTSTRAPPED).
+        policy: The Policy object, whose value function to use.
+
+    Returns:
+         The altered SampleBatch (with the extra SampleBatch.VALUES_BOOTSTRAPPED
+         column).
+    """
+    squeezed = False
+    vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
 
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
-        batch = compute_advantages(
-            sample_batch,
-            last_r,
-            policy.config["gamma"],
-            policy.config["lambda"],
-            use_gae=policy.config["use_gae"],
-            use_critic=policy.config.get("use_critic", True),
-        )
+
     # Trajectory has been truncated -> last r=VF estimate of last obs.
     else:
         # Input dict is provided to us automatically via the Model's
         # requirements. It's a single-timestep (last one in trajectory)
         # input_dict.
         # Create an input dict according to the Model's requirements.
+        input_dict = sample_batch.get_single_step_input_dict(
+            policy.model.view_requirements, index="last"
+        )
         if policy.config.get("_enable_rl_module_api"):
-            input_dict = sample_batch.get_single_step_input_dict(
-                policy.view_requirements, index="last"
-            )
-            # Note: RLModules don't need seq_lens but get_single_step_input_dict adds
-            # them.
             # TODO(Artur): Clean up.
             del input_dict[SampleBatch.SEQ_LENS]
             # Note: During sampling you are using the parameters at the beginning of
@@ -235,59 +303,35 @@ def compute_gae_for_sample_batch(
             # For recurrent models, we need to remove the time dimension.
             fwd_out = policy.maybe_remove_time_dimension(fwd_out)
 
-            vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
-            rewards = np.array(sample_batch[SampleBatch.REWARDS])
-
             # We need to squeeze out the time dimension if there is one
             # Sanity check that both have the same shape
-            assert vf_preds.shape == rewards.shape
             if len(vf_preds.shape) == 2:
                 vf_preds = np.squeeze(vf_preds, axis=1)
-                rewards = np.squeeze(rewards, axis=1)
-                squeezed = True
                 last_r = fwd_out[SampleBatch.VF_PREDS][-1][0]
+                squeezed = True
             else:
-                squeezed = False
                 last_r = fwd_out[SampleBatch.VF_PREDS][-1]
-
-            # Adds the policy logits, VF preds, and advantages to the batch,
-            # using GAE ("generalized advantage estimation") or not.
-            batch = compute_advantages(
-                sample_batch,
-                last_r,
-                policy.config["gamma"],
-                policy.config["lambda"],
-                use_gae=policy.config["use_gae"],
-                use_critic=policy.config.get("use_critic", True),
-                rewards=rewards,
-                vf_preds=vf_preds,
-            )
-
-            if squeezed:
-                # If we needed to squeeze rewards and vf_preds, we need to unsqueeze
-                # advantages again for it to have the same shape
-                batch[Postprocessing.ADVANTAGES] = np.expand_dims(
-                    batch[Postprocessing.ADVANTAGES], axis=1
-                )
-
         else:
-            input_dict = sample_batch.get_single_step_input_dict(
-                policy.model.view_requirements, index="last"
-            )
             last_r = policy._value(**input_dict)
 
-            # Adds the policy logits, VF preds, and advantages to the batch,
-            # using GAE ("generalized advantage estimation") or not.
-            batch = compute_advantages(
-                sample_batch,
-                last_r,
-                policy.config["gamma"],
-                policy.config["lambda"],
-                use_gae=policy.config["use_gae"],
-                use_critic=policy.config.get("use_critic", True),
-            )
+    # Set the SampleBatch.VALUES_BOOTSTRAPPED field to VF_PREDS[1:] + the
+    # very last timestep (where this bootstrapping value is actually needed), which
+    # we set to the computed `last_r`.
+    sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = np.concatenate(
+        [
+            convert_to_numpy(vf_preds[1:]),
+            np.array([convert_to_numpy(last_r)], dtype=np.float32),
+        ],
+        axis=0,
+    )
 
-    return batch
+    if squeezed:
+        sample_batch[SampleBatch.VF_PREDS] = np.expand_dims(vf_preds, axis=1)
+        sample_batch[SampleBatch.VALUES_BOOTSTRAPPED] = np.expand_dims(
+            sample_batch[SampleBatch.VALUES_BOOTSTRAPPED], axis=1
+        )
+
+    return sample_batch
 
 
 @DeveloperAPI

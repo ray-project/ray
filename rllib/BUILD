@@ -121,6 +121,32 @@ doctest(
 )
 
 # --------------------------------------------------------------------
+# Benchmarks
+#
+# Tag: benchmark
+#
+# This is smoke-testing the benchmark scripts.
+# --------------------------------------------------------------------
+py_test(
+    name = "torch_compile_inference_bm",
+    main = "benchmarks/torch_compile/run_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
+    size = "small",
+    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "torch_compile_ppo_with_inference",
+    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
+    size = "medium",
+    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
+    args = ["--smoke-test"]
+)
+
+
+# --------------------------------------------------------------------
 # Algorithms learning regression tests.
 #
 # Tag: learning_tests
@@ -298,6 +324,16 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
+py_test(
+    name = "learning_tests_stateless_cartpole_appo_vtrace",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -1076,13 +1112,23 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
 )
 
-# Dreamer
+# Dreamer (V1)
 py_test(
     name = "test_dreamer",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
+
+# DreamerV3
+# TODO (sven): Enable once the version conflict for gymnasium/supersuit/pettingzoo
+#  /shimmy/mujoco has been resolved.
+#py_test(
+#    name = "test_dreamerv3",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+#)
 
 # DT
 py_test(
@@ -2092,6 +2138,13 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_learner_compile",
+    tags = ["team:rllib", "core", "ray_data"],
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
+)
+
+py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -2136,7 +2189,7 @@ py_test(
 py_test(
     name = "test_convtranspose2d_stack",
     tags = ["team:rllib", "models"],
-    size = "small",
+    size = "medium",
     data = glob(["tests/data/images/obstacle_tower.png"]),
     srcs = ["models/tests/test_convtranspose2d_stack.py"]
 )
@@ -3740,7 +3793,7 @@ py_test(
 )
 
 # Taking out this test for now: Mixed torch- and tf- policies within the same
-# Trainer never really worked.
+# Algorithm never really worked.
 # py_test(
 #     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
 #     main = "examples/multi_agent_two_trainers.py",
@@ -4392,6 +4445,7 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
+    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",
