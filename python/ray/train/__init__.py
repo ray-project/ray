@@ -2,10 +2,10 @@ from ray._private.usage import usage_lib
 from ray.train.backend import BackendConfig
 from ray.train.data_config import DataConfig
 from ray.train.constants import TRAIN_DATASET_KEY
+from ray.train.session import report, get_dataset_shard
 from ray.train.trainer import TrainingIterator
 
 from ray.air import Checkpoint
-from ray.air.session import report, get_dataset_shard
 from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 
 usage_lib.record_library_usage("train")
