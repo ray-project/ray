@@ -63,7 +63,6 @@ def auto_fold_unfold_time(input_spec: str):
                 other_dims = actual_shape[2:]
                 reshaped_b = b * t
                 new_shape = tuple([reshaped_b] + other_dims)
-                # If the new shape
                 reshaped_inputs = input_data.reshape(new_shape)
                 try:
                     spec.validate(reshaped_inputs)

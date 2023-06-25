@@ -63,7 +63,6 @@ def auto_fold_unfold_time(input_spec: str):
                 other_dims = actual_shape[2:]
                 reshaped_b = b * t
                 new_shape = tf.concat([[reshaped_b], other_dims], axis=0)
-                # If the new shape
                 reshaped_inputs = tf.reshape(input_data, new_shape)
                 try:
                     spec.validate(reshaped_inputs)

@@ -4140,6 +4140,25 @@ py_test(
     args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
 )
 
+
+py_test(
+    name = "examples/trajectory_view_api_rlm_tf2",
+    main = "examples/trajectory_view_api_rlm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/trajectory_view_api_rlm_torch",
+    main = "examples/trajectory_view_api_rlm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
+)
+
 py_test(
     name = "examples/tune/framework",
     main = "examples/tune/framework.py",

@@ -239,7 +239,7 @@ class TestPPO(unittest.TestCase):
                 action = convert_to_numpy(_action[0])
                 action_logp = convert_to_numpy(action_dist.logp(_action)[0])
                 if lstm:
-                    # Since this inference, fwd out should only contain one action
+                    # Since this is inference, fwd out should only contain one action
                     assert len(action) == 1
                     action = action[0]
                 new_obs, reward, terminated, truncated, _ = env.step(action)

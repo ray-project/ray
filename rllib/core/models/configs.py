@@ -841,7 +841,8 @@ class RecurrentEncoderConfig(ModelConfig):
             observation_space or action_space is to be encoded. This signifies an
             advanced use case.
         tokenizer_config: A ModelConfig to build tokenizers for observations,
-        actions and other spaces that might be present in the view_requirements_dict.
+            actions and other spaces that might be present in the
+            view_requirements_dict.
     """
 
     recurrent_layer_type: str = "lstm"

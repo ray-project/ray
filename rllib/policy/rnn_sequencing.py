@@ -579,12 +579,12 @@ def timeslice_along_seq_lens_with_overlap(
 
 
 def get_fold_unfold_b_t_dims(b_dim: int, t_dim: int, framework: str):
-    """Produces two functions to fold/unfold any torch.Tensors in a struct.
+    """Produces two functions to fold/unfold any Tensors in a struct.
 
     Args:
         b_dim: The batch dimension to use for folding.
         t_dim: The time dimension to use for folding.
-        framework: The framework to use for folding.
+        framework: The framework to use for folding. One of "tf2" or "torch".
 
     Returns:
         fold: A function that takes a struct of torch.Tensors and reshapes
