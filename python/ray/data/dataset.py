@@ -1745,7 +1745,7 @@ class Dataset:
             >>> train_ds = ds.map_batches(
             ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
             >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
-            [{'sepal.length': 4.3, 'sepal.width': 3.0, 'petal.length': 1.1, 'petal.width': 0.1, 'variety': 0}]
+            [{'sepal.length': 4.3, ..., 'variety': 0}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
