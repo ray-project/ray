@@ -40,25 +40,6 @@ class ThreadedRayInstallerTest(unittest.TestCase):
             ray_installer=self.ray_installer,
         )
 
-    def test_install_ray_on_new_node(self):
-        self.base_provider.create_node({}, {TAG_RAY_NODE_KIND: "worker_nodes1"}, 1)
-        instance = Instance(
-            instance_id="0",
-            instance_type="worker_nodes1",
-            cloud_instance_id="0",
-            status=Instance.ALLOCATED,
-        )
-        success, verison = self.instance_storage.upsert_instance(instance)
-        assert success
-        instance.version = verison
-        self.runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
-
-        self.threaded_ray_installer._install_ray_on_single_node(instance)
-        instances, _ = self.instance_storage.get_instances(
-            instance_ids={instance.instance_id}
-        )
-        assert instances[instance.instance_id].ray_status == Instance.RAY_RUNNING
-
     def test_install_ray_on_new_node_version_mismatch(self):
         self.base_provider.create_node({}, {TAG_RAY_NODE_KIND: "worker_nodes1"}, 1)
         instance = Instance(
@@ -102,7 +83,24 @@ class ThreadedRayInstallerTest(unittest.TestCase):
         assert instances[instance.instance_id].ray_status == Instance.RAY_INSTALL_FAILED
 
     def test_install_ray_on_new_nodes(self):
-        pass
+        self.base_provider.create_node({}, {TAG_RAY_NODE_KIND: "worker_nodes1"}, 1)
+        instance = Instance(
+            instance_id="0",
+            instance_type="worker_nodes1",
+            cloud_instance_id="0",
+            status=Instance.ALLOCATED,
+        )
+        success, verison = self.instance_storage.upsert_instance(instance)
+        assert success
+        instance.version = verison
+        self.runner.respond_to_call("json .Config.Env", ["[]" for i in range(1)])
+
+        self.threaded_ray_installer._install_ray_on_new_nodes(instance.instance_id)
+        self.threaded_ray_installer._ray_installation_executor.shutdown(wait=True)
+        instances, _ = self.instance_storage.get_instances(
+            instance_ids={instance.instance_id}
+        )
+        assert instances[instance.instance_id].ray_status == Instance.RAY_RUNNING
 
 
 if __name__ == "__main__":
