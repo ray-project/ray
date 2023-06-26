@@ -1168,7 +1168,7 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
-def test_build(ray_start_stop, node):
+def test_build_single_app(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         print(f'Building node "{node}".')
         # Build an app
@@ -1176,6 +1176,7 @@ def test_build(ray_start_stop, node):
             [
                 "serve",
                 "build",
+                "--single-app",
                 f"ray.serve.tests.test_cli.{node}",
                 "-o",
                 tmp.name,
@@ -1207,7 +1208,6 @@ def test_build_multi_app(ray_start_stop):
             [
                 "serve",
                 "build",
-                "--multi-app",
                 "ray.serve.tests.test_cli.TestApp1Node",
                 "ray.serve.tests.test_cli.TestApp2Node",
                 "-o",
@@ -1250,6 +1250,7 @@ def test_build_kubernetes_flag():
             [
                 "serve",
                 "build",
+                "--single-app",
                 "ray.serve.tests.test_cli.k8sFNode",
                 "-o",
                 tmp.name,
