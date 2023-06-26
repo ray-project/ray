@@ -96,12 +96,14 @@ message NodeState {
 
   // The instance id that the node is running on.
   // This is passed in when the node is registered.
+  // Set by ray from ENV at src/ray/common/constants.h::kNodeCloudInstanceIdEnv
   string instance_id = 2;
 
   // The node type name, e.g. ray-head-node, matching `available_node_types`
   // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
   // Should be set when a ray node is starting - and this will be empty
   // if it's not set when starting the node.
+  // Set by ray from ENV at src/ray/common/constants.h::kNodeTypeNameEnv
   string ray_node_type_name = 3;
 
   // The available resources on the node.

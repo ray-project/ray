@@ -9,7 +9,7 @@ import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -1220,6 +1220,20 @@ class DeploymentState:
             replica.get_running_replica_info()
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
+
+    def get_active_node_ids(self) -> Set[str]:
+        """Get the node ids of all running replicas in this deployment.
+
+        This is used to determine which node has replicas. Only nodes with replicas and
+        head node should have active proxies.
+        """
+        active_states = [
+            ReplicaState.STARTING,
+            ReplicaState.UPDATING,
+            ReplicaState.RECOVERING,
+            ReplicaState.RUNNING,
+        ]
+        return {replica.actor_node_id for replica in self._replicas.get(active_states)}
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
@@ -2528,3 +2542,14 @@ class DeploymentStateManager:
         self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
             info.replica_tag, info.model_ids
         )
+
+    def get_active_node_ids(self) -> Set[str]:
+        """Return set of node ids with running replicas of any deployment.
+
+        This is used to determine which node has replicas. Only nodes with replicas and
+        head node should have active proxies.
+        """
+        node_ids = set()
+        for deployment_state in self._deployment_states.values():
+            node_ids.update(deployment_state.get_active_node_ids())
+        return node_ids
