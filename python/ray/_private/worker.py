@@ -2184,7 +2184,9 @@ def connect(
         # When using an interactive shell, there is no script directory.
         # We also want to skip adding script directory when running from dashboard.
         code_paths = []
-        if not interactive_mode and not (namespace and namespace.endswith("dashboard")):
+        if not interactive_mode and not (
+            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
