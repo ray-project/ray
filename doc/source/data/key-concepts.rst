@@ -7,8 +7,11 @@ Datasets
 --------
 
 Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
-is a distributed data transformation pipeline. Ray Data provides APIs for loading
-data and streaming transformations in parallel.
+is a distributed collection of data.
+
+Ray Data provides APIs for :ref:`loading data <loading_data>`,
+:ref:`transforming data <transforming_data>`, and
+:ref:`consuming data <iterating-over-data>`.
 
 Loading data
 ------------

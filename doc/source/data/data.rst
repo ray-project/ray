@@ -49,11 +49,11 @@ Learn more
 
     .. grid-item-card::
 
-        **Getting Started Walkthrough**
+        **Key Concepts**
         ^^^
 
-        Start with our quick start tutorials for working with Data.
-        These concrete examples will give you an idea of how to use Ray Data.
+        Understand the key concepts behind Ray Data. Learn what
+        :ref:`Datasets <dataset_concept>` are and how they're used.
 
         +++
         .. button-ref:: data_key_concepts
@@ -61,7 +61,7 @@ Learn more
             :outline:
             :expand:
 
-            Get Started with Ray Data
+            Learn Key Concepts
 
     .. grid-item-card::
 
