@@ -565,7 +565,7 @@ class DatasetPipeline:
         )
 
     def schema(
-        self, fetch_if_missing: bool = False
+        self, fetch_if_missing: bool = True
     ) -> Union[type, "pyarrow.lib.Schema"]:
         """Return the schema of the dataset pipeline.
 
@@ -580,7 +580,7 @@ class DatasetPipeline:
 
         Args:
             fetch_if_missing: If True, synchronously fetch the schema if it's
-                not known. Default is False, where None is returned if the
+                not known. Default is True, where None is returned if the
                 schema is not known.
 
         Returns:
