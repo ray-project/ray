@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import tempfile
@@ -628,9 +629,9 @@ def test_e2e_bursty(serve_instance):
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
+            "look_back_period_s": 0.5,
+            "downscale_delay_s": 0.5,
+            "upscale_delay_s": 0.5,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -639,6 +640,9 @@ def test_e2e_bursty(serve_instance):
         version="v1",
     )
     class A:
+        def __init__(self):
+            logging.getLogger("ray.serve").setLevel(logging.ERROR)
+
         def __call__(self):
             ray.get(signal.wait.remote())
 
@@ -664,10 +668,11 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
-        time.sleep(0.05)
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
-        [handle.remote() for _ in range(100)]
+        refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
+        ray.get(refs)
+        time.sleep(0.05)
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(

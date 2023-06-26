@@ -327,8 +327,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         has exceeded the target number. Else it will loop again to schedule another
         replica.
         """
-        curr_task = asyncio.current_task().get_name()
-        print(curr_task, "try_schedule entered")
         while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
             async for candidates in self.choose_two_replicas_with_backoff():
                 replica = await self.select_from_candidate_replicas(candidates)
@@ -337,7 +335,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     break
 
         self._scheduling_tasks.remove(asyncio.current_task())
-        print(curr_task, "try_schedule exited")
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending assignments if necessary.
