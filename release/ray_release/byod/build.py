@@ -90,15 +90,21 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                 built.add(ray_image)
                 continue
             if not _ray_image_exist(ray_image):
-                # TODO(can): instead of waiting for the base image to be built, we can
-                #  build it ourselves
-                timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
-                logger.info(
-                    f"Image {ray_image} does not exist yet. "
-                    f"Wait for another {timeout}s..."
-                )
-                time.sleep(BASE_IMAGE_WAIT_DURATION)
-                continue
+                if _is_pr_build():
+                    # build the image on PR builds
+                    _build_ray_image(
+                        test.get("python", PYTHON_VERSION),
+                        test.get_byod_type(),
+                    )
+                else:
+                    # wait for the image to be available on non-PR builds
+                    timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
+                    logger.info(
+                        f"Image {ray_image} does not exist yet. "
+                        f"Wait for another {timeout}s..."
+                    )
+                    time.sleep(BASE_IMAGE_WAIT_DURATION)
+                    continue
             logger.info(f"Building {byod_image} from {ray_image}")
             with open(DATAPLANE_FILENAME, "rb") as build_file:
                 subprocess.check_call(
@@ -141,6 +147,39 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                 built.add(ray_image)
 
 
+def _build_ray_image(python_version: str, image_type: str) -> bool:
+    python_verison = f"py{python_version.replace('.', '')}"  # 3.7 -> py37
+    image_type = "cu118" if image_type == "gpu" else image_type
+    env = os.environ.copy()
+    env["LINUX_WHEELS"] = "1"
+    env["BUILD_ONE_PYTHON_ONLY"] = python_verison
+    subprocess.check_call(
+        [os.path.join(RELEASE_PACKAGE_DIR, "..", "ci", "ci.sh"), "build"],
+        env=env,
+        stdout=sys.stderr,
+    )
+    subprocess.check_call(
+        ["pip", "install", "-q", "docker", "aws_requests_auth", "boto3"],
+        stdout=sys.stderr,
+    )
+    subprocess.check_call(
+        [
+            "python",
+            os.path.join(
+                RELEASE_PACKAGE_DIR, "..", "ci", "build", "build-docker-images.py"
+            ),
+            "--py-versions",
+            python_version,
+            "-T",
+            image_type,
+            "--build-type",
+            "BUILDKITE",
+            "--build-base",
+        ],
+        stdout=sys.stderr,
+    )
+
+
 def _download_dataplane_build_file() -> None:
     """
     Downloads the dataplane build file from S3.
@@ -154,6 +193,10 @@ def _download_dataplane_build_file() -> None:
     with open(DATAPLANE_FILENAME, "rb") as build_context:
         digest = hashlib.sha256(build_context.read()).hexdigest()
         assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
+
+
+def _is_pr_build() -> bool:
+    return os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
 
 
 def _ray_image_exist(ray_image: str) -> bool:

@@ -119,9 +119,6 @@ class Test(dict):
         """
         Returns whether this test is running on a BYOD cluster.
         """
-        if os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false":
-            # Do not run BYOD tests on PRs
-            return False
         return self["cluster"].get("byod") is not None
 
     def get_byod_type(self) -> Optional[str]:
@@ -220,9 +217,6 @@ class Test(dict):
             os.environ["BUILDKITE_BRANCH"],
         )
         ray_version = commit[:6]
-        assert branch == "master" or branch.startswith(
-            "releases/"
-        ), f"Invalid branch name {branch}"
         if branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
