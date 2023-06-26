@@ -445,8 +445,8 @@ class ARS(Algorithm):
                 old="rllib/algorithms/ars/",
                 new="rllib_contrib/ars/",
                 help=(
-                    "This algorithm will be "
-                    "It is being moved to the "
+                    "This algorithm will be removed by ray 2.9"
+                    "It is being moved to the ray/rllib_contrib dir. See "
                     "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
                     "for more details. Any associated components (e.g. policies)"
                     " will also be moved."
