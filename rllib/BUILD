@@ -4146,7 +4146,7 @@ py_test(
     main = "examples/trajectory_view_api_rlm.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/trajectory_view_api.py"],
+    srcs = ["examples/trajectory_view_api_rlm.py"],
     args = ["--as-test", "--framework=tf2", "--stop-reward=100.0"]
 )
 
@@ -4155,7 +4155,7 @@ py_test(
     main = "examples/trajectory_view_api_rlm.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/trajectory_view_api.py"],
+    srcs = ["examples/trajectory_view_api_rlm.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
 )
 
