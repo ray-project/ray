@@ -1,7 +1,6 @@
 from typing import Any
 
 import ray
-from ray.data.context import DataContext
 
 CACHED_FUNCTIONS = {}
 
@@ -18,10 +17,8 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     ``cached_remote_fn(fn, **static_args).options(**dynamic_args)``.
     """
     if fn not in CACHED_FUNCTIONS:
-        ctx = DataContext.get_current()
         default_ray_remote_args = {
             "retry_exceptions": True,
-            "scheduling_strategy": ctx.scheduling_strategy,
         }
         CACHED_FUNCTIONS[fn] = ray.remote(
             **{**default_ray_remote_args, **ray_remote_args}
