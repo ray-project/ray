@@ -18,7 +18,8 @@ from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -318,4 +319,16 @@ class MADDPG(DQN):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
+        if log_once("maddpg-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/maddpg/",
+                new="rllib_contrib/maddpg/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         return MADDPGTFPolicy

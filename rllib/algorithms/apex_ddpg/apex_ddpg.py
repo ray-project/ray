@@ -4,10 +4,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.typing import (
     ResultDict,
 )
+from ray.util import log_once
 
 
 class ApexDDPGConfig(DDPGConfig):
@@ -151,4 +152,16 @@ class ApexDDPG(DDPG, ApexDQN):
     @override(DDPG)
     def training_step(self) -> ResultDict:
         """Use APEX-DQN's training iteration function."""
+        if log_once("apex-ddpg-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/apex_ddpg/",
+                new="rllib_contrib/apex_ddpg/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         return ApexDQN.training_step(self)

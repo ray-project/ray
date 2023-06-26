@@ -19,7 +19,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -28,6 +28,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
 from ray.rllib.utils.typing import PolicyID
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -436,6 +437,18 @@ class ES(Algorithm):
 
     @override(Algorithm)
     def step(self):
+        if log_once("es-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/es/",
+                new="rllib_contrib/es/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         config = self.config
 
         theta = self.policy.get_flat_weights()

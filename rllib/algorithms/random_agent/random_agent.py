@@ -4,6 +4,8 @@ from typing import Optional
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 
 class RandomAgentConfig(AlgorithmConfig):
@@ -64,6 +66,17 @@ class RandomAgent(Algorithm):
 
     @override(Algorithm)
     def step(self):
+        if log_once("random_agent-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/random_agent/",
+                new="rllib_contrib/random_agent/",
+                help=(
+                    "This algorithm will be It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies) also "
+                    "be moved."
+                ),
+            )
         rewards = []
         steps = 0
         for _ in range(self.config.rollouts_per_iteration):

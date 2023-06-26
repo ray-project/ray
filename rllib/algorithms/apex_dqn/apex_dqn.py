@@ -29,7 +29,7 @@ from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -48,6 +48,8 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.trainable import Trainable
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+
+from ray.util import log_once
 
 
 class ApexDQNConfig(DQNConfig):
@@ -380,6 +382,18 @@ class ApexDQN(DQN):
 
     @override(DQN)
     def training_step(self) -> ResultDict:
+        if log_once("a2c-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/apex_dqn/",
+                new="rllib_contrib/apex_dqn/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         num_samples_ready = self.get_samples_and_store_to_replay_buffers()
         num_worker_samples_collected = defaultdict(int)
 

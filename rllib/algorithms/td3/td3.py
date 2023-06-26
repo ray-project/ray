@@ -6,7 +6,8 @@ TD3 paper.
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.util import log_once
 
 
 class TD3Config(DDPGConfig):
@@ -99,6 +100,18 @@ class TD3Config(DDPGConfig):
         }
         # __sphinx_doc_end__
         # fmt: on
+        if log_once("td3-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/td3/",
+                new="rllib_contrib/td3/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
 
 
 class TD3(DDPG):

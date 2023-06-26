@@ -12,6 +12,7 @@ from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override, PublicAPI
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -24,6 +25,7 @@ from ray.rllib.utils.typing import (
     PolicyID,
     TensorType,
 )
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -313,6 +315,18 @@ class DT(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        if log_once("dt-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/dt/",
+                new="rllib_contrib/dt/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         with self._timers[SAMPLE_TIMER]:
             # TODO: Add ability to do obs_filter for offline sampling.
             train_batch = synchronous_parallel_sample(worker_set=self.workers)

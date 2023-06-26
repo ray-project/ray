@@ -18,6 +18,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.typing import ResultDict
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -59,17 +60,6 @@ class A3CConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a A3CConfig instance."""
-        deprecation_warning(
-            old="rllib/algorithms/a3c/a3c.py",
-            new="rllib_contrib/a3c/",
-            help=(
-                "This algorithm will be "
-                "deprecated from RLlib in future releases. It is being moved to the "
-                "ray/rllib_contrib directory. See "
-                "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                "for more details."
-            ),
-        )
         super().__init__(algo_class=algo_class or A3C)
 
         # fmt: off
@@ -211,6 +201,18 @@ class A3C(Algorithm):
             return A3CTF2Policy
 
     def training_step(self) -> ResultDict:
+        if log_once("a3c-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/a3c/",
+                new="rllib_contrib/a3c/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md "  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         # Shortcut.
         local_worker = self.workers.local_worker()
 

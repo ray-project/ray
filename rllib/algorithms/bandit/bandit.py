@@ -7,6 +7,8 @@ from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +97,18 @@ class BanditLinTS(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
+        if log_once("bandit-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/bandit/",
+                new="rllib_contrib/bandit/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":

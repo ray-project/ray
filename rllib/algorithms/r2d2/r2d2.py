@@ -7,7 +7,8 @@ from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -216,6 +217,18 @@ class R2D2(DQN):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
+        if log_once("r2d2-deprecation-warning"):
+            deprecation_warning(
+                old="rllib/algorithms/r2d2/",
+                new="rllib_contrib/r2d2/",
+                help=(
+                    "This algorithm will be "
+                    "It is being moved to the "
+                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. Any associated components (e.g. policies)"
+                    " will also be moved."
+                ),
+            )
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
