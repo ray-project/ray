@@ -16,6 +16,7 @@ controller._TRACING_ENABLED = True
 def run_http_benchmark(url, num_queries):
     latency = []
     for _ in tqdm(range(num_queries + 200)):
+        time.sleep(0.001)
         start = time.perf_counter()
         requests.get(url)
         end = time.perf_counter()
@@ -51,14 +52,13 @@ def main(
     def noop(_):
         return "hello world"
 
-    noop.deploy()
-
-    url = "{}/noop".format(DEFAULT_HTTP_ADDRESS)
+    serve.run(noop.bind())
 
     if num_queries:
-        run_http_benchmark(url, num_queries)
+        run_http_benchmark(DEFAULT_HTTP_ADDRESS, num_queries)
+
     if blocking:
-        print("Endpoint {} is ready.".format(url))
+        print("Endpoint {} is ready.".format(DEFAULT_HTTP_ADDRESS))
         while True:
             time.sleep(5)
 

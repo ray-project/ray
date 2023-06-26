@@ -15,7 +15,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
+    tags = ["exclusive", "team:ml", "highly_parallel"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
@@ -25,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -133,7 +133,9 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
         "source/serve/doc_code/object_detection.py",
-        "source/serve/doc_code/streaming_example.py",
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+        "source/serve/doc_code/vllm_example.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -141,7 +143,10 @@ py_test_run_all_subdirectory(
 
 py_test_run_all_subdirectory(
     size = "medium",
-    include = ["source/serve/doc_code/streaming_example.py"],
+    include = [
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+    ],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -322,7 +327,8 @@ doctest(
             "source/serve/production-guide/deploy-vm.md",
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
-            "source/data/transforming-data.rst"
+            "source/data/transforming-data.rst",
+            "source/train/faq.rst"
         ]
     ),
     size = "large",

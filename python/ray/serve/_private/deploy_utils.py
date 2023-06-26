@@ -97,6 +97,7 @@ def deploy_args_to_deployment_info(
     route_prefix: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
+    **kwargs,
 ) -> DeploymentInfo:
     """Takes deployment args passed to the controller after building an application and
     constructs a DeploymentInfo object.

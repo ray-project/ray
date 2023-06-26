@@ -225,7 +225,7 @@ def make_recsim_env(
             reward).
 
     Returns:
-        An RLlib-ready gym.Env class to use inside a Trainer.
+        An RLlib-ready gym.Env class to use inside an Algorithm.
     """
 
     class _RecSimEnv(gym.Wrapper):

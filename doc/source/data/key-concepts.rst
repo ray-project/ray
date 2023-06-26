@@ -31,15 +31,13 @@ Ray Data can read from any `filesystem supported by Arrow
 
     {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
-
-To learn more about creating datasets, read
-:ref:`Loading data <loading_data>`.
+To learn more about creating datasets, read :ref:`Loading data <loading_data>`.
 
 Transforming data
 -----------------
 
-Apply user-defined functions (UDFs) to
-transform datasets. Ray executes transformations in parallel for performance.
+Apply user-defined functions (UDFs) to transform datasets. Ray executes transformations
+in parallel for performance.
 
 .. testcode::
 

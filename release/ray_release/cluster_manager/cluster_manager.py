@@ -62,11 +62,19 @@ class ClusterManager(abc.ABC):
             "RAY_USAGE_STATS_EXTRA_TAGS"
         ] = f"test_name={self.test.get_name()};smoke_test={self.smoke_test}"
 
-        self.cluster_env_name = (
-            f"{self.project_name}_{self.project_id[4:8]}"
-            f"__env__{self.test.get_name().replace('.', '_')}__"
-            f"{dict_hash(self.cluster_env)}"
-        )
+        if self.test.is_byod_cluster():
+            self.cluster_env_name = (
+                self.test.get_anyscale_byod_image()
+                .replace("/", "_")
+                .replace(":", "_")
+                .replace(".", "_")
+            )
+        else:
+            self.cluster_env_name = (
+                f"{self.project_name}_{self.project_id[4:8]}"
+                f"__env__{self.test.get_name().replace('.', '_')}__"
+                f"{dict_hash(self.cluster_env)}"
+            )
 
     def set_cluster_compute(
         self,
