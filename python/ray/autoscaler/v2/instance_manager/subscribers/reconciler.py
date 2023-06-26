@@ -87,7 +87,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
 
         for instance in stopping_instances.values():
             if none_terminated_cloud_instances.get(instance.cloud_instance_id) is None:
-                instance.status = Instance.TERMINATED
+                instance.status = Instance.STOPPED
                 result, _ = self._instance_storage.upsert_instance(
                     instance, expected_instance_version=instance.version
                 )

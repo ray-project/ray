@@ -15,7 +15,6 @@ from ray.autoscaler.v2.instance_manager.storage import InMemoryStorage
 from ray.autoscaler.v2.instance_manager.subscribers.threaded_ray_installer import (
     ThreadedRayInstaller,
 )
-from ray.autoscaler.v2.tests.util import create_instance
 from ray.core.generated.instance_manager_pb2 import Instance
 from ray.tests.autoscaler_test_utils import MockProcessRunner, MockProvider
 
