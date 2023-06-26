@@ -98,6 +98,7 @@ class MockReplicaActorWrapper:
         self.healthy = True
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
+        self._node_id = None
 
     @property
     def is_cross_language(self) -> bool:
@@ -145,6 +146,8 @@ class MockReplicaActorWrapper:
 
     @property
     def node_id(self) -> Optional[str]:
+        if self._node_id:
+            return self._node_id
         if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
             return "node-id"
         return None
@@ -235,11 +238,6 @@ class MockReplicaActorWrapper:
     def check_health(self):
         self.health_check_called = True
         return self.healthy
-
-    def set_scheduling_strategy(
-        self, scheduling_strategy: NodeAffinitySchedulingStrategy
-    ):
-        self._scheduling_strategy = scheduling_strategy
 
 
 class MockDeploymentScheduler:
@@ -2695,9 +2693,7 @@ def test_get_active_node_ids(mock_get_all_node_ids, mock_deployment_state_manage
     )
     mocked_replicas = deployment_state._replicas.get()
     for idx, mocked_replica in enumerate(mocked_replicas):
-        mocked_replica._actor.set_scheduling_strategy(
-            NodeAffinitySchedulingStrategy(node_id=node_ids[idx], soft=True)
-        )
+        mocked_replica._actor._node_id = node_ids[idx]
     assert deployment_state.get_active_node_ids() == set(node_ids)
     assert deployment_state_manager.get_active_node_ids() == set(node_ids)
 
