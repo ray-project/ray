@@ -76,7 +76,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-        $(if [ "$BASE_IMAGE" = "ubuntu:focal" ]; then echo \
+        $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
     # Either install kubectl or remove wget 
     && (if [ "$AUTOSCALER" = "autoscaler" ]; \
