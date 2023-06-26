@@ -58,6 +58,7 @@ RUN if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then
         *requirements.txt \
     && sudo apt-get clean
 
+# Export installed packages
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
 
 # Make sure tfp is installed correctly and matches tf version.
