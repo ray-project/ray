@@ -34,6 +34,9 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         )
         self._reconcile_timer.start()
 
+    def shutdown(self):
+        self._reconcile_timer.cancel()
+
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         instance_ids = [
             event.instance_id
