@@ -94,6 +94,5 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
                 if not result:
                     logger.warning("Failed to update instance status to TERMINATED")
 
-        # 2. if the cloud instance has no storage instance can be found,
+        # 2. TODO: if the cloud instance has no storage instance can be found,
         # it means the instance is likely leaked, terminate the instance.
-        # TODO
