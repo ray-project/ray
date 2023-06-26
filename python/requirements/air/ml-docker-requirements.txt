@@ -6,7 +6,7 @@ ipywidgets>=8
 # Needed for Ray Client error message serialization/deserialization.
 tblib
 
-# If you make changes below this line, please also make the corresponding changes to `requirements_dl.txt`!
+# If you make changes below this line, please also make the corresponding changes to `dl-cpu-requirements.txt`!
 
 --extra-index-url https://download.pytorch.org/whl/cu116  # for GPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-1.13.0+cu116.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv

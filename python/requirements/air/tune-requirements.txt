@@ -1,4 +1,4 @@
--r requirements_dl.txt
+-r dl-cpu-requirements.txt
 
 aim==3.16.1
 ax-platform[mysql]==0.2.6; python_version < '3.8'

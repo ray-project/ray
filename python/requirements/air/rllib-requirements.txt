@@ -1,4 +1,4 @@
--r requirements_dl.txt
+-r dl-cpu-requirements.txt
 
 # Environment adapters.
 # ---------------------
@@ -11,7 +11,7 @@ mujoco-py<2.2,>=2.1
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
-# TODO(sven): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+# TODO(sven): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
 #mlagents==0.28.0
 mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.

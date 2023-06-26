@@ -192,7 +192,7 @@ install_shellcheck() {
 }
 
 install_linters() {
-  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+  pip install -r "${WORKSPACE_DIR}"/python/requirements/lint-requirements.txt
 
   install_shellcheck
 }
@@ -328,7 +328,7 @@ install_pip_packages() {
   # files.
   delayed_packages=()
 
-  requirements_files+=("${WORKSPACE_DIR}/python/requirements_test.txt")
+  requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -350,8 +350,8 @@ install_pip_packages() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_rllib.txt")
-    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/rllib-requirements.txt")
+    #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
 
@@ -362,18 +362,18 @@ install_pip_packages() {
 
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/train-requirements.txt")
     install_ml_no_deps=1
   fi
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/tune-requirements.txt")
   fi
 
   # For Tune, install upstream dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_upstream.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/requirements_upstream.txt")
   fi
 
   # Additional dependency for Ludwig.
@@ -386,7 +386,7 @@ install_pip_packages() {
   fi
 
   # Additional dependency for time series libraries.
-  # This cannot be included in requirements_tune.txt as it has conflicting
+  # This cannot be included in tune-requirements.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
     requirements_packages+=("statsforecast==1.5.0")
@@ -396,10 +396,10 @@ install_pip_packages() {
 
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/data-requirements.txt")
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/data-test-requirements.txt")
     if [ -n "${ARROW_VERSION-}" ]; then
       if [ "${ARROW_VERSION-}" = nightly ]; then
         delayed_packages+=("--extra-index-url")
@@ -419,7 +419,7 @@ install_pip_packages() {
   if [ "${install_ml_no_deps}" = 1 ]; then
     # Install these requirements first. Their dependencies may be overwritten later
     # by the main install.
-    pip install -r "${WORKSPACE_DIR}/python/requirements/ml/requirements_no_deps.txt"
+    pip install -r "${WORKSPACE_DIR}/python/requirements/air/requirements_no_deps.txt"
   fi
 
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
@@ -431,10 +431,10 @@ install_pip_packages() {
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
         pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
-        # We won't add requirements_dl.txt as it would otherwise overwrite our custom
+        # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
-        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
-        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
+        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
@@ -442,12 +442,12 @@ install_pip_packages() {
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
-        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
+        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
-        requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
       fi
   fi
 

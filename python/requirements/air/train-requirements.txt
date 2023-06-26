@@ -1,6 +1,6 @@
 # TODO(train-team): Remove this once Ray Train is deprecated.
 
--r requirements_dl.txt
+-r dl-cpu-requirements.txt
 
 mlflow==1.30.0; python_version <= '3.7'
 mlflow==2.4.1; python_version > '3.7'
