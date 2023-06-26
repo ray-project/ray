@@ -210,7 +210,7 @@ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
 
 # Feature flag to enable power of two choices routing.
 RAY_SERVE_ENABLE_NEW_ROUTING = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "1") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "0") == "1"
     or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 )
 
