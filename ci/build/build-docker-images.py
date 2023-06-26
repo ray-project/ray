@@ -431,8 +431,6 @@ def prep_ray_ml():
         "python/requirements/air/tune-requirements.txt",
         "python/requirements/air/rllib-requirements.txt",
         "python/requirements/air/train-requirements.txt",
-        "python/requirements/air/requirements_upstream.txt",
-        "python/requirements/air/requirements_no_deps.txt",
     ]
     # We don't need these in the ml docker image
     ignore_requirements = [

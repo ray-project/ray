@@ -355,15 +355,9 @@ install_pip_packages() {
     pip install --no-dependencies mlagents==0.28.0
   fi
 
-  # Some Ray Train dependencies have to be installed with --no-deps,
-  # as sub-dependencies conflict. The packages still work for our workflows.
-  # Todo(krfricke): Try to remove once we move to Python 3.8 in CI.
-  local install_ml_no_deps=0
-
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/train-requirements.txt")
-    install_ml_no_deps=1
   fi
 
   # Additional Tune/Doc test dependencies.
@@ -371,13 +365,8 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/tune-requirements.txt")
   fi
 
-  # For Tune, install upstream dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/requirements_upstream.txt")
-  fi
-
   # Additional dependency for Ludwig.
-  # This cannot be included in requirements_upstream.txt as it has conflicting
+  # This cannot be included in requirements files as it has conflicting
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
@@ -414,12 +403,6 @@ install_pip_packages() {
     if [ -n "${ARROW_MONGO_VERSION-}" ]; then
       delayed_packages+=("pymongoarrow==${ARROW_MONGO_VERSION}")
     fi
-  fi
-
-  if [ "${install_ml_no_deps}" = 1 ]; then
-    # Install these requirements first. Their dependencies may be overwritten later
-    # by the main install.
-    pip install -r "${WORKSPACE_DIR}/python/requirements/air/requirements_no_deps.txt"
   fi
 
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"

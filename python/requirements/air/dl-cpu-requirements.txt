@@ -12,6 +12,7 @@ tensorflow-datasets
 --extra-index-url https://download.pytorch.org/whl/cpu  # for CPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-1.13.0+cpu.html  # for CPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 torch==1.13.0
+torchmetrics==0.9.3
 torchvision==0.14.0
 torch-scatter==2.1.0
 torch-sparse==0.6.16

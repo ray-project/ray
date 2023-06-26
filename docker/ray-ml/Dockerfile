@@ -4,13 +4,11 @@ ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
-COPY requirements_no_deps.txt ./
 COPY dl-cpu-requirements.txt ./
 COPY ml-docker-requirements.txt ./
 COPY rllib-requirements.txt ./
 COPY tune-requirements.txt ./
 COPY train-requirements.txt ./
-COPY requirements_upstream.txt ./
 
 RUN sudo apt-get update \
     && sudo apt-get install -y gcc \
@@ -21,11 +19,7 @@ RUN sudo apt-get update \
         unzip \
         unrar \
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U pip pip-tools \
-    # Install no-deps requirements. Their dependencies may be overwritten
-    # in subsequent steps
-    && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
-           -r requirements_no_deps.txt \
-        # Then, install requirements
+        # Install requirements
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r requirements.txt \
     # Install other requirements. Keep pinned requirements bounds as constraints
@@ -34,7 +28,6 @@ RUN sudo apt-get update \
            -r rllib-requirements.txt \
            -r train-requirements.txt \
            -r tune-requirements.txt \
-           -r requirements_upstream.txt \
     # explicitly install (overwrite) pytorch with CUDA support
     && $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -c requirements.txt \
