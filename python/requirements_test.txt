@@ -89,7 +89,6 @@ pytest-forked==1.4.0
 
 # For dataset tests
 polars==0.14.21
-beautifulsoup4==4.12.2
 
 # ale-py requires 4.10.0. It's also compatible with flake8.
 # It's not compatible with mosaicml though. Try to remove once
