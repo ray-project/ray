@@ -383,8 +383,8 @@ class HTTPState:
                 to_stop.append(node_id)
             elif proxy_state.status == HTTPProxyStatus.UNHEALTHY:
                 logger.info(
-                    f"HTTP proxy on node '{node_id}' UNHEALTHY. Shut down the unhealthy"
-                    " proxy and restart a new one."
+                    f"HTTP proxy on node '{node_id}' UNHEALTHY. Shutting down "
+                    "the unhealthy proxy and starting a new one."
                 )
                 to_stop.append(node_id)
 
