@@ -22,12 +22,10 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
 
     def __init__(
         self,
-        head_node_ip: str,
         instance_storage: InstanceStorage,
         node_provider: NodeProvider,
         reconciler_interval_s: int = 120,
     ) -> None:
-        self._head_node_ip = head_node_ip
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._failure_handling_executor = ThreadPoolExecutor(max_workers=1)
@@ -56,7 +54,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             ray_status_filter={Instance.RAY_STOPPED, Instance.RAY_INSTALL_FAILED},
         )
         if not failing_instances:
-            logger.info("No ray failure")
+            logger.debug("No ray failure")
             return
 
         failing_instances = failing_instances.values()
@@ -64,7 +62,8 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             instance.cloud_instance_id for instance in failing_instances
         ]
 
-        self._node_provider.async_terminate_nodes(cloud_instance_ids)
+        for cloud_instance_id in cloud_instance_ids:
+            self._node_provider.terminate_node(cloud_instance_id)
 
         for instance in failing_instances:
             instance.status = Instance.STOPPING
