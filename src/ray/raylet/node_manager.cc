@@ -318,7 +318,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
         }
       },
       /*get_pull_manager_at_capacity*/
-      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); },
+      /*labels*/ config.labels);
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -606,7 +607,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
                 << job_data.driver_pid() << " is dead: " << job_data.is_dead()
-                << " driver address: " << job_data.driver_ip_address();
+                << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -988,33 +989,30 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
-  // Fetch resource info for the remote node and update cluster resource map.
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-      node_id,
-      [this, node_id](
-          Status status,
-          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
-        // TODO: Always use the message from ray syncer.
-        if (data) {
-          ResourceRequest resources;
-          for (auto &resource_entry : *data) {
-            resources.Set(scheduling::ResourceID(resource_entry.first),
-                          FixedPoint(resource_entry.second->resource_capacity()));
-          }
-          if (ResourceCreateUpdated(node_id, resources)) {
-            cluster_task_manager_->ScheduleAndDispatchTasks();
-          }
-        }
-        // Update the resource view if a new message has been sent.
-        if (RayConfig::instance().use_ray_syncer()) {
-          if (auto sync_msg = ray_syncer_.GetSyncMessage(
-                  node_id.Binary(), syncer::MessageType::RESOURCE_VIEW)) {
-            if (sync_msg) {
-              ConsumeSyncMessage(sync_msg);
-            }
-          }
-        }
-      }));
+  // Set node labels when node added.
+  absl::flat_hash_map<std::string, std::string> labels(node_info.labels().begin(),
+                                                       node_info.labels().end());
+  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id.Binary()), labels);
+
+  // TODO: Always use the message from ray syncer.
+  ResourceRequest resources;
+  for (auto &resource_entry : node_info.resources_total()) {
+    resources.Set(scheduling::ResourceID(resource_entry.first),
+                  FixedPoint(resource_entry.second));
+  }
+  if (ResourceCreateUpdated(node_id, resources)) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  }
+  // Update the resource view if a new message has been sent.
+  if (RayConfig::instance().use_ray_syncer()) {
+    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
+                                                   syncer::MessageType::RESOURCE_VIEW)) {
+      if (sync_msg) {
+        ConsumeSyncMessage(sync_msg);
+      }
+    }
+  }
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
@@ -1368,6 +1366,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Send the reply callback only after registration fully completes at the GCS.
     auto cb = [this,
                worker_ip_address,
+               worker_id,
                pid,
                job_id,
                job_config,
@@ -1375,8 +1374,15 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                send_reply_callback = std::move(send_reply_callback)](const Status &status,
                                                                      int assigned_port) {
       if (status.ok()) {
+        rpc::Address driver_address;
+        // Assume raylet ID is the same as the node ID.
+        driver_address.set_raylet_id(self_node_id_.Binary());
+        driver_address.set_ip_address(worker_ip_address);
+        driver_address.set_port(assigned_port);
+        driver_address.set_worker_id(worker_id.Binary());
         auto job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, worker_ip_address, pid, entrypoint, job_config);
+            job_id, /*is_dead*/ false, driver_address, pid, entrypoint, job_config);
+
         RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
             job_data_ptr,
             [send_reply_callback = std::move(send_reply_callback), assigned_port](
@@ -1742,6 +1748,13 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
                                             rpc::UpdateResourceUsageReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  if (RayConfig::instance().use_ray_syncer()) {
+    RAY_LOG(WARNING)
+        << "There is a GCS outside of this cluster sending message to this raylet.";
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
   // When next_resource_seq_no_ == 0 it means it just started.
@@ -1758,6 +1771,7 @@ void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest requ
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
     if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
       RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
   }

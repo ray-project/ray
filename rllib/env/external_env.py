@@ -13,6 +13,7 @@ from ray.rllib.utils.typing import (
     EnvType,
     MultiEnvDict,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 if TYPE_CHECKING:
     from ray.rllib.models.preprocessors import Preprocessor
@@ -43,9 +44,9 @@ class ExternalEnv(threading.Thread):
         >>> YourExternalEnv = ... # doctest: +SKIP
         >>> register_env("my_env", # doctest: +SKIP
         ...     lambda config: YourExternalEnv(config))
-        >>> trainer = DQN(env="my_env") # doctest: +SKIP
+        >>> algo = DQN(env="my_env") # doctest: +SKIP
         >>> while True: # doctest: +SKIP
-        >>>     print(trainer.train()) # doctest: +SKIP
+        >>>     print(algo.train()) # doctest: +SKIP
     """
 
     @PublicAPI
@@ -53,15 +54,13 @@ class ExternalEnv(threading.Thread):
         self,
         action_space: gym.Space,
         observation_space: gym.Space,
-        max_concurrent: int = 100,
+        max_concurrent: int = None,
     ):
         """Initializes an ExternalEnv instance.
 
         Args:
             action_space: Action space of the env.
             observation_space: Observation space of the env.
-            max_concurrent: Max number of active episodes to allow at
-                once. Exceeding this limit raises an error.
         """
 
         threading.Thread.__init__(self)
@@ -72,7 +71,14 @@ class ExternalEnv(threading.Thread):
         self._episodes = {}
         self._finished = set()
         self._results_avail_condition = threading.Condition()
-        self._max_concurrent_episodes = max_concurrent
+        if max_concurrent is not None:
+            deprecation_warning(
+                "The `max_concurrent` argument has been deprecated. Please configure"
+                "the number of episodes using the `rollout_fragment_length` and"
+                "`batch_mode` arguments. Please raise an issue on the Ray Github if "
+                "these arguments do not support your expected use case for ExternalEnv",
+                error=True,
+            )
 
     @PublicAPI
     def run(self):
@@ -377,11 +383,6 @@ class ExternalEnvWrapper(BaseEnv):
                 results = self._poll()
                 if not self.external_env.is_alive():
                     raise Exception("Serving thread has stopped.")
-        limit = self.external_env._max_concurrent_episodes
-        assert len(results[0]) < limit, (
-            "Too many concurrent episodes, were some leaked? This "
-            "ExternalEnv was created with max_concurrent={}".format(limit)
-        )
         return results
 
     @override(BaseEnv)

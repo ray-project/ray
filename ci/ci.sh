@@ -123,7 +123,7 @@ test_core() {
     msys)
       args+=(
         -//:core_worker_test
-        -//:event_test
+        -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_health_check_manager_test
@@ -202,8 +202,7 @@ test_python() {
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ml_py36_compat/... # Required ML dependencies, should not be run on Windows
+      -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
     )
@@ -261,19 +260,16 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0
-  local flush_logs=0
+  local TEST_WHEEL_RESULT=0
 
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
-  fi
+  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
 
-  if [[ 0 -ne "${flush_logs}" ]]; then
+  if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
 
-  return "${result}"
+  return "${TEST_WHEEL_RESULT}"
 }
 
 install_npm_project() {
@@ -309,15 +305,16 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
+  _bazel_build_protobuf
+  install_ray
+
   (
     cd "${WORKSPACE_DIR}"/doc
     if [ "${OSTYPE}" = msys ]; then
       echo "WARNING: Documentation not built on Windows due to currently-unresolved issues"
     else
-      # TODO: revert to "make html" once "sphinx_panels" plugin is fully removed.
-      FAST=True make develop
+      FAST=True make html
       pip install datasets==2.0.0
-      RAY_MOCK_MODULES=0 RAY_DEDUP_LOGS=0 make doctest
     fi
   )
 }
@@ -331,24 +328,6 @@ check_sphinx_links() {
       FAST=True make linkcheck
     fi
   )
-}
-
-install_cython_examples() {
-  (
-    cd "${WORKSPACE_DIR}"/doc/examples/cython
-    pip install scipy
-    python setup.py install --user
-  )
-}
-
-install_go() {
-  local gimme_url="https://raw.githubusercontent.com/travis-ci/gimme/master/gimme"
-  suppress_xtrace eval "$(curl -f -s -L "${gimme_url}" | GIMME_GO_VERSION=1.18.3 bash)"
-
-  if [ -z "${GOPATH-}" ]; then
-    GOPATH="${GOPATH:-${HOME}/go_dir}"
-    export GOPATH
-  fi
 }
 
 _bazel_build_before_install() {
@@ -435,7 +414,9 @@ validate_wheels_commit_str() {
   echo "All wheels passed the sanity check and have the correct wheel commit set."
 }
 
-build_wheels() {
+build_wheels_and_jars() {
+  _bazel_build_before_install
+
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
@@ -451,8 +432,6 @@ build_wheels() {
         -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "encrypted_1c30b31fe1ee_key=${encrypted_1c30b31fe1ee_key-}"
-        -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
@@ -466,11 +445,18 @@ build_wheels() {
       IMAGE_NAME="quay.io/pypa/manylinux2014_${HOSTTYPE}"
       IMAGE_TAG="2022-12-20-b4884d9"
 
+      local MOUNT_ENV=()
+      if [ "${LINUX_JARS-}" == "1" ]; then
+        MOUNT_ENV+=(
+          -e "BUILD_JAR=1"
+        )
+      fi
+
       if [ -z "${BUILDKITE-}" ]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
-        "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
+          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
       else
         rm -rf /ray-mount/*
         rm -rf /ray-mount/.whl || true
@@ -480,7 +466,7 @@ build_wheels() {
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
         docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
-          "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
+          "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
         find . | grep whl # testing
 
@@ -497,11 +483,7 @@ build_wheels() {
       ;;
     darwin*)
       # This command should be kept in sync with ray/python/README-building-wheels.md.
-      if [ "$(uname -m)" = "arm64" ]; then
-        "${WORKSPACE_DIR}"/python/build-wheel-macos-arm64.sh
-      else
-        "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
-      fi
+      "${WORKSPACE_DIR}"/python/build-wheel-macos.sh
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
@@ -542,17 +524,22 @@ lint_annotations() {
 }
 
 lint_bazel() {
-  # Run buildifier without affecting external environment variables
-  (
-    mkdir -p -- "${GOPATH}"
-    export PATH="${GOPATH}/bin:${GOROOT}/bin:${PATH}"
+  if [[ ! "${OSTYPE}" =~ ^linux ]]; then
+    echo "Bazel lint not supported on non-linux systems."
+    exit 1
+  fi
+  if [[ "$(uname -m)" != "x86_64" ]]; then
+    echo "Bazel lint only supported on x86_64."
+    exit 1
+  fi
 
-    # Build buildifier
-    go install github.com/bazelbuild/buildtools/buildifier@latest
+  LINT_BAZEL_TMP="$(mktemp -d)"
+  curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
+    -o "${LINT_BAZEL_TMP}/buildifier"
+  chmod +x "${LINT_BAZEL_TMP}/buildifier"
+  BUILDIFIER="${LINT_BAZEL_TMP}/buildifier" "${ROOT_DIR}/lint/bazel-format.sh"
 
-    # Now run buildifier
-    "${ROOT_DIR}"/lint/bazel-format.sh
-  )
+  rm -rf "${LINT_BAZEL_TMP}"  # Clean up
 }
 
 lint_bazel_pytest() {
@@ -654,7 +641,6 @@ _lint() {
 }
 
 lint() {
-  install_go
   # Checkout a clean copy of the repo to avoid seeing changes that have been made to the current one
   (
     WORKSPACE_DIR="$(TMPDIR="${WORKSPACE_DIR}/.." mktemp -d)"
@@ -745,31 +731,15 @@ init() {
 }
 
 build() {
-  if [ "${LINT-}" != 1 ]; then
-    _bazel_build_before_install
-  else
-    _bazel_build_protobuf
-  fi
-
-  if [[ "${NEED_WHEELS}" != "true" ]]; then
-    install_ray
-    if [ "${LINT-}" = 1 ]; then
-      # Try generating Sphinx documentation. To do this, we need to install Ray first.
-      build_sphinx_docs
-    fi
-  fi
-
-  if [ "${RAY_CYTHON_EXAMPLES-}" = 1 ]; then
-    install_cython_examples
-  fi
-
-  if [ "${LINT-}" = 1 ]; then
-    install_go
-  fi
-
   if [[ "${NEED_WHEELS}" == "true" ]]; then
-    build_wheels
+    build_wheels_and_jars
+    return
   fi
+
+  # Build and install ray into the system.
+  # For building the wheel, see build_wheels_and_jars.
+  _bazel_build_before_install
+  install_ray
 }
 
 run_minimal_test() {

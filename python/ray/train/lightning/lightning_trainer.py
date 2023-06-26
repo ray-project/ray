@@ -17,6 +17,7 @@ from ray.util import PublicAPI
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
+    RayDeepSpeedStrategy,
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
@@ -143,16 +144,18 @@ class LightningConfigBuilder:
 
         Args:
             name: The name of your distributed strategy. You can choose
-                from "ddp" and "fsdp". Default: "ddp".
+                from "ddp", "fsdp", and "deepspeed". Default: "ddp".
             kwargs: For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
-                and
+                ,
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+                and
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
         """
-        if name not in ["ddp", "fsdp"]:
+        if name not in ["ddp", "fsdp", "deepspeed"]:
             raise ValueError(
-                "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
-                "Please choose one of them."
+                "LightningTrainer currently supports 'ddp', 'fsdp', and 'deepspeed'"
+                " strategy. Please choose one of them."
             )
 
         self._strategy_config["_strategy_name"] = name
@@ -231,14 +234,14 @@ class LightningTrainer(TorchTrainer):
 
     For logging, users can continue to use Lightning's native loggers, such as
     WandbLogger, TensorboardLogger, etc. LightningTrainer will also log the latest
-    metrics to the trail directory whenever a new checkpoint is saved.
+    metrics to the training results directory whenever a new checkpoint is saved.
 
     Then, the training function will initialize an instance of ``pl.Trainer``
     using the arguments provided in ``LightningConfigBuilder.fit_params()`` and then
     run ``pytorch_lightning.Trainer.fit``.
 
     Example:
-        .. testcode::
+        .. code-block:: python
 
             import torch
             import torch.nn.functional as F
@@ -325,12 +328,6 @@ class LightningTrainer(TorchTrainer):
             )
             result = trainer.fit()
             result
-
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
-
-        ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
@@ -459,6 +456,14 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
+    # Change the working directory for all workers to the same directory.
+    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+    # each worker will have a different log and checkpoint directory if they are
+    # using relative paths.
+    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+    os.makedirs(working_dir, exist_ok=True)
+    os.chdir(working_dir)
+
     if not config["lightning_config"]:
         raise RuntimeError("'lightning_config' not specified in LightningTrainer!")
 
@@ -528,6 +533,8 @@ def _lightning_train_loop_per_worker(config):
         trainer_config["strategy"] = RayDDPStrategy(**strategy_config)
     if strategy_name == "fsdp":
         trainer_config["strategy"] = RayFSDPStrategy(**strategy_config)
+    if strategy_name == "deepspeed":
+        trainer_config["strategy"] = RayDeepSpeedStrategy(**strategy_config)
 
     # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True
@@ -539,9 +546,13 @@ def _lightning_train_loop_per_worker(config):
 
     trainer = pl.Trainer(**trainer_config)
 
-    # Restore from a previously failed run
     checkpoint = session.get_checkpoint()
-    if checkpoint and "ckpt_path" not in trainer_fit_params:
+    if checkpoint:
+        checkpoint_log_message = "Resuming training from an AIR checkpoint."
+        if "ckpt_path" in trainer_fit_params:
+            checkpoint_log_message += " `ckpt_path` will be ignored."
+        logger.info(checkpoint_log_message)
+
         with checkpoint.as_directory() as ckpt_dir:
             trainer_fit_params["ckpt_path"] = f"{ckpt_dir}/{MODEL_KEY}"
             trainer.fit(lightning_module, **trainer_fit_params)

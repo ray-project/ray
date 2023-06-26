@@ -33,6 +33,7 @@
 #include "ray/util/logging.h"
 
 namespace ray {
+
 namespace gcs {
 
 /// \class GcsClientOptions
@@ -79,6 +80,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
+  /// \param instrumented_io_context IO execution service.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service);
@@ -233,6 +235,16 @@ class RAY_EXPORT PythonGcsClient {
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info);
+
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+    const rpc::GcsNodeInfo &node_info);
+
+Status PythonCheckGcsHealth(const std::string &gcs_address,
+                            const int gcs_port,
+                            const int64_t timeout_ms,
+                            const std::string &ray_version,
+                            const bool skip_version_check,
+                            bool &is_healthy);
 
 }  // namespace gcs
 

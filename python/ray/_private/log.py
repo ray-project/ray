@@ -73,6 +73,7 @@ class PlainRayHandler(logging.StreamHandler):
 
         if (
             hasattr(ray, "_private")
+            and hasattr(ray._private, "worker")
             and ray._private.worker.global_worker.mode
             == ray._private.worker.WORKER_MODE
         ):
@@ -95,8 +96,9 @@ def generate_logging_config():
 
         formatters = {
             "plain": {
-                "datefmt": "[%Y-%m-%d %H:%M:%S]",
-                "format": "%(asctime)s %(package)s %(levelname)s %(name)s::%(message)s",
+                "format": (
+                    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+                ),
             },
         }
         filters = {"context_filter": {"()": ContextFilter}}

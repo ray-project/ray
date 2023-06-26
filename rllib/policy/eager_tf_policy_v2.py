@@ -597,19 +597,32 @@ class EagerTFPolicyV2(Policy):
             if self.config.get("_enable_rl_module_api", False):
                 if in_training:
                     output = self.model.forward_train(input_batch)
+                    action_dist_cls = self.model.get_train_action_dist_cls()
+                    if action_dist_cls is None:
+                        raise ValueError(
+                            "The RLModules must provide an appropriate action "
+                            "distribution class for training if is_eval_mode is False."
+                        )
                 else:
                     output = self.model.forward_exploration(input_batch)
+                    action_dist_cls = self.model.get_exploration_action_dist_cls()
+                    if action_dist_cls is None:
+                        raise ValueError(
+                            "The RLModules must provide an appropriate action "
+                            "distribution class for exploration if is_eval_mode is "
+                            "True."
+                        )
 
-                action_dist = output.get(SampleBatch.ACTION_DIST)
-
-                if action_dist is None:
+                action_dist_inputs = output.get(SampleBatch.ACTION_DIST_INPUTS, None)
+                if action_dist_inputs is None:
                     raise ValueError(
-                        "The model output must contain the key "
-                        "`SampleBatch.ACTION_DIST` when using the RL module API."
-                        "Make sure if is_eval_mode is True the forward_exploration "
-                        "returns this key, and if it is False the forward_train "
-                        "returns this key."
+                        "The RLModules must provide inputs to create the action "
+                        "distribution. These should be part of the output of the "
+                        "appropriate forward method under the key "
+                        "SampleBatch.ACTION_DIST_INPUTS."
                     )
+
+                action_dist = action_dist_cls.from_logits(action_dist_inputs)
             else:
                 dist_inputs, _ = self.model(input_batch, state_batches, seq_lens)
                 action_dist = self.dist_class(dist_inputs, self.model)
@@ -841,22 +854,41 @@ class EagerTFPolicyV2(Policy):
         input_dict[STATE_IN] = None
         input_dict[SampleBatch.SEQ_LENS] = None
 
-        action_dist_class = self.model.get_exploration_action_dist_cls()
         fwd_out = self.model.forward_exploration(input_dict)
-        action_dist = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
-        actions = action_dist.sample()
+
+        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+        # Create a distribution object.
+        action_dist = None
+        if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+            action_dist_class = self.model.get_exploration_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            )
+
+        # If `forward_exploration()` returned actions, use them here as-is.
+        if SampleBatch.ACTIONS in fwd_out:
+            actions = fwd_out[SampleBatch.ACTIONS]
+        # Otherwise, sample actions from the distribution.
+        else:
+            if action_dist is None:
+                raise KeyError(
+                    "Your RLModule's `forward_exploration()` method must return a dict"
+                    f"with either the {SampleBatch.ACTIONS} key or the "
+                    f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                )
+            actions = action_dist.sample()
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():
             if k not in [SampleBatch.ACTIONS, "state_out"]:
                 extra_fetches[k] = v
 
-        # Action-logp and action-prob.
-        logp = action_dist.logp(actions)
-        extra_fetches[SampleBatch.ACTION_LOGP] = logp
-        extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
+        # Compute action-logp and action-prob from distribution and add to
+        # `extra_fetches`, if possible.
+        if action_dist is not None:
+            logp = action_dist.logp(actions)
+            extra_fetches[SampleBatch.ACTION_LOGP] = logp
+            extra_fetches[SampleBatch.ACTION_PROB] = tf.exp(logp)
 
         return actions, {}, extra_fetches
 
@@ -882,13 +914,30 @@ class EagerTFPolicyV2(Policy):
         input_dict[STATE_IN] = None
         input_dict[SampleBatch.SEQ_LENS] = None
 
-        action_dist_class = self.model.get_inference_action_dist_cls()
         fwd_out = self.model.forward_inference(input_dict)
-        action_dist = action_dist_class.from_logits(
-            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
-        )
-        action_dist = action_dist.to_deterministic()
-        actions = action_dist.sample()
+
+        # ACTION_DIST_INPUTS field returned by `forward_exploration()` ->
+        # Create a (deterministic) distribution object.
+        action_dist = None
+        if SampleBatch.ACTION_DIST_INPUTS in fwd_out:
+            action_dist_class = self.model.get_inference_action_dist_cls()
+            action_dist = action_dist_class.from_logits(
+                fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+            )
+            action_dist = action_dist.to_deterministic()
+
+        # If `forward_inference()` returned actions, use them here as-is.
+        if SampleBatch.ACTIONS in fwd_out:
+            actions = fwd_out[SampleBatch.ACTIONS]
+        # Otherwise, sample actions from the distribution.
+        else:
+            if action_dist is None:
+                raise KeyError(
+                    "Your RLModule's `forward_inference()` method must return a dict"
+                    f"with either the {SampleBatch.ACTIONS} key or the "
+                    f"{SampleBatch.ACTION_DIST_INPUTS} key in it (or both)!"
+                )
+            actions = action_dist.sample()
 
         # Anything but action_dist and state_out is an extra fetch
         for k, v in fwd_out.items():

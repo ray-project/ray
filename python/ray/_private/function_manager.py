@@ -49,10 +49,6 @@ def make_function_table_key(key_type: bytes, job_id: JobID, key: Optional[bytes]
         return b":".join([key_type, job_id.hex().encode(), key])
 
 
-def make_exports_prefix(job_id: JobID) -> bytes:
-    return make_function_table_key(b"IsolatedExports", job_id)
-
-
 def make_export_key(pos: int, job_id: JobID) -> bytes:
     # big-endian for ordering in binary
     return make_function_table_key(b"IsolatedExports", job_id, pos.to_bytes(8, "big"))
@@ -158,9 +154,6 @@ class FunctionActorManager:
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
         with self._export_lock:
-            self._num_exported = max(
-                self._num_exported, self._worker.import_thread.num_imported
-            )
             while True:
                 self._num_exported += 1
                 holder = make_export_key(

@@ -1,9 +1,10 @@
-# HTTP Handling
+(serve-set-up-fastapi-http)=
+# Set Up FastAPI and HTTP
 
 This section helps you understand how to:
 - send HTTP requests to Serve deployments
 - use Ray Serve to integrate with FastAPI
-- use customized HTTP Adapters
+- use customized HTTP adapters
 - choose which feature to use for your use case
 
 ## Choosing the right HTTP feature
@@ -18,9 +19,9 @@ Considering your use case, you can choose the right level of abstraction:
 
 (serve-http)=
 ## Calling Deployments via HTTP
-When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) will be exposed over HTTP.
+When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) is exposed over HTTP.
 
-```{literalinclude} ../serve/doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_starlette__
 :end-before: __end_starlette__
 :language: python
@@ -30,7 +31,7 @@ Requests to the Serve HTTP server at `/` are routed to the deployment's `__call_
 
 Often for ML models, you just need the API to accept a `numpy` array. You can use Serve's `DAGDriver` to simplify the request parsing.
 
-```{literalinclude} ../serve/doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_dagdriver__
 :end-before: __end_dagdriver__
 :language: python
@@ -45,7 +46,7 @@ Serve provides a library of HTTP adapters to help you avoid boilerplate code. Th
 
 If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.api.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
 
-```{literalinclude} ../serve/doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi__
 :end-before: __end_fastapi__
 :language: python
@@ -53,7 +54,7 @@ If you want to define more complex HTTP handling logic, Serve integrates with [F
 
 Now if you send a request to `/hello`, this will be routed to the `root` method of our deployment. We can also easily leverage FastAPI to define multiple routes with different HTTP methods:
 
-```{literalinclude} ../serve/doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_fastapi_multi_routes__
 :end-before: __end_fastapi_multi_routes__
 :language: python
@@ -61,7 +62,7 @@ Now if you send a request to `/hello`, this will be routed to the `root` method 
 
 You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 
-```{literalinclude} ../serve/doc_code/http_guide.py
+```{literalinclude} doc_code/http_guide/http_guide.py
 :start-after: __begin_byo_fastapi__
 :end-before: __end_byo_fastapi__
 :language: python
@@ -70,8 +71,73 @@ You can also pass in an existing FastAPI app to a deployment to serve it as-is:
 This is useful for scaling out an existing FastAPI app with no modifications necessary.
 Existing middlewares, **automatic OpenAPI documentation generation**, and other advanced FastAPI features should work as-is.
 
-```{note}
-Serve currently does not support WebSockets. If you have a use case that requires it, please [let us know](https://github.com/ray-project/ray/issues/new/choose)!
+### WebSockets
+
+```{warning}
+Support for WebSockets is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
+```
+
+Serve supports WebSockets via FastAPI:
+
+```{literalinclude} doc_code/http_guide/websockets_example.py
+:start-after: __websocket_serve_app_start__
+:end-before: __websocket_serve_app_end__
+:language: python
+```
+
+Decorate the function that handles WebSocket requests with `@app.websocket`. Read more about FastAPI WebSockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
+
+Query the deployment using the `websockets` package (`pip install websockets`):
+
+```{literalinclude} doc_code/http_guide/websockets_example.py
+:start-after: __websocket_serve_client_start__
+:end-before: __websocket_serve_client_end__
+:language: python
+```
+
+(serve-http-streaming-response)=
+## Streaming Responses
+
+```{warning}
+Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
+```
+
+Some applications must stream incremental results back to the caller.
+This is common for text generation using large language models (LLMs) or video processing applications.
+The full forward pass may take multiple seconds, so providing incremental results as they're available provides a much better user experience.
+
+To use HTTP response streaming, return a [StreamingResponse](https://www.starlette.io/responses/#streamingresponse) that wraps a generator from your HTTP handler.
+This is supported for basic HTTP ingress deployments using a `__call__` method and when using the [FastAPI integration](serve-fastapi-http).
+
+The code below defines a Serve application that incrementally streams numbers up to a provided `max`.
+The client-side code is also updated to handle the streaming outputs.
+This code uses the `stream=True` option to the [requests](https://requests.readthedocs.io/en/latest/user/advanced/#streaming-requests) library.
+
+```{literalinclude} doc_code/http_guide/streaming_example.py
+:start-after: __begin_example__
+:end-before: __end_example__
+:language: python
+```
+
+Save this code in `stream.py` and run it:
+
+```bash
+$ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1 python stream.py
+[2023-05-25 10:44:23]  INFO ray._private.worker::Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
+(ServeController pid=40401) INFO 2023-05-25 10:44:25,296 controller 40401 deployment_state.py:1259 - Deploying new version of deployment default_StreamingResponder.
+(HTTPProxyActor pid=40403) INFO:     Started server process [40403]
+(ServeController pid=40401) INFO 2023-05-25 10:44:25,333 controller 40401 deployment_state.py:1498 - Adding 1 replica to deployment default_StreamingResponder.
+Got result 0.0s after start: '0'
+Got result 0.1s after start: '1'
+Got result 0.2s after start: '2'
+Got result 0.3s after start: '3'
+Got result 0.4s after start: '4'
+Got result 0.5s after start: '5'
+Got result 0.6s after start: '6'
+Got result 0.7s after start: '7'
+Got result 0.8s after start: '8'
+Got result 0.9s after start: '9'
+(ServeReplica:default_StreamingResponder pid=41052) INFO 2023-05-25 10:49:52,230 default_StreamingResponder default_StreamingResponder#qlZFCa yomKnJifNJ / default replica.py:634 - __CALL__ OK 1017.6ms
 ```
 
 (serve-http-adapters)=
@@ -137,7 +203,7 @@ serve.run(PredictorDeployment.options(name="my_model").bind(
 
 ### Serve Deployment Graph `DAGDriver`
 
-When using a [Serve deployment graph](serve-model-composition-deployment-graph), you can configure
+When using a [Serve deployment graph](serve-deployment-graphs), you can configure
 `ray.serve.drivers.DAGDriver` to accept an HTTP adapter via its `http_adapter` field.
 
 For example, the `json_request` adapter parses JSON in the HTTP body:
@@ -190,7 +256,7 @@ PredictorDeployment.deploy(..., http_adapter=User)
 DAGDriver.bind(other_node, http_adapter=User)
 
 ```
-### List of Built-in Adapters
+### List of built-in adapters
 
 Here is a list of adapters; please feel free to [contribute more](https://github.com/ray-project/ray/issues/new/choose)!
 

@@ -6,9 +6,6 @@ from functools import wraps
 
 from fastapi import APIRouter, FastAPI
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from starlette.requests import Request
-from uvicorn.config import Config
-from uvicorn.lifespan.on import LifespanOn
 
 import ray
 from ray import cloudpickle
@@ -38,8 +35,10 @@ from ray.serve._private.deployment_graph_build import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import RayServeSyncHandle
-from ray.serve._private.http_util import ASGIHTTPSender, make_fastapi_class_based_view
-from ray.serve._private.logging_utils import LoggingContext
+from ray.serve._private.http_util import (
+    ASGIAppReplicaWrapper,
+    make_fastapi_class_based_view,
+)
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
@@ -48,6 +47,7 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
+    get_random_letters,
     extract_self_if_method_call,
 )
 
@@ -213,57 +213,27 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
         ensure_serialization_context()
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
 
-        class ASGIAppWrapper(cls):
-            async def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
+        class ASGIIngressWrapper(cls, ASGIAppReplicaWrapper):
+            def __init__(self, *args, **kwargs):
+                # Call user-defined constructor.
+                cls.__init__(self, *args, **kwargs)
 
                 record_serve_tag("SERVE_FASTAPI_USED", "1")
                 install_serve_encoders_to_fastapi()
+                ASGIAppReplicaWrapper.__init__(self, frozen_app)
 
-                self._serve_app = frozen_app
-
-                # Use uvicorn's lifespan handling code to properly deal with
-                # startup and shutdown event.
-                self._serve_asgi_lifespan = LifespanOn(
-                    Config(self._serve_app, lifespan="on")
-                )
-                # Replace uvicorn logger with our own.
-                self._serve_asgi_lifespan.logger = logger
-                # LifespanOn's logger logs in INFO level thus becomes spammy
-                # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.startup()
-
-            async def __call__(self, request: Request):
-                sender = ASGIHTTPSender()
-                await self._serve_app(
-                    request.scope,
-                    request.receive,
-                    sender,
-                )
-                return sender.build_asgi_response()
-
-            # NOTE: __del__ must be async so that we can run asgi shutdown
-            # in the same event loop.
             async def __del__(self):
-                # LifespanOn's logger logs in INFO level thus becomes spammy
-                # Within this block we temporarily uplevel for cleaner logging
-                with LoggingContext(
-                    self._serve_asgi_lifespan.logger, level=logging.WARNING
-                ):
-                    await self._serve_asgi_lifespan.shutdown()
+                await ASGIAppReplicaWrapper.__del__(self)
 
-                # Make sure to call user's del method as well.
-                super_cls = super()
-                if hasattr(super_cls, "__del__"):
-                    super_cls.__del__()
+                # Call user-defined destructor if defined.
+                if hasattr(cls, "__del__"):
+                    cls.__del__(self)
 
-        ASGIAppWrapper.__name__ = cls.__name__
+        ASGIIngressWrapper.__name__ = cls.__name__
         if hasattr(frozen_app, "docs_url"):
-            ASGIAppWrapper.__fastapi_docs_path__ = frozen_app.docs_url
-        return ASGIAppWrapper
+            ASGIIngressWrapper.__fastapi_docs_path__ = frozen_app.docs_url
+
+        return ASGIIngressWrapper
 
     return decorator
 
@@ -498,17 +468,16 @@ def run(
             "deployment like: `app = Deployment.bind(my_dag_output)`. "
         raise TypeError(msg)
 
-    # when name provided, keep all existing applications
-    # otherwise, delete all of them.
-    remove_past_deployments = True
-    if name:
-        remove_past_deployments = False
-
     parameter_group = []
 
     for deployment in deployments:
         # Overwrite route prefix
         if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
+            if route_prefix is not None and not route_prefix.startswith("/"):
+                raise ValueError(
+                    "The route_prefix must start with a forward slash ('/')"
+                )
+
             deployment._route_prefix = route_prefix
         deployment_parameters = {
             "name": deployment._name,
@@ -517,7 +486,7 @@ def run(
             "init_kwargs": deployment.init_kwargs,
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
-            "version": deployment._version,
+            "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
@@ -528,10 +497,13 @@ def run(
         name,
         parameter_group,
         _blocking=_blocking,
-        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:
+        # The deployment state is not guaranteed to be created after
+        # deploy_application returns; the application state manager will
+        # need another reconcile iteration to create it.
+        client._wait_for_deployment_created(ingress.name)
         return ingress._get_handle()
 
 

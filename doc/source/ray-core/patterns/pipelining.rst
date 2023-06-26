@@ -7,7 +7,7 @@ you can use the `pipelining <https://en.wikipedia.org/wiki/Pipeline_(computing)>
 .. note::
 
   Pipelining is an important technique to improve the performance and is heavily used by Ray libraries.
-  See :ref:`DatasetPipelines <pipelining_datasets>` as an example.
+  See :ref:`Ray Data <data>` as an example.
 
 .. figure:: ../images/pipelining.svg
 

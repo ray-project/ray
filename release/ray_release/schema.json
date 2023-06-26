@@ -21,9 +21,6 @@
 				"stable": {
 					"type": "boolean"
 				},
-				"jailed": {
-					"type": "boolean"
-				},
 				"python": {
 					"type": "string",
 					"enum": [
@@ -87,6 +84,9 @@
 				},
 				"cloud_name": {
 					"type": "string"
+				},
+				"byod": {
+					"$ref": "#/definitions/Byod"
 				}
 			},
 			"required": [
@@ -94,6 +94,32 @@
 				"cluster_env"
 			],
 			"title": "Cluster"
+		},
+		"Byod": {
+			"type": "object",
+			"additionalProperties": false,
+			"properties": {
+				"type": {
+					"type": "string",
+					"enum": [
+						"cpu",
+						"gpu",
+						"cu118"
+					]
+				},
+				"post_build_script":{
+					"type": "string"
+				},
+				"pip": {
+					"type": "array"
+				},
+				"runtime_env": {
+					"type": "array"
+				}
+			},
+			"required": [
+			],
+			"title": "Byod"
 		},
 		"Run": {
 			"type": "object",

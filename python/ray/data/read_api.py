@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -12,42 +13,35 @@ from typing import (
     Union,
 )
 
-
 import numpy as np
 
 import ray
+from ray._private.auto_init_hook import wrap_auto_init
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.lazy_block_list import LazyBlockList
-from ray.data._internal.logical.operators.from_arrow_operator import (
-    FromArrowRefs,
-    FromHuggingFace,
+from ray.data._internal.logical.operators.from_operators import (
+    FromArrow,
+    FromItems,
+    FromNumpy,
+    FromPandas,
 )
-from ray.data._internal.logical.operators.from_items_operator import FromItems
-from ray.data._internal.logical.operators.from_numpy_operator import FromNumpyRefs
-from ray.data._internal.logical.operators.from_pandas_operator import (
-    FromDask,
-    FromMars,
-    FromModin,
-    FromPandasRefs,
-)
-from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
-    _lazy_import_pyarrow_dataset,
     _autodetect_parallelism,
     _is_local_scheme,
-    pandas_df_to_arrow_block,
-    ndarray_to_block,
+    _lazy_import_pyarrow_dataset,
     get_table_block_metadata,
+    ndarray_to_block,
+    pandas_df_to_arrow_block,
 )
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, WARN_PREFIX, DataContext
+from ray.data.context import WARN_PREFIX, DataContext
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -55,20 +49,20 @@ from ray.data.datasource import (
     Connection,
     CSVDatasource,
     Datasource,
-    SQLDatasource,
     DefaultFileMetadataProvider,
     DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     ImageDatasource,
     JSONDatasource,
+    MongoDatasource,
     NumpyDatasource,
     ParquetBaseDatasource,
     ParquetDatasource,
     ParquetMetadataProvider,
     PathPartitionFilter,
     RangeDatasource,
-    MongoDatasource,
     ReadTask,
+    SQLDatasource,
     TextDatasource,
     TFRecordDatasource,
     WebDatasetDatasource,
@@ -83,7 +77,6 @@ from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import dask
@@ -92,8 +85,8 @@ if TYPE_CHECKING:
     import modin
     import pandas
     import pyarrow
-    import pyspark
     import pymongoarrow.api
+    import pyspark
     import tensorflow as tf
     import torch
     from tensorflow_metadata.proto.v0 import schema_pb2
@@ -109,38 +102,42 @@ def from_items(
     items: List[Any],
     *,
     parallelism: int = -1,
-    output_arrow_format: bool = False,
+    output_arrow_format: bool = True,
 ) -> MaterializedDataset:
-    """Create a dataset from a list of local Python objects.
+    """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
+
+    Use this method to create small datasets for testing and exploration.
 
     Examples:
-        >>> import ray
-        >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
-        MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
-        >>> ds.take_batch(2) # doctest: +SKIP
-        {"item": array([1, 2])}
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([1, 2, 3, 4, 5])
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            item    int64
 
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
-            Parallelism may be limited by the number of items.
-        output_arrow_format: If True, always return data in Arrow format, raising an
-            error if this is not possible. Defaults to False.
+            Parallelism might be limited by the number of items.
 
     Returns:
-        MaterializedDataset holding the items.
+        A :class:`~ray.data.Dataset` holding the items.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        output_arrow_format = True
-
     import builtins
 
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _ = _autodetect_parallelism(
+    detected_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -158,32 +155,14 @@ def from_items(
     metadata: List[BlockMetadata] = []
     for i in builtins.range(detected_parallelism):
         stats = BlockExecStats.builder()
-        if ctx.strict_mode:
-            # In strict mode, we will fallback from Arrow -> Pandas automatically in
-            # the delegating block builder, and never use simple blocks.
-            builder = DelegatingBlockBuilder()
-        elif output_arrow_format:
-            builder = ArrowBlockBuilder()
-        else:
-            builder = DelegatingBlockBuilder()
+        builder = DelegatingBlockBuilder()
         # Evenly distribute remainder across block slices while preserving record order.
         block_start = i * block_size + min(i, remainder)
         block_end = (i + 1) * block_size + min(i + 1, remainder)
         for j in builtins.range(block_start, block_end):
             item = items[j]
-            if ctx.strict_mode:
-                if not isinstance(item, collections.abc.Mapping):
-                    item = {"item": item}
-            else:
-                if output_arrow_format and not isinstance(
-                    item, (collections.abc.Mapping, np.ndarray)
-                ):
-                    raise ValueError(
-                        "Arrow block format can only be used if all items are "
-                        "either dicts or Numpy arrays. Received data of type: "
-                        f"{type(items[j])}. Set `output_arrow_format` to "
-                        "False to not use Arrow blocks."
-                    )
+            if not isinstance(item, collections.abc.Mapping):
+                item = {"item": item}
             builder.add(item)
         block = builder.build()
         blocks.append(ray.put(block))
@@ -193,7 +172,7 @@ def from_items(
             )
         )
 
-    from_items_op = FromItems(items, detected_parallelism)
+    from_items_op = FromItems(blocks, metadata)
     logical_plan = LogicalPlan(from_items_op)
     return MaterializedDataset(
         ExecutionPlan(
@@ -215,7 +194,7 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
         >>> import ray
         >>> ds = ray.data.range(10000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=10000, schema={id: int64})
+        Dataset(num_blocks=..., num_rows=10000, schema={id: int64})
         >>> ds.map(lambda x: {"id": x["id"] * 2}).take(4) # doctest: +SKIP
         [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}]
 
@@ -227,37 +206,18 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
     Returns:
         Dataset producing the integers.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        return read_datasource(
-            RangeDatasource(),
-            parallelism=parallelism,
-            n=n,
-            block_format="arrow",
-            column_name="id",
-        )
-    return read_datasource(
-        RangeDatasource(), parallelism=parallelism, n=n, block_format="list"
-    )
-
-
-@Deprecated
-def range_table(n: int, *, parallelism: int = -1) -> Dataset:
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="arrow",
-        column_name="value",
+        column_name="id",
     )
 
 
 @Deprecated
-def range_arrow(*args, **kwargs):
-    raise DeprecationWarning("range_arrow() is deprecated, use range_table() instead.")
+def range_table(n: int, *, parallelism: int = -1) -> Dataset:
+    raise DeprecationWarning("In Ray 2.5, use range() instead of range_table().")
 
 
 @PublicAPI
@@ -291,13 +251,12 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Returns:
         Dataset producing the integers as Arrow tensor records.
     """
-    ctx = ray.data.DataContext.get_current()
     return read_datasource(
         RangeDatasource(),
         parallelism=parallelism,
         n=n,
         block_format="tensor",
-        column_name="data" if ctx.strict_mode else "__value__",
+        column_name="data",
         tensor_shape=tuple(shape),
     )
 
@@ -343,11 +302,8 @@ def read_datasource(
         )
         local_uri = True
 
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY
-    ):
-        ray_remote_args["scheduling_strategy"] = "SPREAD"
+    if "scheduling_strategy" not in ray_remote_args:
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     force_local = False
     cur_pg = ray.util.get_current_placement_group()
@@ -362,9 +318,12 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, local_uri, read_args
-        )
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            read_tasks,
+        ) = _get_read_tasks(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -377,7 +336,12 @@ def read_datasource(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            read_tasks,
+        ) = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -388,28 +352,35 @@ def read_datasource(
             )
         )
 
-    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
-        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
-        logger.warning(
-            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
-            "larger than the target block size "
-            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
-            "out-of-memory errors during processing. Consider reducing the size of "
-            "input files or using `.repartition(n)` to increase the number of "
-            "dataset blocks."
-        )
-    elif len(read_tasks) < requested_parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
-    ):
-        logger.warning(
-            f"{WARN_PREFIX} The number of blocks in this dataset "
-            f"({len(read_tasks)}) "
-            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
-            "This is much less than the number "
-            "of available CPU slots in the cluster. Use `.repartition(n)` to "
-            "increase the number of "
-            "dataset blocks."
-        )
+    # Compute the number of blocks the read will return. If the number of blocks is
+    # expected to be less than the requested parallelism, boost the number of blocks
+    # by adding an additional split into `k` pieces to each read task.
+    if read_tasks:
+        if inmemory_size:
+            expected_block_size = inmemory_size / len(read_tasks)
+            logger.debug(f"Expected block size {expected_block_size}")
+            size_based_splits = round(
+                max(1, expected_block_size / ctx.target_max_block_size)
+            )
+        else:
+            size_based_splits = 1
+        logger.debug(f"Size based split factor {size_based_splits}")
+        estimated_num_blocks = len(read_tasks) * size_based_splits
+        logger.debug(f"Blocks after size splits {estimated_num_blocks}")
+
+        # Add more output splitting for each read task if needed.
+        if estimated_num_blocks < requested_parallelism:
+            k = math.ceil(requested_parallelism / estimated_num_blocks)
+            logger.info(
+                f"To satisfy the requested parallelism of {requested_parallelism}, "
+                f"each read task output will be split into {k} smaller blocks."
+            )
+            for r in read_tasks:
+                r._set_additional_split_factor(k)
+            estimated_num_blocks = estimated_num_blocks * k
+        logger.debug("Estimated num output blocks {estimated_num_blocks}")
+    else:
+        estimated_num_blocks = 0
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
@@ -435,10 +406,11 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
+    block_list._estimated_num_blocks = estimated_num_blocks
 
-    # TODO(chengsu): avoid calling Reader.get_read_tasks() twice after removing
-    # LazyBlockList code path.
-    read_op = Read(datasource, requested_parallelism, ray_remote_args, read_args)
+    # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
+    # after removing LazyBlockList code path.
+    read_op = Read(datasource, read_tasks, estimated_num_blocks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -561,7 +533,7 @@ def read_parquet(
         >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
         Dataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=150,
            schema={
               sepal.length: double,
@@ -571,6 +543,28 @@ def read_parquet(
               variety: string
            }
         )
+
+        The Parquet reader also supports projection and filter pushdown, allowing column
+        selection and row filtering to be pushed down to the file scan.
+
+        .. testcode::
+
+            import pyarrow as pa
+
+            # Create a Dataset by reading a Parquet file, pushing column selection and
+            # row filtering down to the file scan.
+            ds = ray.data.read_parquet(
+                "example://iris.parquet",
+                columns=["sepal.length", "variety"],
+                filter=pa.dataset.field("sepal.length") > 5.0,
+            )
+
+            ds.show(2)
+
+        .. testoutput::
+
+            {'sepal.length': 5.1, 'variety': 'Setosa'}
+            {'sepal.length': 5.4, 'variety': 'Setosa'}
 
         For further arguments you can pass to pyarrow as a keyword argument, see
         https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
@@ -639,13 +633,13 @@ def read_images(
         >>> path = "s3://anonymous@air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
+        Dataset(num_blocks=..., num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
+        Dataset(num_blocks=..., num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -668,7 +662,7 @@ def read_images(
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+        Dataset(num_blocks=..., num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1353,16 +1347,7 @@ def read_binary_files(
     Returns:
         Dataset producing records read from the specified paths.
     """
-    ctx = ray.data.DataContext.get_current()
-    if ctx.strict_mode:
-        output_arrow_format = True
-
-    if not output_arrow_format:
-        logger.warning(
-            "read_binary_files() returns Dataset in Python list format as of Ray "
-            "v2.4. Use read_binary_files(output_arrow_format=True) to return "
-            "Dataset in Arrow format.",
-        )
+    output_arrow_format = True
 
     return read_datasource(
         BinaryDatasource(),
@@ -1405,7 +1390,7 @@ def read_sql(
     Examples:
 
         For examples of reading from larger databases like MySQL and PostgreSQL, see
-        :ref:`Reading from SQL Databases <datasets_sql_databases>`.
+        :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
 
@@ -1494,9 +1479,6 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
     ds = from_pandas_refs(
         [to_ref(next(iter(part.dask.values()))) for part in persisted_partitions],
     )
-    logical_plan = LogicalPlan(FromDask(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1513,10 +1495,6 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
     import mars.dataframe as md
 
     ds: Dataset = md.to_ray_dataset(df)
-
-    logical_plan = LogicalPlan(FromMars(ds.dataframe))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1534,10 +1512,6 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
 
     parts = unwrap_partitions(df, axis=0)
     ds = from_pandas_refs(parts)
-
-    logical_plan = LogicalPlan(FromModin(df))
-    ds._logical_plan = logical_plan
-    ds._plan.link_logical_plan(logical_plan)
     return ds
 
 
@@ -1596,15 +1570,15 @@ def from_pandas_refs(
             "Expected Ray object ref or list of Ray object refs, " f"got {type(df)}"
         )
 
-    logical_plan = LogicalPlan(FromPandasRefs(dfs))
     context = DataContext.get_current()
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(
                 BlockList(dfs, metadata, owned_by_consumer=False),
-                DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+                DatasetStats(stages={"FromPandas": metadata}, parent=None),
                 run_by_consumer=False,
             ),
             0,
@@ -1617,10 +1591,11 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromPandasRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromPandas": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1679,13 +1654,12 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    from_numpy_refs_op = FromNumpyRefs(ndarrays)
-    logical_plan = LogicalPlan(from_numpy_refs_op)
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(blocks, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromNumpyRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromNumpy": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1735,12 +1709,12 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrowRefs(tables))
+    logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
         ExecutionPlan(
             BlockList(tables, metadata, owned_by_consumer=False),
-            DatasetStats(stages={"FromArrowRefs": metadata}, parent=None),
+            DatasetStats(stages={"FromArrow": metadata}, parent=None),
             run_by_consumer=False,
         ),
         0,
@@ -1783,7 +1757,6 @@ def from_huggingface(
     Example:
 
     .. doctest::
-        :options: +ELLIPSIS
 
         >>> import ray
         >>> import datasets
@@ -1792,22 +1765,22 @@ def from_huggingface(
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=3257,
            schema={text: string, label: int64}
         ), 'test': MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=1421,
            schema={text: string, label: int64}
         ), 'validation': MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=374,
            schema={text: string, label: int64}
         )}
         >>> ray_ds = ray.data.from_huggingface(hf_dataset["train"])
         >>> ray_ds
         MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=3257,
            schema={text: string, label: int64}
         )
@@ -1823,10 +1796,12 @@ def from_huggingface(
     import datasets
 
     def convert(ds: "datasets.Dataset") -> Dataset:
-        ray_ds = from_arrow(ds.data.table)
-        logical_plan = LogicalPlan(FromHuggingFace(ds))
-        ray_ds._logical_plan = logical_plan
-        ray_ds._plan.link_logical_plan(logical_plan)
+        # To get the resulting Arrow table from a Hugging Face Dataset after
+        # applying transformations (e.g. train_test_split(), shard(), select()),
+        # we create a copy of the Arrow table, which applies the indices
+        # mapping from the transformations.
+        hf_ds_arrow = ds.with_format("arrow")
+        ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
 
     if isinstance(dataset, datasets.DatasetDict):
@@ -1873,7 +1848,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+        Dataset(num_blocks=..., num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
@@ -1927,7 +1902,7 @@ def from_torch(
         >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
         >>> ds = ray.data.from_torch(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=60000, schema={item: object})
+        Dataset(num_blocks=..., num_rows=60000, schema={item: object})
         >>> ds.take(1)  # doctest: +SKIP
         {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)}
 
@@ -1947,7 +1922,7 @@ def _get_read_tasks(
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, List[ReadTask]]:
+) -> Tuple[int, int, Optional[int], List[ReadTask]]:
     """Generates read tasks.
 
     Args:
@@ -1959,19 +1934,20 @@ def _get_read_tasks(
 
     Returns:
         Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, and the list of read tasks generated.
+        OOM, the estimated inmemory data size, and list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+    requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
         parallelism, cur_pg, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,
         min_safe_parallelism,
+        mem_size,
         reader.get_read_tasks(requested_parallelism),
     )
 

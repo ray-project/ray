@@ -36,7 +36,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("CartPole-v1")
         # Run with tracing enabled for tf2.
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         # Run 3 trials.
         .training(
             lr=tune.grid_search([0.01, 0.001, 0.0001]), train_batch_size=2341
@@ -86,15 +86,19 @@ if __name__ == "__main__":
 
     # Get the best checkpoints from the trial, based on different metrics.
     # Checkpoint with the lowest policy loss value:
-    ckpt = results.get_best_result(
-        metric="info/learner/default_policy/learner_stats/policy_loss", mode="min"
-    ).checkpoint
+    if config._enable_learner_api:
+        policy_loss_key = "info/learner/default_policy/policy_loss"
+    else:
+        policy_loss_key = "info/learner/default_policy/learner_stats/policy_loss"
+    ckpt = results.get_best_result(metric=policy_loss_key, mode="min").checkpoint
     print("Lowest pol-loss: {}".format(ckpt))
 
     # Checkpoint with the highest value-function loss:
-    ckpt = results.get_best_result(
-        metric="info/learner/default_policy/learner_stats/vf_loss", mode="max"
-    ).checkpoint
+    if config._enable_learner_api:
+        vf_loss_key = "info/learner/default_policy/vf_loss"
+    else:
+        vf_loss_key = "info/learner/default_policy/learner_stats/vf_loss"
+    ckpt = results.get_best_result(metric=vf_loss_key, mode="max").checkpoint
     print("Highest vf-loss: {}".format(ckpt))
 
     ray.shutdown()

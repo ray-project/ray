@@ -39,7 +39,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -510,7 +509,11 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
 
 
 def wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+    condition_predictor,
+    timeout=10,
+    retry_interval_ms=100,
+    raise_exceptions=False,
+    **kwargs: Any,
 ):
     """Wait until a condition is met or time out with an exception.
 
@@ -518,6 +521,8 @@ def wait_for_condition(
         condition_predictor: A function that predicts the condition.
         timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            condition_predictor won't be caught and instead will be raised.
 
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
@@ -529,6 +534,8 @@ def wait_for_condition(
             if condition_predictor(**kwargs):
                 return
         except Exception:
+            if raise_exceptions:
+                raise
             last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
@@ -890,7 +897,9 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsErrorSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -908,7 +917,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
         if not error_data:
             # Timed out before any data is received.
             break
-        if error_type is None or error_type == error_data.type:
+        if error_type is None or error_type == error_data["type"]:
             msgs.append(error_data)
         else:
             time.sleep(0.01)
@@ -918,7 +927,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsLogSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -1893,3 +1904,32 @@ def has_no_words(string, words):
         words: Space-separated string of words to search for
     """
     return not any(search_words(string, words))
+
+
+def find_available_port(start, end, port_num=1):
+    ports = []
+    for _ in range(port_num):
+        random_port = 0
+        with socket.socket() as s:
+            s.bind(("", 0))
+            random_port = s.getsockname()[1]
+        if random_port >= start and random_port <= end and random_port not in ports:
+            ports.append(random_port)
+            continue
+
+        for port in range(start, end + 1):
+            if port in ports:
+                continue
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", port))
+                ports.append(port)
+                break
+            except OSError:
+                pass
+
+    if len(ports) != port_num:
+        raise RuntimeError(
+            f"Can't find {port_num} available port from {start} to {end}."
+        )
+    return ports

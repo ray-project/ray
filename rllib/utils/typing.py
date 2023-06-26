@@ -3,6 +3,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Hashable,
     List,
     Optional,
     Tuple,
@@ -49,11 +50,11 @@ NetworkType = Union["torch.nn.Module", "tf.keras.Module"]
 # Note: Policy config dicts are usually the same as AlgorithmConfigDict, but
 # parts of it may sometimes be altered in e.g. a multi-agent setup,
 # where we have >1 Policies in the same Algorithm.
-AlgorithmConfigDict = TrainerConfigDict = dict
+AlgorithmConfigDict = dict
 
 # An algorithm config dict that only has overrides. It needs to be combined with
 # the default algorithm config to be used.
-PartialAlgorithmConfigDict = PartialTrainerConfigDict = dict
+PartialAlgorithmConfigDict = dict
 
 # Represents the model config sub-dict of the algo config that is passed to
 # the model catalog.
@@ -87,7 +88,7 @@ AgentID = Any
 # Represents a generic identifier for a policy (e.g., "pol1").
 PolicyID = str
 
-# Type of the config["multiagent"]["policies"] dict for multi-agent training.
+# Type of the config.policies dict for multi-agent training.
 MultiAgentPolicyConfigDict = Dict[PolicyID, "PolicySpec"]
 
 # State dict of a Policy, mapping strings (e.g. "weights") to some state
@@ -131,7 +132,15 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]
 ResultDict = dict
 
 # A tf or torch local optimizer object.
-LocalOptimizer = Union["tf.keras.optimizers.Optimizer", "torch.optim.Optimizer"]
+LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
+Optimizer = LocalOptimizer
+Param = Union["torch.Tensor", "tf.Variable"]
+ParamRef = Hashable
+ParamDict = Dict[ParamRef, Param]
+
+# A single learning rate or a learning rate schedule (list of sub-lists, each of
+# the format: [ts (int), lr_to_reach_by_ts (float)]).
+LearningRateOrSchedule = Union[float, List[List[Union[int, float]]]]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,

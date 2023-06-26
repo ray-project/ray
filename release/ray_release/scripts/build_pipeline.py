@@ -11,6 +11,10 @@ import click
 from ray_release.buildkite.filter import filter_tests, group_tests
 from ray_release.buildkite.settings import get_pipeline_settings
 from ray_release.buildkite.step import get_step
+from ray_release.byod.build import (
+    build_anyscale_base_byod_images,
+    build_anyscale_custom_byod_image,
+)
 from ray_release.config import (
     read_and_validate_release_test_collection,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
@@ -52,10 +56,18 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     default=False,
     help=("Will run jailed tests."),
 )
+@click.option(
+    "--run-unstable-tests",
+    is_flag=True,
+    show_default=True,
+    default=False,
+    help=("Will run unstable tests."),
+)
 def main(
     test_collection_file: Optional[str] = None,
     no_clone_repo: bool = False,
     run_jailed_tests: bool = False,
+    run_unstable_tests: bool = False,
 ):
     settings = get_pipeline_settings()
 
@@ -91,9 +103,7 @@ def main(
         # the modules are reloaded and use the newest files, instead of
         # old ones, which may not have the changes introduced on the
         # checked out branch.
-        cmd = [sys.executable, __file__, "--no-clone-repo"]
-        if test_collection_file:
-            cmd += ["--test-collection-file", test_collection_file]
+        cmd = _get_rerun_cmd(test_collection_file, run_jailed_tests, run_unstable_tests)
         subprocess.run(cmd, capture_output=False, check=True)
         return
     elif repo:
@@ -144,6 +154,7 @@ def main(
         test_attr_regex_filters=test_attr_regex_filters,
         prefer_smoke_tests=prefer_smoke_tests,
         run_jailed_tests=run_jailed_tests,
+        run_unstable_tests=run_unstable_tests,
     )
     logger.info(f"Found {len(filtered_tests)} tests to run.")
     if len(filtered_tests) == 0:
@@ -151,6 +162,12 @@ def main(
             "Empty test collection. The selected frequency or filter did "
             "not return any tests to run. Adjust your filters."
         )
+    tests = [test for test, _ in filtered_tests]
+    logger.info("Build anyscale base BYOD images")
+    build_anyscale_base_byod_images(tests)
+    logger.info("Build anyscale custom BYOD images")
+    for test in tests:
+        build_anyscale_custom_byod_image(test)
     grouped_tests = group_tests(filtered_tests)
 
     group_str = ""
@@ -183,6 +200,8 @@ def main(
         or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
         or (branch.startswith("releases/") and buildkite_branch.startswith("releases/"))
     )
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        env["REPORT_TO_RAY_TEST_DB"] = "1"
 
     steps = []
     for group in sorted(grouped_tests):
@@ -235,6 +254,21 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
+
+
+def _get_rerun_cmd(
+    test_collection_file: Optional[str] = None,
+    run_jailed_tests: bool = False,
+    run_unstable_tests: bool = False,
+):
+    cmd = [sys.executable, __file__, "--no-clone-repo"]
+    if test_collection_file:
+        cmd += ["--test-collection-file", test_collection_file]
+    if run_jailed_tests:
+        cmd += ["--run-jailed-tests"]
+    if run_unstable_tests:
+        cmd += ["--run-unstable-tests"]
+    return cmd
 
 
 if __name__ == "__main__":

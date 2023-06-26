@@ -1,6 +1,6 @@
-import json
 from enum import Enum
 from dataclasses import dataclass, field, asdict
+import json
 from typing import Any, List, Dict, Optional
 
 import ray
@@ -42,8 +42,9 @@ class ReplicaState(str, Enum):
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
-    RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
 
 
@@ -375,6 +376,7 @@ class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
 
 
 class ServeComponentType(str, Enum):

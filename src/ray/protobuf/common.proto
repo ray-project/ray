@@ -53,6 +53,7 @@ message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
   bool spill_on_unavailable = 3;
+  bool fail_on_unavailable = 4;
 }
 
 message PlacementGroupSchedulingStrategy {
@@ -205,6 +206,10 @@ enum ErrorType {
   OUT_OF_MEMORY = 22;
   // We use this error for failure due to node died unexpectedly.
   NODE_DIED = 23;
+  // This is a dummy object used to mark the end of a
+  // ray.StreamingObjectRefGenerator. It should never be returned directly to
+  // application code (instead raise StopIteration).
+  END_OF_STREAMING_GENERATOR = 24;
 }
 
 /// The information per ray error type.
@@ -340,6 +345,13 @@ message JobConfig {
   repeated string py_driver_sys_path = 8;
 }
 
+message StreamingGeneratorReturnIdInfo {
+  // The object ID of a streaming generator return.
+  bytes object_id = 1;
+  // Whether or not if the object is in plasma store.
+  bool is_plasma_object = 2;
+}
+
 /// The task specification encapsulates all immutable information about the
 /// task.
 message TaskSpec {
@@ -422,6 +434,21 @@ message TaskSpec {
   // This will be the actor creation task's task id for concurrent actors. Or
   // the main thread's task id for other cases.
   bytes submitter_task_id = 33;
+  // True if the task is a streaming generator. When it is true,
+  // returns_dynamic has to be true as well. This is a temporary flag
+  // until we migrate the generator implementatino to streaming.
+  // TODO(sang): Remove it once migrating to the streaming generator
+  // by default.
+  bool streaming_generator = 34;
+  // Some timestamps of the task's lifetime, useful for metrics.
+  // The time the task's dependencies have been resolved.
+  int64 dependency_resolution_timestamp_ms = 35;
+  // The time that the task is given a lease, and sent to the executing core
+  // worker.
+  int64 lease_grant_timestamp_ms = 36;
+  // Number of return values from a completed streaming generator return.
+  // The value is set only when a task is completed once.
+  optional uint64 num_streaming_generator_returns = 37;
 }
 
 message TaskInfoEntry {
