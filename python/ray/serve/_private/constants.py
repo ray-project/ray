@@ -203,8 +203,15 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
 # Feature flag to enable StreamingResponse support.
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
+# Turning this FF on also enables RAY_SERVE_ENABLE_NEW_ROUTING.
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
     os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
+)
+
+# Feature flag to enable power of two choices routing.
+RAY_SERVE_ENABLE_NEW_ROUTING = (
+    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "1") == "1"
+    or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 )
 
 # Serve HTTP proxy callback import path.

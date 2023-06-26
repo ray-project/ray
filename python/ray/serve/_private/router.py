@@ -47,11 +47,14 @@ class RequestMetadata:
     # HTTP route path of the request.
     route: str = ""
 
-    # Application Name
+    # Application name.
     app_name: str = ""
 
-    # Multiplexed model ID
+    # Multiplexed model ID.
     multiplexed_model_id: str = ""
+
+    # If this request expects a streaming response.
+    is_streaming: bool = False
 
 
 @dataclass
@@ -97,22 +100,22 @@ class ActorReplicaWrapper:
         return self.replica_info.replica_tag
 
     async def get_queue_len(self) -> Tuple[str, int, bool]:
-        print(self.replica_info)
-        print(self.replica_info.actor_handle)
         return await self.replica_info.actor_handle.get_num_ongoing_requests.remote()
 
     def send_query(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
-        print(self.replica_info)
-        print(self.replica_info.actor_handle)
-        return self.replica_info.actor_handle.handle_request_streaming.options(
-            num_returns="streaming"  # TODO: switch based on streaming.
-        ).remote(
-            pickle.dumps(query.metadata),
-            *query.args,
-            **query.kwargs,
-        )
+        actor = self.replica_info.actor_handle
+        if query.metadata.is_streaming:
+            obj_ref = actor.handle_request_streaming.options(
+                num_returns="streaming"
+            ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
+        else:
+            _, obj_ref = actor.handle_request.remote(
+                pickle.dumps(query.metadata), *query.args, **query.kwargs
+            )
+
+        return obj_ref
 
 
 class ReplicaScheduler(ABC):
@@ -532,6 +535,9 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         and only send a query to available replicas (determined by the
         max_concurrent_quries value.)
         """
+        if query.metadata.is_streaming:
+            raise NotImplementedError("Streaming requires new routing to be enabled.")
+
         await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
@@ -564,7 +570,7 @@ class Router:
         controller_handle: ActorHandle,
         deployment_name: str,
         event_loop: asyncio.BaseEventLoop = None,
-        _stream: bool = False,
+        _use_new_routing: bool = False,
     ):
         """Router process incoming queries: assign a replica.
 
@@ -572,12 +578,20 @@ class Router:
             controller_handle: The controller handle.
         """
         self._event_loop = event_loop
-        if _stream:
+        if _use_new_routing:
             self._replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 event_loop, deployment_name
             )
+            logger.info(
+                "Using PowerOfTwoChoicesReplicaScheduler.",
+                extra={"log_to_stderr": False},
+            )
         else:
             self._replica_scheduler = RoundRobinReplicaScheduler(event_loop)
+            logger.info(
+                "Using RoundRobinReplicaScheduler.",
+                extra={"log_to_stderr": False},
+            )
 
         # -- Metrics Registration -- #
         self.num_router_requests = metrics.Counter(
