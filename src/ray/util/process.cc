@@ -191,6 +191,13 @@ class ProcessFD {
         _exit(pid2 == -1 ? errno : 0);  // Parent of grandchild; must exit
       }
       // This is the spawned process. Any intermediate parent is now dead.
+
+      // Clear any CPU affinity that might have been inherited from the raylet.
+      // See https://github.com/ray-project/ray/issues/35984.
+      cpu_set_t mask;
+      CPU_ZERO(&mask);
+      sched_setaffinity(0, sizeof(mask), &mask);
+
       pid_t my_pid = getpid();
       if (write(pipefds[1], &my_pid, sizeof(my_pid)) == sizeof(my_pid)) {
         execvpe(
