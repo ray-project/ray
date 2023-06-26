@@ -121,7 +121,8 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 x = 0
                 if use_iter_batches:
                     for batch in it.iter_batches():
-                        x += len(batch)
+                        for arr in batch.values():
+                            x += arr.size
                 else:
                     for _ in it.iter_rows():
                         x += 1
