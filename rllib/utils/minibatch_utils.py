@@ -84,7 +84,7 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         samples_to_concat.append(sample)
                         len_sample = len(sample[SampleBatch.SEQ_LENS])
                         assert len_sample > 0, "Length of a sample must be > 0"
-                        n_steps -= len(sample[SampleBatch.SEQ_LENS])
+                        n_steps -= len_sample
                         s = 0
                         self._num_covered_epochs[module_id] += 1
                 else:
