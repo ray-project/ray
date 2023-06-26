@@ -145,7 +145,7 @@ This feature is especially useful when importing libraries such as `tensorflow` 
 
 ## Distributed progress bars (tqdm)
 
-When using `tqdm <https://tqdm.github.io>`__ in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
+When using [tqdm](https://tqdm.github.io) in Ray remote Tasks or Actors, you may notice that the progress bar output is corrupted. To avoid this problem, use the Ray distributed tqdm implementation at ``ray.experimental.tqdm_ray``:
 
 ```{literalinclude} /ray-core/doc_code/tqdm.py
 ```
@@ -158,7 +158,7 @@ This tqdm implementation works as follows:
 
 Limitations:
 
-- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm `implementation <https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py>`__ for more details.
+- Only a subset of tqdm functionality is supported. Refer to the ray_tqdm [implementation](https://github.com/ray-project/ray/blob/master/python/ray/experimental/tqdm_ray.py) for more details.
 - Performance may be poor if there are more than a couple thousand updates per second (updates are not batched).
 
 By default, the built-in print is also be patched to use `ray.experimental.tqdm_ray.safe_print` when `tqdm_ray` is used.
