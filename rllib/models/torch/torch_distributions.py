@@ -318,7 +318,7 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def logp(self, value: torch.Tensor) -> TensorType:
         value = torch.unbind(value, dim=1)
-        logps = torch.stack([cat.log_prob(act) for cat, act in zip(self._cats, value)])
+        logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
         return torch.sum(logps, dim=0)
 
     @override(Distribution)
