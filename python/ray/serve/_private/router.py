@@ -35,6 +35,17 @@ from ray.serve.generated.serve_pb2 import (
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+def _make_event_compat(event_loop: asyncio.AbstractEventLoop) -> asyncio.Event:
+    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+    # removed it alltogether. Call accordingly.
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+        event = asyncio.Event()
+    else:
+        event = asyncio.Event(loop=event_loop)
+
+    return event
+
+
 @dataclass
 class RequestMetadata:
     request_id: str
@@ -159,7 +170,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         event_loop: asyncio.AbstractEventLoop,
         deployment_name: str,
-        backoff_sequence: List[float] = None,
     ):
         self._loop = event_loop
         self._deployment_name = deployment_name
@@ -168,7 +178,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
-        self._replicas_updated_event = asyncio.Event()
+        self._replicas_updated_event = _make_event_compat(event_loop)
 
         self._scheduling_tasks: Set[asyncio.Task] = set()
         self._pending_assignment_futures: List[asyncio.Future] = []
@@ -221,10 +231,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     f"{self._deployment_name} but none available.",
                     extra={"log_to_stderr": False},
                 )
-                print("No replicas, waiting...")
                 await self._replicas_updated_event.wait()
-                print("Woke up.")
                 self._replicas_updated_event.clear()
+                logger.info(
+                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    extra={"log_to_stderr": False},
+                )
 
             chosen_ids = random.sample(
                 self._replica_id_set, k=min(2, len(self._replica_id_set))
@@ -342,13 +354,7 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-
-        # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-        # removed it alltogether. Call accordingly.
-        if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-            self.config_updated_event = asyncio.Event()
-        else:
-            self.config_updated_event = asyncio.Event(loop=event_loop)
+        self.config_updated_event = _make_event_compat(event_loop)
 
         # A map from multiplexed model id to a list of replicas that have the
         # model loaded.

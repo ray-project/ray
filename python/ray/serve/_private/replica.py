@@ -22,7 +22,7 @@ from ray._private.utils import get_or_create_event_loop
 
 from ray.serve import metrics
 from ray.serve._private.common import (
-    HEALTH_CHECK_CONCURRENCY_GROUP,
+    CONTROL_PLANE_CONCURRENCY_GROUP,
     ReplicaTag,
     ServeComponentType,
 )
@@ -207,7 +207,7 @@ def create_replica_wrapper(name: str):
             # Used to guard `initialize_replica` so that it isn't called twice.
             self._replica_init_lock = asyncio.Lock()
 
-        @ray.method(concurrency_group=HEALTH_CHECK_CONCURRENCY_GROUP)
+        @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
         def get_num_ongoing_requests(self) -> [str, int, bool]:
             """TODO: name and comment.
 
@@ -414,7 +414,7 @@ def create_replica_wrapper(name: str):
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
-        @ray.method(concurrency_group=HEALTH_CHECK_CONCURRENCY_GROUP)
+        @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
         async def check_health(self):
             await self.replica.check_health()
 
