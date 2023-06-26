@@ -329,6 +329,7 @@ install_pip_packages() {
   delayed_packages=()
 
   requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
+  requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/core-requirements.txt")
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -351,6 +352,7 @@ install_pip_packages() {
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/rllib-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/rllib-test-requirements.txt")
     #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
@@ -358,11 +360,13 @@ install_pip_packages() {
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/train-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/train-test-requirements.txt")
   fi
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/tune-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/tune-test-requirements.txt")
   fi
 
   # Additional dependency for Ludwig.
