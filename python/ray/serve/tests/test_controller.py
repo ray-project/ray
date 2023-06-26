@@ -78,10 +78,6 @@ def test_deploy_app_custom_exception(serve_instance):
 
     def check_custom_exception() -> bool:
         status = client.get_serve_status(name="broken_app")
-        print(
-            status.app_status.message,
-            "exception information" in status.app_status.message,
-        )
         assert status.app_status.status == ApplicationStatus.DEPLOY_FAILED
         assert "custom exception info" in status.app_status.message
         return True
