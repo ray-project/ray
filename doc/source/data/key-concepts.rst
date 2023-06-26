@@ -1,27 +1,17 @@
-.. _data_getting_started:
+.. _data_key_concepts:
 
-Getting Started
-===============
+Key Concepts
+============
+
+Datasets
+--------
 
 Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
-is a distributed data transformation pipeline. Dataset provides APIs for loading
-external data into Ray in *blocks*, and it exposes APIs for streaming
-processing of these data blocks in the cluster.
+is a distributed data transformation pipeline. Ray Data provides APIs for loading
+data and streaming transformations in parallel.
 
-Install Ray Data
-----------------
-
-To install Ray Data, run:
-
-.. code-block:: console
-
-    $ pip install 'ray[data]'
-
-To learn more about installing Ray and its libraries, read
-:ref:`Installing Ray <installation>`.
-
-Create a dataset
--------------------
+Loading data
+------------
 
 Create datasets from on-disk files, Python objects, and cloud storage services like S3.
 Ray Data can read from any `filesystem supported by Arrow
@@ -42,8 +32,8 @@ Ray Data can read from any `filesystem supported by Arrow
 To learn more about creating datasets, read
 :ref:`Loading data <loading_data>`.
 
-Transform the dataset
-------------------------
+Transforming data
+-----------------
 
 Apply user-defined functions (UDFs) to
 transform datasets. Ray executes transformations in parallel for performance.
@@ -81,8 +71,8 @@ transform datasets. Ray executes transformations in parallel for performance.
 To learn more about transforming datasets, read
 :ref:`Transforming data <transforming_data>`.
 
-Consume the dataset
-----------------------
+Consuming data
+--------------
 
 Pass datasets to Ray tasks or actors, and access records with methods like
 :meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
@@ -137,8 +127,8 @@ Pass datasets to Ray tasks or actors, and access records with methods like
 To learn more about consuming datasets, read
 :ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
 
-Save the dataset
--------------------
+Saving data
+-----------
 
 Call methods like :meth:`~ray.data.Dataset.write_parquet` to save dataset contents to local
 or remote filesystems.

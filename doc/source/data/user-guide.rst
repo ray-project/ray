@@ -5,7 +5,7 @@ User Guides
 ===========
 
 If you’re new to Ray Data, we recommend starting with the
-:ref:`Ray Data Quick Start <data_getting_started>`.
+:ref:`Ray Data Key Concepts <data_key_concepts>`.
 This user guide will help you navigate the Ray Data project and
 show you how achieve several tasks.
 

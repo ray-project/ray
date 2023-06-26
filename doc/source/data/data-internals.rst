@@ -4,6 +4,11 @@
 Ray Data Internals
 ==================
 
+This guide describes the implementation of Ray Data. The intended audience is advanced
+users and Ray Data developers.
+
+For a gentler introduction to Ray Data, see :ref:`Key concepts <data_key_concepts>`.
+
 .. _dataset_concept:
 
 Datasets and blocks
@@ -34,6 +39,9 @@ task reads one or more files and produces an output block:
 
 ..
   https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+
+To handle transient errors from remote datasources, Ray Data retries application-level
+exceptions.
 
 For more information on loading data, see :ref:`Loading data <loading_data>`.
 
@@ -71,9 +79,33 @@ Scheduling
 
 Ray Data uses Ray core for execution, and hence is subject to the same scheduling considerations as normal Ray tasks and actors. Ray Data uses the following custom scheduling settings by default for improved performance:
 
-* The ``SPREAD`` scheduling strategy is used to ensure data blocks are evenly balanced across the cluster.
-* Retries of application-level exceptions are enabled to handle transient errors from remote datasources.
+* The ``SPREAD`` scheduling strategy is ensures that data blocks and map tasks are evenly balanced across the cluster.
 * Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
+
+.. _datasets_pg:
+
+Ray Data and placement groups
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
+:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy will schedule these tasks and actors outside any present
+placement group. If you want to force Ray Data to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Ray Data), you can set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
+
+This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Ray Data run outside placement groups as documented in the :ref:`Ray Data and Other Libraries <datasets_tune>` section.
+
+.. _datasets_tune:
+
+Ray Data and Tune
+-----------------
+
+When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune will try to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
+
+To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials. This can be done using the ``max_concurrent_trials`` Tune option.
+
+.. literalinclude:: ./doc_code/key_concepts.py
+  :language: python
+  :start-after: __resource_allocation_1_begin__
+  :end-before: __resource_allocation_1_end__
 
 .. _dataset_execution:
 

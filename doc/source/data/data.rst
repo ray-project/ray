@@ -13,6 +13,18 @@ Ray Data is a scalable data processing library for ML workloads. It provides fle
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 
+Install Ray Data
+----------------
+
+To install Ray Data, run:
+
+.. code-block:: console
+
+    $ pip install 'ray[data]'
+
+To learn more about installing Ray and its libraries, see
+:ref:`Installing Ray <installation>`.
+
 Learn more
 ----------
 
@@ -44,7 +56,7 @@ Learn more
         These concrete examples will give you an idea of how to use Ray Data.
 
         +++
-        .. button-ref:: data_getting_started
+        .. button-ref:: data_key_concepts
             :color: primary
             :outline:
             :expand:

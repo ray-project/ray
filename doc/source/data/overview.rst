@@ -25,8 +25,8 @@ Ray Data is built on top of Ray, so it scales effectively to large clusters and 
 
 .. note::
 
-    Ray Data isn't a replacement for generic ETL pipelines like Spark or distributed
-    DataFrame libraries like Dask.
+    Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic
+    ETL pipelines like Spark.
 
 Why choose Ray Data?
 --------------------

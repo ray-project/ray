@@ -9,9 +9,11 @@ Optimizing transforms
 Batching transforms
 ~~~~~~~~~~~~~~~~~~~
 
-Mapping individual records using :meth:`.map(fn) <ray.data.Dataset.map>` can be quite slow.
-Instead, consider using :meth:`.map_batches(batch_fn) <ray.data.Dataset.map_batches>` and writing your ``batch_fn`` to
-perform vectorized operations.
+If your transformation is vectorized like most NumPy or pandas operations, use
+:meth:`~ray.data.Dataset.map_batches` rather than :meth:`~ray.data.Dataset.map`. It's
+faster.
+
+If your transformation isn't vectorized, there's no performance benefit.
 
 Optimizing reads
 ----------------
@@ -24,7 +26,6 @@ By default, Ray Data automatically selects the read ``parallelism`` according to
 1. The number of available CPUs is estimated. If in a placement group, the number of CPUs in the cluster is scaled by the size of the placement group compared to the cluster size. If not in a placement group, this is the number of CPUs in the cluster.
 2. The parallelism is set to the estimated number of CPUs multiplied by 2. If the parallelism is less than 8, it is set to 8.
 3. The in-memory data size is estimated. If the parallelism would create in-memory blocks that are larger on average than the target block size (512MiB), the parallelism is increased until the blocks are < 512MiB in size.
-4. The parallelism is truncated to ``min(num_files, parallelism)``.
 
 Occasionally, it is advantageous to manually tune the parallelism to optimize the application. This can be done when loading data via the ``parallelism`` parameter.
 For example, use ``ray.data.read_parquet(path, parallelism=1000)`` to force up to 1000 read tasks to be created.
@@ -179,31 +180,6 @@ Deterministic execution
    ctx.execution_options.preserve_order = True
 
 To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to False.
-
-.. _datasets_pg:
-
-Ray Data and placement groups
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-By default, Ray Data configures its tasks and actors to use the cluster-default scheduling strategy ("DEFAULT"). You can inspect this configuration variable here:
-:class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy will schedule these tasks and actors outside any present
-placement group. If you want to force Ray Data to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Ray Data), you can set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
-
-This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Ray Data run outside placement groups as documented in the :ref:`Ray Data and Other Libraries <datasets_tune>` section.
-
-.. _datasets_tune:
-
-Ray Data and Tune
------------------
-
-When using Ray Data in conjunction with :ref:`Ray Tune <tune-main>`, it is important to ensure there are enough free CPUs for Ray Data to run on. By default, Tune will try to fully utilize cluster CPUs. This can prevent Ray Data from scheduling tasks, reducing performance or causing workloads to hang.
-
-To ensure CPU resources are always available for Ray Data execution, limit the number of concurrent Tune trials. This can be done using the ``max_concurrent_trials`` Tune option.
-
-.. literalinclude:: ./doc_code/key_concepts.py
-  :language: python
-  :start-after: __resource_allocation_1_begin__
-  :end-before: __resource_allocation_1_end__
 
 Monitoring your application
 ---------------------------
