@@ -63,13 +63,7 @@ def test_deploy_app_custom_exception(serve_instance):
             {
                 "name": "broken_app",
                 "route_prefix": "/broken",
-                "import_path": "broken_dag:app",
-                "runtime_env": {
-                    "working_dir": (
-                        "https://github.com/ray-project/test_dag/"
-                        "archive/e552be913ffb7fb5e36b1e63d97f5c354d45e219.zip"
-                    ),
-                },
+                "import_path": "ray.serve.tests.test_config_files.broken_app:app",
             }
         ]
     }
