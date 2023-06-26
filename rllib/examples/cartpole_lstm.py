@@ -41,7 +41,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None)
+    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
 
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
@@ -50,7 +50,12 @@ if __name__ == "__main__":
         num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
     ).framework(args.framework, eager_tracing=args.eager_tracing).reporting(
         min_time_s_per_iteration=0.1
-    )
+    ).training(model={
+                "use_lstm": True,
+                "lstm_cell_size": 256,
+                "lstm_use_prev_action": args.use_prev_action,
+                "lstm_use_prev_reward": args.use_prev_reward,
+            })
 
     if args.run == "PPO":
         config.training(num_sgd_iter=5, vf_loss_coeff=0.0001)
