@@ -55,3 +55,10 @@ class _ClientWorkerPropertyAPI:
     @property
     def runtime_env(self) -> str:
         return self._fetch_runtime_context().runtime_env
+
+    def check_connected(self) -> bool:
+        return self.worker.ping_server()
+
+    @property
+    def gcs_address(self) -> str:
+        return self._fetch_runtime_context().gcs_address

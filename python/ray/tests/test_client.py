@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 import ray.cloudpickle as cloudpickle
+from ray.runtime_context import RuntimeContext
 import ray.util.client.server.server as ray_client_server
 from ray._private.client_mode_hook import (
     client_mode_should_convert,
@@ -900,6 +901,15 @@ def test_serialize_client_actor_handle(call_ray_start_shared):
         serialized = cloudpickle.dumps(handle)
         deserialized = cloudpickle.loads(serialized)
         assert ray.get(deserialized.get_value.remote()) == 1234
+
+
+def test_get_runtime_context(call_ray_start_shared):
+    """
+    Tests get_runtime_context
+    """
+    with ray_start_client_server_for_address(call_ray_start_shared) as ray:
+        context: RuntimeContext = ray.get_runtime_context()
+        assert context.gcs_address, "gcs_address not set"
 
 
 if __name__ == "__main__":
