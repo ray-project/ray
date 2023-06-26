@@ -327,14 +327,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         has exceeded the target number. Else it will loop again to schedule another
         replica.
         """
-        while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
-            async for candidates in self.choose_two_replicas_with_backoff():
-                replica = await self.select_from_candidate_replicas(candidates)
-                if replica is not None:
-                    self.fulfill_next_pending_assignment(replica)
-                    break
-
-        self._scheduling_tasks.remove(asyncio.current_task())
+        try:
+            while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+                async for candidates in self.choose_two_replicas_with_backoff():
+                    replica = await self.select_from_candidate_replicas(candidates)
+                    if replica is not None:
+                        self.fulfill_next_pending_assignment(replica)
+                        break
+        except Exception:
+            logger.exception("Unexpected error in fulfill_pending_assignments.")
+        finally:
+            self._scheduling_tasks.remove(asyncio.current_task())
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending assignments if necessary.
@@ -347,7 +350,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
-                self._loop.create_task(self.fulfill_pending_assignments()),
+                self._loop.create_task(self.fulfill_pending_assignments())
             )
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
