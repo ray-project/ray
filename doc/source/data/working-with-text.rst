@@ -39,10 +39,13 @@ files and manually decode data.
             {'text': 'Beautiful is better than ugly.'}
             {'text': 'Explicit is better than implicit.'}
 
-    .. tab-item:: JSONL
+    .. tab-item:: JSON Lines
 
-        To read newline-delimited JSON, call :func:`~ray.data.read_json`. Ray Data
-        creates a row for each JSON object.
+        `JSON Lines <https://jsonlines.org/>`_ is a text format for structured data.
+        It's typically used to process data one record at a time.
+
+        To read JSON Lines files, call :func:`~ray.data.read_json`. Ray Data creates a
+        row for each JSON object.
 
         .. testcode::
 
@@ -175,6 +178,9 @@ Saving text
 
 To save text, call a method like :meth:`~ray.data.Dataset.write_parquet`. Ray Data can
 save text in many formats.
+
+To view the full list of supported file formats, see the
+:ref:`Input/Output reference <input-output>`.
 
 .. testcode::
 
