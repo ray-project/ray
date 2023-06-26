@@ -14,11 +14,19 @@ class FakeCounter:
         pass
 
 
-def create_instance(instance_id, status=Instance.UNKNOWN, version=0):
+def create_instance(
+    instance_id,
+    status=Instance.UNKNOWN,
+    version=0,
+    ray_status=Instance.RAY_STATUS_UNKOWN,
+    instance_type="worker_nodes1",
+):
     return Instance(
         instance_id=instance_id,
         status=status,
         version=version,
+        instance_type=instance_type,
+        ray_status=ray_status,
         timestamp_since_last_modified=1,
     )
     return stub.GetClusterResourceState(request).cluster_resource_state
