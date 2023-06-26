@@ -192,6 +192,7 @@ class RayServeHandle:
             new_options,
             _router=self.router,
             _is_for_http_requests=self._is_for_http_requests,
+            _stream=self._stream,
         )
 
     def options(
@@ -272,6 +273,7 @@ class RayServeHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
+            "_stream": self._stream,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
@@ -365,6 +367,7 @@ class RayServeSyncHandle(RayServeHandle):
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
+            "_stream": self._stream,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
