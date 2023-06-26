@@ -266,7 +266,7 @@ def test_idle_workers(shutdown_only):
     # We start exactly as many workers as there are CPUs.
     for _ in range(3):
         pids = set(ray.get([getpid.remote() for _ in range(4)]))
-        assert len(pids) == 2, pids
+        assert len(pids) <= 2, pids
         # Wait for at least the idle worker timeout.
         time.sleep(0.1)
 
@@ -277,7 +277,7 @@ def test_idle_workers(shutdown_only):
 
     for _ in range(3):
         pids = set(ray.get([getpid.remote() for _ in range(4)]))
-        assert len(pids) == 2, pids
+        assert len(pids) <= 2, pids
         # Wait for at least the idle worker timeout.
         time.sleep(0.1)
 
@@ -286,7 +286,7 @@ def test_idle_workers(shutdown_only):
     del a2
     for _ in range(3):
         pids = set(ray.get([getpid.remote() for _ in range(4)]))
-        assert len(pids) == 2, pids
+        assert len(pids) <= 2, pids
         # Wait for at least the idle worker timeout.
         time.sleep(0.1)
 

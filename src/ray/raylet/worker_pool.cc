@@ -1070,10 +1070,10 @@ void WorkerPool::TryKillingIdleWorkers() {
     if (it->second == -1 ||
         now - it->second >
             RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
-      RAY_LOG(INFO) << "Number of idle workers " << num_killable_idle_workers
-                    << " is larger than the number of desired workers "
-                    << num_desired_idle_workers << " killing idle worker with PID "
-                    << it->first->GetProcess().GetId();
+      RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
+                     << " is larger than the number of desired workers "
+                     << num_desired_idle_workers << " killing idle worker with PID "
+                     << it->first->GetProcess().GetId();
       KillIdleWorker(it->first, it->second);
       it = idle_of_all_languages_.erase(it);
       num_killable_idle_workers--;
