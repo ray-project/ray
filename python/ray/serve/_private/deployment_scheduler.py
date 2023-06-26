@@ -86,7 +86,7 @@ class DeploymentScheduler:
             SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
         ],
     ) -> None:
-        """This is called whenver a new deployment is created."""
+        """This is called whenever a new deployment is created."""
         assert deployment_name not in self._pending_replicas
         assert deployment_name not in self._launching_replicas
         assert deployment_name not in self._recovering_replicas
@@ -94,7 +94,7 @@ class DeploymentScheduler:
         self._deployments[deployment_name] = scheduling_policy
 
     def on_deployment_deleted(self, deployment_name: str) -> None:
-        """This is called whenver a deployment is deleted."""
+        """This is called whenever a deployment is deleted."""
         assert not self._pending_replicas[deployment_name]
         self._pending_replicas.pop(deployment_name, None)
 
@@ -119,7 +119,7 @@ class DeploymentScheduler:
     def on_replica_running(
         self, deployment_name: str, replica_name: str, node_id: str
     ) -> None:
-        """This is called whenver a deployment replica is running with known node id."""
+        """This is called whenever a deployment replica is running with known node id."""
         assert replica_name not in self._pending_replicas[deployment_name]
 
         self._launching_replicas[deployment_name].pop(replica_name, None)
@@ -128,7 +128,7 @@ class DeploymentScheduler:
         self._running_replicas[deployment_name][replica_name] = node_id
 
     def on_replica_recovering(self, deployment_name: str, replica_name: str) -> None:
-        """This is called whenver a deployment replica is recovering."""
+        """This is called whenever a deployment replica is recovering."""
         assert replica_name not in self._pending_replicas[deployment_name]
         assert replica_name not in self._launching_replicas[deployment_name]
         assert replica_name not in self._running_replicas[deployment_name]
