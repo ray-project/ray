@@ -12,8 +12,8 @@ from ray_release.logger import logger
 from ray_release.test import Test
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane.tgz"
-DATAPLANE_DIGEST = "f9b0055085690ddad2faa804bb6b38addbcf345b9166f2204928a7ece1c8a39b"
+DATAPLANE_FILENAME = "dataplane_20230622.tgz"
+DATAPLANE_DIGEST = "141788597b798e407f6131d10f34d09bbae4648b3acd91d776e3e8ef013b64bb"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
