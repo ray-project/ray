@@ -38,15 +38,7 @@ Define a simple "hello world" application, run it locally, and query it over HTT
 :language: python
 ```
 
-::::{tab-set} 
-
-:::{tab-item} More examples
-
-For more examples, select from the tabs.
-
-:::
-
-::::
+## More examples
 
 ::::{tab-set}
 
