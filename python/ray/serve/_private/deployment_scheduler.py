@@ -1,17 +1,22 @@
-import ray
-from typing import Callable, Dict, Tuple, Optional, List, Union
+from typing import Callable, Dict, Tuple, Optional, List, Union, Set
 from dataclasses import dataclass
 from collections import defaultdict
+
+import ray
 from ray._raylet import GcsClient
 from ray.serve._private.utils import get_all_node_ids
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class SpreadDeploymentSchedulingPolicy:
+    """A scheduling policy that spreads replicas with best efforts."""
+
     pass
 
 
 class DriverDeploymentSchedulingPolicy:
+    """A scheduling policy that schedules exactly one replica on each node."""
+
     pass
 
 
@@ -80,7 +85,7 @@ class DeploymentScheduler:
         scheduling_policy: Union[
             SpreadDeploymentSchedulingPolicy, DriverDeploymentSchedulingPolicy
         ],
-    ):
+    ) -> None:
         """This is called whenver a new deployment is created."""
         assert deployment_name not in self._pending_replicas
         assert deployment_name not in self._launching_replicas
@@ -88,7 +93,7 @@ class DeploymentScheduler:
         assert deployment_name not in self._running_replicas
         self._deployments[deployment_name] = scheduling_policy
 
-    def on_deployment_deleted(self, deployment_name: str):
+    def on_deployment_deleted(self, deployment_name: str) -> None:
         """This is called whenver a deployment is deleted."""
         assert not self._pending_replicas[deployment_name]
         del self._pending_replicas[deployment_name]
@@ -104,14 +109,16 @@ class DeploymentScheduler:
 
         del self._deployments[deployment_name]
 
-    def on_replica_stopping(self, deployment_name: str, replica_name: str):
+    def on_replica_stopping(self, deployment_name: str, replica_name: str) -> None:
         """This is called whenver a deployment replica is being stopped."""
         self._pending_replicas[deployment_name].pop(replica_name, None)
         self._launching_replicas[deployment_name].pop(replica_name, None)
         self._recovering_replicas[deployment_name].discard(replica_name)
         self._running_replicas[deployment_name].pop(replica_name, None)
 
-    def on_replica_running(self, deployment_name: str, replica_name: str, node_id: str):
+    def on_replica_running(
+        self, deployment_name: str, replica_name: str, node_id: str
+    ) -> None:
         """This is called whenver a deployment replica is running with known node id."""
         assert replica_name not in self._pending_replicas[deployment_name]
 
@@ -120,11 +127,12 @@ class DeploymentScheduler:
 
         self._running_replicas[deployment_name][replica_name] = node_id
 
-    def on_replica_recovering(self, deployment_name: str, replica_name: str):
+    def on_replica_recovering(self, deployment_name: str, replica_name: str) -> None:
         """This is called whenver a deployment replica is recovering."""
         assert replica_name not in self._pending_replicas[deployment_name]
         assert replica_name not in self._launching_replicas[deployment_name]
         assert replica_name not in self._running_replicas[deployment_name]
+        assert replica_name not in self._recovering_replicas[deployment_name]
 
         self._recovering_replicas[deployment_name].add(replica_name)
 
@@ -132,7 +140,7 @@ class DeploymentScheduler:
         self,
         upscales: Dict[str, List[ReplicaSchedulingRequest]],
         downscales: Dict[str, DeploymentDownscaleRequest],
-    ):
+    ) -> Dict[str, Set[str]]:
         """This is called for each update cycle to do batch scheduling.
 
         Args:
@@ -140,7 +148,7 @@ class DeploymentScheduler:
             downscales: a dict of deployment name to a downscale request.
 
         Returns:
-            The replicas to stop for each deployment.
+            The name of replicas to stop for each deployment.
         """
         for upscale in upscales.values():
             for replica_scheduling_request in upscale:
@@ -173,7 +181,7 @@ class DeploymentScheduler:
 
         return deployment_to_replicas_to_stop
 
-    def _schedule_spread_deployment(self, deployment_name):
+    def _schedule_spread_deployment(self, deployment_name: str) -> None:
         for pending_replica_name in list(
             self._pending_replicas[deployment_name].keys()
         ):
@@ -189,7 +197,7 @@ class DeploymentScheduler:
             self._launching_replicas[deployment_name][pending_replica_name] = None
             replica_scheduling_request.on_scheduled(actor_handle)
 
-    def _schedule_driver_deployment(self, deployment_name):
+    def _schedule_driver_deployment(self, deployment_name: str) -> None:
         if self._recovering_replicas[deployment_name]:
             # Wait until recovering is done before scheduling new replicas
             # so that we can make sure we don't schedule two replicas on the same node.
@@ -228,7 +236,9 @@ class DeploymentScheduler:
             ] = target_node_id
             replica_scheduling_request.on_scheduled(actor_handle)
 
-    def _get_replicas_to_stop(self, deployment_name, max_num_to_stop):
+    def _get_replicas_to_stop(
+        self, deployment_name: str, max_num_to_stop: int
+    ) -> Set[str]:
         """Prioritize replicas that have fewest copies on a node.
 
         This algorithm helps to scale down more intelligently because it can
@@ -238,6 +248,8 @@ class DeploymentScheduler:
         """
         replicas_to_stop = set()
 
+        # Replicas not in running state don't have node id.
+        # We will prioritize those first.
         pending_launching_recovering_replicas = set().union(
             self._pending_replicas[deployment_name].keys(),
             self._launching_replicas[deployment_name].keys(),

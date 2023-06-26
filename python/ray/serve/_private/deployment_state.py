@@ -408,7 +408,7 @@ class ActorReplicaWrapper:
             on_scheduled=self.on_scheduled,
         )
 
-    def on_scheduled(self, actor_handle):
+    def on_scheduled(self, actor_handle: ActorHandle):
         self._actor_handle = actor_handle
         # Perform auto method name translation for java handles.
         # See https://github.com/ray-project/ray/issues/21474
