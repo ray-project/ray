@@ -83,8 +83,8 @@ from ray import serve
 class StreamingResponder:
     @serve.batch(max_batch_size=5, batch_wait_timeout_s=0.1)
     async def generate_numbers(
-        self, max_list: List[Union[str, StopIteration]]
-    ) -> AsyncGenerator[List[int], None]:
+        self, max_list: List[str]
+    ) -> AsyncGenerator[List[Union[int, StopIteration]], None]:
         for i in range(max(max_list)):
             next_numbers = []
             for requested_max in max_list:
