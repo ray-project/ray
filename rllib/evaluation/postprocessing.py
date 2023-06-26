@@ -191,8 +191,8 @@ def compute_gae_for_sample_batch(
     rewards = np.array(sample_batch[SampleBatch.REWARDS])
     # We need to squeeze out the time dimension if there is one
     # Sanity check that both have the same shape
-    assert vf_preds.shape == rewards.shape
     if len(vf_preds.shape) == 2:
+        assert vf_preds.shape == rewards.shape
         vf_preds = np.squeeze(vf_preds, axis=1)
         rewards = np.squeeze(rewards, axis=1)
         squeezed = True
@@ -258,9 +258,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
          The altered SampleBatch (with the extra SampleBatch.VALUES_BOOTSTRAPPED
          column).
     """
-    squeezed = False
-    vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
-
     # Trajectory is actually complete -> last r=0.0.
     if sample_batch[SampleBatch.TERMINATEDS][-1]:
         last_r = 0.0
@@ -287,26 +284,27 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
             #  running across different processes for different trajectories?
             #  This implementation right now will compute even the action_dist which
             #  will not be needed but takes time to compute.
-            # In order to calculate the batch size ad hoc, we need a sample batch.
-            input_dict = policy.maybe_add_time_dimension(input_dict, seq_lens=input_dict[SampleBatch.SEQ_LENS])
             if policy.framework == "torch":
                 input_dict = convert_to_torch_tensor(input_dict, device=policy.device)
-                # For recurrent models, we need to add a time dimension.
+
+            # For recurrent models, we need to add a time dimension.
+            input_dict = policy.maybe_add_time_dimension(input_dict, seq_lens=input_dict[SampleBatch.SEQ_LENS])
             input_dict = NestedDict(input_dict)
             fwd_out = policy.model.forward_exploration(input_dict)
             # For recurrent models, we need to remove the time dimension.
             fwd_out = policy.maybe_remove_time_dimension(fwd_out)
-
-            # We need to squeeze out the time dimension if there is one
-            # Sanity check that both have the same shape
-            if len(vf_preds.shape) == 2:
-                vf_preds = np.squeeze(vf_preds, axis=1)
-                last_r = fwd_out[SampleBatch.VF_PREDS][-1][-1]
-                squeezed = True
-            else:
-                last_r = fwd_out[SampleBatch.VF_PREDS][-1]
+            last_r = fwd_out[SampleBatch.VF_PREDS][-1]
         else:
             last_r = policy._value(**input_dict)
+
+    vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
+    # We need to squeeze out the time dimension if there is one
+    # Sanity check that both have the same shape
+    if len(vf_preds.shape) == 2:
+        vf_preds = np.squeeze(vf_preds, axis=1)
+        squeezed = True
+    else:
+        squeezed = False
 
     # Set the SampleBatch.VALUES_BOOTSTRAPPED field to VF_PREDS[1:] + the
     # very last timestep (where this bootstrapping value is actually needed), which
