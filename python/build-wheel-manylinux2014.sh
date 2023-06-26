@@ -76,7 +76,7 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f2)"
   NUMPY_VERSION="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f3)"
 
-  echo "---- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
+  echo "--- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
@@ -99,11 +99,11 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
 
     # build ray wheel
     PATH="/opt/python/${PYTHON}/bin:$PATH" \
-    "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # build ray-cpp wheel
     PATH="/opt/python/${PYTHON}/bin:$PATH" \
-    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
@@ -124,6 +124,7 @@ done
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
 
+echo "--- Build JAR"
 if [ "${BUILD_JAR-}" == "1" ]; then
   ./java/build-jar-multiplatform.sh linux
 fi
