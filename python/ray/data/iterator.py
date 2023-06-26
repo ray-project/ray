@@ -88,6 +88,7 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
+        gpu_prefetch_batches: int = 1,
         batch_size: int = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
@@ -111,10 +112,15 @@ class DataIterator(abc.ABC):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node, format the batches, and apply
-                the collate_fn. Defaults to 1. You can revert back to the old
-                prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the DataContext.
+                to fetch the objects to the local node. Defaults to 1. You can revert
+                back to the old prefetching behavior that uses `prefetch_blocks` by
+                setting `use_legacy_iter_batches` to True in the DataContext.
+            gpu_prefetch_batches: The number of batches to fetch ahead of the current
+                batch to fetch on the GPU. If set to greater than 0, a separate
+                threadpool will be used to format batches and apply the collate_fn.
+                Defaults to 1. You can revert back to the old prefetching behavior
+                that uses `prefetch_blocks` by setting `use_legacy_iter_batches` to
+                True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -187,6 +193,7 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
+                gpu_prefetch_batches=gpu_prefetch_batches,
             )
 
         if stats:
@@ -320,7 +327,6 @@ class DataIterator(abc.ABC):
             )
 
         if collate_fn is None:
-
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()

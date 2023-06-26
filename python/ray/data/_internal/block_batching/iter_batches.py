@@ -34,6 +34,7 @@ def iter_batches(
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
     prefetch_batches: int = 1,
+    gpu_prefetch_batches: int = 1,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from an iterator of block object references and
     corresponding metadata.
@@ -97,8 +98,13 @@ def iter_batches(
             process. If set to greater than 0, a separate thread will be used to fetch
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
-            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
-            enabled).
+            formatting to be overlapped with the UDF. Defaults to 1.
+        gpu_prefetch_batches: The number of batches to fetch ahead of the current
+            batch to fetch on the GPU. If set to greater than 0, a separate
+            threadpool will be used to format batches and apply the collate_fn.
+            Defaults to 1. You can revert back to the old prefetching behavior
+            that uses `prefetch_blocks` by setting `use_legacy_iter_batches` to
+            True in the DataContext.
 
     Returns:
         An iterator over record batches.
@@ -119,7 +125,6 @@ def iter_batches(
     def _async_iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
-
         # Step 1: Prefetch logical batches locally.
         block_refs = prefetch_batches_locally(
             block_ref_iter=block_refs,
@@ -149,7 +154,7 @@ def iter_batches(
             stats=stats,
             batch_format=batch_format,
             collate_fn=collate_fn,
-            num_threadpool_workers=prefetch_batches,
+            num_threadpool_workers=gpu_prefetch_batches,
         )
 
         # Step 5: Restore original order.
