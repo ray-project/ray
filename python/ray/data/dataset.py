@@ -1717,7 +1717,7 @@ class Dataset:
 
         return GroupedData(self, key)
 
-    def unique(self, column: str) -> List:
+    def unique(self, column: str) -> List[Any]:
         """List of unique elements in the given column.
 
         Examples:
