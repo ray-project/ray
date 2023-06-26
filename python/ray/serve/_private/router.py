@@ -337,7 +337,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_assignments.")
         finally:
-            self._scheduling_tasks.remove(asyncio.current_task())
+            self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
 
     def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending assignments if necessary.
