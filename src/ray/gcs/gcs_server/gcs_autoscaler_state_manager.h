@@ -131,6 +131,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// This is requested through autoscaler SDK from request_resources().
   absl::optional<rpc::ClusterResourceConstraint> cluster_resource_constraint_ =
       absl::nullopt;
+
+  /// Cached autoscaling state.
+  absl::optional<rpc::AutoscalingState> autoscaling_state_ = absl::nullopt;
+
+  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
 
 }  // namespace gcs

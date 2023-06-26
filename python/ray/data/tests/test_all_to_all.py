@@ -217,6 +217,20 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
+def test_unique(ray_start_regular_shared):
+    ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
+    assert set(ds.unique("item")) == {1, 2, 3}
+
+    ds = ray.data.from_items(
+        [
+            {"a": 1, "b": 1},
+            {"a": 1, "b": 2},
+        ]
+    )
+    assert set(ds.unique("a")) == {1}
+    assert set(ds.unique("b")) == {1, 2}
+
+
 def test_grouped_dataset_repr(ray_start_regular_shared):
     ds = ray.data.from_items([{"key": "spam"}, {"key": "ham"}, {"key": "spam"}])
     assert repr(ds.groupby("key")) == f"GroupedData(dataset={ds!r}, key='key')"
