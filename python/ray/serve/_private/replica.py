@@ -209,9 +209,12 @@ def create_replica_wrapper(name: str):
 
         @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
         def get_num_ongoing_requests(self) -> [str, int, bool]:
-            """TODO: name and comment.
+            """Fetch the number of ongoing requests at this replica (queue length).
 
-            Maybe pickle for perf. ?
+            Returns a tuple of (replica_id, queue_length, accepted).
+
+            This runs on a separate thread (using a Ray concurrency group) so it will
+            not be blocked by user code.
             """
             num_ongoing_requests = self.replica.get_num_pending_and_running_requests()
             accepted = (

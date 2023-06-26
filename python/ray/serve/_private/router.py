@@ -1,6 +1,6 @@
 from abc import ABC
 import asyncio
-from collections import defaultdict
+from collections import defaultdict, deque
 from dataclasses import dataclass
 import itertools
 import logging
@@ -130,6 +130,8 @@ class ActorReplicaWrapper:
 
 
 class ReplicaScheduler(ABC):
+    """Abstract interface for a replica scheduler (how the router calls it)."""
+
     async def assign_replica(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
@@ -181,25 +183,37 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replicas_updated_event = _make_event_compat(event_loop)
 
         self._scheduling_tasks: Set[asyncio.Task] = set()
-        self._pending_assignment_futures: List[asyncio.Future] = []
+        self._pending_assignment_futures: deque[asyncio.Future] = deque()
 
     @property
     def num_pending_assignments(self) -> int:
+        """Current number of assignments pending scheduling."""
         return len(self._pending_assignment_futures)
 
     @property
-    def curr_scheduling_tasks(self) -> int:
+    def curr_num_scheduling_tasks(self) -> int:
+        """Current number of scheduling tasks running."""
         return len(self._scheduling_tasks)
 
     @property
-    def max_scheduling_tasks(self) -> int:
+    def max_num_scheduling_tasks(self) -> int:
+        """Max number of scheduling tasks to run at any time."""
         return 2 * len(self._replicas)
 
     @property
-    def target_scheduling_tasks(self) -> int:
-        return min(self.num_pending_assignments, self.max_scheduling_tasks)
+    def target_num_scheduling_tasks(self) -> int:
+        """Target number of scheduling tasks to be running based on pending assignments.
+
+        This will never exceed `self.max_num_scheduling_tasks`.
+        """
+        return min(self.num_pending_assignments, self.max_num_scheduling_tasks)
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
+        """Update the set of available replicas to be considered for scheduling.
+
+        When the set of replicas changes, we may spawn additional scheduling tasks
+        if there are pending assignments.
+        """
         self._replicas = {r.replica_id: r for r in replicas}
         new_replica_ids = set(self._replicas.keys())
         if new_replica_ids != self._replica_id_set:
@@ -210,29 +224,33 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 extra={"log_to_stderr": False},
             )
 
-        self._replicas_updated_event.set()
-        self.maybe_start_scheduling_tasks()
+            self._replicas_updated_event.set()
+            self.maybe_start_scheduling_tasks()
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
-    async def choose_two_gen(self) -> AsyncGenerator[List[RunningReplicaInfo], None]:
-        """TODO.
+    async def choose_two_replicas_with_backoff(
+        self,
+    ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
+        """Generator that repeatedly chooses two random replicas from `self._replicas`.
 
-        TODO:
-            - blacklist replicas so we don't try the same ones repeatedly?
+        After each iteration, there will be an increasing backoff sleep time (dictated
+        by `self.backoff_sequence_s`). The caller should exit the generator to reset the
+        backoff sleep time.
         """
         backoff_index = 0
         while True:
+            # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none available.",
+                    f"{self._deployment_name} but none are available.",
                     extra={"log_to_stderr": False},
                 )
-                await self._replicas_updated_event.wait()
                 self._replicas_updated_event.clear()
+                await self._replicas_updated_event.wait()
                 logger.info(
                     "Got replicas for deployment {self._deployment_name}, waking up.",
                     extra={"log_to_stderr": False},
@@ -246,72 +264,105 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
-    async def select_replica(
-        self, replicas: List[ReplicaWrapper]
+    async def select_from_candidate_replicas(
+        self, candidates: List[ReplicaWrapper], response_deadline_s: float = 0.1
     ) -> Optional[ReplicaWrapper]:
-        tasks = [r.get_queue_len() for r in replicas]
+        """Chooses the best replica from the list of candidates.
+
+        If none of the replicas can be scheduled, returns `None`.
+
+        The queue length at each replica is queried directly from it. The time waited
+        for these queries is capped by `response_deadline_s`; if a replica doesn't
+        respond within the deadline it is not considered.
+
+        Among replicas that respond within the deadline and accept the request (don't
+        have full queues), the one with the lowest queue length is chosen.
+        """
+        get_queue_len_tasks = [c.get_queue_len() for c in candidates]
         done, pending = await asyncio.wait(
-            tasks, timeout=0.1, return_when=asyncio.ALL_COMPLETED
+            get_queue_len_tasks,
+            timeout=response_deadline_s,
+            return_when=asyncio.ALL_COMPLETED,
         )
+        for task in pending:
+            task.cancel()
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
         for task in done:
             if task.exception() is not None:
-                print(f"Exception: {task.exception()}")
+                logger.warning(
+                    f"Failed to fetch queue length for replica: {task.exception()}"
+                )
             else:
                 replica_id, queue_len, accepted = task.result()
-                print(task.result())
-                # print(replica_id, "queue_len:", queue_len)
                 if accepted and queue_len < lowest_queue_len:
                     chosen_replica_id = replica_id
                     lowest_queue_len = queue_len
 
-        for task in pending:
-            task.cancel()
-
         if chosen_replica_id is None:
-            print("No available replicas.")
             return None
 
         return self._replicas[chosen_replica_id]
 
-    def schedule_replica(self, replica):
+    def fulfill_next_pending_assignment(self, replica: ReplicaWrapper):
+        """Assign the replica to the next pending assignment in FIFO order.
+
+        If a pending assignment has been cancelled, it will be popped from the queue
+        and not assigned.
+        """
         while len(self._pending_assignment_futures) > 0:
-            fut = self._pending_assignment_futures.pop(0)
+            fut = self._pending_assignment_futures.popleft()
+            # Pass over futures that have been cancelled.
             if not fut.done():
                 fut.set_result(replica)
                 break
 
-        return len(self._scheduling_tasks) <= self.target_scheduling_tasks
+    async def fulfill_pending_assignments(self):
+        """Repeatedly tries to fulfill a pending assignment with an available replica.
 
-    async def try_schedule(self):
+        This is expected to be run inside a task in self._scheduling tasks.
+
+        When a replica is found, this method will exit if the number of scheduling tasks
+        has exceeded the target number. Else it will loop again to schedule another
+        replica.
+        """
         curr_task = asyncio.current_task().get_name()
         print(curr_task, "try_schedule entered")
-        keep_scheduling = True
-        while keep_scheduling:
-            async for candidates in self.choose_two_gen():
-                print("GOT CANDIDATES", candidates)
-                replica = await self.select_replica(candidates)
-                print("GOT REPLICA", replica)
+        while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+            async for candidates in self.choose_two_replicas_with_backoff():
+                replica = await self.select_from_candidate_replicas(candidates)
                 if replica is not None:
-                    keep_scheduling = self.schedule_replica(replica)
-                    print(curr_task, "Got replica! Keep scheduling?", keep_scheduling)
+                    self.fulfill_next_pending_assignment(replica)
                     break
 
         self._scheduling_tasks.remove(asyncio.current_task())
         print(curr_task, "try_schedule exited")
 
     def maybe_start_scheduling_tasks(self):
-        tasks_to_start = self.target_scheduling_tasks - self.curr_scheduling_tasks
-        print(f"Starting {tasks_to_start} tasks!")
+        """Start scheduling tasks to fulfill pending assignments if necessary.
+
+        Starts tasks so that there is at least one task per pending assignment
+        (respecting the max number of scheduling tasks).
+        """
+        tasks_to_start = (
+            self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
+        )
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
-                self._loop.create_task(self.try_schedule()),
+                self._loop.create_task(self.fulfill_pending_assignments()),
             )
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
-        """TODO."""
+        """Chooses a replica to send the provided request to.
+
+        Requests are scheduled in FIFO order, so this puts a future on the internal
+        queue that will be resolved when a replica is available and it's the front of
+        the queue.
+
+        Upon cancellation (by the caller), the future is cancelled and will be passed
+        over when a replica becomes available.
+        """
         fut = asyncio.Future()
         self._pending_assignment_futures.append(fut)
         try:
@@ -325,8 +376,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     async def assign_replica(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Choose a replica for the request and send it.
+
+        This will block indefinitely if no replicas are available to handle the
+        request, so it's up to the caller to time out or cancel the assignment.
+        """
         replica = await self.choose_replica_for_query(query)
-        print("GOT REPLICA", replica)
         return replica.send_query(query)
 
 

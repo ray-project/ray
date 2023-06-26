@@ -1,4 +1,5 @@
 import asyncio
+import time
 from typing import Tuple, Union
 
 import pytest
@@ -68,6 +69,10 @@ def fake_query() -> Query:
 
 @pytest.mark.asyncio
 async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_query):
+    """
+    If there are replicas available, we should wait until one is added. Once a
+    replica is added via `update_replicas`, the pending assignment should be fulfilled.
+    """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
@@ -84,6 +89,10 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
 
 @pytest.mark.asyncio
 async def test_no_replicas_accept_then_one_accepts(pow_2_scheduler, fake_query):
+    """
+    If none of the replicas accept the request, we should repeatedly try with backoff.
+    Once one accepts, the pending assignment should be fulfilled.
+    """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
@@ -104,6 +113,10 @@ async def test_no_replicas_accept_then_one_accepts(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_query):
+    """
+    If a replica stops accepting requests, it should stop being scheduled. When it then
+    accepts, pending assingments should be scheduled on it.
+    """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
@@ -127,6 +140,10 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
 
 @pytest.mark.asyncio
 async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
+    """
+    If two replicas are available and accepting requests, they should both get
+    scheduled. If one is removed, only the other should be scheduled.
+    """
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
@@ -148,6 +165,9 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
+    """
+    If two replicas are available but only one accepts, only it should be scheduled.
+    """
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
@@ -164,6 +184,9 @@ async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
+    """
+    If three replicas are available but only two accept, only those should be scheduled.
+    """
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
@@ -183,6 +206,10 @@ async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
+    """
+    If two replicas are available and accept requests, the one with the shorter
+    queue should be scheduled.
+    """
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
@@ -199,9 +226,14 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
 
 @pytest.mark.asyncio
 async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
+    """
+    Verify that requests are always scheduled in FIFO order, even if many are being
+    assigned concurrently.
+    """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
+    # Schedule many requests in parallel; they cannot be fulfilled yet.
     tasks = []
     for _ in range(100):
         tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
@@ -209,18 +241,27 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     done, _ = await asyncio.wait(tasks, timeout=0.1)
     assert len(done) == 0
 
+    # Only a single request will be accepted at a time due to
+    # `reset_after_response=True`.
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
     s.update_replicas([r1])
 
     for i in range(len(tasks)):
         r1.set_queue_len_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
+
+        # If the order was not FIFO, the fulfilled assignment may not be the front of
+        # the list.
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
 
 
 @pytest.mark.asyncio
 async def test_cancellation(pow_2_scheduler, fake_query):
+    """
+    If a pending assignment is cancelled, it shouldn't get fulfilled and the next
+    request in the queue should be.
+    """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
@@ -238,9 +279,48 @@ async def test_cancellation(pow_2_scheduler, fake_query):
 
     assert (await task2) == r1
 
+    # Verify that the scheduling tasks exit and there are no assignments left.
+    assert s.curr_scheduling_tasks == 0
+    assert s.num_pending_assignments == 0
+
+
+@pytest.mark.asyncio
+async def test_only_task_cancelled(pow_2_scheduler, fake_query):
+    """
+    If a pending assignment is cancelled and it's the only one in the queue, it should
+    be passed over and the scheduling task should exit.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    task.cancel()
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_len_response(0)
+    s.update_replicas([r1])
+
+    start = time.time()
+    while time.time() - start < 10:
+        # Verify that the scheduling task exits and there are no assignments left.
+        if s.curr_scheduling_tasks == 0 and s.num_pending_assignments == 0:
+            break
+        await asyncio.sleep(0.1)
+    else:
+        raise TimeoutError(
+            "Scheduling task and pending assignment still around after 10s."
+        )
+
 
 @pytest.mark.asyncio
 async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
+    """
+    Verify that the number of scheduling tasks never exceeds the cap (2 * num_replicas).
+    """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
 
@@ -274,7 +354,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     assert s.curr_scheduling_tasks > scheduling_tasks_one_replica
     assert s.curr_scheduling_tasks == s.max_scheduling_tasks
 
-    # Number of tasks should decrase as the number of pending queries decreases.
+    # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
         r1.set_queue_len_response(0, accepted=True)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
