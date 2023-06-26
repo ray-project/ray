@@ -2,6 +2,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 _, tf, _ = try_import_tf()
 
@@ -13,4 +15,6 @@ class NoopModel(TFModelV2):
 
     @override(ModelV2)
     def forward(self, input_dict, state, seq_lens):
+        if log_once("rllib_tf_noop_model_deprecation"):
+            deprecation_warning(old="ray.rllib.models.tf.NoopModel")
         return tf.cast(input_dict["obs_flat"], tf.float32), state
