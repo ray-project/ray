@@ -217,24 +217,18 @@ def test_repartition_shuffle_arrow(ray_start_regular_shared):
     assert large._block_num_rows() == [500] * 20
 
 
-def test_distinct(ray_start_regular_shared):
+def test_unique(ray_start_regular_shared):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3])
-    assert ds.distinct().sort("item").take_all() == [
-        {"item": 1},
-        {"item": 2},
-        {"item": 3},
-    ]
+    assert set(ds.unique("item")) == {1, 2, 3}
+
     ds = ray.data.from_items(
         [
             {"a": 1, "b": 1},
             {"a": 1, "b": 2},
         ]
     )
-    # Currently, we don't support distinct on multiple columns.
-    with pytest.raises(NotImplementedError):
-        ds.distinct().take_all()
-    # After selecting a single column, distinct should work.
-    assert ds.select_columns(["a"]).distinct().take_all() == [{"a": 1}]
+    assert set(ds.unique("a")) == {1}
+    assert set(ds.unique("b")) == {1, 2}
 
 
 def test_grouped_dataset_repr(ray_start_regular_shared):
