@@ -329,7 +329,6 @@ install_pip_packages() {
   delayed_packages=()
 
   requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
-  requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/core-requirements.txt")
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -436,6 +435,8 @@ install_pip_packages() {
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
         requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
       fi
+
+      requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/core-requirements.txt")
   fi
 
   # Inject our own mirror for the CIFAR10 dataset
