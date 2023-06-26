@@ -256,18 +256,18 @@ In most use cases, it is recommended to enable Kubernetes autoscaling to fully u
 :::
 
 ## Load balancer
-You can setup ingress to expose your Serve application to the internet. See [example](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice-alb-ingress.yaml)
+Set up ingress to expose your Serve application to the internet. See [this configuration](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice-alb-ingress.yaml)
 
 :::{note}
-- Ray Serve provisions an HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
-- Ray Serve uses port 8000 as the default HTTP proxy traffic port. You can change the port by setting `http_options` in the Serve config. Learn more details [here](serve-multi-application)
+- Ray Serve runs HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
+- Ray Serve uses port 8000 as the default HTTP proxy traffic port. You can change the port by setting `http_options` in the Serve config. Learn more details [here](serve-multi-application).
 :::
 
 ## Monitoring
-You can monitor your Serve application using the Ray dashboard.
-Learn more about how to configure & manage dashboard [here](observability-configure-manage-dashboard)
-Learn ray serve dashboard [here](serve-monitoring)
-Learn how to setup Grafana dashboard [here](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/)
+Monitor your Serve application using the Ray Dashboard.
+Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
+Learn about the Ray Serve Dashboard [here](serve-monitoring).
+Learn how to set up the Grafana for Dashboard [here](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/)
 
 
 ## Next Steps
