@@ -10,7 +10,9 @@ hpbandster==0.7.4
 
 dragonfly-opt==0.1.7
 flaml==1.1.1
-HEBO==0.3.2
+# Todo: Update when released on pypi
+git+https://github.com/huawei-noah/HEBO@v0.3.4#subdirectory=HEBO
+# HEBO==0.3.4
 # pymoo pin for HEBO compatibility
 pymoo==0.5.0
 hyperopt==0.2.7

@@ -49,7 +49,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U \
 # explicitly install (overwrite) pytorch with CUDA support
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -c requirements.txt \
-           -r dl-gpu-requirements.txt \
+           -r dl-gpu-requirements.txt
 
 # Remove dataclasses & typing because they are included in Python > 3.6
 RUN if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \
