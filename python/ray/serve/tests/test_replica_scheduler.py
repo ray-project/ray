@@ -361,7 +361,9 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
 
-        assert s.curr_num_scheduling_tasks == min(len(tasks), s.max_num_scheduling_tasks)
+        assert s.curr_num_scheduling_tasks == min(
+            len(tasks), s.max_num_scheduling_tasks
+        )
 
 
 if __name__ == "__main__":
