@@ -9,7 +9,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 class SpreadDeploymentSchedulingPolicy:
-    """A scheduling policy that spreads replicas with best efforts."""
+    """A scheduling policy that spreads replicas with best effort."""
 
     pass
 
@@ -39,7 +39,7 @@ class ReplicaSchedulingRequest:
 
 @dataclass
 class DeploymentDownscaleRequest:
-    """Request to stop certain number of replicas.
+    """Request to stop a certain number of replicas.
 
     The scheduler is responsible for
     choosing the replicas to stop.
@@ -50,19 +50,19 @@ class DeploymentDownscaleRequest:
 
 
 class DeploymentScheduler:
-    """A centralized scheduler for all serve deployments.
+    """A centralized scheduler for all Serve deployments.
 
-    It makes scheduling decisions in a batch mode for each update cycle.
+    It makes a batch of scheduling decisions in each update cycle.
     """
 
     def __init__(self, gcs_client: Optional[GcsClient] = None):
         # {deployment_name: scheduling_policy}
         self._deployments = {}
-        # Replicas that are pending to be scheduled.
+        # Replicas that are waiting to be scheduled.
         # {deployment_name: {replica_name: deployment_upscale_request}}
         self._pending_replicas = defaultdict(dict)
         # Replicas that are being scheduled.
-        # The underlying actors are submitted.
+        # The underlying actors have been submitted.
         # {deployment_name: {replica_name: target_node_id}}
         self._launching_replicas = defaultdict(dict)
         # Replicas that are recovering.
@@ -96,21 +96,21 @@ class DeploymentScheduler:
     def on_deployment_deleted(self, deployment_name: str) -> None:
         """This is called whenver a deployment is deleted."""
         assert not self._pending_replicas[deployment_name]
-        del self._pending_replicas[deployment_name]
+        self._pending_replicas.pop(deployment_name, None)
 
         assert not self._launching_replicas[deployment_name]
-        del self._launching_replicas[deployment_name]
+        self._launching_replicas.pop(deployment_name, None)
 
         assert not self._recovering_replicas[deployment_name]
-        del self._recovering_replicas[deployment_name]
+        self._recovering_replicas.pop(deployment_name, None)
 
         assert not self._running_replicas[deployment_name]
-        del self._running_replicas[deployment_name]
+        self._running_replicas.pop(deployment_name, None)
 
         del self._deployments[deployment_name]
 
     def on_replica_stopping(self, deployment_name: str, replica_name: str) -> None:
-        """This is called whenver a deployment replica is being stopped."""
+        """This is called whenever a deployment replica is being stopped."""
         self._pending_replicas[deployment_name].pop(replica_name, None)
         self._launching_replicas[deployment_name].pop(replica_name, None)
         self._recovering_replicas[deployment_name].discard(replica_name)
@@ -242,7 +242,7 @@ class DeploymentScheduler:
         """Prioritize replicas that have fewest copies on a node.
 
         This algorithm helps to scale down more intelligently because it can
-        relinquish node faster. Note that this algorithm doesn't consider other
+        relinquish nodes faster. Note that this algorithm doesn't consider other
         deployments or other actors on the same node. See more at
         https://github.com/ray-project/ray/issues/20599.
         """

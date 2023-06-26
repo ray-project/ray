@@ -2061,7 +2061,13 @@ class DriverDeploymentState(DeploymentState):
     def update(
         self,
     ) -> Tuple[bool, bool, List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
-        """Returns (deleted, any_replicas_recovering)."""
+        """
+        Returns:
+            deleted
+            any_replicas_recovering
+            list of scheduling requests
+            a downscale request
+        """
         try:
             self._check_and_update_replicas()
 
