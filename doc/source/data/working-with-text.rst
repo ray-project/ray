@@ -1,36 +1,90 @@
 Working with Text
 =================
 
-Text data is ubiquitous in use cases like Natural Language Processing.
+With Ray Data, you can easily read and transform large amounts of text data.
 
 This guide shows you how to:
 
 * :ref:`Read text files <reading-text-files>`
-* :ref:`Transform text <transforming-text>`
-* :ref:`Perform inference on text <performing-inference-on-text>`
-* :ref:`Save text <saving-text>`
+* :ref:`Transform text data <transforming-text>`
+* :ref:`Perform inference on text data <performing-inference-on-text>`
+* :ref:`Save text data <saving-text>`
 
 .. _reading-text-files:
 
 Reading text files
 ------------------
 
-To read text files, call :func:`~ray.data.read_text`. Ray Data creates a row for each
-line of text.
+Ray Data can read lines of text and JSONL. Alternatiely, you can read raw binary
+files and manually decode data.
 
-.. testcode::
+.. tab-set::
 
-    import ray
+    .. tab-item:: Text lines
 
-    ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
+        To read lines of text, call :func:`~ray.data.read_text`. Ray Data creates a
+        row for each line of text.
 
-    ds.show(3)
+        .. testcode::
 
-.. testoutput::
+            import ray
 
-    {'text': 'The Zen of Python, by Tim Peters'}
-    {'text': 'Beautiful is better than ugly.'}
-    {'text': 'Explicit is better than implicit.'}
+            ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'text': 'The Zen of Python, by Tim Peters'}
+            {'text': 'Beautiful is better than ugly.'}
+            {'text': 'Explicit is better than implicit.'}
+
+    .. tab-item:: JSONL
+
+        To read newline-delimited JSON, call :func:`~ray.data.read_json`. Ray Data
+        creates a row for each JSON object.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
+
+            ds.show(3)
+
+        .. testoutput::
+
+            {'timestamp': datetime.datetime(2022, 2, 8, 15, 43, 41), 'size': 48261360}
+            {'timestamp': datetime.datetime(2011, 12, 29, 0, 19, 10), 'size': 519523}
+            {'timestamp': datetime.datetime(2028, 9, 9, 5, 6, 7), 'size': 2163626}
+
+
+    .. tab-item:: Other formats
+
+        To read other text formats, call :func:`~ray.data.read_binary_files`. Then,
+        call :meth:`~ray.data.Dataset.map` to decode your data.
+
+        .. testcode::
+
+            from typing import Any, Dict
+            from bs4 import BeautifulSoup
+            import ray
+
+            def parse_html(row: Dict[str, Any]) -> Dict[str, Any]:
+                html = row["bytes"].decode("utf-8")
+                soup = BeautifulSoup(html, features="html.parser")
+                return {"text": soup.get_text().strip()}
+
+            ds = (
+                ray.data.read_binary_files("s3://anonymous@ray-example-data/index.html")
+                .map(parse_html)
+            )
+
+            ds.show()
+
+        .. testoutput::
+
+            {'text': 'Batoidea\nBatoidea is a superorder of cartilaginous fishes...'}
 
 For more information on reading files, see :ref:`Loading data <loading_data>`.
 
@@ -66,15 +120,17 @@ text in parallel.
     {'text': 'beautiful is better than ugly.'}
     {'text': 'explicit is better than implicit.'}
 
-For more information on transforming data, see `Transforming data <transforming_data>`_.
+For more information on transforming data, see
+:ref:`Transforming data <transforming_data>`.
 
 .. _performing-inference-on-text:
 
 Performing inference on text
 ----------------------------
 
-To perform inference on text, implement a callable class that sets up and invokes a
-model. Then, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
+To perform inference with a pre-trained model on text data, implement a callable class
+that sets up and invokes a model. Then, call
+:meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
 .. testcode::
 
@@ -109,8 +165,8 @@ model. Then, call :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
     {'text': 'Explicit is better than implicit.', 'label': 'POSITIVE'}
 
 For more information on performing inference, see
-`End-to-end: Offline Batch Inference <batch_inference_home>`_
-and `Transforming batches with actors <transforming_data_actors>`_.
+:ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
+and :ref:`Transforming batches with actors <transforming_data_actors>`.
 
 .. _saving-text:
 
@@ -128,4 +184,4 @@ save text in many formats.
 
     ds.write_parquet("local:///tmp/results")
 
-For more information on saving data, see `Saving data <saving_data>`_.
+For more information on saving data, see :ref:`Saving data <saving-data>`.
