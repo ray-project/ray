@@ -102,7 +102,7 @@
 
 # ML Docker Dependencies
 /python/requirements/air/dl-cpu-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
-/python/requirements/air/ml-docker-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
+/python/requirements/air/dl-gpu-requirements.txt @amogkam @krfricke @richardliaw @matthewdeng
 
 # Ray symbol export
 /src/ray/ray_version_script.lds @iycheng @ericl @scv119

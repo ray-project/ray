@@ -1,2 +1,3 @@
-awscli
+# Todo: Fix conflicts with pinned boto3/botocore
+# awscli
 gsutil
