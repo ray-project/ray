@@ -1,0 +1,12 @@
+steps:
+  - name: "Build wheels"
+    command:
+      - source runtime/ci/setup-artifacts-dir.sh
+      - /bin/bash runtime/ci/build-forge.sh
+      - /bin/bash runtime/ci/build-wheels.sh
+    agents:
+      queue: "large"
+    artifact_paths:
+      - "/artifacts/**/*"
+    env:
+      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
