@@ -57,7 +57,7 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
     yield s
 
     # Always verify that all scheduling tasks exit once all queries are satisfied.
-    assert s.curr_scheduling_tasks == 0
+    assert s.curr_num_scheduling_tasks == 0
     assert s.num_pending_assignments == 0
 
 
@@ -280,7 +280,7 @@ async def test_cancellation(pow_2_scheduler, fake_query):
     assert (await task2) == r1
 
     # Verify that the scheduling tasks exit and there are no assignments left.
-    assert s.curr_scheduling_tasks == 0
+    assert s.curr_num_scheduling_tasks == 0
     assert s.num_pending_assignments == 0
 
 
@@ -307,7 +307,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     start = time.time()
     while time.time() - start < 10:
         # Verify that the scheduling task exits and there are no assignments left.
-        if s.curr_scheduling_tasks == 0 and s.num_pending_assignments == 0:
+        if s.curr_num_scheduling_tasks == 0 and s.num_pending_assignments == 0:
             break
         await asyncio.sleep(0.1)
     else:
@@ -332,7 +332,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     assert len(done) == 0
 
     # There should be zero scheduling tasks while there are no replicas.
-    assert s.curr_scheduling_tasks == 0
+    assert s.curr_num_scheduling_tasks == 0
 
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
     r1.set_queue_len_response(0, accepted=False)
@@ -343,16 +343,16 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
 
     # Now that there is at least one replica available, there should be nonzero
     # number of tasks running.
-    assert s.curr_scheduling_tasks > 0
-    assert s.curr_scheduling_tasks == s.max_scheduling_tasks
+    assert s.curr_num_scheduling_tasks > 0
+    assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
 
     # Number of tasks should increase when more replicas are available.
-    scheduling_tasks_one_replica = s.curr_scheduling_tasks
+    scheduling_tasks_one_replica = s.curr_num_scheduling_tasks
     r2 = FakeReplicaWrapper("r2")
     r2.set_queue_len_response(0, accepted=False)
     s.update_replicas([r1, r2])
-    assert s.curr_scheduling_tasks > scheduling_tasks_one_replica
-    assert s.curr_scheduling_tasks == s.max_scheduling_tasks
+    assert s.curr_num_scheduling_tasks > scheduling_tasks_one_replica
+    assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
@@ -361,7 +361,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
 
-        assert s.curr_scheduling_tasks == min(len(tasks), s.max_scheduling_tasks)
+        assert s.curr_num_scheduling_tasks == min(len(tasks), s.max_num_scheduling_tasks)
 
 
 if __name__ == "__main__":
