@@ -215,17 +215,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         if there are pending assignments.
         """
         self._replicas = {r.replica_id: r for r in replicas}
-        new_replica_ids = set(self._replicas.keys())
-        if new_replica_ids != self._replica_id_set:
-            self._replica_id_set = new_replica_ids
+        new_replica_id_set = set(self._replicas.keys())
+        if self._replica_id_set != new_replica_id_set:
+            self._replica_id_set = new_replica_id_set
             logger.info(
                 "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_ids}.",
+                f"{self._deployment_name}: {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
-            self._replicas_updated_event.set()
-            self.maybe_start_scheduling_tasks()
+        self._replicas_updated_event.set()
+        self.maybe_start_scheduling_tasks()
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Shim for compatibility with the existing round robin scheduler."""
