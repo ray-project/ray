@@ -1,7 +1,7 @@
 .. _data_performance_tips:
 
-Performance Tips and Tuning
-===========================
+Advanced: Performance Tips and Tuning
+=====================================
 
 Optimizing transforms
 ---------------------

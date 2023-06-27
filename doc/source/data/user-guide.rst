@@ -18,5 +18,5 @@ show you how achieve several tasks.
     iterating-over-data
     saving-data
     working-with-tensors
-    performance-tips
     batch_inference
+    performance-tips
