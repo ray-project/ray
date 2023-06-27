@@ -13,7 +13,6 @@ from ray.tests.conftest import *  # noqa
 
 
 def test_input_backpressure_e2e(restore_data_context, shutdown_only):
-
     # Tests that backpressure applies even when reading directly from the input
     # datasource. This relies on datasource metadata size estimation.
     @ray.remote
@@ -74,7 +73,6 @@ def test_input_backpressure_e2e(restore_data_context, shutdown_only):
 
 
 def test_streaming_backpressure_e2e(restore_data_context):
-
     # This test case is particularly challenging since there is a large input->output
     # increase in data size: https://github.com/ray-project/ray/issues/34041
     class TestSlow:
