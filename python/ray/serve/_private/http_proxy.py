@@ -12,6 +12,8 @@ import uvicorn
 import starlette.responses
 import starlette.routing
 from starlette.types import Message, Receive, Scope, Send
+from starlette.datastructures import MutableHeaders
+from starlette.middleware import Middleware
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
@@ -542,7 +544,6 @@ class HTTPProxy:
         loop = get_or_create_event_loop()
         # We have received all the http request conent. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
-        request_id = ray.serve.context._serve_request_context.get().request_id
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
@@ -597,8 +598,7 @@ class HTTPProxy:
             except RayTaskError as e:
                 error_message = f"Unexpected error, traceback: {e}."
                 await Response(
-                    error_message, status_code=500, request_id=request_id
-                ).send(scope, receive, send)
+                    error_message, status_code=500).send(scope, receive, send)
                 return "500"
             except RayActorError:
                 logger.info(
@@ -617,22 +617,15 @@ class HTTPProxy:
                 backoff = False
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500, request_id=request_id).send(
+            await Response(error_message, status_code=500).send(
                 scope, receive, send
             )
             return "500"
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            # Set request id
-            result.messages[0]["headers"].append(
-                [
-                    RAY_SERVE_REQUEST_ID,
-                    request_id,
-                ]
-            )
             await result(scope, receive, send)
             return str(result.status_code)
         else:
-            await Response(result, request_id=request_id).send(scope, receive, send)
+            await Response(result).send(scope, receive, send)
             return "200"
 
     async def proxy_asgi_receive(
@@ -687,9 +680,6 @@ class HTTPProxy:
                         # message containing the "status" field. Other response types
                         # (e.g., WebSockets) may not.
                         status_code = str(asgi_message["status"])
-                        asgi_message["headers"].append(
-                            [RAY_SERVE_REQUEST_ID, request_id]
-                        )
                     elif asgi_message["type"] == "websocket.disconnect":
                         status_code = str(asgi_message["code"])
 
@@ -716,6 +706,20 @@ class HTTPProxy:
         return status_code
 
 
+class RequestIdMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        async def send_with_request_id(message):
+            if message["type"] == "http.response.start":
+                request_id = ray.serve.context._serve_request_context.get().request_id
+                headers = MutableHeaders(scope=message)
+                headers.append(RAY_SERVE_REQUEST_ID, request_id)
+            await send(message)
+        await self.app(scope, receive, send_with_request_id)
+
+
 @ray.remote(num_cpus=0)
 class HTTPProxyActor:
     def __init__(
@@ -733,8 +737,7 @@ class HTTPProxyActor:
             component_name="http_proxy", component_id=node_ip_address
         )
 
-        if http_middlewares is None:
-            http_middlewares = []
+        http_middlewares = [Middleware(RequestIdMiddleware)]
 
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(

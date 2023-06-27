@@ -61,7 +61,7 @@ class Response:
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
-    def __init__(self, content=None, status_code=200, request_id=None):
+    def __init__(self, content=None, status_code=200):
         """Construct a HTTP Response based on input type.
 
         Args:
@@ -70,14 +70,6 @@ class Response:
         """
         self.status_code = status_code
         self.raw_headers = []
-
-        if request_id:
-            self.raw_headers.append(
-                [
-                    RAY_SERVE_REQUEST_ID,
-                    request_id,
-                ]
-            )
 
         if content is None:
             self.body = b""
