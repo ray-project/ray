@@ -95,6 +95,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
       TRAVIS_COMMIT=$(git rev-parse HEAD)
     fi
 
+    TRAVIS_COMMIT="a03efd9931128d387649dd48b0e4864b43d3bfb4"
+
     sed -i .bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
 
     # Add the correct Python to the path and build the wheel. This is only
