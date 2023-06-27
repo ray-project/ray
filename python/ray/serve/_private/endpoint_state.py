@@ -34,6 +34,9 @@ class EndpointState:
     def shutdown(self):
         self._kv_store.delete(CHECKPOINT_KEY)
 
+    def check_resource(self):
+        return self._kv_store.get(CHECKPOINT_KEY)
+
     def _checkpoint(self):
         self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(self._endpoints))
 

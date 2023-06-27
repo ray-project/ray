@@ -16,6 +16,7 @@ from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.common import (
+    ApplicationStatus,
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
@@ -182,6 +183,7 @@ class ServeController:
             worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
+        self._shutting_down = False
 
         run_background_task(self.run_control_loop())
 
@@ -297,12 +299,19 @@ class ServeController:
             )
 
     async def run_control_loop(self) -> None:
+        logger.warning("Controller run_control_loop called.")
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
         start_time = time.time()
         while True:
+            if self._shutting_down:
+                try:
+                    self.shutdown()
+                except Exception:
+                    logger.exception("Exception during shutdown.")
+
             if (
                 not self.done_recovering_event.is_set()
                 and time.time() - start_time > recovering_timeout
@@ -433,14 +442,59 @@ class ServeController:
                 )
         return http_config.root_url
 
+    def check_resources(self):
+        logger.warning("controller check_resources called")
+        kv_store_released = self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
+        logger.warning(f"kv_store_released: {kv_store_released}")
+        all_app_deleting = all([_app.status == ApplicationStatus.DELETING for _app in self.application_state_manager.list_app_statuses().values()])
+        logger.warning(f"all_app_deleting: {all_app_deleting}")
+        all_deployment_deleted = (len(self.get_all_deployment_statuses()) == 0)
+        logger.warning(f"all_deployment_deleted: {all_deployment_deleted}")
+        endpoint_deleted = self.endpoint_state.check_resource() is None
+        logger.warning(f"endpoint_deleted: {endpoint_deleted}")
+        http_shutdown = (self.http_state is None) or (self.http_state.is_shutdown())
+        logger.warning(f"http_shutdown: {http_shutdown}")
+
+        if kv_store_released and all_app_deleting and all_deployment_deleted and endpoint_deleted and http_shutdown:
+            _controller_actor = ray.get_actor(self.controller_name, namespace="serve")
+            ray.kill(_controller_actor, no_restart=True)
+
+
+        actor_name_and_state = [(_actor["Name"], _actor["State"]) for _actor in ray._private.state.actors().values()]
+        logger.warning(f"actor_name_and_state: {actor_name_and_state}")
+        time.sleep(1)
+
+    def config_checkpoint_deleted(self) -> bool:
+        """Returns whether the config checkpoint has been deleted.
+
+        Get the config checkpoint from the kv store. If it is None, then it has been
+        deleted.
+        """
+        return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
+
     def shutdown(self):
-        """Shuts down the serve instance completely."""
+        """Shuts down the serve instance completely.
+
+        This method will only be triggered when `self._shutting_down` is true. It
+        deletes the kv store for config checkpoint, set application state to deleting,
+        delete all deployments, and shutdown all HTTP proxies. If all the above
+        resources are released, it will then kill the controller actor.
+        """
+        if not self._shutting_down:
+            return
+
+        logger.warning("Controller shutdown called")
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
         if self.http_state:
             self.http_state.shutdown()
+
+        config_checkpoint_deleted = self.config_checkpoint_deleted()
+
+
+
 
     def deploy(
         self,
@@ -821,6 +875,15 @@ class ServeController:
                 model ids.
         """
         self.deployment_state_manager.record_multiplexed_replica_info(info)
+
+    def set_shutting_down_flag(self):
+        """Set the shutting down flag on controller to signal shutdown in
+        run_control_loop().
+
+        This is used to signal to the controller that it should proceed with shutdown
+        process so it can shutdown gracefully.
+        """
+        self._shutting_down = True
 
 
 @ray.remote(num_cpus=0, max_calls=1)

@@ -229,6 +229,13 @@ class HTTPProxyState:
         self._shutting_down = True
         ray.kill(self.actor_handle, no_restart=True)
 
+    def is_shutdown(self) -> bool:
+        actor_state = "ALIVE"
+        for _actor in ray._private.state.actors().values():
+            if _actor["Name"] == self._actor_name:
+                actor_state = _actor["State"]
+        return self._shutting_down and actor_state == "DEAD"
+
 
 class HTTPState:
     """Manages all state for HTTP proxies in the system.
@@ -267,6 +274,9 @@ class HTTPState:
     def shutdown(self) -> None:
         for proxy_state in self._proxy_states.values():
             proxy_state.shutdown()
+
+    def is_shutdown(self) -> bool:
+        return all(proxy_state.is_shutdown() for proxy_state in self._proxy_states.values())
 
     def get_config(self):
         return self._config

@@ -634,6 +634,9 @@ class ApplicationStateManager:
         for app_state in self._application_states.values():
             app_state.delete()
 
+    def is_shutdown(self) -> bool:
+        return all(app_state.is_shutdown() for app_state in self._application_states.values())
+
     def _save_checkpoint_func(
         self, *, writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]]
     ) -> None:

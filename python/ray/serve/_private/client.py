@@ -107,28 +107,33 @@ class ServeControllerClient:
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
-            ray.get(self._controller.shutdown.remote())
-            self._wait_for_deployments_shutdown()
+            ray.get(self._controller.set_shutting_down_flag.remote())
+            logger.warning("`shutting_down` flag set on the controller. The controller "
+                           "will shut down gracefully in the background.")
+            time.sleep(100)
 
-            ray.kill(self._controller, no_restart=True)
-
-            # Wait for the named actor entry gets removed as well.
-            started = time.time()
-            while True:
-                try:
-                    ray.get_actor(self._controller_name, namespace=SERVE_NAMESPACE)
-                    if time.time() - started > 5:
-                        logger.warning(
-                            "Waited 5s for Serve to shutdown gracefully but "
-                            "the controller is still not cleaned up. "
-                            "You can ignore this warning if you are shutting "
-                            "down the Ray cluster."
-                        )
-                        break
-                except ValueError:  # actor name is removed
-                    break
-
-            self._shutdown = True
+            # ray.get(self._controller.shutdown.remote())
+            # self._wait_for_deployments_shutdown()
+            #
+            # ray.kill(self._controller, no_restart=True)
+            #
+            # # Wait for the named actor entry gets removed as well.
+            # started = time.time()
+            # while True:
+            #     try:
+            #         ray.get_actor(self._controller_name, namespace=SERVE_NAMESPACE)
+            #         if time.time() - started > 5:
+            #             logger.warning(
+            #                 "Waited 5s for Serve to shutdown gracefully but "
+            #                 "the controller is still not cleaned up. "
+            #                 "You can ignore this warning if you are shutting "
+            #                 "down the Ray cluster."
+            #             )
+            #             break
+            #     except ValueError:  # actor name is removed
+            #         break
+            #
+            # self._shutdown = True
 
     def _wait_for_deployments_shutdown(self, timeout_s: int = 60):
         """Waits for all deployments to be shut down and deleted.
