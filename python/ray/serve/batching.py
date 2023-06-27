@@ -116,7 +116,7 @@ class _BatchQueue:
         batch = []
         batch.append(await self.queue.get())
 
-        # Cache current max_batch_size and batch_wait_timeout_s for this batch
+        # Cache current max_batch_size and batch_wait_timeout_s for this batch.
         max_batch_size = self.max_batch_size
         batch_wait_timeout_s = self.batch_wait_timeout_s
 
