@@ -12,7 +12,7 @@ torch, nn = try_import_torch()
 class TestRNNSAC(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        ray.init(local_mode=True)
+        ray.init()
 
     @classmethod
     def tearDownClass(cls) -> None:
