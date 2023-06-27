@@ -54,23 +54,28 @@ class ClientCallManager;
 ///
 /// \tparam Reply Type of the reply message.
 template <class Reply>
-using ClientCallback = std::function<void(const Status &status, const Reply &reply)>;
+using ClientSignature = void(const Status &status, Reply reply);
+
+template <class Reply>
+using ClientCallback = std::function<ClientSignature<Reply>>;
+
+template <class Reply>
+using ClientCompletionToken = boost::asio::any_completion_handler<ClientSignature<Reply>>;
 
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
 ///
 /// \tparam Reply Type of the Reply message.
-template <class Reply>
+template <class Reply, class CompletionToken>
 class ClientCallImpl : public ClientCall {
  public:
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(const ClientCallback<Reply> &callback,
+  explicit ClientCallImpl(CompletionToken&& token,
                           std::shared_ptr<StatsHandle> stats_handle,
                           int64_t timeout_ms = -1)
-      : callback_(std::move(const_cast<ClientCallback<Reply> &>(callback))),
-        stats_handle_(std::move(stats_handle)) {
+      : token_(std::forward<CompletionToken>(token)), stats_handle_(std::move(stats_handle)) {
     if (timeout_ms != -1) {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -94,8 +99,10 @@ class ClientCallImpl : public ClientCall {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
     }
-    if (callback_ != nullptr) {
-      callback_(status, reply_);
+
+    if(token_) {
+      auto ex = boost::asio::get_associated_executor(token_);
+      boost::asio::post(ex, std::move(f));
     }
   }
 
@@ -106,7 +113,7 @@ class ClientCallImpl : public ClientCall {
   Reply reply_;
 
   /// The callback function to handle the reply.
-  ClientCallback<Reply> callback_;
+  CompletionToken token_;
 
   /// The stats handle tracking this RPC.
   std::shared_ptr<StatsHandle> stats_handle_;
@@ -227,20 +234,23 @@ class ClientCallManager {
   /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return A `ClientCall` representing the request that was just sent.
-  template <class GrpcService, class Request, class Reply>
+  template <class GrpcService, class Request, class Reply, class CompletionToken>
   std::shared_ptr<ClientCall> CreateCall(
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request,
-      const ClientCallback<Reply> &callback,
+      CompletionToken&& token,
       std::string call_name,
       int64_t method_timeout_ms = -1) {
     auto stats_handle = main_service_.stats().RecordStart(call_name);
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
-    auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, std::move(stats_handle), method_timeout_ms);
+    auto ex = GetMainService().get_executor();
+    auto t = boost::asio::bind_executor(ex, std::forward<CompletionToken>(token));
+    auto call = std::make_shared<ClientCallImpl<Reply, decltype(t)>>(
+        std::move(t),
+        std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
