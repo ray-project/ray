@@ -440,14 +440,14 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Setup a cluster with 2 nodes
     cluster = Cluster()
-    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=0)
     cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
     serve.start(http_options={"location": "EveryNode"})
 
-    # Deploy 3 replicas, at least one on each node.
-    @serve.deployment(num_replicas=3, ray_actor_options={"num_cpus": 0.9})
+    # Deploy 2 replicas, both should be on the worker node.
+    @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 0.9})
     class HelloModel:
         def __call__(self):
             return "hello"
@@ -455,20 +455,20 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     model = HelloModel.bind()
     serve.run(target=model)
 
-    # Ensure each node has at least one replica.
-    def check_replicas_on_all_nodes():
+    # Ensure worker node has both replicas.
+    def check_replicas_on_worker_nodes():
         _actors = ray._private.state.actors().values()
         replica_nodes = [
             a["Address"]["NodeID"]
             for a in _actors
             if a["ActorClassName"].startswith("ServeReplica")
         ]
-        return len(set(replica_nodes)) == 2
+        return len(set(replica_nodes)) == 1
 
-    wait_for_condition(check_replicas_on_all_nodes)
+    wait_for_condition(check_replicas_on_worker_nodes)
 
-    # Ensure total actors of 2 proxies, 1 controller, and 3 replicas, and 2 nodes exist.
-    wait_for_condition(lambda: len(ray._private.state.actors()) == 6)
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
