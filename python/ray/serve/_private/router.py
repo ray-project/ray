@@ -94,7 +94,7 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_len(self) -> Tuple[str, int, bool]:
+    async def get_queue_state(self) -> Tuple[str, int, bool]:
         """Returns tuple of (replica_id, queue_len, accepted)."""
         pass
 
@@ -118,7 +118,7 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_len(self) -> Tuple[str, int, bool]:
+    async def get_queue_state(self) -> Tuple[str, int, bool]:
         queue_len = (
             await self._replica_info.actor_handle.get_num_ongoing_requests.remote()
         )
@@ -334,9 +334,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
         """
-        get_queue_len_tasks = [c.get_queue_len() for c in candidates]
+        get_queue_state_tasks = [c.get_queue_state() for c in candidates]
         done, pending = await asyncio.wait(
-            get_queue_len_tasks,
+            get_queue_state_tasks,
             timeout=self.queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
@@ -437,11 +437,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         Starts tasks so that there is at least one task per pending assignment
         (respecting the max number of scheduling tasks).
+
+        In the common case, this will start a single task when a new request comes
+        in for scheduling. However, in cases where the number of available replicas
+        is updated or a task exits unexpectedly, we may need to start multiple.
         """
         tasks_to_start = (
             self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
         )
-        for i in range(tasks_to_start):
+        for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.fulfill_pending_assignments())
             )

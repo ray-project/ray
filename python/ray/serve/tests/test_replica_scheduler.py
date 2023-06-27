@@ -39,12 +39,12 @@ class FakeReplicaWrapper(ReplicaWrapper):
     def multiplexed_model_ids(self) -> Set[str]:
         return self._model_ids
 
-    def set_queue_len_response(self, queue_len: int, accepted: bool = True):
+    def set_queue_state_response(self, queue_len: int, accepted: bool = True):
         self._queue_len = queue_len
         self._accepted = accepted
         self._has_queue_len_response.set()
 
-    async def get_queue_len(self) -> Tuple[str, int, bool]:
+    async def get_queue_state(self) -> Tuple[str, int, bool]:
         while not self._has_queue_len_response.is_set():
             await self._has_queue_len_response.wait()
 
@@ -102,7 +102,7 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0)
+    r1.set_queue_state_response(0)
     s.update_replicas([r1])
 
     assert (await task) == r1
@@ -122,13 +122,13 @@ async def test_no_replicas_accept_then_one_accepts(pow_2_scheduler, fake_query):
     assert len(done) == 0
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0, accepted=False)
+    r1.set_queue_state_response(0, accepted=False)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    r1.set_queue_len_response(0, accepted=True)
+    r1.set_queue_state_response(0, accepted=True)
     assert (await task) == r1
 
 
@@ -142,7 +142,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     loop = get_or_create_event_loop()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0, accepted=False)
+    r1.set_queue_state_response(0, accepted=False)
     s.update_replicas([r1])
 
     task = loop.create_task(s.choose_replica_for_query(fake_query))
@@ -153,7 +153,7 @@ async def test_one_replica_available_then_none_then_one(pow_2_scheduler, fake_qu
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
 
-    r1.set_queue_len_response(0, accepted=True)
+    r1.set_queue_state_response(0, accepted=True)
     s.update_replicas([r1])
 
     assert (await task) == r1
@@ -168,10 +168,10 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0)
+    r1.set_queue_state_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_len_response(0)
+    r2.set_queue_state_response(0)
 
     s.update_replicas([r1, r2])
 
@@ -192,10 +192,10 @@ async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0)
+    r1.set_queue_state_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_len_response(0, accepted=False)
+    r2.set_queue_state_response(0, accepted=False)
 
     s.update_replicas([r1, r2])
 
@@ -211,13 +211,13 @@ async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0)
+    r1.set_queue_state_response(0)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_len_response(0, accepted=False)
+    r2.set_queue_state_response(0, accepted=False)
 
     r3 = FakeReplicaWrapper("r3")
-    r3.set_queue_len_response(0)
+    r3.set_queue_state_response(0)
 
     s.update_replicas([r1, r2, r3])
 
@@ -234,10 +234,10 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
     s = pow_2_scheduler
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(1)
+    r1.set_queue_state_response(1)
 
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_len_response(0)
+    r2.set_queue_state_response(0)
 
     s.update_replicas([r1, r2])
 
@@ -268,7 +268,7 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
     s.update_replicas([r1])
 
     for i in range(len(tasks)):
-        r1.set_queue_len_response(0)
+        r1.set_queue_state_response(0)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
 
         # If the order was not FIFO, the fulfilled assignment may not be the front of
@@ -295,7 +295,7 @@ async def test_cancellation(pow_2_scheduler, fake_query):
     task1.cancel()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0)
+    r1.set_queue_state_response(0)
     s.update_replicas([r1])
 
     assert (await task2) == r1
@@ -322,7 +322,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     task.cancel()
 
     r1 = FakeReplicaWrapper("r1")
-    r1.set_queue_len_response(0)
+    r1.set_queue_state_response(0)
     s.update_replicas([r1])
 
     start = time.time()
@@ -356,7 +356,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     assert s.curr_num_scheduling_tasks == 0
 
     r1 = FakeReplicaWrapper("r1", reset_after_response=True)
-    r1.set_queue_len_response(0, accepted=False)
+    r1.set_queue_state_response(0, accepted=False)
     s.update_replicas([r1])
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -370,14 +370,14 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     # Number of tasks should increase when more replicas are available.
     scheduling_tasks_one_replica = s.curr_num_scheduling_tasks
     r2 = FakeReplicaWrapper("r2")
-    r2.set_queue_len_response(0, accepted=False)
+    r2.set_queue_state_response(0, accepted=False)
     s.update_replicas([r1, r2])
     assert s.curr_num_scheduling_tasks > scheduling_tasks_one_replica
     assert s.curr_num_scheduling_tasks == s.max_num_scheduling_tasks
 
     # Number of tasks should decrease as the number of pending queries decreases.
     for i in range(len(tasks)):
-        r1.set_queue_len_response(0, accepted=True)
+        r1.set_queue_state_response(0, accepted=True)
         done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
         assert done.pop() == tasks[0]
         tasks = tasks[1:]
@@ -414,7 +414,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     # Also set the queue length response on the existing replica.
     r2 = FakeReplicaWrapper("r2")
     s.update_replicas([r2])
-    r1.set_queue_len_response(0, accepted=True)
+    r1.set_queue_state_response(0, accepted=True)
 
     # The original replica should *not* be scheduled.
     done, _ = await asyncio.wait([task], timeout=0.1)
@@ -422,7 +422,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     assert s.curr_num_scheduling_tasks == 1
 
     # Set the new replica to accept, it should be scheduled.
-    r2.set_queue_len_response(0, accepted=True)
+    r2.set_queue_state_response(0, accepted=True)
     assert (await task) == r2
 
 
@@ -437,11 +437,11 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
-        r1.set_queue_len_response(100, accepted=True)
+        r1.set_queue_state_response(100, accepted=True)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
-        r2.set_queue_len_response(100, accepted=True)
+        r2.set_queue_state_response(100, accepted=True)
         r3 = FakeReplicaWrapper("r3", model_ids={})
-        r3.set_queue_len_response(0, accepted=True)
+        r3.set_queue_state_response(0, accepted=True)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
@@ -458,11 +458,11 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
-        r1.set_queue_len_response(0, accepted=False)
+        r1.set_queue_state_response(0, accepted=False)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
-        r2.set_queue_len_response(100, accepted=False)
+        r2.set_queue_state_response(100, accepted=False)
         r3 = FakeReplicaWrapper("r3", model_ids={})
-        r3.set_queue_len_response(0, accepted=True)
+        r3.set_queue_state_response(0, accepted=True)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
@@ -479,11 +479,11 @@ class TestModelMultiplexing:
         loop = get_or_create_event_loop()
 
         r1 = FakeReplicaWrapper("r1", model_ids={"m1"})
-        r1.set_queue_len_response(0, accepted=True)
+        r1.set_queue_state_response(0, accepted=True)
         r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
-        r2.set_queue_len_response(0, accepted=True)
+        r2.set_queue_state_response(0, accepted=True)
         r3 = FakeReplicaWrapper("r3", model_ids={"m3"})
-        r3.set_queue_len_response(0, accepted=True)
+        r3.set_queue_state_response(0, accepted=True)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):

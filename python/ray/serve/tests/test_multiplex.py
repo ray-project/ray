@@ -203,6 +203,10 @@ class TestBasicAPI:
         assert serve.get_multiplexed_model_id() == "1"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Multiplexing not supported w/ new routing yet.",
+)
 def test_multiplexed_replica_info(serve_instance):
     """Test MultiplexedReplicaInfo is passed to the controller & router"""
 
@@ -268,6 +272,10 @@ def test_multiplexed_replica_info(serve_instance):
     )
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Multiplexing not supported w/ new routing yet.",
+)
 def test_multiplexed_e2e(serve_instance):
     """Test multiplexed function end to end"""
 
@@ -300,6 +308,10 @@ def test_multiplexed_e2e(serve_instance):
         assert ray.get(handle.options(multiplexed_model_id="1").remote("blabla")) == pid
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Multiplexing not supported w/ new routing yet.",
+)
 def test_multiplexed_lru_policy(serve_instance):
     """Test multiplexed function LRU policy"""
 
@@ -332,6 +344,10 @@ def test_multiplexed_lru_policy(serve_instance):
     )
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Multiplexing not supported w/ new routing yet.",
+)
 def test_multiplexed_multiple_replicas(serve_instance):
     """Test multiplexed traffic can be sent to multiple replicas"""
     signal = SignalActor.remote()
