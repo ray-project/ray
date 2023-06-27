@@ -27,7 +27,8 @@ def test_request_id_header_by_default(ray_shutdown):
 
 @pytest.mark.parametrize("deploy_type", ["basic", "fastapi", "starlette_resp"])
 def test_user_provided_request_id_header(ray_shutdown, deploy_type):
-    """Test that a user-provided request_id is propagated to the replica and returned as a header."""
+    """Test that a user-provided request_id is propagated to the
+    replica and returned as a header."""
 
     if deploy_type == "fastapi":
         app = FastAPI()
