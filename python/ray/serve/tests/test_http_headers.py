@@ -13,16 +13,15 @@ def test_request_id_header_by_default(ray_shutdown):
 
     @serve.deployment
     class Model:
-        def __call__(self) -> int:
+        def __call__(self):
             request_id = ray.serve.context._serve_request_context.get().request_id
-            assert request_id == "123-234"
-            return 1
+            return request_id
 
     serve.run(Model.bind())
     resp = requests.get("http://localhost:8000")
     assert resp.status_code == 200
-    assert resp.json() == 1
     assert RAY_SERVE_REQUEST_ID_HEADER in resp.headers
+    assert resp.text == resp.headers[RAY_SERVE_REQUEST_ID_HEADER]
 
 
 @pytest.mark.parametrize("deploy_type", ["basic", "fastapi", "starlette_resp"])
