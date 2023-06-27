@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deploy_utils import get_deploy_args
@@ -108,8 +107,10 @@ class ServeControllerClient:
 
         if ray.is_initialized() and not self._shutdown:
             ray.get(self._controller.set_shutting_down_flag.remote())
-            logger.warning("`shutting_down` flag set on the controller. The controller "
-                           "will shut down gracefully in the background.")
+            logger.warning(
+                "`shutting_down` flag set on the controller. The controller "
+                "will shut down gracefully in the background."
+            )
             time.sleep(100)
 
             # ray.get(self._controller.shutdown.remote())

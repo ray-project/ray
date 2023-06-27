@@ -276,7 +276,9 @@ class HTTPState:
             proxy_state.shutdown()
 
     def is_shutdown(self) -> bool:
-        return all(proxy_state.is_shutdown() for proxy_state in self._proxy_states.values())
+        return all(
+            proxy_state.is_shutdown() for proxy_state in self._proxy_states.values()
+        )
 
     def get_config(self):
         return self._config

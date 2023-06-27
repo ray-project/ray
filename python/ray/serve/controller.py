@@ -446,21 +446,36 @@ class ServeController:
         logger.warning("controller check_resources called")
         kv_store_released = self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
         logger.warning(f"kv_store_released: {kv_store_released}")
-        all_app_deleting = all([_app.status == ApplicationStatus.DELETING for _app in self.application_state_manager.list_app_statuses().values()])
+        all_app_deleting = all(
+            [
+                _app.status == ApplicationStatus.DELETING
+                for _app in self.application_state_manager.list_app_statuses().values()
+            ]
+        )
         logger.warning(f"all_app_deleting: {all_app_deleting}")
-        all_deployment_deleted = (len(self.get_all_deployment_statuses()) == 0)
+        all_deployment_deleted = len(self.get_all_deployment_statuses()) == 0
         logger.warning(f"all_deployment_deleted: {all_deployment_deleted}")
         endpoint_deleted = self.endpoint_state.check_resource() is None
         logger.warning(f"endpoint_deleted: {endpoint_deleted}")
         http_shutdown = (self.http_state is None) or (self.http_state.is_shutdown())
         logger.warning(f"http_shutdown: {http_shutdown}")
 
-        if kv_store_released and all_app_deleting and all_deployment_deleted and endpoint_deleted and http_shutdown:
-            _controller_actor = ray.get_actor(self.controller_name, namespace="serve")
+        if (
+            kv_store_released
+            and all_app_deleting
+            and all_deployment_deleted
+            and endpoint_deleted
+            and http_shutdown
+        ):
+            _controller_actor = ray.get_actor(
+                self.controller_name, namespace=SERVE_NAMESPACE
+            )
             ray.kill(_controller_actor, no_restart=True)
 
-
-        actor_name_and_state = [(_actor["Name"], _actor["State"]) for _actor in ray._private.state.actors().values()]
+        actor_name_and_state = [
+            (_actor["Name"], _actor["State"])
+            for _actor in ray._private.state.actors().values()
+        ]
         logger.warning(f"actor_name_and_state: {actor_name_and_state}")
         time.sleep(1)
 
@@ -491,10 +506,13 @@ class ServeController:
         if self.http_state:
             self.http_state.shutdown()
 
+        # TODO: complete the logic of shutdown
         config_checkpoint_deleted = self.config_checkpoint_deleted()
-
-
-
+        if config_checkpoint_deleted:
+            _controller_actor = ray.get_actor(
+                self.controller_name, namespace=SERVE_NAMESPACE
+            )
+            ray.kill(_controller_actor, no_restart=True)
 
     def deploy(
         self,
@@ -989,7 +1007,7 @@ class ServeControllerAvatar:
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(controller_name, namespace="serve")
+            self._controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
         except ValueError:
             self._controller = None
         if self._controller is None:
@@ -1004,7 +1022,7 @@ class ServeControllerAvatar:
                 max_restarts=-1,
                 max_task_retries=-1,
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-                namespace="serve",
+                namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
                 controller_name,
