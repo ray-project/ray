@@ -199,7 +199,7 @@ SERVE_LOG_RECORD_FORMAT = {
 }
 
 # Serve HTTP request header key for routing requests.
-SERVE_MULTIPLEXED_MODEL_ID = "SERVE_MULTIPLEXED_MODEL_ID"
+SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 
 # Feature flag to enable StreamingResponse support.
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
