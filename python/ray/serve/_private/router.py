@@ -140,8 +140,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     Requests are scheduled in FIFO order.
 
-    When a request comes in, two replicas are chosen randomly as candidates. The queue
-    length of each replicas is requested from it via a control message.
+    When a request comes in, two candidate replicas are chosen randomly. Each replica
+    is sent a control message to fetch its queue length.
 
     The replica responds with two items: (queue_length, accepted). Only replicas that
     accept the request are considered; between those, the one with the lower queue
@@ -244,7 +244,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while len(self._replicas) == 0:
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available.",
+                    f"{self._deployment_name} but none are available. ",
+                    "Waiting for new replicas to be added."
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()
