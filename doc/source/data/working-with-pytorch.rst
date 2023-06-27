@@ -61,7 +61,7 @@ See the :ref:`Ray Train user guide <train-datasets>` for more details.
 
         for epoch_idx in range(2):
             for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):
-                features = torch.cat([batch[col_name] for col_name in batch.keys() if col_name != "target"], axis=1)
+                features = torch.stack([batch[col_name] for col_name in batch.keys() if col_name != "target"], axis=1)
                 predictions = model(features)
                 train_loss = loss_fn(predictions, batch["target"].unsqueeze(1))
                 train_loss.backward()
@@ -76,28 +76,35 @@ See the :ref:`Ray Train user guide <train-datasets>` for more details.
         scaling_config=ScalingConfig(num_workers=2)
     )
     trainer.fit()
+
+.. testoutput::
+    :hide:
+
+    ...
     
 .. _transform_pytorch:
 
 Transformations with torch tensors
 ----------------------------------
-Transformations applied with `map` or `map_batches` can return PyTorch tensors.
+Transformations applied with `map` or `map_batches` can return PyTorch tensors. 
+For more information on transforming data, read
+:ref:`Transforming data <transforming_data>`.
 
 .. caution::
     
     PyTorch tensors are automatically converted to Numpy arrays under the hood. Subsequent transformations accept Numpy arrays as input, not PyTorch tensors.
 
-.. tabs::
+.. tab-set::
 
-     .. group-tab:: map
+     .. tab-item:: map
 
         .. testcode::
+            
             from typing import Dict
             import numpy as np
             import torch
             import ray
             
-
             ds = ray.data.read_images("example://image-datasets/simple")
 
             def convert_to_torch(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
@@ -121,9 +128,10 @@ Transformations applied with `map` or `map_batches` can return PyTorch tensors.
             ------  ----
             tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
 
-    .. group-tab:: map_batches
+    .. tab-item:: map_batches
 
         .. testcode::
+            
             from typing import Dict
             import numpy as np
             import torch
@@ -143,7 +151,7 @@ Transformations applied with `map` or `map_batches` can return PyTorch tensors.
             # Subsequent transformations take in Numpy array as input.
             def check_numpy(batch: Dict[str, np.ndarray]):
                 assert isinstance(batch["tensor"], np.ndarray)
-                return row
+                return batch
             
             transformed_ds.map_batches(check_numpy, batch_size=2).take_all()
 
@@ -153,66 +161,122 @@ Transformations applied with `map` or `map_batches` can return PyTorch tensors.
             ------  ----
             tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
 
+Built-in PyTorch transforms
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 Built-in PyTorch transforms from `torchvision`, `torchtext`, and `torchaudio` can also be used in Ray Data transformations.
 
-.. code-snippet for torchvision and torchtext.
+.. tab-set::
 
-For more information on transforming data, read
-:ref:`Transforming data <transforming_data>`.
+    .. tab-item:: torchvision
+
+        .. testcode::
+            
+            from typing import Dict
+            import numpy as np
+            import torch
+            from torchvision import transforms
+            import ray
+            
+            # Create the Dataset.
+            ds = ray.data.read_images("example://image-datasets/simple")
+
+            # Define the torchvision transform.
+            transform = transforms.Compose(
+                [
+                    transforms.ToTensor(),
+                    transforms.CenterCrop(10)
+                ]
+            )
+
+            # Define the map UDF
+            def transform_image(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
+                row["transformed_image"] = transform(row["image"])
+                return row
+            
+            # Apply the transform over the dataset.
+            transformed_ds = ds.map(transform_image)
+            print(transformed_ds.schema())
+        
+        .. testoutput::
+
+            Column             Type
+            ------             ----
+            image              numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+            transformed_image  numpy.ndarray(shape=(3, 10, 10), dtype=float)
+        
+    .. tab-item:: torchtext
+
+        .. testcode::
+
+            from typing import Dict, List
+            import numpy as np
+            from torchtext import transforms
+            import ray
+            
+            # Create the Dataset.
+            ds = ray.data.read_text("example://simple.txt")
+
+            # Define the torchtext transform.
+            VOCAB_FILE = "https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt"
+            transform = transforms.BERTTokenizer(vocab_path=VOCAB_FILE, do_lower_case=True, return_tokens=True)
+
+            # Define the map_batches UDF.
+            def tokenize_text(batch: Dict[str, np.ndarray]) -> Dict[str, List[str]]:
+                batch["tokenized_text"] = transform(list(batch["text"]))
+                return batch
+            
+            # Apply the transform over the dataset.
+            transformed_ds = ds.map_batches(tokenize_text, batch_size=2)
+            print(transformed_ds.schema())
+        
+        .. testoutput::
+
+            Column          Type
+            ------          ----
+            text            <class 'object'>
+            tokenized_text  <class 'object'>
 
 .. _batch_inference_pytorch:
 
 Batch inference with PyTorch
 ----------------------------
 
-With Ray Datasets, you can do scalable offline batch inference with PyTorch models by mapping your pre-trained model over your data. See the :ref:`Batch inference user guide <batch_inference_home> for more details`.
-
-.. testcode::
-
-    from typing import Dict
-    import numpy as np
-    import torch
-    import torch.nn as nn
-
-    import ray
-
-    # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
-    # You can also create a Ray Dataset from many other sources and file
-    # formats.
-    ds = ray.data.from_numpy(np.ones((1, 100)))
-
-    # Step 2: Define a Predictor class for inference.
-    # Use a class to initialize the model just once in `__init__`
-    # and re-use it for inference across multiple batches.
-    class TorchPredictor:
-        def __init__(self):
-            # Load a dummy neural network.
-            # Set `self.model` to your pre-trained PyTorch model.
-            self.model = nn.Sequential(
-                nn.Linear(in_features=100, out_features=1),
-                nn.Sigmoid(),
-            )
-            self.model.eval()
-
-        # Logic for inference on 1 batch of data.
-        def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-            tensor = torch.as_tensor(batch["data"], dtype=torch.float32)
-            with torch.inference_mode():
-                # Get the predictions from the input batch.
-                return {"output": self.model(tensor).numpy()}
-
-    # Use 2 parallel actors for inference. Each actor predicts on a
-    # different partition of data.
-    scale = ray.data.ActorPoolStrategy(size=2)
-    # Step 3: Map the Predictor over the Dataset to get predictions.
-    predictions = ds.map_batches(TorchPredictor, compute=scale)
-    # Step 4: Show one prediction output.
-    predictions.show(limit=1)
+With Ray Datasets, you can do scalable offline batch inference with PyTorch models by mapping your pre-trained model over your data. See the :ref:`Batch inference user guide <batch_inference_home>`` for more details and a full example.
 
 .. _saving_pytorch:
 
 Saving Datasets containing PyTorch Tensors
--------------------------------------------
+------------------------------------------
+
+Datasets containing torch tensors can be saved to files, like parquet or numpy. For more information on saving data, read
+:ref:`Saving data <saving-data>`.
+
+.. tab-set::
+
+     .. tab-item:: Parquet
+
+        .. testcode::
+            
+            import torch
+            import ray
+
+            tensor = torch.Tensor(1)
+            ds = ray.data.from_items([{"tensor": tensor}])
+
+            ds.write_parquet("local:///tmp/tensor.parquet")
+
+    .. tab-item:: Numpy
+
+        .. testcode::
+            
+            import torch
+            import ray
+
+            tensor = torch.Tensor(1)
+            ds = ray.data.from_items([{"tensor": tensor}])
+
+            ds.write_numpy("local:///tmp/tensor.npy", column="tensor")
 
 .. _migrate_pytorch:
 
