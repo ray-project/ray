@@ -72,10 +72,11 @@ class ClientCallImpl : public ClientCall {
   /// Constructor.
   ///
   /// \param[in] callback The callback function to handle the reply.
-  explicit ClientCallImpl(CompletionToken&& token,
+  explicit ClientCallImpl(CompletionToken &&token,
                           std::shared_ptr<StatsHandle> stats_handle,
                           int64_t timeout_ms = -1)
-      : token_(std::forward<CompletionToken>(token)), stats_handle_(std::move(stats_handle)) {
+      : token_(std::forward<CompletionToken>(token)),
+        stats_handle_(std::move(stats_handle)) {
     if (timeout_ms != -1) {
       auto deadline =
           std::chrono::system_clock::now() + std::chrono::milliseconds(timeout_ms);
@@ -100,10 +101,9 @@ class ClientCallImpl : public ClientCall {
       status = return_status_;
     }
 
-    if(token_) {
-      auto ex = boost::asio::get_associated_executor(token_);
-      boost::asio::post(ex, std::move(f));
-    }
+    auto ex = boost::asio::get_associated_executor(token_);
+    auto f = std::bind(std::move(token_), status, std::move(reply_));
+    boost::asio::post(ex, std::move(f));
   }
 
   std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
@@ -239,7 +239,7 @@ class ClientCallManager {
       typename GrpcService::Stub &stub,
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request,
-      CompletionToken&& token,
+      CompletionToken &&token,
       std::string call_name,
       int64_t method_timeout_ms = -1) {
     auto stats_handle = main_service_.stats().RecordStart(call_name);
@@ -249,8 +249,7 @@ class ClientCallManager {
     auto ex = GetMainService().get_executor();
     auto t = boost::asio::bind_executor(ex, std::forward<CompletionToken>(token));
     auto call = std::make_shared<ClientCallImpl<Reply, decltype(t)>>(
-        std::move(t),
-        std::move(stats_handle), method_timeout_ms);
+        std::move(t), std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(

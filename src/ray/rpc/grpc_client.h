@@ -136,21 +136,36 @@ class GrpcClient {
   /// -1 means it will use the default timeout configured for the handler.
   ///
   /// \return Status.
-  template <class Request, class Reply>
-  void CallMethod(
+  template <class Request, class Reply, class CompletionToken>
+  auto CallMethod(
       const PrepareAsyncFunction<GrpcService, Request, Reply> prepare_async_function,
       const Request &request,
-      const ClientCallback<Reply> &callback,
+      CompletionToken &&token,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_,
+    auto init = [this](auto &&handler,
+                       const PrepareAsyncFunction<GrpcService, Request, Reply>
+                           prepare_async_function,
+                       const Request &request,
+                       std::string call_name,
+                       int64_t method_timeout_ms) mutable {
+      return client_call_manager_
+          .CreateCall<GrpcService, Request, Reply, decltype(handler)>(
+              *stub_,
+              prepare_async_function,
+              request,
+              std::forward<decltype(handler)>(handler),
+              std::move(call_name),
+              method_timeout_ms);
+    };
+
+    return boost::asio::async_initiate<CompletionToken, ClientSignature<Reply>>(
+        init,
+        token,
         prepare_async_function,
         request,
-        callback,
         std::move(call_name),
         method_timeout_ms);
-    RAY_CHECK(call != nullptr);
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
