@@ -385,6 +385,7 @@ class HTTPProxy:
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
+
         if route_path == "/-/routes":
             if self._draining:
                 return await self._draining_response(scope, receive, send)
@@ -620,6 +621,7 @@ class HTTPProxy:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
             await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
+
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
             await result(scope, receive, send)
             return str(result.status_code)
