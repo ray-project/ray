@@ -22,7 +22,7 @@ class StatefulRandomRLModule(RandomRLModule):
 
     def _random_forward(self, batch, **kwargs):
         batch = super()._random_forward(batch, **kwargs)
-        batch[SampleBatch.ACTIONS] = np.array([x for x in batch[SampleBatch.ACTIONS]])
+        batch[SampleBatch.ACTIONS] = np.array(batch[SampleBatch.ACTIONS])
         batch[STATE_OUT] = np.array(
             [[self.state_space.sample()] for a in batch[SampleBatch.ACTIONS]]
         )
