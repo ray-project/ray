@@ -6,11 +6,11 @@ Working with PyTorch
 Ray Data integrates with the PyTorch ecosystem.
 
 This guide describes how to:
-* `Iterate over your dataset as torch tensors for model training <#iterating_pytorch>`_
-* `Write transformations that deal with torch tensors <#transform_pytorch>`_
-* `Perform batch inference with torch models <#batch_inference_pytorch>`_
-* `Save Datasets containing torch tensors <#save_pytorch>`_
-* `Migrate from PyTorch Datasets to Ray Data <#migrate_pytorch>`_
+* `Iterate over your dataset as torch tensors for model training <iterating_pytorch>`_
+* `Write transformations that deal with torch tensors <transform_pytorch>`_
+* `Perform batch inference with torch models <batch_inference_pytorch>`_
+* `Save Datasets containing torch tensors <save_pytorch>`_
+* `Migrate from PyTorch Datasets to Ray Data <migrate_pytorch>`_
 
 .. _iterating_pytorch:
 
@@ -18,7 +18,7 @@ Iterating over torch tensors for training
 -----------------------------------------
 To iterate over batches of data in torch format, call :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is represented as `Dict[str, torch.Tensor]`, with one tensor per column in the dataset. 
 
-This is useful for training torch models with batches from your dataset. See :ref:`the API reference <ray.data.Dataset.iter_torch_batches>` for more configuration details such as providing a `collate_fn` for customizing the conversion.
+This is useful for training torch models with batches from your dataset. See `the API reference <ray.data.Dataset.iter_torch_batches>` for more configuration details such as providing a `collate_fn` for customizing the conversion.
 
 .. testcode::
 
@@ -244,7 +244,7 @@ Batch inference with PyTorch
 
 With Ray Datasets, you can do scalable offline batch inference with PyTorch models by mapping your pre-trained model over your data. 
 
-See the :ref:`Batch inference user guide <batch_inference_home>`` for more details.
+See the :ref:`Batch inference user guide <batch_inference_home>` for more details.
 
 .. testcode::
 
