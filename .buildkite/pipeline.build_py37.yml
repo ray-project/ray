@@ -1,0 +1,142 @@
+#ci:group=:cold_face: Py37 legacy tests
+
+# These tests install requirements_legacy_compat.txt which are the
+# lower bound of dependencies we support.
+- label: ":cold_face: :python: Ray Python 3.7 legacy dependency ML compatibility tests"
+  conditions:
+    ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
+  instance_size: large
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - PYTHON=3.7 DATA_PROCESSING_TESTING=1 TUNE_TESTING=1 TRAIN_TESTING=1 INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_legacy_compat.txt
+    - pip install -U typing-extensions
+    - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
+    - ./ci/env/env_info.sh
+    # Combine shards from different files
+    - >-
+      set -x;
+      {
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials,-hdfs python/ray/air/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials,-hdfs python/ray/train/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
+      } > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      $(cat test_shard.txt)
+
+
+# These tests install requirements_py37_compat.txt which are the
+# upper bound of Python 3.7 dependencies we support
+- label: ":cold_face: :python: Ray Python 3.7 ML compatibility tests"
+  conditions:
+    ["RAY_CI_PYTHON_DEPENDENCIES_AFFECTED", "RAY_CI_TUNE_AFFECTED", "RAY_CI_TRAIN_AFFECTED", "RAY_CI_ML_AFFECTED"]
+  instance_size: large
+  parallelism: 3
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - PYTHON=3.7 DATA_PROCESSING_TESTING=1 TUNE_TESTING=1 TRAIN_TESTING=1 INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - pip install -U typing-extensions
+    - HOROVOD_WITH_GLOO=1 HOROVOD_WITHOUT_MPI=1 HOROVOD_WITHOUT_MXNET=1 HOROVOD_WITH_TENSORFLOW=1 HOROVOD_WITH_PYTORCH=1 pip install horovod
+    - ./ci/env/env_info.sh
+    # Combine shards from different files
+    - >-
+      set -x;
+      {
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=compat python/ray/tests/horovod/... python/ray/tests/lightgbm/... python/ray/tests/ml_py37_compat/... python/ray/tests/xgboost/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=-gpu,-needs_credentials,-hdfs python/ray/air/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air,-torch_1_11,-gpu_only,-gpu,-needs_credentials,-hdfs python/ray/train/... &&
+        python ./ci/run/bazel_sharding/bazel_sharding.py --exclude_manual --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}" --tag_filters=ray_air python/ray/data/...;
+      } > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      $(cat test_shard.txt)
+
+
+- label: ":cold_face: :python: :brain: Python 3.7 RLlib: tests/ dir"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_DIRECTLY_AFFECTED"]
+  parallelism: 2
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - ./ci/env/env_info.sh
+    - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options) --build_tests_only
+      --test_tag_filters=tests_dir,-multi_gpu --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
+
+
+- label: ":cold_face: :python: :brain: Python 3.7 RLlib: Learning tests Pytorch (With Ray Data)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: large
+  commands:
+    # skip on master because we are running these test under all RLlib suites anyw/ay
+    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-tf_only,-tf2_only
+      --test_arg=--framework=torch
+      rllib/...
+
+
+- label: ":cold_face: :python: :brain: Python 3.7 RLlib: Learning tests TF2 (With Ray Data)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_DATA_AFFECTED"]
+  instance_size: large
+  commands:
+    # skip on master because we are running these test under all RLlib suites anyw/ay
+    - if [ "$BUILDKITE_PULL_REQUEST" = "false" ]; then exit 0; fi
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - PYTHON=3.7 RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - pip install -r python/requirements/compat/requirements_py37_compat.txt
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=learning_tests_with_ray_data,-multi_gpu,-gpu,-torch_only
+      --test_arg=--framework=tf2
+      rllib/...
+
+
+- label: ":cold_face: :python: :serverless: Python 3.7 Serve Tests"
+  parallelism: 3
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+        "RAY_CI_ML_AFFECTED",
+    ]
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/install-minimal.sh 3.7
+    - PYTHON=3.7 TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
+    - bash ./ci/ci.sh prepare_docker
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
+    - ./ci/env/env_info.sh
+    - >-
+      set -x;
+      python ./ci/run/bazel_sharding/bazel_sharding.py
+      --exclude_manual
+      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
+      --tag_filters=-post_wheel_build,-gpu
+      python/ray/serve/...
+      > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=-post_wheel_build,-gpu
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      $(cat test_shard.txt)
