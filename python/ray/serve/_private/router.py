@@ -209,6 +209,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         self._scheduling_tasks: Set[asyncio.Task] = set()
         self._pending_assignments: deque[PendingAssignment] = deque()
+        self._pending_multiplexed_assignments: deque[PendingAssignment] = deque()
 
     @property
     def num_pending_assignments(self) -> int:
@@ -393,6 +394,14 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 pa.future.set_result(replica)
                 break
 
+    def _get_next_pending_multiplexed_model_id(self) -> Optional[str]:
+        while len(self._pending_multiplexed_assignments) > 0:
+            pa = self._pending_multiplexed_assignments.popleft()
+            if not pa.future.done():
+                return pa.metadata.multiplexed_model_id or None
+
+        return None
+
     async def fulfill_pending_assignments(
         self, multiplexed_model_id: Optional[str] = None
     ):
@@ -406,6 +415,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
+                # TODO: comment.
+                multiplexed_model_id = self._get_next_pending_multiplexed_model_id()
                 async for candidates in self.choose_two_replicas_with_backoff(
                     multiplexed_model_id
                 ):
@@ -414,8 +425,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         self.fulfill_next_pending_assignment(
                             replica, multiplexed_model_id
                         )
-                        # TODO: comment.
-                        multiplexed_model_id = None
                         break
 
         except Exception:
@@ -423,7 +432,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
 
-    def maybe_start_scheduling_tasks(self, multiplexed_model_id: Optional[str] = None):
+    def maybe_start_scheduling_tasks(self):
         """Start scheduling tasks to fulfill pending assignments if necessary.
 
         Starts tasks so that there is at least one task per pending assignment
@@ -433,12 +442,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
         )
         for i in range(tasks_to_start):
-            # TODO: comment!
-            multiplexed_model_id = multiplexed_model_id if i == 0 else None
             self._scheduling_tasks.add(
-                self._loop.create_task(
-                    self.fulfill_pending_assignments(multiplexed_model_id)
-                )
+                self._loop.create_task(self.fulfill_pending_assignments())
             )
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
@@ -452,10 +457,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         over when a replica becomes available.
         """
         pending_assignment = PendingAssignment(asyncio.Future(), query.metadata)
+        # TODO: better naming.
         self._pending_assignments.append(pending_assignment)
+        self._pending_multiplexed_assignments.append(pending_assignment)
         try:
-            multiplexed_model_id = query.metadata.multiplexed_model_id or None
-            self.maybe_start_scheduling_tasks(multiplexed_model_id)
+            self.maybe_start_scheduling_tasks()
             replica = await pending_assignment.future
         except asyncio.CancelledError as e:
             pending_assignment.future.cancel()
