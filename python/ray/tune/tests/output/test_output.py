@@ -260,5 +260,27 @@ def test_result_table_divison():
     ]
 
 
+def test_result_include():
+    data = _get_dict_as_table_data(
+        {
+            "b": 6,
+            "a": 8,
+            "x": 19.123123123,
+            "c": 5,
+            "ignore": 9,
+            "nested_ignore": {"value": 5},
+            "y": 20,
+            "z": {"m": 4, "n": {"o": "p"}},
+        },
+        include={"y", "z"},
+        exclude={"z/n/o"},
+    )
+
+    assert data == [
+        ["y", 20],
+        ["z/m", 4],
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
