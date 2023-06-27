@@ -597,8 +597,6 @@ class MetricsPusher:
     Metrics pusher is a background thread that run the registered tasks in a loop.
     """
 
-    LOOP_INTERVAL_S = 1
-
     def __init__(
         self,
     ):
@@ -621,11 +619,18 @@ class MetricsPusher:
         def send_forever():
 
             while True:
-                start = time.time()
                 if self.stop_event.is_set():
                     return
+
+                start = time.time()
+                least_interval_s = None
+
                 for task in self.tasks:
                     try:
+                        if least_interval_s is None:
+                            least_interval_s = task.interval_s
+                        else:
+                            least_interval_s = min(least_interval_s, task.interval_s)
                         if start - task.last_call_succeeded_time > task.interval_s:
                             if task.last_ref:
                                 ready_refs, _ = ray.wait([task.last_ref], timeout=0)
@@ -641,7 +646,10 @@ class MetricsPusher:
                         logger.warning(
                             f"MetricsPusher thread failed to run metric task: {e}"
                         )
-                time.sleep(MetricsPusher.LOOP_INTERVAL_S)
+                duration_s = time.time() - start
+                remain_time = least_interval_s - duration_s
+                if remain_time > 0:
+                    time.sleep(remain_time)
 
         self.pusher_thread = threading.Thread(target=send_forever)
         # Making this a daemon thread so it doesn't leak upon shutdown, and it
