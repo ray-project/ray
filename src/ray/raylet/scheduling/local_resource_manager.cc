@@ -124,8 +124,6 @@ bool LocalResourceManager::AllocateResourceInstances(
   allocation->resize(available.size());
   FixedPoint remaining_demand = demand;
 
-  RAY_LOG(INFO) << "Allocating " << demand << " from " << available.size();
-
   if (available.size() == 1) {
     // This resource has just an instance.
     if (available[0] >= remaining_demand) {
@@ -283,12 +281,10 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
 }
 
 void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
-  RAY_CHECK(resources_last_idle_time_.at(resource_id) != absl::nullopt);
   resources_last_idle_time_[resource_id] = absl::nullopt;
 }
 
 void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resource_id) {
-  RAY_CHECK(resources_last_idle_time_.at(resource_id) == absl::nullopt);
   resources_last_idle_time_[resource_id] = absl::Now();
 }
 
@@ -300,7 +296,7 @@ absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
     const auto &idle_time_or_busy = iter.second;
 
     if (idle_time_or_busy == absl::nullopt) {
-      // One resource is busy, entire resource
+      // One resource is busy, entire resources should be considered non-idle.
       return absl::nullopt;
     }
 

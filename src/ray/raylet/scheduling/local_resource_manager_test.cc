@@ -132,6 +132,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
   auto pg_wildcard_resource = "CPU_group_4482dec0faaf5ead891ff1659a9501000000";
   auto pg_index_0_resource = "CPU_group_0_4482dec0faaf5ead891ff1659a9501000000";
   auto pg_index_1_resource = "CPU_group_1_4482dec0faaf5ead891ff1659a9501000000";
+  auto used_object_store = std::make_unique<int64_t>(0);
   manager = std::make_unique<LocalResourceManager>(
       local_node_id,
       CreateNodeResources({{ResourceID::CPU(), 8.0},
@@ -142,7 +143,8 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
                            {ResourceID(pg_wildcard_resource), 4.0},
                            {ResourceID(pg_index_0_resource), 2.0},
                            {ResourceID(pg_index_1_resource), 2.0}}),
-      nullptr,
+      /* get_used_object_store_memory */
+      [&used_object_store]() { return *used_object_store; },
       nullptr,
       nullptr);
 
@@ -243,25 +245,16 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
 
   // Test object store resource is also making node non-idle when used.
   {
-    std::shared_ptr<TaskResourceInstances> task_allocation =
-        std::make_shared<TaskResourceInstances>();
-    ResourceRequest resource_request =
-        ResourceMapToResourceRequest({{ResourceID::ObjectStoreMemory(), 1.}}, true);
-
-    manager->AllocateLocalTaskResources(resource_request, task_allocation);
-
+    *used_object_store = 1;
+    manager->UpdateAvailableObjectStoreMemResource();
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_EQ(idle_time, absl::nullopt);
   }
 
   // Free object store memory usage should make node resource idle.
   {
-    std::shared_ptr<TaskResourceInstances> task_allocation =
-        std::make_shared<TaskResourceInstances>(
-            ResourceMapToResourceRequest({{ResourceID::ObjectStoreMemory(), 1.}}, true));
-    manager->FreeTaskResourceInstances(task_allocation, /* record_idle_resource */
-                                       true);
-
+    *used_object_store = 0;
+    manager->UpdateAvailableObjectStoreMemResource();
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_TRUE(idle_time.has_value());
     auto dur = absl::Now() - *idle_time;
