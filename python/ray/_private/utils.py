@@ -1658,8 +1658,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     version >= 3.7, if not possible, one should create and manage the event
     loops explicitly.
     """
-    import sys
-
     vers_info = sys.version_info
     if vers_info.major >= 3 and vers_info.minor >= 10:
         # This follows the implementation of the deprecating `get_event_loop`
@@ -1677,6 +1675,19 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
             return asyncio.get_event_loop_policy().get_event_loop()
 
     return asyncio.get_event_loop()
+
+
+def make_asyncio_event_version_compat(
+    event_loop: asyncio.AbstractEventLoop,
+) -> asyncio.Event:
+    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+    # removed it altogether. Construct an `asyncio.Event` accordingly.
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+        event = asyncio.Event()
+    else:
+        event = asyncio.Event(loop=event_loop)
+
+    return event
 
 
 def get_entrypoint_name():

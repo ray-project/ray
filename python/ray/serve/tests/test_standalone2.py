@@ -1272,59 +1272,37 @@ class TestDeployApp:
     def test_update_config_max_concurrent_queries(self, client: ServeControllerClient):
         """Check that replicas stay alive when max_concurrent_queries is updated."""
 
-        url = "http://localhost:8000/f"
         name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config_template = {
-            "import_path": "ray.serve.tests.test_config_files.pid.async_node",
+            "import_path": "ray.serve.tests.test_config_files.pid.node",
             "deployments": [{"name": "f", "max_concurrent_queries": 1000}],
         }
 
-        # Deploy first time
+        # Deploy first time, max_concurent_queries set to 1000.
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(partial(self.check_running, client), timeout=15)
+
+        all_replicas = ray.get(client._controller._all_running_replicas.remote())
+        assert len(all_replicas) == 1
+        assert (
+            all_replicas[list(all_replicas.keys())[0]][0].max_concurrent_queries == 1000
+        )
+
         handle = client.get_handle(name)
-        # Block on calls
-        ray.get(handle.send.remote(clear=True))
 
-        with ThreadPoolExecutor() as pool:
-            # Send 10 queries
-            futs = [pool.submit(partial(requests.get, url)) for _ in range(10)]
-            wait_for_condition(lambda: 10 == ray.get(handle.get_counter.remote()))
+        responses = ray.get([handle.remote() for _ in range(10)])
+        pids1 = {response[0] for response in responses}
+        assert len(pids1) == 1
 
-            # Unblock
-            ray.get(handle.send.remote())
-            pids = [fut.result().json()[0] for fut in futs]
-            pid1 = pids[0]
-            # Check all returned pids are the same, meaning requests were served by the
-            # same replica
-            assert all(pid == pid1 for pid in pids)
-
-        # Redeploy with max concurrent queries set to 2
+        # Redeploy with max concurrent queries set to 2.
         config_template["deployments"][0]["max_concurrent_queries"] = 2
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(partial(self.check_running, client), timeout=15)
 
-        # Re-block
-        ray.get(handle.send.remote(clear=True))
-
-        with ThreadPoolExecutor() as pool:
-            # Send 3 queries
-            futs = [pool.submit(partial(requests.get, url)) for _ in range(3)]
-            # Only 2 out of the 3 queries should have been sent to the replica because
-            # max concurrent queries is 2
-            for _ in range(10):
-                print("Waiting...")
-                time.sleep(1)
-            assert ray.get(handle.get_counter.remote()) < 103
-
-            # Unblock
-            ray.get(handle.send.remote())
-            pids = [fut.result().json()[0] for fut in futs]
-            pid2 = pids[0]
-            assert all(pid == pid2 for pid in pids)
-
-        # Check that it's the same replica, it didn't get teared down
-        assert pid1 == pid2
+        # Verify that the PID of the replica didn't change.
+        responses = ray.get([handle.remote() for _ in range(10)])
+        pids2 = {response[0] for response in responses}
+        assert pids2 == pids1
 
     def test_update_config_health_check_period(self, client: ServeControllerClient):
         """Check that replicas stay alive when max_concurrent_queries is updated."""

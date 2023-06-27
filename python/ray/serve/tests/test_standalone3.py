@@ -97,7 +97,7 @@ def start_and_shutdown_ray_cli_function():
     indirect=True,
 )
 def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test max_concurrent_queries can be honorded with long poll timeout
+    """Test max_concurrent_queries can be honored with long poll timeout
 
     issue: https://github.com/ray-project/ray/issues/32652
     """
@@ -134,17 +134,10 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
         == object_snapshots2[key][0].actor_handle._actor_id
     )
 
-    # Make sure the inflight queries still one
-    assert len(handle.router._replica_scheduler.in_flight_queries) == 1
-    key = list(handle.router._replica_scheduler.in_flight_queries.keys())[0]
-    assert len(handle.router._replica_scheduler.in_flight_queries[key]) == 1
-
-    # Make sure the first request is being run.
-    replicas = list(handle.router._replica_scheduler.in_flight_queries.keys())
-    assert len(handle.router._replica_scheduler.in_flight_queries[replicas[0]]) == 1
-    # First ref should be still ongoing
+    # Make sure the first request is still ongoing.
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(first_ref, timeout=1)
+
     # Unblock the first request.
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
@@ -311,7 +304,6 @@ def test_handle_early_detect_failure(shutdown_ray):
     handle = serve.run(f.bind())
     pids = ray.get([handle.remote() for _ in range(2)])
     assert len(set(pids)) == 2
-    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 2
 
     client = get_global_client()
     # Kill the controller so that the replicas membership won't be updated
@@ -323,7 +315,6 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     pids = ray.get([handle.remote() for _ in range(10)])
     assert len(set(pids)) == 1
-    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 1
 
     # Restart the controller, and then clean up all the replicas
     serve.start(detached=True)
