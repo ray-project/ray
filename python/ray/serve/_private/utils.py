@@ -581,8 +581,9 @@ class _MetricTask:
             task_func: a callable that MetricsPusher will try to call in each loop.
             interval_s: the interval of each task_func is supposed to be called.
             callback_func: callback function is called when task_func is done, and
-                the result of task_func is passed to callback_func as the first argument,
-                and the timestamp of the call is passed as the second argument.
+                the result of task_func is passed to callback_func as the first
+                argument, and the timestamp of the call is passed as the second
+                argument.
         """
         self.task_func: Callable = task_func
         self.interval_s: float = interval_s

@@ -18,10 +18,7 @@ from ray import cloudpickle
 from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray._private.async_compat import sync_to_async
-from ray._private.utils import (
-    get_or_create_event_loop,
-    run_background_task,
-)
+from ray._private.utils import get_or_create_event_loop
 
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -504,7 +501,7 @@ class RayServeReplica:
 
         self.metrics_pusher.register_task(
             self._set_replica_requests_metrics,
-            1,
+            RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
         )
         self.metrics_pusher.start()
 
