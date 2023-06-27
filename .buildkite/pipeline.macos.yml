@@ -38,6 +38,8 @@ steps:
     # Special setup for jar builds (will be installed to the machine instead)
     # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
     # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    - export BUILDKITE_COMMIT="a03efd9931128d387649dd48b0e4864b43d3bfb4"
+    - git checkout a03efd9931128d387649dd48b0e4864b43d3bfb4
     - diskutil list external physical
     - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
     - java -version
@@ -70,6 +72,8 @@ steps:
   instance_size: arm64-medium
   commands:
     # Cleanup environments
+    - export BUILDKITE_COMMIT="a03efd9931128d387649dd48b0e4864b43d3bfb4"
+    - git checkout a03efd9931128d387649dd48b0e4864b43d3bfb4
     - rm -rf /tmp/bazel_event_logs
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - (which bazel && bazel clean) || true
