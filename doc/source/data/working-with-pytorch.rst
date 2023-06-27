@@ -242,15 +242,70 @@ Built-in PyTorch transforms from `torchvision`, `torchtext`, and `torchaudio` ca
 Batch inference with PyTorch
 ----------------------------
 
-With Ray Datasets, you can do scalable offline batch inference with PyTorch models by mapping your pre-trained model over your data. See the :ref:`Batch inference user guide <batch_inference_home>`` for more details and a full example.
+With Ray Datasets, you can do scalable offline batch inference with PyTorch models by mapping your pre-trained model over your data. 
+
+See the :ref:`Batch inference user guide <batch_inference_home>`` for more details.
+
+.. testcode::
+
+    from typing import Dict
+    import numpy as np
+    import torch
+    import torch.nn as nn
+
+    import ray
+
+    # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
+    # You can also create a Ray Dataset from many other sources and file
+    # formats.
+    ds = ray.data.from_numpy(np.ones((1, 100)))
+
+    # Step 2: Define a Predictor class for inference.
+    # Use a class to initialize the model just once in `__init__`
+    # and re-use it for inference across multiple batches.
+    class TorchPredictor:
+        def __init__(self):
+            # Load a dummy neural network.
+            # Set `self.model` to your pre-trained PyTorch model.
+            self.model = nn.Sequential(
+                nn.Linear(in_features=100, out_features=1),
+                nn.Sigmoid(),
+            )
+            self.model.eval()
+
+        # Logic for inference on 1 batch of data.
+        def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+            tensor = torch.as_tensor(batch["data"], dtype=torch.float32)
+            with torch.inference_mode():
+                # Get the predictions from the input batch.
+                return {"output": self.model(tensor).numpy()}
+
+    # Use 2 parallel actors for inference. Each actor predicts on a
+    # different partition of data.
+    scale = ray.data.ActorPoolStrategy(size=2)
+    # Step 3: Map the Predictor over the Dataset to get predictions.
+    predictions = ds.map_batches(TorchPredictor, compute=scale)
+    # Step 4: Show one prediction output.
+    predictions.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'output': array([0.5590901], dtype=float32)}
 
 .. _saving_pytorch:
 
 Saving Datasets containing PyTorch Tensors
 ------------------------------------------
 
-Datasets containing torch tensors can be saved to files, like parquet or numpy. For more information on saving data, read
+Datasets containing torch tensors can be saved to files, like parquet or numpy. 
+
+For more information on saving data, read
 :ref:`Saving data <saving-data>`.
+
+.. caution::
+
+    PyTorch tensors that are still on GPU device cannot be serialized and written to disk. Make sure to convert the tensors to CPU (``tensor.to("cpu")``) before saving the data.
 
 .. tab-set::
 
@@ -282,3 +337,159 @@ Datasets containing torch tensors can be saved to files, like parquet or numpy. 
 
 Migrating from PyTorch Datasets and DataLoaders
 -----------------------------------------------
+
+If you are currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
+
+PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by the :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+
+Built-in PyTorch Datasets
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you are using built-in PyTorch datasets, for example from `torchvision`, these can be converted to a Ray Dataset using the :meth:`from_torch()` API.
+
+.. caution::
+
+    `from_torch` requires the PyTorch Dataset to fit in memory. Use this only for small, built-in datasets for prototyping or testing.
+
+.. testcode::
+
+    import torchvision
+    import ray
+
+    mnist = torchvision.datasets.MNIST(root="/tmp/", download=True)
+    ds = ray.data.from_torch(mnist)
+
+Custom PyTorch Datasets
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have a custom PyTorch Dataset, you can migrate to Ray Data by converting the logic in ``__getitem__`` to Ray Data read and transform operations. 
+
+Any logic for reading data from cloud storage and disk, can be replaced by one of the Ray Data ``read_*`` APIs, and any transformation logic can be applied as a :meth:`map <ray.data.Dataset.map>` call on the Dataset.
+
+The following example shows a custom PyTorch Dataset, and what the analagous would look like with Ray Data.
+
+.. note::
+
+    Unlike PyTorch Map-style datasets, Ray Datasets are not indexable.
+
+.. tab-set::
+
+    .. tab-item:: PyTorch Dataset
+
+        .. testcode::
+
+            import tempfile
+            from torchvision import transforms
+            from torch.utils.data import Dataset
+            import boto3
+            from PIL import Image
+
+            class ImageDataset(Dataset):
+                def __init__(self, bucket_name: str, dir_path: str):
+                    self.s3 = boto3.resource('s3')
+                    self.bucket = self.s3.Bucket(bucket_name)
+                    self.files = [obj.key for obj in self.bucket.objects.filter(Prefix=dir_path)]
+                    
+                    self.transform = transforms.Compose([
+                        transforms.ToTensor(),
+                        transforms.Resize((128, 128)),
+                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                    ])
+
+                def __len__(self):
+                    return len(self.files)
+
+                def __getitem__(self, idx):
+                    img_name = self.files[idx]
+
+                    # Infer the label from the file name.
+                    last_slash_idx = img_name.rfind("/")
+                    dot_idx = img_name.rfind(".")
+                    label = int(img_name[last_slash_idx+1:dot_idx])
+
+                    # Download the S3 file locally.
+                    obj = self.bucket.Object(img_name)
+                    tmp = tempfile.NamedTemporaryFile()
+                    tmp_name = "{}.jpg".format(tmp.name)
+
+                    with open(tmp_name, "wb") as f:
+                        obj.download_fileobj(f)
+                        f.flush()
+                        f.close()
+                        image = Image.open(tmp_name)
+
+                    # Preprocess the image.
+                    image = self.transform(image)
+
+                    return image, label
+
+            dataset = ImageDataset(bucket_name="ray-example-data", dir_path="batoidea/JPEGImages/")
+
+    .. tab-item:: Ray Data
+
+        import torchvision
+        import ray
+
+        ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages", include_paths=True)
+
+        # Extract the label from the file path.
+        def extract_label(row: dict):
+            filepath = row["path"]
+            last_slash_idx = filepath.rfind("/")
+            dot_idx = filepath.rfind('.')
+            label = int(filepath[last_slash_idx+1:dot_idx])
+            row["label"] = label
+            return row
+
+        transform = transforms.Compose([
+                        transforms.ToTensor(),
+                        transforms.Resize((128, 128)),
+                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                    ])
+        
+        # Preprocess the images.
+        def transform_image(row: dict):
+            row["transformed_image"] = transform(row["image"])
+            return row
+        
+        # Map the transformations over the dataset.
+        ds = ds.map(extract_label).map(transform_image)
+
+
+PyTorch DataLoader
+~~~~~~~~~~~~~~~~~~
+
+The PyTorch DataLoader can be replaced by calling :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to iterate over batches of the dataset.
+
+The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the the behavior may not necessarily be identical. See the API reference for exact semantics and usage.
+
+.. list-table:: PyTorch DataLoader vs. Ray Data
+   :header-rows: 1
+
+   * - PyTorch DataLoader arguments
+     - Ray Data API
+   * - ``batch_size``
+     - ``batch_size`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
+   * - ``shuffle``
+     - ``local_shuffle_buffer_size`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
+   * - ``collate_fn``
+     - ``collate_fn`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
+   * - ``sampler``
+     - Not supported. Can be manually implemented after iterating through the dataset with :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+   * - ``batch_sampler``
+     - Not supported. Can be manually implemented after iterating through the dataset with :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+   * - ``drop_last``
+     - ``drop_last`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`
+   * - ``num_workers``
+     - Use ``prefetch_batches`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to indicate how many batches to prefetch. The number of prefetching threads will automatically be configured according to ``prefetch_batches``.
+   * - ``prefetch_factor``
+     - Use ``prefetch_batches`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to indicate how many batches to prefetch. The number of prefetching threads will automatically be configured according to ``prefetch_batches``.
+   * - ``pin_memory``
+     - Pass in ``device`` to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to get tensors that have already been moved to the correct device.
+
+
+        
+
+
+
+
