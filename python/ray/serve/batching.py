@@ -94,8 +94,7 @@ class _BatchQueue:
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
-            self.background_event_loop = get_or_create_event_loop()
-            self._handle_batch_task = self.background_event_loop.create_task(
+            self._handle_batch_task = get_or_create_event_loop().create_task(
                 self._process_batches(handle_batch_func)
             )
 
@@ -230,31 +229,6 @@ class _BatchQueue:
                 except Exception as e:
                     for future in futures:
                         future.set_exception(e)
-
-    async def update_params(
-        self, max_batch_size: int, batch_wait_timeout_s: float
-    ) -> None:
-        """Update all parameters for this queue in a single async call."""
-        self.max_batch_size = max_batch_size
-        self.batch_wait_timeout_s = batch_wait_timeout_s
-
-    def safely_update_params(
-        self, max_batch_size: int, batch_wait_timeout_s: float
-    ) -> None:
-        """Safely update all parameters for this queue.
-        
-        Request runs in the same event loop as the batch-creation task. Calling
-        this method ensures that the batch-creation task only ever uses a
-        consistent set of parameters. It won't mix parameters from different
-        settings.
-        """
-        asyncio.wait_for(
-            self.background_event_loop.create_task(
-                self.update_params(
-                    self.update_params(max_batch_size, batch_wait_timeout_s)
-                )
-            )
-        )
 
     def __del__(self):
         if (
