@@ -7,7 +7,6 @@ import logging
 import math
 import pickle
 import random
-import sys
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, Union
 
 import ray
@@ -15,6 +14,7 @@ from ray.actor import ActorHandle
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray._private.utils import make_asyncio_event_version_compat
 
 from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
 from ray.serve._private.constants import (
@@ -33,17 +33,6 @@ from ray.serve.generated.serve_pb2 import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _make_event_compat(event_loop: asyncio.AbstractEventLoop) -> asyncio.Event:
-    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
-    # removed it alltogether. Call accordingly.
-    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
-        event = asyncio.Event()
-    else:
-        event = asyncio.Event(loop=event_loop)
-
-    return event
 
 
 @dataclass
@@ -89,6 +78,11 @@ class Query:
 
 
 class ReplicaWrapper(ABC):
+    """Defines the interface for a scheduler to talk to a replica.
+
+    This is used to abstract away details of Ray actor calls for testing.
+    """
+
     @property
     def replica_id(self) -> str:
         pass
@@ -184,7 +178,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # Updated via `update_replicas`.
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
-        self._replicas_updated_event = _make_event_compat(event_loop)
+        self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
 
         self._scheduling_tasks: Set[asyncio.Task] = set()
         self._pending_assignment_futures: deque[asyncio.Future] = deque()
@@ -415,7 +409,7 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         # Used to unblock this replica set waiting for free replicas. A newly
         # added replica or updated max_concurrent_queries value means the
         # query that waits on a free replica might be unblocked on.
-        self.config_updated_event = _make_event_compat(event_loop)
+        self.config_updated_event = make_asyncio_event_version_compat(event_loop)
 
         # A map from multiplexed model id to a list of replicas that have the
         # model loaded.
