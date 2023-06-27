@@ -71,7 +71,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
 
                 samples_to_concat = []
 
-                # cycle through the batch until we have enough samples
+                # get_len is a function that returns the length of a batch
+                # if we are not slicing the batch in the batch dimension B, then
+                # the length of the batch is simply the length of the batch
+                # o.w the length of the batch is the length list of seq_lens.
                 if module_batch._slice_seq_lens_in_B:
                     assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
                         "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"
@@ -79,21 +82,23 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                         "dimension B."
                     )
 
-                    while n_steps >= len(module_batch[SampleBatch.SEQ_LENS]) - s:
-                        sample = module_batch[s:]
-                        samples_to_concat.append(sample)
-                        len_sample = len(sample[SampleBatch.SEQ_LENS])
-                        assert len_sample > 0, "Length of a sample must be > 0"
-                        n_steps -= len_sample
-                        s = 0
-                        self._num_covered_epochs[module_id] += 1
+                    def get_len(b):
+                        return len(b[SampleBatch.SEQ_LENS])
+
                 else:
-                    while n_steps >= len(module_batch) - s:
-                        sample = module_batch[s:]
-                        samples_to_concat.append(sample)
-                        n_steps -= len(sample)
-                        s = 0
-                        self._num_covered_epochs[module_id] += 1
+
+                    def get_len(b):
+                        return len(b)
+
+                # Cycle through the batch until we have enough samples
+                while n_steps >= get_len(module_batch) - s:
+                    sample = module_batch[s:]
+                    samples_to_concat.append(sample)
+                    len_sample = get_len(sample)
+                    assert len_sample > 0, "Length of a sample must be > 0!"
+                    n_steps -= len_sample
+                    s = 0
+                    self._num_covered_epochs[module_id] += 1
 
                 e = s + n_steps  # end
                 if e > s:
