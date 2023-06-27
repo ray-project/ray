@@ -9,7 +9,7 @@ import time
 
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
-from ray_release.test import Test
+from ray_release.test_plugin import Test
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane_20230622.tgz"

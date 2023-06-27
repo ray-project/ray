@@ -6,10 +6,8 @@ from typing import Dict, List, Optional, Tuple, Any
 
 import jsonschema
 import yaml
-from ray_release.test import (
-    Test,
-    TestDefinition,
-)
+from ray_release.test_plugin import Test
+from ray_release.test import TestDefinition
 from ray_release.anyscale_util import find_cloud_by_name
 from ray_release.bazel import bazel_runfile
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError

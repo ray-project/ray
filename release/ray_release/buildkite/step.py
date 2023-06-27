@@ -4,8 +4,8 @@ from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
+from ray_release.test_plugin import Test
 from ray_release.test import (
-    Test,
     TestState,
     DEFAULT_PYTHON_VERSION,
 )

@@ -2,7 +2,7 @@ import json
 
 from ray_release.reporter.reporter import Reporter
 from ray_release.result import Result, ResultStatus
-from ray_release.test import Test
+from ray_release.test_plugin import Test
 from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.logger import logger
 

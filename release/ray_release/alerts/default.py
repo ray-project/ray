@@ -1,6 +1,6 @@
 from typing import Optional
 
-from ray_release.test import Test
+from ray_release.test_plugin import Test
 from ray_release.result import Result, ResultStatus
 
 

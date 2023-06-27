@@ -29,7 +29,7 @@ from ray_release.tests.utils import (
     MockSDK,
 )
 from ray_release.util import get_anyscale_sdk
-from ray_release.test import Test
+from ray_release.test_plugin import Test
 
 TEST_CLUSTER_ENV = {
     "base_image": "anyscale/ray:nightly-py37",

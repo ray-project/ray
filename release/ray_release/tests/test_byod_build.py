@@ -4,7 +4,7 @@ import pytest
 from unittest.mock import patch
 from typing import List
 
-from ray_release.test import Test
+from ray_release.test_plugin import Test
 from ray_release.byod.build import build_anyscale_custom_byod_image
 
 

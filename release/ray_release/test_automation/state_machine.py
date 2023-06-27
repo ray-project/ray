@@ -3,10 +3,8 @@ from datetime import datetime, timedelta
 from github import Github
 from pybuildkite.buildkite import Buildkite
 
-from ray_release.test import (
-    Test,
-    TestState,
-)
+from ray_release.test_plugin import Test
+from ray_release.test import TestState
 from ray_release.logger import logger
 from ray_release.aws import get_secret_token
 

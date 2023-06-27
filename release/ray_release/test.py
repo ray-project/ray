@@ -82,7 +82,7 @@ class TestResult:
         return self.status == ResultStatus.SUCCESS.value
 
 
-class Test(dict):
+class OSSTest(dict):
     """A class represents a test to run on buildkite"""
 
     KEY_GITHUB_ISSUE_NUMBER = "github_issue_number"

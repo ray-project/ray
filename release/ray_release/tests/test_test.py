@@ -5,8 +5,8 @@ from unittest import mock
 import pytest
 from unittest.mock import patch
 
+from ray_release.test_plugin import Test
 from ray_release.test import (
-    Test,
     _convert_env_list_to_dict,
     DATAPLANE_ECR,
     DATAPLANE_ECR_REPO,

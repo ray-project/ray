@@ -3,8 +3,8 @@ from typing import List, Optional
 
 import pytest
 
+from ray_release.test_plugin import Test
 from ray_release.test import (
-    Test,
     TestResult,
     TestState,
 )

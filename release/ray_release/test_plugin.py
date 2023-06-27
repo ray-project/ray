@@ -1,3 +1,3 @@
-from ray_release.test import Test
+from ray_release.test import OSSTest
 
-Test = Test
+Test = OSSTest

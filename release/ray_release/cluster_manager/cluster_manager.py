@@ -8,7 +8,7 @@ from ray_release.aws import (
 )
 from ray_release.anyscale_util import get_project_name
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
-from ray_release.test import Test
+from ray_release.test_plugin import Test
 from ray_release.exception import CloudInfoError
 from ray_release.util import anyscale_cluster_url, dict_hash, get_anyscale_sdk
 from ray_release.logger import logger
