@@ -17,7 +17,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     SignalActor,
 )
-from ray.cluster_utils import AutoscalingCluster
+from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
@@ -383,6 +383,9 @@ def test_autoscaler_shutdown_node_http_everynode(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
     )
 
+    # Clean up serve.
+    serve.shutdown()
+
 
 def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
     script = """
@@ -418,6 +421,101 @@ assert ray.get(handle.predict.remote(1)) == 1
     run_string_as_driver(
         script, dict(os.environ, **{SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
     )
+
+
+def test_healthz_and_routes_on_head_and_worker_nodes(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test `/-/healthz` and `/-/routes` return the correct responses for head and
+    worker nodes.
+
+    When there are replicas on all nodes, `/-/routes` and `/-/routes` on all nodes
+    should return 200. When there are no replicas on any nodes, `/-/routes` and
+    `/-/routes` on the head node should continue to return 200. `/-/routes` and
+    `/-/routes` on the worker node should start to return 503
+    """
+    # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
+    # continue to be pointing to the default port 8000.
+    os.environ["TEST_WORKER_NODE_PORT"] = "8001"
+
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    # Deploy 2 replicas, one to each node
+    @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 2})
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
+    # on both nodes.
+    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
+    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8000/-/routes").text
+        == '{"/":"default_HelloModel"}'
+    )
+    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 200
+    assert requests.get("http://127.0.0.1:8001/-/healthz").text == "success"
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8001/-/routes").text
+        == '{"/":"default_HelloModel"}'
+    )
+
+    # Delete the deployment should bring the active actors down to 3 and drop
+    # replicas on all nodes.
+    serve.delete(name="default")
+
+    def _check():
+        _actors = ray._private.state.actors().values()
+        return (
+            len(
+                list(
+                    filter(
+                        lambda a: a["State"] == "ALIVE",
+                        _actors,
+                    )
+                )
+            )
+            == 3
+        )
+
+    wait_for_condition(_check)
+
+    # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
+    # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
+    # and unavailable responses.
+    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
+    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
+    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8001/-/healthz").text
+        == "This node is being drained."
+    )
+    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 503
+    assert (
+        requests.get("http://127.0.0.1:8001/-/routes").text
+        == "This node is being drained."
+    )
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+
+    # Clean up serve.
+    serve.shutdown()
 
 
 if __name__ == "__main__":
