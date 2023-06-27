@@ -10,7 +10,7 @@ from ray.rllib.core.models.base import (
     STATE_OUT,
     ENCODER_OUT,
 )
-from ray.rllib.core.models.base import Model
+from ray.rllib.core.models.base import Model, tokenize
 from ray.rllib.core.models.configs import (
     ActorCriticEncoderConfig,
     CNNEncoderConfig,
@@ -25,7 +25,6 @@ from ray.rllib.core.models.torch.primitives import TorchMLP, TorchCNN
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.policy.rnn_sequencing import get_fold_unfold_fns
 
 torch, nn = try_import_torch()
 
@@ -363,26 +362,3 @@ class TorchLSTMEncoder(TorchModel, Encoder):
         outputs[ENCODER_OUT] = out
         outputs[STATE_OUT] = tree.map_structure(lambda s: s.transpose(0, 1), states_out)
         return outputs
-
-
-def tokenize(tokenizer: Encoder, inputs: dict) -> dict:
-    """Tokenizes the observations from the input dict.
-
-    Args:
-        tokenizer: The tokenizer to use.
-        inputs: The input dict.
-
-    Returns:
-        The output dict.
-    """
-    # Tokenizer may depend solely on observations.
-    obs = inputs[SampleBatch.OBS]
-    tokenizer_inputs = {SampleBatch.OBS: obs}
-    size = list(obs.size())
-    b_dim, t_dim = size[:2]
-    fold, unfold = get_fold_unfold_fns(b_dim, t_dim, framework="torch")
-    # Push through the tokenizer encoder.
-    out = tokenizer(fold(tokenizer_inputs))
-    out = out[ENCODER_OUT]
-    # Then unfold batch- and time-dimensions again.
-    return unfold(out)

@@ -9,6 +9,7 @@ from ray.rllib.core.models.base import (
     STATE_IN,
     STATE_OUT,
     ENCODER_OUT,
+    tokenize,
 )
 from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import (
@@ -26,7 +27,6 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.policy.rnn_sequencing import get_fold_unfold_fns
 
 _, tf, _ = try_import_tf()
 
@@ -402,26 +402,3 @@ class TfLSTMEncoder(TfModel, Encoder):
             "c": tf.stack(states_out_c, 1),
         }
         return outputs
-
-
-def tokenize(tokenizer: Encoder, inputs: dict) -> dict:
-    """Tokenizes the observations from the input dict.
-
-    Args:
-        tokenizer: The tokenizer to use.
-        inputs: The input dict.
-
-    Returns:
-        The output dict.
-    """
-    # Tokenizer may depend solely on observations.
-    obs = inputs[SampleBatch.OBS]
-    tokenizer_inputs = {SampleBatch.OBS: obs}
-    shape = list(obs.shape)
-    b_dim, t_dim = shape[:2]
-    fold, unfold = get_fold_unfold_fns(b_dim, t_dim, framework="tf2")
-    # Push through the tokenizer encoder.
-    out = tokenizer(fold(tokenizer_inputs))
-    out = out[ENCODER_OUT]
-    # Then unfold batch- and time-dimensions again.
-    return unfold(out)
