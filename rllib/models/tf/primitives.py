@@ -1,14 +1,14 @@
 from typing import List
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import Deprecated
 
 _, tf, _ = try_import_tf()
 
 # TODO (Kourosh): Find a better hierarchy for the primitives after the POC is done.
 
 
+@Deprecated(error=False)
 class FCNet(tf.keras.Model):
     """A simple fully connected network.
 
@@ -27,8 +27,6 @@ class FCNet(tf.keras.Model):
         output_dim: int,
         activation: str = "linear",
     ):
-        if log_once("rllib_models_tf_FCNet_deprecation"):
-            deprecation_warning(old="ray.rllib.models.tf.primitives.FCNet")
         super().__init__()
 
         if activation not in ("linear", "ReLU", "Tanh"):
@@ -51,11 +49,10 @@ class FCNet(tf.keras.Model):
         return self.network(inputs)
 
 
+@Deprecated(error=False)
 class IdentityNetwork(tf.keras.Model):
     """A network that returns the input as the output."""
 
     @override(tf.keras.Model)
     def call(self, inputs, training=None, mask=None):
-        if log_once("rllib_models_tf_IdentityNetwork_deprecation"):
-            deprecation_warning(old="ray.rllib.models.tf.primitives.IdentityNetwork")
         return inputs

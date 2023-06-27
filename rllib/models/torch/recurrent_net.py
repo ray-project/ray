@@ -10,18 +10,17 @@ from ray.rllib.models.torch.torch_modelv2 import TorchModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import override, DeveloperAPI
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import Deprecated
 
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class RecurrentNetwork(TorchModelV2):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
@@ -76,10 +75,6 @@ class RecurrentNetwork(TorchModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
-        if log_once("torch_rnn_network_deprecaiton"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.recurrent_net.RecurrentNetwork"
-            )
         flat_inputs = input_dict["obs_flat"].float()
         # Note that max_seq_len != input_dict.max_seq_len != seq_lens.max()
         # as input_dict may have extra zero-padding beyond seq_lens.max().
@@ -119,6 +114,7 @@ class RecurrentNetwork(TorchModelV2):
         raise NotImplementedError("You must implement this for an RNN model")
 
 
+@Deprecated(error=False)
 class LSTMWrapper(RecurrentNetwork, nn.Module):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
 
@@ -130,8 +126,6 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
-        if log_once("torch_lstm_wrapper_deprecaiton"):
-            deprecation_warning(old="ray.rllib.models.torch.recurrent_net.LSTMWrapper")
 
         nn.Module.__init__(self)
         super(LSTMWrapper, self).__init__(

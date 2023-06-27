@@ -20,8 +20,7 @@ import torch.nn as nn
 from torch.nn import functional as F
 
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import Deprecated
 
 
 @DeveloperAPI
@@ -41,6 +40,7 @@ class GPTConfig:
     attn_pdrop: float = 0.1
 
 
+@Deprecated(error=False)
 class NewGELU(nn.Module):
     """
     Implementation of the GELU activation function currently in Google BERT
@@ -50,8 +50,6 @@ class NewGELU(nn.Module):
     """
 
     def forward(self, x):
-        if log_once("torch_gelu_deprecation"):
-            deprecation_warning(old="ray.rllib.models.torch.min_gpt.NewGELU")
         return (
             0.5
             * x
@@ -64,6 +62,7 @@ class NewGELU(nn.Module):
         )
 
 
+@Deprecated(error=False)
 class CausalSelfAttention(nn.Module):
     """
     Vanilla multi-head masked self-attention layer with a projection at the end.
@@ -72,10 +71,6 @@ class CausalSelfAttention(nn.Module):
     """
 
     def __init__(self, config: GPTConfig):
-        if log_once("torch_casual_self_attention_deprecation"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.min_gpt.CausalSelfAttention"
-            )
         super().__init__()
         assert config.n_embed % config.n_head == 0
         # key, query, value projections for all heads, but in a batch
@@ -127,12 +122,11 @@ class CausalSelfAttention(nn.Module):
         return y, att
 
 
+@Deprecated(error=False)
 class Block(nn.Module):
     """an unassuming Transformer block"""
 
     def __init__(self, config: GPTConfig):
-        if log_once("torch_block_deprecation"):
-            deprecation_warning(old="ray.rllib.models.torch.min_gpt.Block")
         super().__init__()
         self.ln_1 = nn.LayerNorm(config.n_embed)
         self.attn = CausalSelfAttention(config)
@@ -159,7 +153,7 @@ class Block(nn.Module):
         return x, att
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 def configure_gpt_optimizer(
     model: nn.Module,
     learning_rate: float,
@@ -177,10 +171,6 @@ def configure_gpt_optimizer(
 
     # separate out all parameters to those that will and won't experience
     # regularizing weight decay
-    if log_once("torch_configure_gpt_optimizer_deprecation"):
-        deprecation_warning(
-            old="ray.rllib.models.torch.min_gpt.configure_gpt_optimizer"
-        )
     decay = set()
     no_decay = set()
     whitelist_w_modules = (torch.nn.Linear,)
@@ -229,13 +219,11 @@ def configure_gpt_optimizer(
     return optimizer
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class GPT(nn.Module):
     """GPT Transformer Model"""
 
     def __init__(self, config: GPTConfig):
-        if log_once("torch_gpt_deprecation"):
-            deprecation_warning(old="ray.rllib.models.torch.min_gpt.GPT")
         super().__init__()
         assert config.block_size is not None
         self.block_size = config.block_size

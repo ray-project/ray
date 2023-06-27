@@ -12,8 +12,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.rllib.utils import log_once
 
 torch, nn = try_import_torch()
 
@@ -499,21 +499,17 @@ class TorchBeta(TorchDistributionWrapper):
         return np.prod(action_space.shape, dtype=np.int32) * 2
 
 
-@DeveloperAPI
+@Deprecated(
+    old="ray.rllib.models.torch.torch_action_dist.TorchDeterministic",
+    new="ray.rllib.models.torch.torch_distributions.TorchDeterminstic",
+    error=False,
+)
 class TorchDeterministic(TorchDistributionWrapper):
     """Action distribution that returns the input values directly.
 
     This is similar to DiagGaussian with standard deviation zero (thus only
     requiring the "mean" values as NN output).
     """
-
-    def __init__(*args, **kwargs):
-        if log_once("torch_action_dist_deterministic_deprecation"):
-            deprecation_warning(
-                old="ray.rllib.models.torch.torch_action_dist.TorchDeterministic",
-                new="ray.rllib.models.torch.torch_distributions.TorchDeterminstic",
-            )
-        super().__init__(*args, **kwargs)
 
     @override(ActionDistribution)
     def deterministic_sample(self) -> TensorType:
