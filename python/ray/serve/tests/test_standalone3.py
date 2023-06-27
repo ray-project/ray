@@ -134,8 +134,7 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
         == object_snapshots2[key][0].actor_handle._actor_id
     )
 
-    # Make sure the first request is being run.
-    # First ref should be still ongoing
+    # Make sure the first request is still ongoing.
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(first_ref, timeout=1)
 

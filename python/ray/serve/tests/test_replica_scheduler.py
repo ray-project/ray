@@ -366,6 +366,45 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
         )
 
 
+@pytest.mark.asyncio
+async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query):
+    """
+    Verify that if a replica is removed from the active set while the queue length
+    message is in flight, it won't be scheduled and a new replica will be.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    # Set a very high response deadline to ensure we can have the replica respond after
+    # calling `update_replicas`.
+    s.queue_len_response_deadline_s = 100
+
+    r1 = FakeReplicaWrapper("r1")
+    s.update_replicas([r1])
+
+    # Start the scheduling task, which will hang waiting for the queue length response.
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+    assert s.curr_num_scheduling_tasks == 1
+
+    # Update the replicas to remove the existing replica and add a new one.
+    # Also set the queue length response on the existing replica.
+    r2 = FakeReplicaWrapper("r2")
+    s.update_replicas([r2])
+    r1.set_queue_len_response(0, accepted=True)
+
+    # The original replica should *not* be scheduled.
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+    assert s.curr_num_scheduling_tasks == 1
+
+    # Set the new replica to accept, it should be scheduled.
+    r2.set_queue_len_response(0, accepted=True)
+    assert (await task) == r2
+
+
 if __name__ == "__main__":
     import sys
 

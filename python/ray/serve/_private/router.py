@@ -168,6 +168,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     # The last item in the list is the max timeout and will be used repeatedly.
     backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
 
+    # Deadline for replicas to respond with their queue length. If the response isn't
+    # received within this deadline, the replica will not be considered.
+    queue_len_response_deadline_s = 0.1
+
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
@@ -265,15 +269,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 
     async def select_from_candidate_replicas(
-        self, candidates: List[ReplicaWrapper], response_deadline_s: float = 0.1
+        self, candidates: List[ReplicaWrapper]
     ) -> Optional[ReplicaWrapper]:
         """Chooses the best replica from the list of candidates.
 
         If none of the replicas can be scheduled, returns `None`.
 
         The queue length at each replica is queried directly from it. The time waited
-        for these queries is capped by `response_deadline_s`; if a replica doesn't
-        respond within the deadline it is not considered.
+        for these queries is capped by `self.queue_len_response_deadline_s`; if a
+        replica doesn't respond within the deadline it is not considered.
 
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
@@ -281,7 +285,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         get_queue_len_tasks = [c.get_queue_len() for c in candidates]
         done, pending = await asyncio.wait(
             get_queue_len_tasks,
-            timeout=response_deadline_s,
+            timeout=self.queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
         for task in pending:
@@ -303,7 +307,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         if chosen_replica_id is None:
             return None
 
-        return self._replicas[chosen_replica_id]
+        # `self._replicas` may have been updated since the candidates were chosen.
+        # In that case, return `None` so a new one is selected.
+        return self._replicas.get(chosen_replica_id, None)
 
     def fulfill_next_pending_assignment(self, replica: ReplicaWrapper):
         """Assign the replica to the next pending assignment in FIFO order.
