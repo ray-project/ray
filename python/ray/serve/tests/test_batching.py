@@ -392,10 +392,9 @@ async def test_batch_setters(use_class):
 
     # @serve.batch should create batches of size 2
     coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-    _, pending = await asyncio.wait(coros, timeout=0.1)
+    done, pending = await asyncio.wait(coros, timeout=0.1)
     assert len(pending) == 0
-    result = await asyncio.gather(*coros)
-    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+    assert {task.result() for task in done} == {("hi1", "hi2"), ("hi3", "hi4")}
 
     # Set new values
     func.set_max_batch_size(3)
@@ -406,10 +405,13 @@ async def test_batch_setters(use_class):
 
     # @serve.batch should create batches of size 3
     coros = [func("hi1", "hi2"), func("hi3", "hi4"), func("hi5", "hi6")]
-    _, pending = await asyncio.wait(coros, timeout=0.1)
+    done, pending = await asyncio.wait(coros, timeout=0.1)
     assert len(pending) == 0
-    result = await asyncio.gather(*coros)
-    assert result == [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+    assert {task.result() for task in done} == {
+        ("hi1", "hi2"),
+        ("hi3", "hi4"),
+        ("hi5", "hi6"),
+    }
 
 
 @pytest.mark.asyncio
@@ -451,22 +453,24 @@ async def test_batch_use_earliest_setters():
     assert func._get_batch_wait_timeout_s() == 0
 
     # Batch should still be waiting for last request
-    done, pending = await asyncio.wait(coros, timeout=0.1)
+    done, pending = await asyncio.wait(pending, timeout=0.1)
     assert len(done) == 0 and len(pending) == 2
 
     # Batch should execute after last request
-    coros.append(func("hi5", "hi6"))
-    _, pending = await asyncio.wait(coros, timeout=0.1)
+    pending.add(func("hi5", "hi6"))
+    done, pending = await asyncio.wait(pending, timeout=0.1)
     assert len(pending) == 0
-    result = await asyncio.gather(*coros)
-    assert result == [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+    assert {task.result() for task in done} == {
+        ("hi1", "hi2"),
+        ("hi3", "hi4"),
+        ("hi5", "hi6"),
+    }
 
     # Next batch should use updated values
     coros = [func("hi1", "hi2")]
-    _, pending = await asyncio.wait(coros, timeout=0.1)
-    assert len(pending) == 0
-    result = await asyncio.gather(*coros)
-    assert result == [("hi1", "hi2")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
+    assert len(done) == 1 and len(pending) == 0
+    assert done.pop().result() == ("hi1", "hi2")
 
 
 @pytest.mark.asyncio

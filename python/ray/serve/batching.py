@@ -296,7 +296,7 @@ class _LazyBatchQueueWrapper:
         return self.max_batch_size
 
     def get_batch_wait_timeout_s(self) -> float:
-        return self.get_batch_wait_timeout_s
+        return self.batch_wait_timeout_s
 
 
 def _validate_max_batch_size(max_batch_size):
