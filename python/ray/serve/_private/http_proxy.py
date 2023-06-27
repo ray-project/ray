@@ -452,8 +452,8 @@ class HTTPProxy:
                 "app_name": app_name,
             }
             start_time = time.time()
-            for key, value in scope["headers"]:
-                if key.decode().upper() == SERVE_MULTIPLEXED_MODEL_ID:
+            for key, value in scope.get("headers", []):
+                if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                     request_context_info["multiplexed_model_id"] = value.decode()
                 if key.decode().upper() == RAY_SERVE_REQUEST_ID:
                     request_context_info["request_id"] = value.decode()
