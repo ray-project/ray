@@ -42,7 +42,6 @@ class ConnectorContext:
         action_space: gym.Space = None,
         view_requirements: Dict[str, ViewRequirement] = None,
         is_policy_recurrent: bool = False,
-        _enable_rl_module_api: bool = False,
     ):
         """Construct a ConnectorContext instance.
 
@@ -52,8 +51,6 @@ class ConnectorContext:
             action_space_struct: a policy's action space, in python
                 data format. E.g., python dict instead of DictSpace, python tuple
                 instead of TupleSpace.
-            _enable_rl_module_api: This is a temporary flag to enable the new RLlib
-                RLModule API. It will get removed once the new API is fully rolled out.
         """
         self.config = config or {}
         self.initial_states = initial_states or []
@@ -61,7 +58,6 @@ class ConnectorContext:
         self.action_space = action_space
         self.view_requirements = view_requirements
         self.is_policy_recurrent = is_policy_recurrent
-        self._enable_rl_module_api = _enable_rl_module_api
 
     @staticmethod
     def from_policy(policy: "Policy") -> "ConnectorContext":
@@ -80,7 +76,6 @@ class ConnectorContext:
             action_space=policy.action_space,
             view_requirements=policy.view_requirements,
             is_policy_recurrent=policy.is_recurrent(),
-            _enable_rl_module_api=policy.config.get("_enable_rl_module_api", False),
         )
 
 
