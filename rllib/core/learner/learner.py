@@ -1208,16 +1208,7 @@ class Learner:
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
         batch = self._convert_batch_type(batch)
-        for pid, policy_batch in batch.policy_batches.items():
-            if self.module._rl_modules[pid].is_recurrent():
-                assert (
-                    policy_batch.get(SampleBatch.SEQ_LENS, None) is not None
-                ), "Recurrent modules require a `seq_lens` tensor in the policy batch."
-                # We assume that arriving batches for recurrent modules are already
-                # padded to the max sequence length and have tensors of shape
-                # [B, T, ...]. Therefore, we slice sequence lengths in B. See
-                # SampleBatch for more information.
-                policy_batch._slice_seq_lens_in_B = True
+        batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
             # Make the actual in-graph/traced `_update` call. This should return
@@ -1240,6 +1231,8 @@ class Learner:
             #  to return all numpy/python data, then we can skip this conversion
             #  step here.
             results.append(convert_to_numpy(result))
+
+        batch = self._set_slicing_by_batch_id(batch, value=False)
 
         # Reduce results across all minibatches, if necessary.
 
@@ -1337,6 +1330,40 @@ class Learner:
             The current state of all optimizers currently registered in this Learner.
         """
         raise NotImplementedError
+
+    def _set_slicing_by_batch_id(
+        self, batch: MultiAgentBatch, *, value: bool
+    ) -> MultiAgentBatch:
+        """Enables slicing by batch id in the given batch.
+
+        If the input batch contains batches of sequences we need to make sure when
+        slicing happens it is sliced via batch id and not timestamp. Calling this
+        method enables the same flag on each SampleBatch within the input
+        MultiAgentBatch.
+
+        Args:
+            batch: The MultiAgentBatch to enable slicing by batch id on.
+            value: The value to set the flag to.
+
+        Returns:
+            The input MultiAgentBatch with the indexing flag is enabled / disabled on.
+        """
+
+        for pid, policy_batch in batch.policy_batches.items():
+            if self.module[pid].is_recurrent():
+                assert (
+                    policy_batch.get(SampleBatch.SEQ_LENS, None) is not None
+                ), "Recurrent modules require a `seq_lens` tensor in the policy batch."
+                # We assume that arriving batches for recurrent modules are already
+                # padded to the max sequence length and have tensors of shape
+                # [B, T, ...]. Therefore, we slice sequence lengths in B. See
+                # SampleBatch for more information.
+                if value:
+                    policy_batch.enable_slicing_by_batch_id()
+                else:
+                    policy_batch.disable_slicing_by_batch_id()
+
+        return batch
 
     def _get_metadata(self) -> Dict[str, Any]:
         metadata = {

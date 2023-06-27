@@ -305,6 +305,14 @@ class SampleBatch(dict):
         """
         return len(self)
 
+    @DeveloperAPI
+    def enable_slicing_by_batch_id(self):
+        self._slice_seq_lens_in_B = True
+
+    @DeveloperAPI
+    def disable_slicing_by_batch_id(self):
+        self._slice_seq_lens_in_B = False
+
     @ExperimentalAPI
     def is_terminated_or_truncated(self) -> bool:
         """Returns True if `self` is either terminated or truncated at idx -1."""
