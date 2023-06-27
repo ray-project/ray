@@ -16,7 +16,6 @@ parser.add_argument(
     default="torch",
     help="The DL framework specifier.",
 )
-parser.add_argument("--eager-tracing", action="store_true")
 parser.add_argument("--use-prev-action", action="store_true")
 parser.add_argument("--use-prev-reward", action="store_true")
 parser.add_argument(
@@ -41,14 +40,14 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    ray.init(num_cpus=args.num_cpus or None, local_mode=True)
+    ray.init()
 
     algo_cls = get_trainable_cls(args.run)
     config = algo_cls.get_default_config()
 
     config.environment(env=StatelessCartPole).resources(
         num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-    ).framework(args.framework, eager_tracing=args.eager_tracing).reporting(
+    ).framework(args.framework).reporting(
         min_time_s_per_iteration=0.1
     ).training(model={
                 "use_lstm": True,
