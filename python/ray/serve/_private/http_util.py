@@ -62,7 +62,7 @@ class Response:
     >>> await Response({"k": "v"}).send(scope, receive, send) # doctest: +SKIP
     """
 
-    def __init__(self, content=None, status_code=200):
+    def __init__(self, content=None, status_code=200, request_id=None):
         """Construct a HTTP Response based on input type.
 
         Args:
@@ -72,13 +72,13 @@ class Response:
         self.status_code = status_code
         self.raw_headers = []
 
-        # Set request id.
-        self.raw_headers.append(
-            [
-                RAY_SERVE_REQUEST_ID,
-                ray.serve.context._serve_request_context.get().request_id,
-            ]
-        )
+        if request_id:
+            self.raw_headers.append(
+                [
+                    RAY_SERVE_REQUEST_ID,
+                    request_id,
+                ]
+            )
 
         if content is None:
             self.body = b""
@@ -141,13 +141,6 @@ class RawASGIResponse(ASGIApp):
 
     def __init__(self, messages):
         self.messages = messages
-        # Set request id.
-        self.messages[0]["headers"].append(
-            [
-                RAY_SERVE_REQUEST_ID,
-                ray.serve.context._serve_request_context.get().request_id,
-            ]
-        )
 
     async def __call__(self, scope, receive, send):
         for message in self.messages:

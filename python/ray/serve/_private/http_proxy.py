@@ -298,7 +298,6 @@ class HTTPProxy:
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
-
         if route_path == "/-/routes":
             self.request_counter.inc(
                 tags={
@@ -445,6 +444,7 @@ class HTTPProxy:
         loop = get_or_create_event_loop()
         # We have received all the http request conent. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
+        request_id = ray.serve.context._serve_request_context.get().request_id
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
@@ -498,9 +498,9 @@ class HTTPProxy:
                 return DISCONNECT_ERROR_CODE
             except RayTaskError as e:
                 error_message = f"Unexpected error, traceback: {e}."
-                await Response(error_message, status_code=500).send(
-                    scope, receive, send
-                )
+                await Response(
+                    error_message, status_code=500, request_id=request_id
+                ).send(scope, receive, send)
                 return "500"
             except RayActorError:
                 logger.info(
@@ -519,14 +519,22 @@ class HTTPProxy:
                 backoff = False
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(scope, receive, send)
+            await Response(error_message, status_code=500, request_id=request_id).send(
+                scope, receive, send
+            )
             return "500"
-
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
+            # Set request id
+            result.messages[0]["headers"].append(
+                [
+                    RAY_SERVE_REQUEST_ID,
+                    request_id,
+                ]
+            )
             await result(scope, receive, send)
             return str(result.status_code)
         else:
-            await Response(result).send(scope, receive, send)
+            await Response(result, request_id=request_id).send(scope, receive, send)
             return "200"
 
     async def proxy_asgi_receive(
