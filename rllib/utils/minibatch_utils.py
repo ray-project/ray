@@ -105,7 +105,10 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 # roll minibatch to zero when we reach the end of the batch
                 self._start[module_id] = e
 
-            minibatch = MultiAgentBatch(minibatch, 0)
+            # Note (Kourosh): env_steps is the total number of env_steps that this
+            # multi-agent batch is covering. It should be simply inherited from the
+            # original multi-agent batch.
+            minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
 
 
