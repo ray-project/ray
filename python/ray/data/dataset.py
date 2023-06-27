@@ -2377,7 +2377,7 @@ class Dataset:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
@@ -2440,7 +2440,7 @@ class Dataset:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {self._uuid}_{block_idx}.json, where ``uuid`` is an
@@ -2504,7 +2504,7 @@ class Dataset:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
@@ -2574,7 +2574,7 @@ class Dataset:
             and will error if the dataset contains unsupported types.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
@@ -2642,7 +2642,7 @@ class Dataset:
             and will error if the dataset contains unsupported types.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
@@ -2702,7 +2702,7 @@ class Dataset:
 
         This is only supported for datasets convertible to Arrow records that
         contain a TensorArray column. To control the number of files, use
-        ``.repartition()``.
+        :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {self._uuid}_{block_idx}.npy, where ``uuid`` is an unique
@@ -2758,7 +2758,7 @@ class Dataset:
         """Write the dataset to a MongoDB datasource.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of parallel write tasks, use ``.repartition()``
+        To control the number of parallel write tasks, use :meth:`Dataset.repartition``
         before calling this method.
 
         .. note::
