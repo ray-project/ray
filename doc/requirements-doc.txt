@@ -23,6 +23,7 @@ pillow
 pyarrow
 pydantic < 1.10.0
 pyyaml
+pytorch-lightning==1.6.5
 scikit-optimize
 redis
 starlette
@@ -43,7 +44,6 @@ mxnet==1.8.0.post0
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
 git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
-git+https://github.com/ray-project/ray_lightning@main#ray_lightning
 
 # Syntax highlighting
 Pygments==2.13.0

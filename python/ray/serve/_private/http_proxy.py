@@ -6,7 +6,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import uvicorn
 import starlette.responses
@@ -27,14 +27,16 @@ from ray.serve._private.http_util import (
     receive_http_body,
     Response,
     set_socket_reuse_port,
+    validate_http_proxy_callback_return,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
+from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName, NodeId
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -43,7 +45,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters, call_function_from_import_path
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -69,9 +71,11 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
-        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
-        "future versions."
+        "been deprecated. Please set `request_timeout_s` in your Serve config's "
+        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
+        "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
+        "ema.request_timeout_s"
     )
 
 
@@ -165,7 +169,15 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(
+        self,
+        controller_name: str,
+        node_id: NodeId,
+        request_timeout_s: Optional[float] = None,
+    ):
+        self.request_timeout_s = request_timeout_s
+        self._node_id = node_id
+
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
@@ -198,6 +210,7 @@ class HTTPProxy:
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
+                LongPollNamespace.ACTIVE_NODES: self._update_draining,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -243,6 +256,14 @@ class HTTPProxy:
                 "status_code",
             ),
         )
+        # `self._ongoing_requests` is used to count the number of ongoing requests
+        # and determine whether to set/unset `self._prevent_node_downscale_ref`
+        self._ongoing_requests = 0
+        # `self._prevent_node_downscale_ref` is used to prevent the node from being
+        # downscaled when there are ongoing requests
+        self._prevent_node_downscale_ref = None
+        # `self._draining` is used to indicate whether the node is the draining state.
+        self._draining = False
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -251,6 +272,24 @@ class HTTPProxy:
             self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)
+
+    def _update_draining(self, active_nodes: Set[str]):
+        """Update draining flag on http proxy.
+
+        This is a callback for when controller detects there being a change in active
+        nodes. Each http proxy will check if it's nodes is still active and set
+        draining flag accordingly. Also, log a message when the draining flag is
+        changed.
+        """
+        draining = self._node_id not in active_nodes
+        if draining != self._draining:
+            logger.info(f"Setting draining flag on node {self._node_id} to {draining}.")
+            self._draining = draining
+
+            # Since the draining flag is changed, we need to check if
+            # `self._prevent_node_downscale_ref` is set to prevent the node from being
+            # downscaled when there are ongoing requests.
+            self._try_set_prevent_downscale_ref()
 
     async def block_until_endpoint_exists(
         self, endpoint: EndpointTag, timeout_s: float
@@ -273,6 +312,13 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def _draining_response(self, scope, receive, send):
+        response = Response(
+            "This node is being drained.",
+            status_code=503,
+        )
+        await response.send(scope, receive, send)
+
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
         if queue is None:
@@ -281,13 +327,54 @@ class HTTPProxy:
         await queue.wait_for_message()
         return queue.get_messages_nowait()
 
+    def _try_set_prevent_downscale_ref(self):
+        """Try to set put a primary copy of object in the object store to prevent node
+        from downscale.
+
+        The only time we need to put the object store is when there are ongoing
+        requests, the node is not draining, and the object reference is not set yet.
+        This should be checked when either `self._ongoing_requests` or `self._draining`
+        is changed. Also, log when the object reference is set.
+        """
+        if (
+            self._ongoing_requests > 0
+            and self._draining
+            and self._prevent_node_downscale_ref is None
+        ):
+            logger.info("Putting keep alive object reference to prevent downscaling.")
+            self._prevent_node_downscale_ref = ray.put("ongoing_requests")
+
+    def _ongoing_requests_start(self):
+        """Ongoing requests start.
+
+        The current autoscale logic can downscale nodes with ongoing requests if the
+        node doesn't have replicas and has no primary copies of objects in the object
+        store. The counter and the dummy object reference will help to keep the node
+        alive while draining requests, so they are not dropped unintentionally.
+        """
+        self._ongoing_requests += 1
+        # Since the ongoing request is changed, we need to check if
+        # `self._prevent_node_downscale_ref` is set to prevent the node from being
+        # downscaled when the draining flag is true.
+        self._try_set_prevent_downscale_ref()
+
+    def _ongoing_requests_end(self):
+        """Ongoing requests end.
+
+        Decrement the ongoing request counter and drop the dummy object reference
+        signaling that the node can be downscaled safely.
+        """
+        self._ongoing_requests -= 1
+        if self._ongoing_requests == 0:
+            logger.info("Dropping keep alive object reference to allow downscaling.")
+            self._prevent_node_downscale_ref = None
+
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
 
         See details at:
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
-
         assert scope["type"] in {"http", "websocket"}
 
         method = scope.get("method", "websocket").upper()
@@ -297,6 +384,9 @@ class HTTPProxy:
         route_path = scope["path"][len(root_path) :]
 
         if route_path == "/-/routes":
+            if self._draining:
+                return await self._draining_response(scope, receive, send)
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
@@ -310,6 +400,9 @@ class HTTPProxy:
             )
 
         if route_path == "/-/healthz":
+            if self._draining:
+                return await self._draining_response(scope, receive, send)
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
@@ -322,100 +415,107 @@ class HTTPProxy:
                 scope, receive, send
             )
 
-        route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
-        if route_prefix is None:
-            self.request_error_counter.inc(
-                tags={
-                    "route": route_path,
-                    "error_code": "404",
-                    "method": method,
-                }
+        try:
+            self._ongoing_requests_start()
+
+            route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
+            if route_prefix is None:
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": "404",
+                        "method": method,
+                    }
+                )
+                self.request_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "method": method,
+                        "application": "",
+                        "status_code": "404",
+                    }
+                )
+                return await self._not_found(scope, receive, send)
+
+            # Modify the path and root path so that reverse lookups and redirection
+            # work as expected. We do this here instead of in replicas so it can be
+            # changed without restarting the replicas.
+            if route_prefix != "/":
+                assert not route_prefix.endswith("/")
+                scope["path"] = route_path.replace(route_prefix, "", 1)
+                scope["root_path"] = root_path + route_prefix
+
+            request_id = get_random_letters(10)
+            request_context_info = {
+                "route": route_path,
+                "request_id": request_id,
+                "app_name": app_name,
+            }
+            start_time = time.time()
+            for key, value in scope.get("headers", []):
+                if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                    request_context_info["multiplexed_model_id"] = value.decode()
+                    break
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context.RequestContext(**request_context_info)
             )
+
+            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+                status_code = await self.send_request_to_replica_streaming(
+                    request_id, handle, scope, receive, send
+                )
+            else:
+                status_code = await self.send_request_to_replica_unary(
+                    handle, scope, receive, send
+                )
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
                     "method": method,
-                    "application": "",
-                    "status_code": "404",
+                    "application": app_name,
+                    "status_code": status_code,
                 }
             )
-            return await self._not_found(scope, receive, send)
 
-        # Modify the path and root path so that reverse lookups and redirection
-        # work as expected. We do this here instead of in replicas so it can be
-        # changed without restarting the replicas.
-        if route_prefix != "/":
-            assert not route_prefix.endswith("/")
-            scope["path"] = route_path.replace(route_prefix, "", 1)
-            scope["root_path"] = root_path + route_prefix
-
-        request_id = get_random_letters(10)
-        request_context_info = {
-            "route": route_path,
-            "request_id": request_id,
-            "app_name": app_name,
-        }
-        start_time = time.time()
-        for key, value in scope.get("headers", []):
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                request_context_info["multiplexed_model_id"] = value.decode()
-                break
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
-        )
-
-        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
-            status_code = await self.send_request_to_replica_streaming(
-                request_id, handle, scope, receive, send
-            )
-        else:
-            status_code = await self.send_request_to_replica_unary(
-                handle, scope, receive, send
-            )
-
-        self.request_counter.inc(
-            tags={
-                "route": route_path,
-                "method": method,
-                "application": app_name,
-                "status_code": status_code,
-            }
-        )
-
-        latency_ms = (time.time() - start_time) * 1000.0
-        self.processing_latency_tracker.observe(
-            latency_ms,
-            tags={
-                "route": route_path,
-                "application": app_name,
-                "status_code": status_code,
-            },
-        )
-        logger.info(
-            access_log_msg(
-                method=method,
-                status=str(status_code),
-                latency_ms=latency_ms,
-            ),
-            extra={"log_to_stderr": False},
-        )
-        if status_code != "200":
-            self.request_error_counter.inc(
+            latency_ms = (time.time() - start_time) * 1000.0
+            self.processing_latency_tracker.observe(
+                latency_ms,
                 tags={
-                    "route": route_path,
-                    "error_code": status_code,
-                    "method": method,
-                }
-            )
-            self.deployment_request_error_counter.inc(
-                tags={
-                    "deployment": handle.deployment_name,
-                    "error_code": status_code,
-                    "method": method,
                     "route": route_path,
                     "application": app_name,
-                }
+                    "status_code": status_code,
+                },
             )
+            logger.info(
+                access_log_msg(
+                    method=method,
+                    status=str(status_code),
+                    latency_ms=latency_ms,
+                ),
+                extra={"log_to_stderr": False},
+            )
+            if status_code != "200":
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": status_code,
+                        "method": method,
+                    }
+                )
+                self.deployment_request_error_counter.inc(
+                    tags={
+                        "deployment": handle.deployment_name,
+                        "error_code": status_code,
+                        "method": method,
+                        "route": route_path,
+                        "application": app_name,
+                    }
+                )
+        finally:
+            # If anything during the request failed, we still want to ensure the ongoing
+            # request counter is decremented and possibly reset the keep alive object.
+            self._ongoing_requests_end()
 
     async def send_request_to_replica_unary(
         self,
@@ -475,14 +575,14 @@ class HTTPProxy:
                 # check if latency drops significantly. See
                 # https://github.com/ray-project/ray/pull/29534 for more info.
                 _, request_timed_out = await asyncio.wait(
-                    [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+                    [object_ref], timeout=self.request_timeout_s
                 )
                 if request_timed_out:
                     logger.info(
-                        "Request didn't finish within "
-                        f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
-                        "with another replica. You can modify this timeout by "
-                        'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
+                        f"Request didn't finish within {self.request_timeout_s} seconds"
+                        ". Retrying with another replica. You can modify this timeout "
+                        'by setting "request_timeout_s" in your Serve config\'s '
+                        "`http_options` field."
                     )
                     backoff = True
                 else:
@@ -612,6 +712,8 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
+        node_id: NodeId,
+        request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
@@ -621,15 +723,36 @@ class HTTPProxyActor:
         if http_middlewares is None:
             http_middlewares = []
 
+        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+            logger.info(
+                "Calling user-provided callback from import path "
+                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+            )
+            middlewares = validate_http_proxy_callback_return(
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+                )
+            )
+
+            http_middlewares.extend(middlewares)
+
         self.host = host
         self.port = port
         self.root_path = root_path
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(controller_name, node_id)
+        self.app = HTTPProxy(
+            controller_name=controller_name,
+            node_id=node_id,
+            request_timeout_s=(
+                request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            ),
+        )
 
         self.wrapped_app = self.app
+
         for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 

@@ -202,7 +202,6 @@ test_python() {
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
@@ -433,8 +432,6 @@ build_wheels_and_jars() {
         -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "encrypted_1c30b31fe1ee_key=${encrypted_1c30b31fe1ee_key-}"
-        -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
