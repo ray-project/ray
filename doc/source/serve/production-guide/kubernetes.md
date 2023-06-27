@@ -268,7 +268,12 @@ Monitor your Serve application using the Ray Dashboard.
 Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
 Learn about the Ray Serve Dashboard [here](serve-monitoring).
 Learn how to set up the Grafana for Dashboard [here](https://ray-project.github.io/kuberay/guidance/prometheus-grafana/)
+Learn about the Ray Serve log and how to set up logging with Loki [here](serve-logging).
 
+:::{note}
+- To troubleshoot application deployment failures in Serve, you can check the Kuberay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The Kuberay operator logs contain information about the Serve application deployment event and Serve application health checks.
+- You can also check the controller log and deployment log, which are located under `/tmp/ray/session_latest/logs/serve/` in both the head node pod and worker node pod. These logs contain information about specific deployment failure reasons and autoscaling events.
+:::
 
 ## Next Steps
 
