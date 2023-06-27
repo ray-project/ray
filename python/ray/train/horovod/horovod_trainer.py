@@ -79,7 +79,9 @@ class HorovodTrainer(DataParallelTrainer):
 
     Example:
 
-    .. code-block:: python
+
+    .. testcode::
+        :skipif: True
 
         import ray
         import ray.train as train

@@ -77,7 +77,8 @@ class RLTrainer(BaseTrainer):
     Example:
         Offline training (assumes data is stored in ``/tmp/data-dir``):
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import ray
             from ray.air.config import RunConfig, ScalingConfig
