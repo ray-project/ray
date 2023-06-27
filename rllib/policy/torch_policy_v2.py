@@ -336,10 +336,7 @@ class TorchPolicyV2(Policy):
             "_enable_learner_api", False
         ), "This is a helper method for the new learner API."
 
-        if (
-            self.config.get("_enable_rl_module_api", False)
-            and self.model.is_recurrent()
-        ):
+        if self.config.get("_enable_rl_module_api", False) and self.model.is_stateful():
             # Note that this is a temporary workaround to fit the old sampling stack
             # to RL Modules.
             ret = {}
@@ -1189,7 +1186,7 @@ class TorchPolicyV2(Policy):
 
         # New API stack: `self.model` is-a RLModule.
         if isinstance(self.model, RLModule):
-            if self.model.is_recurrent():
+            if self.model.is_stateful():
                 # For recurrent models, we need to add a time dimension.
                 if not seq_lens:
                     # In order to calculate the batch size ad hoc, we need a sample
