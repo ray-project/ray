@@ -378,6 +378,7 @@ class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
 
 
 class ServeComponentType(str, Enum):
