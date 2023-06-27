@@ -50,17 +50,25 @@ def assert_packages_not_installed(blacklist: List[str]):
         f"current Python environment: {blacklist}"
     )
 
+
 def assert_python_version(expected_python_version: str) -> None:
     actual_major, actual_minor = sys.version_info[:2]
-    actual_version = f'{actual_major}.{actual_minor}'
+    actual_version = f"{actual_major}.{actual_minor}"
     expected_version = expected_python_version.strip()
-    assert expected_version == actual_version, f"Expected Python version {expected_version=}, {actual_version=}"
+    assert (
+        expected_version == actual_version
+    ), f"Expected Python version {expected_version=}, {actual_version=}"
 
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--expected-python-version", type=str, required=True, help="Expected Python version in MAJOR.MINOR format, e.g. 3.11")
+    parser.add_argument(
+        "--expected-python-version",
+        type=str,
+        required=True,
+        help="Expected Python version in MAJOR.MINOR format, e.g. 3.11",
+    )
     args = parser.parse_args()
 
     assert_packages_not_installed(DEFAULT_BLACKLIST)
