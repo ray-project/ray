@@ -14,6 +14,7 @@ doctest(
             "xgboost/xgboost_checkpoint.py"
         ]
     ),
+    size = "large",
     tags = ["team:ml"],
 )
 
