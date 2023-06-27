@@ -3,6 +3,8 @@
 if [ "$1" == "3.11" ]; then
     # TODO: fix build wheels unsupported tags in the future
     echo "'set -xe' not working for Python 3.11"
+    echo "[cade] setting -xe anyways"
+    set -xe
 else
     set -xe
 fi
@@ -32,7 +34,7 @@ echo "Python version is ${PYTHON_VERSION}"
 ROOT_DIR=$(cd "$(dirname "$0")/$(dirname "$(test -L "$0" && readlink "$0" || echo "/")")" || exit; pwd)
 WORKSPACE_DIR="${ROOT_DIR}/../.."
 
-# Installs conda and python 3.7
+# Installs conda and the specified python version
 MINIMAL_INSTALL=1 PYTHON=${PYTHON_VERSION} "${WORKSPACE_DIR}/ci/env/install-dependencies.sh"
 
 # Re-install Ray wheels
