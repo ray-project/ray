@@ -24,7 +24,6 @@ def synchronous_parallel_sample(
     max_agent_steps: Optional[int] = None,
     max_env_steps: Optional[int] = None,
     concat: bool = True,
-    _enable_rl_module_api: bool = False,
 ) -> Union[List[SampleBatchType], SampleBatchType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
