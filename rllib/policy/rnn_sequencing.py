@@ -578,6 +578,7 @@ def timeslice_along_seq_lens_with_overlap(
     return timeslices
 
 
+@DeveloperAPI
 def get_fold_unfold_b_t_dims(b_dim: int, t_dim: int, framework: str):
     """Produces two functions to fold/unfold any Tensors in a struct.
 
