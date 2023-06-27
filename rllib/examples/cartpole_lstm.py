@@ -51,13 +51,13 @@ if __name__ == "__main__":
         min_time_s_per_iteration=0.1
     ).training(model={
                 "use_lstm": True,
-                "lstm_cell_size": 256,
+                "lstm_cell_size": 32,
                 "lstm_use_prev_action": args.use_prev_action,
                 "lstm_use_prev_reward": args.use_prev_reward,
             })
 
     if args.run == "PPO":
-        config.training(num_sgd_iter=5, vf_loss_coeff=0.0001)
+        config.training(num_sgd_iter=5, vf_loss_coeff=0.0001, train_batch_size=512)
         config.model["vf_share_layers"] = True
     elif args.run == "IMPALA":
         config.rollouts(num_rollout_workers=2)

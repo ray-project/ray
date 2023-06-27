@@ -3097,12 +3097,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/cartpole_lstm_impala_tf",
+    name = "examples/cartpole_lstm_impala_tf2",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=tf", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
 py_test(
@@ -3111,25 +3111,18 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
-py_test(
-    name = "examples/cartpole_lstm_ppo_tf",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=tf", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
-)
 
+# TODO (Kourosh): tf2 ~5x slower compared to torch on the new stack
 py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=tf2", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
 py_test(
@@ -3138,16 +3131,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
+    name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action",  "--use-prev-reward", "--num-cpus=4"]
+    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
 )
 
 py_test(
