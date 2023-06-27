@@ -66,7 +66,7 @@ class _BatchQueue:
     def __init__(
         self,
         max_batch_size: int,
-        timeout_s: float,
+        batch_wait_timeout_s: float,
         handle_batch_func: Optional[Callable] = None,
     ) -> None:
         """Async queue that accepts individual items and returns batches.
@@ -87,7 +87,7 @@ class _BatchQueue:
         """
         self.queue: asyncio.Queue[_SingleRequest] = asyncio.Queue()
         self.max_batch_size = max_batch_size
-        self.timeout_s = timeout_s
+        self.batch_wait_timeout_s = batch_wait_timeout_s
         self.queue_put_event = asyncio.Event()
 
         self._handle_batch_task = None
@@ -114,11 +114,15 @@ class _BatchQueue:
         batch = []
         batch.append(await self.queue.get())
 
+        # Cache current max_batch_size and batch_wait_timeout_s for this batch
+        max_batch_size = self.max_batch_size
+        batch_wait_timeout_s = self.batch_wait_timeout_s
+
         # Wait self.timeout_s seconds for new queue arrivals.
         batch_start_time = time.time()
         while True:
             remaining_batch_time_s = max(
-                self.timeout_s - (time.time() - batch_start_time), 0
+                batch_wait_timeout_s - (time.time() - batch_start_time), 0
             )
             try:
                 # Wait for new arrivals.
@@ -129,13 +133,13 @@ class _BatchQueue:
                 pass
 
             # Add all new arrivals to the batch.
-            while len(batch) < self.max_batch_size and not self.queue.empty():
+            while len(batch) < max_batch_size and not self.queue.empty():
                 batch.append(self.queue.get_nowait())
             self.queue_put_event.clear()
 
             if (
-                time.time() - batch_start_time >= self.timeout_s
-                or len(batch) >= self.max_batch_size
+                time.time() - batch_start_time >= batch_wait_timeout_s
+                or len(batch) >= max_batch_size
             ):
                 break
 
@@ -395,37 +399,43 @@ def batch(
                     batch_queue_object, "_ray_serve_batch_wait_timeout_s"
                 )
                 _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
-                batch_queue.timeout_s = new_batch_wait_timeout_s
+                batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
             future = get_or_create_event_loop().create_future()
             batch_queue.put(_SingleRequest(self, flattened_args, future))
             return future
 
+        nonlocal max_batch_size, batch_wait_timeout_s
+        batch_queue = batch_queue_cls(max_batch_size, batch_wait_timeout_s, _func)
+
+        # TODO (shrekris-anyscale): deprecate batch_queue_cls argument and
+        # convert batch_wrapper into a class once `self` argument is no
+        # longer needed in `enqueue_request`.
         @wraps(_func)
-        class BatchWrapper:
-            def __init__(self):
-                self.batch_queue = batch_queue_cls(
-                    max_batch_size,
-                    batch_wait_timeout_s,
-                    _func,
-                )
+        def batch_wrapper(*args, **kwargs):
+            if isasyncgenfunction(_func):
+                first_future = enqueue_request(batch_queue, args, kwargs)
+                return batch_handler_generator(first_future)
+            else:
+                return enqueue_request(batch_queue, args, kwargs)
 
-            def __call__(self, *args, **kwargs):
-                if isasyncgenfunction(_func):
-                    first_future = enqueue_request(self.batch_queue, args, kwargs)
-                    return batch_handler_generator(first_future)
-                else:
-                    enqueue_request(self.batch_queue, args, kwargs)
+        # These are getters and setters for batch_queue's parameters. We make
+        # them batch_wrapper attributes, so they can be accessed in user code.
+        batch_wrapper._queue = batch_queue
 
-            def set_max_batch_size(self, new_max_batch_size: int):
-                _validate_max_batch_size(new_max_batch_size)
-                self.batch_queue.max_batch_size = new_max_batch_size
+        def set_max_batch_size(new_max_batch_size: int) -> None:
+            _validate_max_batch_size(new_max_batch_size)
+            batch_queue.max_batch_size = new_max_batch_size
 
-            def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float):
-                _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
-                self.batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+        batch_wrapper.set_max_batch_size = set_max_batch_size
 
-        return BatchWrapper()
+        def set_batch_wait_timeout_s(new_batch_wait_timeout_s: float) -> None:
+            _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
+            batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+
+        batch_wrapper.set_batch_wait_timeout_s = set_batch_wait_timeout_s
+
+        return batch_wrapper
 
     # Unfortunately, this is required to handle both non-parametrized
     # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.
