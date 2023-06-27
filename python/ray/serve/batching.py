@@ -488,8 +488,8 @@ def batch(
         else:
             wrapper = batch_wrapper
 
-        # We make the batch queue wrapper's getters and setters batch_wrapper
-        # attributes, so they can be accessed in user code.
+        # We store the lazy_batch_queue_wrapper's getters and setters as
+        # batch_wrapper attributes, so they can be accessed in user code.
         wrapper._get_max_batch_size = lazy_batch_queue_wrapper.get_max_batch_size
         wrapper._get_batch_wait_timeout_s = (
             lazy_batch_queue_wrapper.get_batch_wait_timeout_s
