@@ -38,7 +38,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    RAY_SERVE_REQUEST_ID,
+    RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -458,7 +458,7 @@ class HTTPProxy:
             for key, value in scope.get("headers", []):
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                     request_context_info["multiplexed_model_id"] = value.decode()
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID:
+                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
@@ -713,10 +713,13 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope, receive, send):
         async def send_with_request_id(message):
-            if message["type"] == "http.response.start":
+            if (
+                message["type"] == "http.response.start"
+                or message[type] == "websocket.accept"
+            ):
                 request_id = ray.serve.context._serve_request_context.get().request_id
                 headers = MutableHeaders(scope=message)
-                headers.append(RAY_SERVE_REQUEST_ID, request_id)
+                headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)

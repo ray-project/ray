@@ -15,7 +15,7 @@ from uvicorn.lifespan.on import LifespanOn
 
 from ray.actor import ActorHandle
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.constants import SERVE_LOGGER_NAME, RAY_SERVE_REQUEST_ID
+from ray.serve._private.constants import SERVE_LOGGER_NAME, RAY_SERVE_REQUEST_ID_HEADER
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

@@ -209,7 +209,7 @@ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
 
 # Request ID used for logging. Can be provided as a request
 # header and will always be returned as a response header.
-RAY_SERVE_REQUEST_ID = "RAY_SERVE_REQUEST_ID"
+RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID_HEADER"
 
 # Serve HTTP proxy callback import path.
 RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH = os.environ.get(
