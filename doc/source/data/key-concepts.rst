@@ -7,11 +7,13 @@ Datasets
 --------
 
 Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
-is a distributed collection of data.
+is a distributed collection of data. Datasets represent data collections that may exceed a single machine's memory.
 
-Ray Data provides APIs for :ref:`loading data <loading_data>`,
-:ref:`transforming data <transforming_data>`, and
-:ref:`consuming data <iterating-over-data>`.
+Ray Data provides APIs for :ref:`loading data <loading_key_concept>`,
+:ref:`transforming data <transforming_key_concept>` in parallel,
+:ref:`consuming data <consuming_key_concept>`, and :ref:`saving data <saving_key_concept>.
+
+.. _loading_key_concept:
 
 Loading data
 ------------
@@ -32,6 +34,8 @@ Ray Data can read from any `filesystem supported by Arrow
     {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
 To learn more about creating datasets, read :ref:`Loading data <loading_data>`.
+
+.. _transforming_key_concept:
 
 Transforming data
 -----------------
@@ -71,6 +75,8 @@ in parallel for performance.
 
 To learn more about transforming datasets, read
 :ref:`Transforming data <transforming_data>`.
+
+.. _consuming_key_concept:
 
 Consuming data
 --------------
@@ -127,6 +133,8 @@ Pass datasets to Ray tasks or actors, and access records with methods like
 
 To learn more about consuming datasets, read
 :ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
+
+.. _saving_key_concept:
 
 Saving data
 -----------
