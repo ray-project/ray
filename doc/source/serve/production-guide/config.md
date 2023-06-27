@@ -171,6 +171,7 @@ Serve will set `num_replicas=5`, using the config file value, and `max_concurren
 Remember that `ray_actor_options` counts as a single setting. The entire `ray_actor_options` dictionary in the config file overrides the entire `ray_actor_options` dictionary from the graph code. If there are individual options within `ray_actor_options` (e.g. `runtime_env`, `num_gpus`, `memory`) that are set in the code but not in the config, Serve still won't use the code settings if the config has a `ray_actor_options` dictionary. It will treat these missing options as though the user never set them and will use defaults instead. This dictionary overriding behavior also applies to `user_config`.
 :::
 
+(serve-in-production-reconfigure)
 ## Dynamically adjusting parameters in deployment
 
 The `user_config` field can be used to supply structured configuration for your deployment. You can pass arbitrary JSON serializable objects to the YAML configuration. Serve will then apply it to all running and future deployment replicas. The application of user configuration *will not* restart the replica. This means you can use this field to dynamically:
