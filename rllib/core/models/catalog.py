@@ -320,8 +320,8 @@ class Catalog:
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
-        This is useful for recurrent models that need to tokenize their inputs.
-        By default, RLlib uses the models supported by Catalog out of the box to
+        This is useful for recurrent / tranformer models that need to tokenize their
+        inputs. By default, RLlib uses the models supported by Catalog out of the box to
         tokenize.
 
         Args:
