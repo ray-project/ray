@@ -435,8 +435,11 @@ install_pip_packages() {
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
         requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/dl-cpu-requirements.txt")
       fi
+  fi
 
-      requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/core-requirements.txt")
+  # AIR core dependencies
+  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/air/core-requirements.txt")
   fi
 
   # Inject our own mirror for the CIFAR10 dataset
