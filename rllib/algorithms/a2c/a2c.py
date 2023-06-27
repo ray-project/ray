@@ -8,7 +8,7 @@ from ray.rllib.algorithms.a3c.a3c import A3CConfig, A3C
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
@@ -22,7 +22,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import ResultDict
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +148,12 @@ class A2CConfig(A3CConfig):
         return super().get_rollout_fragment_length(worker_index)
 
 
+@Deprecated(
+    old="rllib/algorithms/a2c/",
+    new="rllib_contrib/a2c/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class A2C(A3C):
     @classmethod
     @override(A3C)
@@ -168,18 +173,6 @@ class A2C(A3C):
 
     @override(A3C)
     def training_step(self) -> ResultDict:
-        if log_once("a2c-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/a2c/",
-                new="rllib_contrib/a2c/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         # Fallback to Algorithm.training_step() and A3C policies (loss_fn etc).
         # W/o microbatching: Identical to Algorithm's default implementation.
         # Only difference to a default Algorithm being the value function loss term

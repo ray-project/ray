@@ -18,8 +18,11 @@ from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -308,6 +311,12 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
+@Deprecated(
+    old="rllib/algorithms/maddpg/",
+    new="rllib_contrib/maddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class MADDPG(DQN):
     @classmethod
     @override(DQN)
@@ -319,16 +328,4 @@ class MADDPG(DQN):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if log_once("maddpg-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/maddpg/",
-                new="rllib_contrib/maddpg/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         return MADDPGTFPolicy

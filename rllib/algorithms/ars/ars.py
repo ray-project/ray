@@ -21,7 +21,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -29,7 +29,6 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.torch_utils import set_torch_seed
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -374,6 +373,12 @@ def get_policy_class(config: AlgorithmConfig):
     return policy_cls
 
 
+@Deprecated(
+    old="rllib/algorithms/ars/",
+    new="rllib_contrib/ars/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ARS(Algorithm):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
@@ -440,18 +445,6 @@ class ARS(Algorithm):
 
     @override(Algorithm)
     def step(self):
-        if log_once("ars-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/ars/",
-                new="rllib_contrib/ars/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         config = self.config
 
         theta = self.policy.get_flat_weights()

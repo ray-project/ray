@@ -19,7 +19,7 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -30,7 +30,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
 )
 from ray.rllib.utils.replay_buffers import ReplayBuffer, StorageUnit
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -336,6 +335,12 @@ class DreamerIteration:
         return _postprocess_gif(gif=gif)
 
 
+@Deprecated(
+    old="rllib/algorithms/dreamer/",
+    new="rllib_contrib/dreamer/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -371,18 +376,6 @@ class Dreamer(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        if log_once("dreamer-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/dreamer/",
-                new="rllib_contrib/dreamer/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         local_worker = self.workers.local_worker()
 
         # Number of sub-iterations for Dreamer

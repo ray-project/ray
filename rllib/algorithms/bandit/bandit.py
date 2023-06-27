@@ -7,8 +7,7 @@ from ray.rllib.algorithms.bandit.bandit_tf_policy import BanditTFPolicy
 from ray.rllib.algorithms.bandit.bandit_torch_policy import BanditTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +83,12 @@ class BanditLinUCBConfig(BanditConfig):
         # fmt: on
 
 
+@Deprecated(
+    old="rllib/algorithms/bandit/",
+    new="rllib_contrib/bandit/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class BanditLinTS(Algorithm):
     """Bandit Algorithm using ThompsonSampling exploration."""
 
@@ -97,18 +102,6 @@ class BanditLinTS(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if log_once("bandit-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/bandit/",
-                new="rllib_contrib/bandit/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         if config["framework"] == "torch":
             return BanditTorchPolicy
         elif config["framework"] == "tf2":
@@ -117,6 +110,12 @@ class BanditLinTS(Algorithm):
             raise NotImplementedError("Only `framework=[torch|tf2]` supported!")
 
 
+@Deprecated(
+    old="rllib/algorithms/bandit/",
+    new="rllib_contrib/bandit/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class BanditLinUCB(Algorithm):
     @classmethod
     @override(Algorithm)

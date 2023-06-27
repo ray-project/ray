@@ -17,7 +17,11 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -31,7 +35,6 @@ from ray.rllib.utils.typing import ResultDict
 from ray.rllib.algorithms.alpha_zero.alpha_zero_policy import AlphaZeroPolicy
 from ray.rllib.algorithms.alpha_zero.mcts import MCTS
 from ray.rllib.algorithms.alpha_zero.ranked_rewards import get_r2_env_wrapper
-from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -333,6 +336,12 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         )
 
 
+@Deprecated(
+    old="rllib/algorithms/alpha_star/",
+    new="rllib_contrib/alpha_star/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -353,18 +362,6 @@ class AlphaZero(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-        if log_once("alpha-zero-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/alpha_zero/",
-                new="rllib_contrib/alpha_zero/",
-                help=(
-                    "This algorithm will be It is being moved to the "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md "  # noqa: E501
-                    "for more details. Any associated components (e.g. models, "
-                    "policies) will also be moved."
-                ),
-            )
-
         # Sample n MultiAgentBatches from n workers.
         with self._timers[SAMPLE_TIMER]:
             new_sample_batches = synchronous_parallel_sample(

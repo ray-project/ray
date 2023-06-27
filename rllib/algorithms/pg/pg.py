@@ -4,8 +4,7 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 
 
 class PGConfig(AlgorithmConfig):
@@ -105,6 +104,12 @@ class PGConfig(AlgorithmConfig):
         self.validate_train_batch_size_vs_rollout_fragment_length()
 
 
+@Deprecated(
+    old="rllib/algorithms/pg/",
+    new="rllib_contrib/pg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class PG(Algorithm):
     """Policy Gradient (PG) Algorithm.
 
@@ -130,18 +135,6 @@ class PG(Algorithm):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if log_once("pg-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/pg/",
-                new="rllib_contrib/pg/",
-                help=(
-                    "This algorithm will be deprecated from RLlib in future releases. "
-                    "It is being moved to the ray/rllib_contrib directory. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         if config["framework"] == "torch":
             from ray.rllib.algorithms.pg.pg_torch_policy import PGTorchPolicy
 

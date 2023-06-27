@@ -21,7 +21,7 @@ from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
@@ -42,7 +42,6 @@ from ray.rllib.utils.typing import (
     ResultDict,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util import log_once
 from ray.util.timer import _Timer
 
 
@@ -244,6 +243,12 @@ class AlphaStarConfig(appo.APPOConfig):
         return self
 
 
+@Deprecated(
+    old="rllib/algorithms/alpha_star/",
+    new="rllib_contrib/alpha_star/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class AlphaStar(appo.APPO):
     _allow_unknown_subkeys = appo.APPO._allow_unknown_subkeys + [
         "league_builder_config",
@@ -422,18 +427,6 @@ class AlphaStar(appo.APPO):
     @override(Algorithm)
     def step(self) -> ResultDict:
         # Perform a full step (including evaluation).
-        if log_once("alpha-star-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/alpha_star/",
-                new="rllib_contrib/alpha_star/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md "  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         result = super().step()
 
         # Based on the (train + evaluate) results, perform a step of

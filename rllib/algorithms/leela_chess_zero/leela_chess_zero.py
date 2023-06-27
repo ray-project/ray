@@ -20,7 +20,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -34,7 +38,6 @@ from ray.rllib.algorithms.leela_chess_zero.leela_chess_zero_policy import (
     LeelaChessZeroPolicy,
 )
 from ray.rllib.algorithms.leela_chess_zero.mcts import MCTS
-from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -349,6 +352,12 @@ class LeelaChessZeroPolicyWrapperClass(LeelaChessZeroPolicy):
         )
 
 
+@Deprecated(
+    old="rllib/algorithms/leela_chess_zero/",
+    new="rllib_contrib/leela_chess_zero/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class LeelaChessZero(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -366,19 +375,6 @@ class LeelaChessZero(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-
-        if log_once("leela-chess-zero-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/leela_chess_zero/",
-                new="rllib_contrib/leela_chess_zero/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
 
         # Sample n MultiAgentBatches from n workers.
         new_sample_batches = synchronous_parallel_sample(

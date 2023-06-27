@@ -23,8 +23,12 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+    ALGO_DEPRECATION_WARNING,
+)
 
 
 class QMixConfig(SimpleQConfig):
@@ -233,6 +237,12 @@ class QMixConfig(SimpleQConfig):
             )
 
 
+@Deprecated(
+    old="rllib/algorithms/qmix/",
+    new="rllib_contrib/qmix/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
@@ -261,18 +271,6 @@ class QMix(SimpleQ):
             The results dict from executing the training iteration.
         """
         # Sample n batches from n workers.
-        if log_once("qmix-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/qmix/",
-                new="rllib_contrib/qmix/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         with self._timers[SAMPLE_TIMER]:
             new_sample_batches = synchronous_parallel_sample(
                 worker_set=self.workers, concat=False

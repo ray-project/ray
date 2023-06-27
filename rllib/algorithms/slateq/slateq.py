@@ -21,8 +21,11 @@ from ray.rllib.algorithms.slateq.slateq_tf_policy import SlateQTFPolicy
 from ray.rllib.algorithms.slateq.slateq_torch_policy import SlateQTorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +230,12 @@ def calculate_round_robin_weights(config: AlgorithmConfig) -> List[float]:
     return weights
 
 
+@Deprecated(
+    old="rllib/algorithms/slate_q/",
+    new="rllib_contrib/slate_q/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class SlateQ(DQN):
     @classmethod
     @override(DQN)
@@ -238,18 +247,6 @@ class SlateQ(DQN):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if log_once("slate_q-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/slate_q/",
-                new="rllib_contrib/slate_q/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         if config["framework"] == "torch":
             return SlateQTorchPolicy
         else:

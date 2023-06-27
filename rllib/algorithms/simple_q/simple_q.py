@@ -24,7 +24,11 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -39,7 +43,6 @@ from ray.rllib.utils.replay_buffers.utils import (
     validate_buffer_config,
 )
 from ray.rllib.utils.typing import ResultDict
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -285,6 +288,12 @@ class SimpleQConfig(AlgorithmConfig):
             validate_buffer_config(self)
 
 
+@Deprecated(
+    old="rllib/algorithms/simple_q/",
+    new="rllib_contrib/simple_q/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class SimpleQ(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -318,18 +327,6 @@ class SimpleQ(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-        if log_once("simple_q-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/simple_q/",
-                new="rllib_contrib/simple_q/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         batch_size = self.config.train_batch_size
         local_worker = self.workers.local_worker()
 

@@ -7,7 +7,7 @@ from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_TRAINED,
@@ -19,7 +19,6 @@ from ray.rllib.utils.metrics import (
     SAMPLE_TIMER,
 )
 from ray.rllib.utils.typing import ResultDict
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -199,6 +198,12 @@ class CRRConfig(AlgorithmConfig):
 NUM_GRADIENT_UPDATES = "num_grad_updates"
 
 
+@Deprecated(
+    old="rllib/algorithms/crr/",
+    new="rllib_contrib/crr/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class CRR(Algorithm):
 
     # TODO: we have a circular dependency for get
@@ -235,18 +240,6 @@ class CRR(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        if log_once("crr-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/crr/",
-                new="rllib_contrib/crr/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.workers)
         train_batch = train_batch.as_multi_agent()

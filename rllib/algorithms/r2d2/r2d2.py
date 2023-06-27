@@ -7,8 +7,11 @@ from ray.rllib.algorithms.r2d2.r2d2_tf_policy import R2D2TFPolicy
 from ray.rllib.algorithms.r2d2.r2d2_torch_policy import R2D2TorchPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
-from ray.util import log_once
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -192,6 +195,12 @@ class R2D2Config(DQNConfig):
             raise ValueError("`batch_mode` must be 'complete_episodes'!")
 
 
+@Deprecated(
+    old="rllib/algorithms/r2d2/",
+    new="rllib_contrib/r2d2/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class R2D2(DQN):
     """Recurrent Experience Replay in Distrib. Reinforcement Learning (R2D2).
 
@@ -217,18 +226,6 @@ class R2D2(DQN):
     def get_default_policy_class(
         cls, config: AlgorithmConfig
     ) -> Optional[Type[Policy]]:
-        if log_once("r2d2-deprecation-warning"):
-            deprecation_warning(
-                old="rllib/algorithms/r2d2/",
-                new="rllib_contrib/r2d2/",
-                help=(
-                    "This algorithm will be removed by ray 2.9"
-                    "It is being moved to the ray/rllib_contrib dir. See "
-                    "https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
-                    "for more details. Any associated components (e.g. policies)"
-                    " will also be moved."
-                ),
-            )
         if config["framework"] == "torch":
             return R2D2TorchPolicy
         else:
