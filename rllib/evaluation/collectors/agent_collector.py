@@ -89,7 +89,8 @@ class AgentCollector:
         self.max_seq_len = max_seq_len
         self.disable_action_flattening = disable_action_flattening
         self.view_requirements = view_reqs
-        self.intial_states = intial_states if intial_states is not None else []
+        # The initial_states can be an np array
+        self.initial_states = intial_states if intial_states is not None else []
         self.is_policy_recurrent = is_policy_recurrent
         self._is_training = is_training
         self._enable_rl_module_api = _enable_rl_module_api
@@ -281,6 +282,7 @@ class AgentCollector:
             should_flatten_action_key = (
                 k == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
+            # Note (Artur) RL Modules's states need no flattening
             should_flatten_state_key = (
                 k.startswith("state_out") and not self._enable_rl_module_api
             )
@@ -564,7 +566,7 @@ class AgentCollector:
             should_flatten_action_key = (
                 col == SampleBatch.ACTIONS and not self.disable_action_flattening
             )
-
+            # Note (Artur) RL Modules's states need no flattening
             should_flatten_state_key = (
                 col.startswith("state_out") and not self._enable_rl_module_api
             )
@@ -650,10 +652,17 @@ class AgentCollector:
         is_state = True
         if data_col.startswith("state_out"):
             if self._enable_rl_module_api:
-                self._build_buffers({data_col: self.intial_states})
+                self._build_buffers({data_col: self.initial_states})
             else:
+                if not self.is_policy_recurrent:
+                    raise ValueError(
+                        f"{data_col} is not available, because the given policy is"
+                        f"not recurrent according to the input model_inital_states."
+                        f"Have you forgotten to return non-empty lists in"
+                        f"policy.get_initial_states()?"
+                    )
                 state_ind = int(data_col.split("_")[-1])
-                self._build_buffers({data_col: self.intial_states[state_ind]})
+                self._build_buffers({data_col: self.initial_states[state_ind]})
         else:
             is_state = False
             # only create dummy data during inference
