@@ -14,6 +14,7 @@ from ray.actor import ActorHandle
 from ray import serve
 from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_NEW_ROUTING,
     SERVE_HANDLE_JSON_KEY,
     SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     ServeHandleType,
@@ -147,7 +148,7 @@ class RayServeHandle:
             self.controller_handle,
             self.deployment_name,
             event_loop=get_or_create_event_loop(),
-            _stream=self._stream,
+            _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
         )
 
     @property
@@ -191,6 +192,7 @@ class RayServeHandle:
             new_options,
             _router=self.router,
             _is_for_http_requests=self._is_for_http_requests,
+            _stream=self._stream,
         )
 
     def options(
@@ -225,6 +227,7 @@ class RayServeHandle:
             route=_request_context.route,
             app_name=_request_context.app_name,
             multiplexed_model_id=_request_context.multiplexed_model_id,
+            is_streaming=self._stream,
         )
         self.request_counter.inc(
             tags={
@@ -270,6 +273,7 @@ class RayServeHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
+            "_stream": self._stream,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
@@ -310,12 +314,11 @@ class RayServeSyncHandle(RayServeHandle):
         return True
 
     def _make_router(self) -> Router:
-        # Delayed import because ray.serve.api depends on handles.
         return Router(
             self.controller_handle,
             self.deployment_name,
             event_loop=_create_or_get_async_loop_in_thread(),
-            _stream=self._stream,
+            _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
         )
 
     def options(
@@ -364,6 +367,7 @@ class RayServeSyncHandle(RayServeHandle):
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
+            "_stream": self._stream,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
