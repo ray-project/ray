@@ -411,7 +411,7 @@ class RLModule(abc.ABC):
         return {}
 
     @OverrideToImplementCustomLogic
-    def is_recurrent(self) -> bool:
+    def is_stateful(self) -> bool:
         """Returns True if the initial state is empty.
 
         By default, RLlib assumes that the module is not recurrent if the initial
@@ -419,10 +419,11 @@ class RLModule(abc.ABC):
         This behavior can be overridden by implementing this method.
         """
         initial_state = self.get_initial_state()
-        if initial_state == {}:
-            return False
-        else:
-            return True
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(initial_state)
 
     @OverrideToImplementCustomLogic
     def update_default_view_requirements(
@@ -441,7 +442,7 @@ class RLModule(abc.ABC):
         Returns:
             The updated view requirements.
         """
-        if self.is_recurrent():
+        if self.is_stateful():
             # get the initial state in numpy format, infer the state from it, and create
             # appropriate view requirements.
             init_state = convert_to_numpy(self.get_initial_state())

@@ -1350,7 +1350,7 @@ class Learner:
         """
 
         for pid, policy_batch in batch.policy_batches.items():
-            if self.module[pid].is_recurrent():
+            if self.module[pid].is_stateful():
                 assert (
                     policy_batch.get(SampleBatch.SEQ_LENS, None) is not None
                 ), "Recurrent modules require a `seq_lens` tensor in the policy batch."
