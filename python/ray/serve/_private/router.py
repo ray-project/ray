@@ -248,7 +248,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             while len(self._replicas) == 0:
                 logger.info(
                     "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available. ",
+                    f"{self._deployment_name} but none are available. "
                     "Waiting for new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
