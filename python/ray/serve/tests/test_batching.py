@@ -390,8 +390,11 @@ async def test_batch_setters(use_class):
     assert func.max_batch_size == 2
     assert func.batch_wait_timeout_s == 1000
 
+    # @serve.batch should create batches of size 2
     coros = [func("hi1", "hi2"), func("hi3", "hi4")]
-    result = await asyncio.gather(*coros)
+    done, pending = await asyncio.wait(*coros, timeout=0.1)
+    assert len(pending) == 0
+    result = asyncio.gather(*done)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
 
     # Set new values
@@ -401,9 +404,65 @@ async def test_batch_setters(use_class):
     assert func.max_batch_size == 3
     assert func.batch_wait_timeout_s == 15000
 
+    # @serve.batch should create batches of size 3
     coros = [func("hi1", "hi2"), func("hi3", "hi4"), func("hi5", "hi6")]
-    result = await asyncio.gather(*coros)
+    done, pending = await asyncio.wait(*coros, timeout=0.1)
+    assert len(pending) == 0
+    result = asyncio.gather(*done)
     assert result == [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+
+
+@pytest.mark.asyncio
+async def test_batch_use_earliest_setters():
+    """@serve.batch should use the right settings when constructing a batch.
+
+    When the @serve.batch setters get called before a batch has started
+    accumulating, the next batch should use the setters' values. When they
+    get called while a batch is accumulating, the previous values should be
+    used.
+    """
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def func(key1, key2):
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    assert func.max_batch_size == 2
+    assert func.batch_wait_timeout_s == 1000
+
+    # Set new values
+    func.set_max_batch_size(3)
+    func.set_batch_wait_timeout_s(15000)
+
+    assert func.max_batch_size == 3
+    assert func.batch_wait_timeout_s == 15000
+
+    # Should create batches of size 3, even if setters are called while
+    # batch is accumulated
+    coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    func.set_max_batch_size(1)
+    func.set_batch_wait_timeout_s(0)
+
+    assert func.max_batch_size == 1
+    assert func.batch_wait_timeout_s == 0
+
+    # Batch should still be waiting for last request
+    done, pending = await asyncio.wait(*coros, timeout=0.1)
+    assert len(done) == 0 and len(pending) == 2
+
+    # Batch should execute after last request
+    coros.append(func("hi5", "hi6"))
+    done, pending = await asyncio.wait(*coros, timeout=0.1)
+    assert len(pending) == 0
+    result = asyncio.gather(*done)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+
+    # Next batch should use updated values
+    coros = [func("hi1", "hi2")]
+    done, pending = await asyncio.wait(*coros, timeout=0.1)
+    assert len(pending) == 0
+    result = asyncio.gather(*done)
+    assert result == [("hi1", "hi2")]
 
 
 @pytest.mark.asyncio
