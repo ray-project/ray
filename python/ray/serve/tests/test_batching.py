@@ -369,6 +369,44 @@ async def test_batch_args_kwargs(mode, use_class):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+async def test_batch_setters(use_class):
+    if use_class:
+
+        class C:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, key1, key2):
+                return [(key1[i], key2[i]) for i in range(len(key1))]
+
+        instance = C()
+        func = instance.method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def func(key1, key2):
+            return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    assert func.max_batch_size == 2
+    assert func.batch_wait_timeout_s == 1000
+
+    coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+    # Set new values
+    func.set_max_batch_size(3)
+    func.set_batch_wait_timeout_s(15000)
+
+    assert func.max_batch_size == 3
+    assert func.batch_wait_timeout_s == 15000
+
+    coros = [func("hi1", "hi2"), func("hi3", "hi4"), func("hi5", "hi6")]
+    result = await asyncio.gather(*coros)
+    assert result == [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("mode", ["args", "kwargs", "mixed", "out-of-order"])
 @pytest.mark.parametrize("use_class", [True, False])
 @pytest.mark.parametrize("generator_length", [0, 2, 5])
@@ -473,6 +511,51 @@ async def test_batch_generator_early_termination(stop_token):
         # Each terminated caller frees the sequential_terminator to process
         # another iteration.
         event.set()
+
+
+@pytest.mark.asyncio
+async def test_batch_generator_setters():
+    """@serve.batch setters should succeed while the current batch streams."""
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def yield_three_times(key1, key2):
+        for _ in range(3):
+            yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    assert yield_three_times.max_batch_size == 2
+    assert yield_three_times.batch_wait_timeout_s == 1000
+
+    args_list = [("hi1", "hi2"), ("hi3", "hi4")]
+    coros = [yield_three_times(*args) for args in args_list]
+
+    # Partially consume generators
+    for coro, expected_result in zip(coros, args_list):
+        for _ in range(2):
+            await coro.__anext__() == expected_result
+
+    # Set new values
+    yield_three_times.set_max_batch_size(3)
+    yield_three_times.set_batch_wait_timeout_s(15000)
+
+    assert yield_three_times.max_batch_size == 3
+    assert yield_three_times.batch_wait_timeout_s == 15000
+
+    # Execute three more requests
+    args_list_2 = [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+    coros_2 = [yield_three_times(*args) for args in args_list_2]
+
+    # Finish consuming original requests
+    for coro, expected_result in zip(coros, args_list):
+        await coro.__anext__() == expected_result
+        with pytest.raises(StopAsyncIteration):
+            await coro.__anext__()
+
+    # Consume new requests
+    for coro, expected_result in zip(coros_2, args_list_2):
+        for _ in range(3):
+            await coro.__anext__() == expected_result
+        with pytest.raises(StopAsyncIteration):
+            await coro.__anext__()
 
 
 @pytest.mark.asyncio
