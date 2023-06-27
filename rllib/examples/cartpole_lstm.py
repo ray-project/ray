@@ -47,14 +47,14 @@ if __name__ == "__main__":
 
     config.environment(env=StatelessCartPole).resources(
         num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
-    ).framework(args.framework).reporting(
-        min_time_s_per_iteration=0.1
-    ).training(model={
-                "use_lstm": True,
-                "lstm_cell_size": 32,
-                "lstm_use_prev_action": args.use_prev_action,
-                "lstm_use_prev_reward": args.use_prev_reward,
-            })
+    ).framework(args.framework).reporting(min_time_s_per_iteration=0.1).training(
+        model={
+            "use_lstm": True,
+            "lstm_cell_size": 32,
+            "lstm_use_prev_action": args.use_prev_action,
+            "lstm_use_prev_reward": args.use_prev_reward,
+        }
+    )
 
     if args.run == "PPO":
         config.training(num_sgd_iter=5, vf_loss_coeff=0.0001, train_batch_size=512)
