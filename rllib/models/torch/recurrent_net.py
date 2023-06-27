@@ -15,6 +15,8 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -74,6 +76,10 @@ class RecurrentNetwork(TorchModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
+        if log_once("torch_rnn_network_deprecaiton"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.recurrent_net.RecurrentNetwork"
+            )
         flat_inputs = input_dict["obs_flat"].float()
         # Note that max_seq_len != input_dict.max_seq_len != seq_lens.max()
         # as input_dict may have extra zero-padding beyond seq_lens.max().
@@ -124,6 +130,8 @@ class LSTMWrapper(RecurrentNetwork, nn.Module):
         model_config: ModelConfigDict,
         name: str,
     ):
+        if log_once("torch_lstm_wrapper_deprecaiton"):
+            deprecation_warning(old="ray.rllib.models.torch.recurrent_net.LSTMWrapper")
 
         nn.Module.__init__(self)
         super(LSTMWrapper, self).__init__(

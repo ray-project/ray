@@ -667,6 +667,7 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
 
 # This Callback is used by the RE3 exploration strategy.
 # See rllib/examples/re3_exploration.py for details.
+@Deprecated(error=False)
 class RE3UpdateCallbacks(DefaultCallbacks):
     """Update input callbacks to mutate batch with states entropy rewards."""
 
