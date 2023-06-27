@@ -76,7 +76,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
 TaskSpecification BuildEmptyTaskSpec();
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::CoreWorkerClient {
  public:
   void PushNormalTask(std::unique_ptr<rpc::PushTaskRequest> request,
                       const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {

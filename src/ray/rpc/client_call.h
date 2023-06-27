@@ -59,9 +59,6 @@ using ClientSignature = void(const Status &status, Reply reply);
 template <class Reply>
 using ClientCallback = std::function<ClientSignature<Reply>>;
 
-template <class Reply>
-using ClientCompletionToken = boost::asio::any_completion_handler<ClientSignature<Reply>>;
-
 /// Implementation of the `ClientCall`. It represents a `ClientCall` for a particular
 /// RPC method.
 ///
@@ -100,10 +97,12 @@ class ClientCallImpl : public ClientCall {
       absl::MutexLock lock(&mutex_);
       status = return_status_;
     }
-
-    auto ex = boost::asio::get_associated_executor(token_);
-    auto f = std::bind(std::move(token_), status, std::move(reply_));
-    boost::asio::post(ex, std::move(f));
+    if constexpr (!std::is_same_v<CompletionToken, std::nullptr_t>) {
+      auto ex = boost::asio::get_associated_executor(token_);
+      boost::asio::dispatch(ex, [token = std::move(token_), status, reply = std::move(reply_)]() mutable {
+        token(status, std::move(reply));
+      });
+    }
   }
 
   std::shared_ptr<StatsHandle> GetStatsHandle() override { return stats_handle_; }
@@ -246,10 +245,19 @@ class ClientCallManager {
     if (method_timeout_ms == -1) {
       method_timeout_ms = call_timeout_ms_;
     }
-    auto ex = GetMainService().get_executor();
+
+    auto ex = boost::asio::get_associated_executor(token, GetMainService().get_executor());
     auto t = boost::asio::bind_executor(ex, std::forward<CompletionToken>(token));
-    auto call = std::make_shared<ClientCallImpl<Reply, decltype(t)>>(
-        std::move(t), std::move(stats_handle), method_timeout_ms);
+
+    using TokenType = std::conditional_t<std::is_same_v<std::decay_t<CompletionToken>, std::nullptr_t>, std::nullptr_t, decltype(t)>;
+    using TImpl = ClientCallImpl<Reply, TokenType>;
+    std::shared_ptr<TImpl> call;
+
+    if constexpr (std::is_same_v<std::decay_t<CompletionToken>, std::nullptr_t>) {
+      call = std::make_shared<TImpl>(nullptr, std::move(stats_handle), method_timeout_ms);
+    } else {
+      call = std::make_shared<TImpl>(std::move(t), std::move(stats_handle), method_timeout_ms);
+    }
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(

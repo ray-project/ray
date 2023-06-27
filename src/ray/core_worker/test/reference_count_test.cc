@@ -109,16 +109,16 @@ static std::string GenerateID(UniqueID publisher_id, UniqueID subscriber_id) {
   return publisher_id.Binary() + subscriber_id.Binary();
 }
 
-class MockCoreWorkerClientInterface : public rpc::CoreWorkerClientInterface {
+class MockCoreWorkerClient : public rpc::CoreWorkerClient {
  public:
-  ~MockCoreWorkerClientInterface() = default;
+  ~MockCoreWorkerClient() = default;
   virtual void WaitForRefRemoved(const ObjectID object_id,
                                  const ObjectID contained_in_id,
                                  rpc::Address owner_address) = 0;
 };
 
 using PublisherFactoryFn =
-    std::function<std::shared_ptr<MockCoreWorkerClientInterface>(const rpc::Address &)>;
+    std::function<std::shared_ptr<MockCoreWorkerClient>(const rpc::Address &)>;
 
 class MockDistributedSubscriber : public pubsub::SubscriberInterface {
  public:
@@ -280,7 +280,7 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
   WorkerID publisher_id_;
 };
 
-class MockWorkerClient : public MockCoreWorkerClientInterface {
+class MockWorkerClient : public MockCoreWorkerClient {
  public:
   // Helper function to generate a random address.
   static rpc::Address CreateRandomAddress(const std::string &addr) {

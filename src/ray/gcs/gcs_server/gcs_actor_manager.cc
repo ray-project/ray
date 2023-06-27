@@ -768,7 +768,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
   if (it == workers.end()) {
     RAY_LOG(DEBUG) << "Adding owner " << owner_id << " of actor " << actor_id
                    << ", job id = " << actor_id.JobId();
-    std::shared_ptr<rpc::CoreWorkerClientInterface> client =
+    std::shared_ptr<rpc::CoreWorkerClient> client =
         worker_client_factory_(actor->GetOwnerAddress());
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
   }

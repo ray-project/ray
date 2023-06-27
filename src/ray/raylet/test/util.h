@@ -85,7 +85,7 @@ class MockWorker : public WorkerInterface {
 
   void Connect(int port) override { RAY_CHECK(false) << "Method unused"; }
 
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) override {
+  void Connect(std::shared_ptr<rpc::CoreWorkerClient> rpc_client) override {
     RAY_CHECK(false) << "Method unused";
   }
 
@@ -156,7 +156,7 @@ class MockWorker : public WorkerInterface {
     return false;
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() override {
+  rpc::CoreWorkerClient *rpc_client() override {
     RAY_CHECK(false) << "Method unused";
     return nullptr;
   }

@@ -40,7 +40,7 @@ const std::string BAD_RUNTIME_ENV_ERROR_MSG = "bad runtime env";
 
 std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::CoreWorkerClient {
  public:
   MockWorkerClient() {}
 

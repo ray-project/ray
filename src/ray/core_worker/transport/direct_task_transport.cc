@@ -587,7 +587,7 @@ void CoreWorkerDirectTaskSubmitter::RequestNewWorkerIfNeeded(
 
 void CoreWorkerDirectTaskSubmitter::PushNormalTask(
     const rpc::WorkerAddress &addr,
-    rpc::CoreWorkerClientInterface &client,
+    rpc::CoreWorkerClient &client,
     const SchedulingKey &scheduling_key,
     const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {
@@ -738,7 +738,7 @@ Status CoreWorkerDirectTaskSubmitter::CancelTask(TaskSpecification task_spec,
       task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
       task_spec.GetRuntimeEnvHash());
-  std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
+  std::shared_ptr<rpc::CoreWorkerClient> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||

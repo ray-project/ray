@@ -120,7 +120,7 @@ void Worker::Connect(int port) {
   Connect(rpc_client_);
 }
 
-void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) {
+void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClient> rpc_client) {
   rpc_client_ = rpc_client;
   if (notify_gcs_restarted_) {
     // We need to send RPC to notify about the GCS restarts

@@ -73,7 +73,7 @@ rpc::PushTaskRequest CreatePushTaskRequestHelper(ActorID actor_id,
   return request;
 }
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::CoreWorkerClient {
  public:
   const rpc::Address &Addr() const override { return addr; }
 

@@ -31,7 +31,7 @@ namespace ray {
 using ::testing::_;
 using ::testing::Return;
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::CoreWorkerClient {
  public:
   void UpdateObjectLocationBatch(
       const rpc::UpdateObjectLocationBatchRequest &request,

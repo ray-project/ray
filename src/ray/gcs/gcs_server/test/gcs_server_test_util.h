@@ -32,7 +32,7 @@
 namespace ray {
 
 struct GcsServerMocker {
-  class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+  class MockWorkerClient : public rpc::CoreWorkerClient {
    public:
     void PushNormalTask(
         std::unique_ptr<rpc::PushTaskRequest> request,

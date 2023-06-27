@@ -214,7 +214,7 @@ class CoreWorkerDirectActorTaskSubmitter
     int64_t num_restarts = -1;
     /// The RPC client. We use shared_ptr to enable shared_from_this for
     /// pending client callbacks.
-    std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client = nullptr;
+    std::shared_ptr<rpc::CoreWorkerClient> rpc_client = nullptr;
     /// The intended worker ID of the actor.
     std::string worker_id = "";
 

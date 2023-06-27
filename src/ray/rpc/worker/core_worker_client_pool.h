@@ -41,12 +41,12 @@ class CoreWorkerClientPool {
   /// Returns an existing Interface if one exists, or an empty optional
   /// otherwise.
   /// Any returned pointer is borrowed, and expected to be used briefly.
-  optional<shared_ptr<CoreWorkerClientInterface>> GetByID(ray::WorkerID id);
+  optional<shared_ptr<CoreWorkerClient>> GetByID(ray::WorkerID id);
 
-  /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
+  /// Returns an open CoreWorkerClient if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
   /// briefly.
-  shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
+  shared_ptr<CoreWorkerClient> GetOrConnect(const Address &addr_proto);
 
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
@@ -72,7 +72,7 @@ class CoreWorkerClientPool {
 
   /// A pool of open connections by WorkerID. Clients can reuse the connection
   /// objects in this pool by requesting them.
-  absl::flat_hash_map<ray::WorkerID, shared_ptr<CoreWorkerClientInterface>> client_map_
+  absl::flat_hash_map<ray::WorkerID, shared_ptr<CoreWorkerClient>> client_map_
       GUARDED_BY(mu_);
 };
 

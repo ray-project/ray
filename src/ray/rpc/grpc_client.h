@@ -29,21 +29,27 @@ namespace rpc {
 
 // This macro wraps the logic to call a specific RPC method of a service,
 // to make it easier to implement a new RPC client.
-#define INVOKE_RPC_CALL(                                               \
-    SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms) \
-  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(             \
-      &SERVICE::Stub::PrepareAsync##METHOD,                            \
-      request,                                                         \
-      callback,                                                        \
-      #SERVICE ".grpc_client." #METHOD,                                \
+#define INVOKE_RPC_CALL(                                                \
+    SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms)  \
+  (rpc_client->CallMethod<METHOD##Request, METHOD##Reply>(              \
+      &SERVICE::Stub::PrepareAsync##METHOD,                             \
+      request,                                                          \
+      callback,                                                         \
+      #SERVICE ".grpc_client." #METHOD,                                 \
       method_timeout_ms))
 
 // Define a void RPC client method.
 #define VOID_RPC_CLIENT_METHOD(SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS)   \
+  template<typename CompletionToken>                                    \
+  auto METHOD(const METHOD##Request &request,                                           \
+              CompletionToken &&callback) {    \
+    return INVOKE_RPC_CALL(SERVICE, METHOD, request, std::forward<CompletionToken>(callback), rpc_client, method_timeout_ms); \
+  } \
   void METHOD(const METHOD##Request &request,                                           \
               const ClientCallback<METHOD##Reply> &callback) SPECS {                    \
     INVOKE_RPC_CALL(SERVICE, METHOD, request, callback, rpc_client, method_timeout_ms); \
   }
+
 
 inline std::shared_ptr<grpc::Channel> BuildChannel(
     const std::string &address,

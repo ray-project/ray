@@ -107,7 +107,7 @@ rpc::Address GetOwnerAddressFromObjectInfo(const ObjectInfo &object_info) {
 
 }  // namespace
 
-std::shared_ptr<rpc::CoreWorkerClientInterface> OwnershipBasedObjectDirectory::GetClient(
+std::shared_ptr<rpc::CoreWorkerClient> OwnershipBasedObjectDirectory::GetClient(
     const rpc::Address &owner_address) {
   if (WorkerID::FromBinary(owner_address.worker_id()).IsNil()) {
     // If an object does not have owner, return nullptr.

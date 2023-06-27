@@ -67,7 +67,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
   std::vector<std::shared_ptr<gcs::GcsActor>> actors;
 };
 
-class MockWorkerClient : public rpc::CoreWorkerClientInterface {
+class MockWorkerClient : public rpc::CoreWorkerClient {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 

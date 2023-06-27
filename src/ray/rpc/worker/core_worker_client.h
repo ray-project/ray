@@ -55,7 +55,7 @@ const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
 }
 
 // Shared between direct actor and task submitters.
-/* class CoreWorkerClientInterface; */
+/* class CoreWorkerClient; */
 
 // TODO(swang): Remove and replace with rpc::Address.
 class WorkerAddress {
@@ -93,7 +93,6 @@ class WorkerAddress {
   /// The unique id of the worker raylet.
   const NodeID raylet_id;
 };
-
 /// Abstract client interface for testing.
 class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
  public:
@@ -225,7 +224,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         addr_.ip_address(), addr_.port(), client_call_manager);
   };
 
-  const rpc::Address &Addr() const override { return addr_; }
+  const rpc::Address &Addr() const { return addr_; }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          DirectActorCallArgWaitComplete,
@@ -436,14 +435,14 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   }
 
   /// Returns the max acked sequence number, useful for checking on progress.
-  int64_t ClientProcessedUpToSeqno() override {
+  int64_t ClientProcessedUpToSeqno() const {
     absl::MutexLock lock(&mutex_);
     return max_finished_seq_no_;
   }
 
  private:
   /// Protects against unsafe concurrent access from the callback thread.
-  absl::Mutex mutex_;
+  mutable absl::Mutex mutex_;
 
   /// Address of the remote worker.
   rpc::Address addr_;
@@ -462,7 +461,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t max_finished_seq_no_ GUARDED_BY(mutex_) = -1;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
+typedef std::function<std::shared_ptr<CoreWorkerClient>(const rpc::Address &)>
     ClientFactoryFn;
 
 }  // namespace rpc

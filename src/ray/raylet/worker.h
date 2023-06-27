@@ -60,7 +60,7 @@ class WorkerInterface {
   /// Connect this worker's gRPC client.
   virtual void Connect(int port) = 0;
   /// Testing-only
-  virtual void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client) = 0;
+  virtual void Connect(std::shared_ptr<rpc::CoreWorkerClient> rpc_client) = 0;
   virtual int Port() const = 0;
   virtual int AssignedPort() const = 0;
   virtual void SetAssignedPort(int port) = 0;
@@ -105,7 +105,7 @@ class WorkerInterface {
 
   virtual bool IsRegistered() = 0;
 
-  virtual rpc::CoreWorkerClientInterface *rpc_client() = 0;
+  virtual rpc::CoreWorkerClient *rpc_client() = 0;
 
   /// Return True if the worker is available for scheduling a task or actor.
   virtual bool IsAvailableForScheduling() const = 0;
@@ -167,7 +167,7 @@ class Worker : public WorkerInterface {
   /// Connect this worker's gRPC client.
   void Connect(int port);
   /// Testing-only
-  void Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client);
+  void Connect(std::shared_ptr<rpc::CoreWorkerClient> rpc_client);
   int Port() const;
   int AssignedPort() const;
   void SetAssignedPort(int port);
@@ -235,7 +235,7 @@ class Worker : public WorkerInterface {
            && GetActorId().IsNil();         // No assigned actor
   }
 
-  rpc::CoreWorkerClientInterface *rpc_client() {
+  rpc::CoreWorkerClient *rpc_client() {
     RAY_CHECK(IsRegistered());
     return rpc_client_.get();
   }
@@ -290,7 +290,7 @@ class Worker : public WorkerInterface {
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
   /// The rpc client to send tasks to this worker.
-  std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
+  std::shared_ptr<rpc::CoreWorkerClient> rpc_client_;
   /// Whether the worker is detached. This is applies when the worker is actor.
   /// Detached actor means the actor's creator can exit without killing this actor.
   bool is_detached_actor_;
