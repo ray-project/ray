@@ -470,9 +470,6 @@ def batch(
             batch_queue.put(_SingleRequest(self, flattened_args, future))
             return future
 
-        # nonlocal max_batch_size, batch_wait_timeout_s
-        # batch_queue = batch_queue_cls(max_batch_size, batch_wait_timeout_s, _func)
-
         # TODO (shrekris-anyscale): deprecate batch_queue_cls argument and
         # convert batch_wrapper into a class once `self` argument is no
         # longer needed in `enqueue_request`.
