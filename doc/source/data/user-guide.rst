@@ -17,8 +17,9 @@ show you how achieve several tasks.
     inspecting-data
     iterating-over-data
     saving-data
-    working-with-pytorch
+    working-with-text
     working-with-tensors
+    working-with-pytorch
     data-internals
     performance-tips
     batch_inference
