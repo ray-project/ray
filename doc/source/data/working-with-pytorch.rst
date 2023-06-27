@@ -359,6 +359,11 @@ If you are using built-in PyTorch datasets, for example from `torchvision`, thes
     mnist = torchvision.datasets.MNIST(root="/tmp/", download=True)
     ds = ray.data.from_torch(mnist)
 
+.. testoutput::
+    :hide:
+
+    ...
+
 Custom PyTorch Datasets
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -425,36 +430,47 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
 
             dataset = ImageDataset(bucket_name="ray-example-data", dir_path="batoidea/JPEGImages/")
 
+        .. testoutput::
+            :hide:
+
+            ...
+
     .. tab-item:: Ray Data
 
-        import torchvision
-        import ray
+        .. testcode::
 
-        ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages", include_paths=True)
+            import torchvision
+            import ray
 
-        # Extract the label from the file path.
-        def extract_label(row: dict):
-            filepath = row["path"]
-            last_slash_idx = filepath.rfind("/")
-            dot_idx = filepath.rfind('.')
-            label = int(filepath[last_slash_idx+1:dot_idx])
-            row["label"] = label
-            return row
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/batoidea/JPEGImages", include_paths=True)
 
-        transform = transforms.Compose([
-                        transforms.ToTensor(),
-                        transforms.Resize((128, 128)),
-                        transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
-                    ])
-        
-        # Preprocess the images.
-        def transform_image(row: dict):
-            row["transformed_image"] = transform(row["image"])
-            return row
-        
-        # Map the transformations over the dataset.
-        ds = ds.map(extract_label).map(transform_image)
+            # Extract the label from the file path.
+            def extract_label(row: dict):
+                filepath = row["path"]
+                last_slash_idx = filepath.rfind("/")
+                dot_idx = filepath.rfind('.')
+                label = int(filepath[last_slash_idx+1:dot_idx])
+                row["label"] = label
+                return row
 
+            transform = transforms.Compose([
+                            transforms.ToTensor(),
+                            transforms.Resize((128, 128)),
+                            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))
+                        ])
+            
+            # Preprocess the images.
+            def transform_image(row: dict):
+                row["transformed_image"] = transform(row["image"])
+                return row
+            
+            # Map the transformations over the dataset.
+            ds = ds.map(extract_label).map(transform_image)
+
+        .. testoutput::
+            :hide:
+
+            ...
 
 PyTorch DataLoader
 ~~~~~~~~~~~~~~~~~~
@@ -486,10 +502,3 @@ The following table describes how the arguments for PyTorch DataLoader map to Ra
      - Use ``prefetch_batches`` arg to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to indicate how many batches to prefetch. The number of prefetching threads will automatically be configured according to ``prefetch_batches``.
    * - ``pin_memory``
      - Pass in ``device`` to :meth:`ds.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to get tensors that have already been moved to the correct device.
-
-
-        
-
-
-
-
