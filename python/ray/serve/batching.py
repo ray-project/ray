@@ -78,6 +78,8 @@ class _BatchQueue:
         If handle_batch_func is passed in, a background coroutine will run to
         poll from the queue and call handle_batch_func on the results.
 
+        Cannot be pickled.
+
         Arguments:
             max_batch_size: max number of elements to return in a batch.
             timeout_s: time to wait before returning an incomplete
@@ -92,7 +94,8 @@ class _BatchQueue:
 
         self._handle_batch_task = None
         if handle_batch_func is not None:
-            self._handle_batch_task = get_or_create_event_loop().create_task(
+            self.background_event_loop = get_or_create_event_loop()
+            self._handle_batch_task = self.background_event_loop.create_task(
                 self._process_batches(handle_batch_func)
             )
 
@@ -228,6 +231,31 @@ class _BatchQueue:
                     for future in futures:
                         future.set_exception(e)
 
+    async def update_params(
+        self, max_batch_size: int, batch_wait_timeout_s: float
+    ) -> None:
+        """Update all parameters for this queue in a single async call."""
+        self.max_batch_size = max_batch_size
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+
+    def safely_update_params(
+        self, max_batch_size: int, batch_wait_timeout_s: float
+    ) -> None:
+        """Safely update all parameters for this queue.
+        
+        Request runs in the same event loop as the batch-creation task. Calling
+        this method ensures that the batch-creation task only ever uses a
+        consistent set of parameters. It won't mix parameters from different
+        settings.
+        """
+        asyncio.wait_for(
+            self.background_event_loop.create_task(
+                self.update_params(
+                    self.update_params(max_batch_size, batch_wait_timeout_s)
+                )
+            )
+        )
+
     def __del__(self):
         if (
             self._handle_batch_task is None
@@ -239,6 +267,38 @@ class _BatchQueue:
         # causes some errors when the process exits due to the asyncio loop
         # already being destroyed.
         self._handle_batch_task.cancel()
+
+
+class _LazyBatchQueueWrapper:
+    """Stores a _BatchQueue and updates its settings.
+
+    _BatchQueue cannot be pickled, so it must be constructed lazily
+    at runtime inside a replica. This class initializes a queue only upon
+    first access.
+    """
+
+    def __init__(
+        self,
+        max_batch_size: int = 10,
+        batch_wait_timeout_s: float = 0.0,
+        handle_batch_func: Optional[Callable] = None,
+        batch_queue_cls: Type[_BatchQueue] = _BatchQueue,
+    ):
+        self._queue: Type[_BatchQueue] = None
+        self.max_batch_size = max_batch_size
+        self.batch_wait_timeout_s = batch_wait_timeout_s
+        self.handle_batch_func = handle_batch_func
+        self.batch_queue_cls = batch_queue_cls
+
+    @property
+    def queue(self):
+        if self._queue is None:
+            self._queue = self.batch_queue_cls(
+                self.max_batch_size,
+                self.batch_wait_timeout_s,
+                self.handle_batch_func,
+            )
+        return self._queue
 
 
 def _validate_max_batch_size(max_batch_size):
@@ -352,6 +412,9 @@ def batch(
     _validate_batch_wait_timeout_s(batch_wait_timeout_s)
 
     def _batch_decorator(_func):
+
+        queue_holder = BatchQueueHolder()
+
         async def batch_handler_generator(
             first_future: asyncio.Future,
         ) -> AsyncGenerator:
@@ -366,9 +429,7 @@ def batch(
                 except StopAsyncIteration:
                     break
 
-        def enqueue_request(
-            batch_queue: Type[_BatchQueue], args, kwargs
-        ) -> asyncio.Future:
+        def enqueue_request(args, kwargs) -> asyncio.Future:
             self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
@@ -382,6 +443,17 @@ def batch(
                 batch_queue_object = self
                 # Trim the self argument from methods
                 flattened_args = flattened_args[2:]
+
+            if queue_holder.queue is None:
+                queue_holder.queue = batch_queue_cls(
+                    max_batch_size,
+                    batch_wait_timeout_s,
+                    _func,
+                )
+
+            # _BatchQueue cannot be serialized, so it must be initialized at
+            # runtime inside the replica. We initialize it lazily here.
+            batch_queue = queue_holder.queue
 
             # Magic batch_queue_object attributes that can be used to change the
             # batch queue attributes on the fly.
@@ -405,37 +477,44 @@ def batch(
             batch_queue.put(_SingleRequest(self, flattened_args, future))
             return future
 
-        nonlocal max_batch_size, batch_wait_timeout_s
-        batch_queue = batch_queue_cls(max_batch_size, batch_wait_timeout_s, _func)
+        # nonlocal max_batch_size, batch_wait_timeout_s
+        # batch_queue = batch_queue_cls(max_batch_size, batch_wait_timeout_s, _func)
 
         # TODO (shrekris-anyscale): deprecate batch_queue_cls argument and
         # convert batch_wrapper into a class once `self` argument is no
         # longer needed in `enqueue_request`.
         @wraps(_func)
-        def batch_wrapper(*args, **kwargs):
-            if isasyncgenfunction(_func):
-                first_future = enqueue_request(batch_queue, args, kwargs)
-                return batch_handler_generator(first_future)
-            else:
-                return enqueue_request(batch_queue, args, kwargs)
+        def generator_batch_wrapper(*args, **kwargs):
+            first_future = enqueue_request(args, kwargs)
+            return batch_handler_generator(first_future)
+
+        @wraps(_func)
+        async def batch_wrapper(*args, **kwargs):
+            # This will raise if the underlying call raised an exception.
+            return await enqueue_request(args, kwargs)
+
+        if isasyncgenfunction(_func):
+            wrapper = generator_batch_wrapper
+        else:
+            wrapper = batch_wrapper
 
         # These are getters and setters for batch_queue's parameters. We make
         # them batch_wrapper attributes, so they can be accessed in user code.
-        batch_wrapper._queue = batch_queue
+        # wrapper._queue = batch_queue
 
-        def set_max_batch_size(new_max_batch_size: int) -> None:
-            _validate_max_batch_size(new_max_batch_size)
-            batch_queue.max_batch_size = new_max_batch_size
+        # def set_max_batch_size(new_max_batch_size: int) -> None:
+        #     _validate_max_batch_size(new_max_batch_size)
+        #     batch_queue.max_batch_size = new_max_batch_size
 
-        batch_wrapper.set_max_batch_size = set_max_batch_size
+        # wrapper.set_max_batch_size = set_max_batch_size
 
-        def set_batch_wait_timeout_s(new_batch_wait_timeout_s: float) -> None:
-            _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
-            batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+        # def set_batch_wait_timeout_s(new_batch_wait_timeout_s: float) -> None:
+        #     _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
+        #     batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
 
-        batch_wrapper.set_batch_wait_timeout_s = set_batch_wait_timeout_s
+        # wrapper.set_batch_wait_timeout_s = set_batch_wait_timeout_s
 
-        return batch_wrapper
+        return wrapper
 
     # Unfortunately, this is required to handle both non-parametrized
     # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.
