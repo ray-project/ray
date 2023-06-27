@@ -1272,6 +1272,10 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["FromItems"])
 
 
+@pytest.mark.skip(
+    reason="Limit pushdown currently disabled, see "
+    "https://github.com/ray-project/ray/issues/36295"
+)
 def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     def f1(x):
         return x
