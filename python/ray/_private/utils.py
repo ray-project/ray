@@ -37,13 +37,10 @@ from typing import (
 
 # Import psutil after ray so the packaged version is used.
 import psutil
-from google.protobuf import json_format
+# from google.protobuf import json_format
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvInfo as ProtoRuntimeEnvInfo,
-)
 
 if TYPE_CHECKING:
     from ray.runtime_env import RuntimeEnv
@@ -1548,6 +1545,9 @@ def get_runtime_env_info(
     `RuntimeEnv` and create a new `ProtoRuntimeEnvInfo`, and serialize it.
     """
     from ray.runtime_env import RuntimeEnvConfig
+    from ray.core.generated.runtime_env_common_pb2 import (
+        RuntimeEnvInfo as ProtoRuntimeEnvInfo,
+    )
 
     proto_runtime_env_info = ProtoRuntimeEnvInfo()
 
@@ -1593,7 +1593,8 @@ def get_runtime_env_info(
     if not serialize:
         return proto_runtime_env_info
 
-    return json_format.MessageToJson(proto_runtime_env_info)
+    # return json_format.MessageToJson(proto_runtime_env_info)
+    raise NotImplemented("TODO")
 
 
 def parse_runtime_env(runtime_env: Optional[Union[Dict, "RuntimeEnv"]]):

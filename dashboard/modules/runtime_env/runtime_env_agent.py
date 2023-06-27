@@ -33,9 +33,9 @@ from ray.core.generated import (
     runtime_env_agent_pb2,
     runtime_env_agent_pb2_grpc,
 )
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvState as ProtoRuntimeEnvState,
-)
+# from ray.core.generated.runtime_env_common_pb2 import (
+#     RuntimeEnvState as ProtoRuntimeEnvState,
+# )
 from ray.runtime_env import RuntimeEnv, RuntimeEnvConfig
 
 default_logger = logging.getLogger(__name__)

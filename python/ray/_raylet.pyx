@@ -108,6 +108,27 @@ from ray.includes.common cimport (
     PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
+    ERROR_TYPE_TASK_EXECUTION_EXCEPTION,
+    ERROR_TYPE_WORKER_DIED,
+    ERROR_TYPE_ACTOR_DIED,
+    ERROR_TYPE_LOCAL_RAYLET_DIED,
+    ERROR_TYPE_TASK_CANCELLED,
+    ERROR_TYPE_OBJECT_LOST,
+    ERROR_TYPE_OBJECT_FETCH_TIMED_OUT,
+    ERROR_TYPE_OUT_OF_DISK_ERROR,
+    ERROR_TYPE_OUT_OF_MEMORY,
+    ERROR_TYPE_NODE_DIED,
+    ERROR_TYPE_OBJECT_DELETED,
+    ERROR_TYPE_OBJECT_FREED,
+    ERROR_TYPE_OWNER_DIED,
+    ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE,
+    ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
+    ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED,
+    ERROR_TYPE_RUNTIME_ENV_SETUP_FAILED,
+    ERROR_TYPE_TASK_PLACEMENT_GROUP_REMOVED,
+    ERROR_TYPE_ACTOR_PLACEMENT_GROUP_REMOVED,
+    ERROR_TYPE_TASK_UNSCHEDULABLE_ERROR,
+    ERROR_TYPE_ACTOR_UNSCHEDULABLE_ERROR,
     kResourceUnitScaling,
     kWorkerSetupHookKeyName,
     PythonCheckGcsHealth,
@@ -151,6 +172,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
+    ActorDiedErrorContext,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -159,14 +181,12 @@ from ray.util.scheduling_strategies import (
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
-from ray.core.generated.common_pb2 import ActorDiedErrorContext
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
     is_async_func
 )
 from ray._private.client_mode_hook import disable_client_hook
-import ray.core.generated.common_pb2 as common_pb2
 import ray._private.memory_monitor as memory_monitor
 import ray._private.profiling as profiling
 from ray._private.utils import decode, DeferSigint
@@ -190,6 +210,30 @@ OPTIMIZED = __OPTIMIZE__
 
 GRPC_STATUS_CODE_UNAVAILABLE = CGrpcStatusCode.UNAVAILABLE
 GRPC_STATUS_CODE_UNKNOWN = CGrpcStatusCode.UNKNOWN
+
+RAY_LANGUAGE_PYTHON = <int32_t>LANGUAGE_PYTHON
+
+RAY_ERROR_TYPE_TASK_EXECUTION_EXCEPTION = <int32_t>ERROR_TYPE_TASK_EXECUTION_EXCEPTION
+RAY_ERROR_TYPE_WORKER_DIED = <int32_t>ERROR_TYPE_WORKER_DIED
+RAY_ERROR_TYPE_ACTOR_DIED = <int32_t>ERROR_TYPE_ACTOR_DIED
+RAY_ERROR_TYPE_LOCAL_RAYLET_DIED = <int32_t>ERROR_TYPE_LOCAL_RAYLET_DIED
+RAY_ERROR_TYPE_TASK_CANCELLED = <int32_t>ERROR_TYPE_TASK_CANCELLED
+RAY_ERROR_TYPE_OBJECT_LOST = <int32_t>ERROR_TYPE_OBJECT_LOST
+RAY_ERROR_TYPE_OBJECT_FETCH_TIMED_OUT = <int32_t>ERROR_TYPE_OBJECT_FETCH_TIMED_OUT
+RAY_ERROR_TYPE_OUT_OF_DISK_ERROR = <int32_t>ERROR_TYPE_OUT_OF_DISK_ERROR
+RAY_ERROR_TYPE_OUT_OF_MEMORY = <int32_t>ERROR_TYPE_OUT_OF_MEMORY
+RAY_ERROR_TYPE_NODE_DIED = <int32_t>ERROR_TYPE_NODE_DIED
+RAY_ERROR_TYPE_OBJECT_DELETED = <int32_t>ERROR_TYPE_OBJECT_DELETED
+RAY_ERROR_TYPE_OBJECT_FREED = <int32_t>ERROR_TYPE_OBJECT_FREED
+RAY_ERROR_TYPE_OWNER_DIED = <int32_t>ERROR_TYPE_OWNER_DIED
+RAY_ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE = <int32_t>ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE
+RAY_ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED = <int32_t>ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED
+RAY_ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED = <int32_t>ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED
+RAY_ERROR_TYPE_RUNTIME_ENV_SETUP_FAILED = <int32_t>ERROR_TYPE_RUNTIME_ENV_SETUP_FAILED
+RAY_ERROR_TYPE_TASK_PLACEMENT_GROUP_REMOVED = <int32_t>ERROR_TYPE_TASK_PLACEMENT_GROUP_REMOVED
+RAY_ERROR_TYPE_ACTOR_PLACEMENT_GROUP_REMOVED = <int32_t>ERROR_TYPE_ACTOR_PLACEMENT_GROUP_REMOVED
+RAY_ERROR_TYPE_TASK_UNSCHEDULABLE_ERROR = <int32_t>ERROR_TYPE_TASK_UNSCHEDULABLE_ERROR
+RAY_ERROR_TYPE_ACTOR_UNSCHEDULABLE_ERROR = <int32_t>ERROR_TYPE_ACTOR_UNSCHEDULABLE_ERROR
 
 logger = logging.getLogger(__name__)
 
@@ -472,6 +516,15 @@ def _get_actor_serialized_owner_address_or_none(actor_table_data: bytes):
         return None
     else:
         return data.address().SerializeAsString()
+
+
+def _get_data_from_owner_address(owner_address):
+    cdef:
+        CAddress data
+
+    data.ParseFromString(owner_address)
+
+    return data.ip_address(), data.worker_id()
 
 
 def compute_task_id(ObjectRef object_ref):
@@ -2007,7 +2060,7 @@ def maybe_initialize_job_config():
             return
         # Add code search path to sys.path, set load_code_from_local.
         core_worker = ray._private.worker.global_worker.core_worker
-        code_search_path = core_worker.get_job_config().code_search_path
+        code_search_path = core_worker.get_job_config()["code_search_path"]
         load_code_from_local = False
         if code_search_path:
             load_code_from_local = True
@@ -2018,7 +2071,7 @@ def maybe_initialize_job_config():
         ray._private.worker.global_worker.set_load_code_from_local(load_code_from_local)
 
         # Add driver's system path to sys.path
-        py_driver_sys_path = core_worker.get_job_config().py_driver_sys_path
+        py_driver_sys_path = core_worker.get_job_config()["py_driver_sys_path"]
         if py_driver_sys_path:
             for p in py_driver_sys_path:
                 sys.path.insert(0, p)
@@ -3927,8 +3980,11 @@ cdef class CoreWorker:
         # the job config will not change after a job is submitted.
         if self.job_config is None:
             c_job_config = CCoreWorkerProcess.GetCoreWorker().GetJobConfig()
-            self.job_config = common_pb2.JobConfig()
-            self.job_config.ParseFromString(c_job_config.SerializeAsString())
+            self.job_config = {
+                "ray_namespace": c_job_config.ray_namespace(),
+                "code_search_path": None,
+                "py_driver_sys_path": None,
+            }
         return self.job_config
 
     def get_task_submission_stats(self):

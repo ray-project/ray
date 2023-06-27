@@ -12,9 +12,6 @@ from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.thirdparty.dacite import from_dict
-from ray.core.generated.runtime_env_common_pb2 import (
-    RuntimeEnvConfig as ProtoRuntimeEnvConfig,
-)
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -98,14 +95,17 @@ class RuntimeEnvConfig(dict):
     def default_config(cls):
         return RuntimeEnvConfig(**cls._default_config)
 
-    def build_proto_runtime_env_config(self) -> ProtoRuntimeEnvConfig:
+    def build_proto_runtime_env_config(self):
+        from ray.core.generated.runtime_env_common_pb2 import (
+           RuntimeEnvConfig as ProtoRuntimeEnvConfig,
+        )
         runtime_env_config = ProtoRuntimeEnvConfig()
         runtime_env_config.setup_timeout_seconds = self["setup_timeout_seconds"]
         runtime_env_config.eager_install = self["eager_install"]
         return runtime_env_config
 
     @classmethod
-    def from_proto(cls, runtime_env_config: ProtoRuntimeEnvConfig):
+    def from_proto(cls, runtime_env_config):
         setup_timeout_seconds = runtime_env_config.setup_timeout_seconds
         # Cause python class RuntimeEnvConfig has validate to avoid
         # setup_timeout_seconds equals zero, so setup_timeout_seconds

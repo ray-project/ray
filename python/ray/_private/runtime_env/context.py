@@ -5,8 +5,9 @@ import subprocess
 import sys
 from typing import Any, Dict, List, Optional
 
+import ray
 from ray.util.annotations import DeveloperAPI
-from ray.core.generated.common_pb2 import Language
+# from ray.core.generated.common_pb2 import Language
 from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
 
@@ -44,14 +45,14 @@ class RuntimeEnvContext:
     def deserialize(json_string):
         return RuntimeEnvContext(**json.loads(json_string))
 
-    def exec_worker(self, passthrough_args: List[str], language: Language):
+    def exec_worker(self, passthrough_args: List[str], language):
         update_envs(self.env_vars)
 
-        if language == Language.PYTHON and sys.platform == "win32":
+        if language == ray._raylet.RAY_LANGUAGE_PYTHON and sys.platform == "win32":
             executable = self.py_executable
-        elif language == Language.PYTHON:
+        elif language == ray._raylet.RAY_LANGUAGE_PYTHON:
             executable = f"exec {self.py_executable}"
-        elif language == Language.JAVA:
+        elif False:
             executable = "java"
             ray_jars = os.path.join(get_ray_jars_dir(), "*")
 
