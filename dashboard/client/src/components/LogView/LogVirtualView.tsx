@@ -5,6 +5,7 @@ import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
+import { createStyles, makeStyles } from "@material-ui/core";
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
 
@@ -82,6 +83,13 @@ export type LogVirtualViewProps = {
   maxLines?: number;
 };
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    warningInfo: {
+      color: "red",
+    },
+  }),
+);
 const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   content,
   width = "100%",
@@ -104,6 +112,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
+  const classes = useStyles();
   if (listRef) {
     listRef.current = outter.current;
   }
@@ -195,23 +204,29 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
     }
   }, [onScrollBottom]);
 
+  // Only to add if tuncate happend
+  // not to add: no logs, content is helper info, no truncate
+  // styles confirmed
   return (
-    <List
-      height={height || (content.split("\n").length + 1) * 18}
-      width={width}
-      ref={el}
-      outerRef={outter}
-      className={`hljs-${theme}`}
-      style={{
-        fontSize,
-        fontFamily: "menlo, monospace",
-        ...style,
-      }}
-      itemSize={fontSize + 6}
-      itemCount={total > maxLines ? maxLines : total}
-    >
-      {itemRenderer}
-    </List>
+    <div>
+      {logs && <p className={classes.warningInfo}> Truncation warning</p>}
+      <List
+        height={height || (content.split("\n").length + 1) * 18}
+        width={width}
+        ref={el}
+        outerRef={outter}
+        className={`hljs-${theme}`}
+        style={{
+          fontSize,
+          fontFamily: "menlo, monospace",
+          ...style,
+        }}
+        itemSize={fontSize + 6}
+        itemCount={total > maxLines ? maxLines : total}
+      >
+        {itemRenderer}
+      </List>
+    </div>
   );
 };
 
