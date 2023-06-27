@@ -105,7 +105,11 @@ class ActorReplicaWrapper:
         return self.replica_info.replica_tag
 
     async def get_queue_len(self) -> Tuple[str, int, bool]:
-        return await self.replica_info.actor_handle.get_num_ongoing_requests.remote()
+        queue_len = (
+            await self.replica_info.actor_handle.get_num_ongoing_requests.remote()
+        )
+        accepted = queue_len < self.replica_info.max_concurrent_queries
+        return self.replica_id, queue_len, accepted
 
     def send_query(
         self, query: Query
@@ -245,7 +249,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 logger.info(
                     "Tried to assign replica for deployment "
                     f"{self._deployment_name} but none are available. ",
-                    "Waiting for new replicas to be added."
+                    "Waiting for new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()

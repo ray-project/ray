@@ -208,20 +208,13 @@ def create_replica_wrapper(name: str):
             self._replica_init_lock = asyncio.Lock()
 
         @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
-        def get_num_ongoing_requests(self) -> [str, int, bool]:
+        def get_num_ongoing_requests(self) -> int:
             """Fetch the number of ongoing requests at this replica (queue length).
-
-            Returns a tuple of (replica_id, queue_length, accepted).
 
             This runs on a separate thread (using a Ray concurrency group) so it will
             not be blocked by user code.
             """
-            num_ongoing_requests = self.replica.get_num_pending_and_running_requests()
-            accepted = (
-                num_ongoing_requests
-                < self.replica.deployment_config.max_concurrent_queries
-            )
-            return self._replica_tag, num_ongoing_requests, accepted
+            return self.replica.get_num_pending_and_running_requests()
 
         @ray.method(num_returns=2)
         async def handle_request(
