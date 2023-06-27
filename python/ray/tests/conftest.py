@@ -271,8 +271,8 @@ def kill_all_redis_server():
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
         if (
-            proc.info["name"] == "redis-server"
-            and "redis-server" in proc.info["cmdline"]
+            proc.info.get("name", None) == "redis-server"
+            and "redis-server" in proc.info.get("cmdline", [])
         ):
             redis_procs.append(proc)
 
