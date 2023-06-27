@@ -76,8 +76,6 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
     bool *is_idle) const {
   RAY_CHECK(available.size() == local_available.size())
       << available.size() << ", " << local_available.size();
-  RAY_CHECK(is_idle && *is_idle) << "initialized resource to be idle, "
-                                 << "any used instance should make it false.";
   std::vector<FixedPoint> overflow(available.size(), 0.);
   for (size_t i = 0; i < available.size(); i++) {
     local_available[i] = local_available[i] + available[i];
@@ -86,7 +84,9 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
       local_available[i] = local_total[i];
     }
     // If any resource instance is not idle, the whole resource is not idle.
-    *is_idle = *is_idle && (local_available[i] == local_total[i]);
+    if (is_idle != nullptr) {
+      *is_idle = *is_idle && (local_available[i] == local_total[i]);
+    }
   }
 
   return overflow;
@@ -281,6 +281,7 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
 }
 
 void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
+  // We o
   resources_last_idle_time_[resource_id] = absl::nullopt;
 }
 
