@@ -71,10 +71,11 @@ const TaskTable = ({
           only view all the logs of the worker and a worker can run multiple
           tasks.
           <br />- Error: For tasks that have failed, show a stack trace for the
-          faiure. - Stack Trace: Get a stacktrace of the alive actor.
-          <br />- CPU Flame Graph: Get a flamegraph for the next 5 seconds of an
-          alive actor.
-          <br />- Profiling: Get profiling information for the next 5 seconds of
+          faiure.
+          <br /> Stack Trace: Get a stacktrace of the worker process where the
+          task is running.
+          <br />- CPU Flame Graph: Get a flamegraph for the next 5 seconds of
+          the worker process where the task is running.
         </Typography>
       ),
     },
@@ -334,8 +335,8 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
       ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
   const { job } = useJobDetail();
-  const isActiveTask = task.state === "RUNNING" && task.worker_id;
-
+  // const isActiveTask = task.state === "RUNNING" && task.worker_id;
+  const isActiveTask = true;
   return (
     <React.Fragment>
       <Link component={RouterLink} to={`tasks/${task.task_id}`}>
@@ -353,11 +354,13 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
       )}
 
       <br />
-      <CpuStackTraceLink
-        pid={job?.driver_info?.pid}
-        ip={job?.driver_info?.node_ip_address}
-        type=""
-      />
+      {isActiveTask && (
+        <CpuStackTraceLink
+          pid={job?.driver_info?.pid}
+          ip={job?.driver_info?.node_ip_address}
+          type=""
+        />
+      )}
       <br />
       {errorDetails && (
         <CodeDialogButton

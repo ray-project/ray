@@ -10,6 +10,10 @@ import {
   MultiTabLogViewer,
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
+import {
+  CpuProfilingLink,
+  CpuStackTraceLink,
+} from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
@@ -92,7 +96,7 @@ const TaskPageContents = ({
     func_or_class_name,
     name,
   } = task;
-
+  const isTaskActive = true;
   return (
     <div>
       <MetadataSection
@@ -215,6 +219,27 @@ const TaskPageContents = ({
               {
                 value: "-",
               }
+            ),
+          },
+          {
+            label: "Actions",
+            content: (
+              <React.Fragment>
+                {isTaskActive && (
+                  <React.Fragment>
+                    <CpuProfilingLink
+                    // pid={job?.driver_info?.pid}
+                    // ip={job?.driver_info?.node_ip_address}
+                    // type=""
+                    />
+                    <CpuStackTraceLink
+                    // pid={job?.driver_info?.pid}
+                    // ip={job?.driver_info?.node_ip_address}
+                    // type=""
+                    />
+                  </React.Fragment>
+                )}
+              </React.Fragment>
             ),
           },
         ]}
