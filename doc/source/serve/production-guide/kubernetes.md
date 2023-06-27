@@ -256,7 +256,7 @@ In most use cases, it is recommended to enable Kubernetes autoscaling to fully u
 :::
 
 ## Load balancer
-Set up ingress to expose your Serve application to the internet. See [this configuration](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice-alb-ingress.yaml)
+Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice-alb-ingress.yaml)
 
 :::{note}
 - Ray Serve runs HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
