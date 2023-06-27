@@ -639,10 +639,10 @@ class Router:
         event_loop: asyncio.BaseEventLoop = None,
         _use_new_routing: bool = False,
     ):
-        """Router process incoming queries: assign a replica.
+        """Used to assign requests to downstream replicas for a deployment.
 
-        Args:
-            controller_handle: The controller handle.
+        The scheduling behavior is delegated to a ReplicaScheduler; this is a thin
+        wrapper that adds metrics and logging.
         """
         self._event_loop = event_loop
         if _use_new_routing:
@@ -713,7 +713,7 @@ class Router:
         *request_args,
         **request_kwargs,
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
-        """Assign a query and returns an object ref represent the result."""
+        """Assign a query to a replica and return the resulting object_ref."""
 
         self.num_router_requests.inc(
             tags={"route": request_meta.route, "application": request_meta.app_name}
