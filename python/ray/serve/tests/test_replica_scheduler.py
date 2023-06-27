@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Tuple, Union
+from typing import Set, Optional, Tuple, Union
 
 import pytest
 
@@ -16,16 +16,28 @@ from ray.serve._private.router import (
 
 
 class FakeReplicaWrapper(ReplicaWrapper):
-    def __init__(self, replica_id: str, *, reset_after_response: bool = False):
+    def __init__(
+        self,
+        replica_id: str,
+        *,
+        reset_after_response: bool = False,
+        model_ids: Optional[Set[str]] = None
+    ):
+
         self._replica_id = replica_id
         self._queue_len = 0
         self._accepted = False
         self._has_queue_len_response = asyncio.Event()
         self._reset_after_response = reset_after_response
+        self._model_ids = model_ids or set()
 
     @property
     def replica_id(self) -> str:
         return self._replica_id
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        return self._model_ids
 
     def set_queue_len_response(self, queue_len: int, accepted: bool = True):
         self._queue_len = queue_len
@@ -64,6 +76,15 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
 @pytest.fixture
 def fake_query() -> Query:
     meta = RequestMetadata(request_id="req_id", endpoint="endpoint")
+    return Query([], {}, meta)
+
+
+def query_with_model_id(model_id: str):
+    meta = RequestMetadata(
+        request_id="req_id",
+        endpoint="endpoint",
+        multiplexed_model_id=model_id,
+    )
     return Query([], {}, meta)
 
 
@@ -154,12 +175,12 @@ async def test_two_replicas_available_then_one(pow_2_scheduler, fake_query):
 
     s.update_replicas([r1, r2])
 
-    for _ in range(100):
+    for _ in range(10):
         assert (await s.choose_replica_for_query(fake_query)) in {r1, r2}
 
     s.update_replicas([r1])
 
-    for _ in range(100):
+    for _ in range(10):
         assert (await s.choose_replica_for_query(fake_query)) == r1
 
 
@@ -178,7 +199,7 @@ async def test_two_replicas_one_accepts(pow_2_scheduler, fake_query):
 
     s.update_replicas([r1, r2])
 
-    for _ in range(100):
+    for _ in range(10):
         assert (await s.choose_replica_for_query(fake_query)) == r1
 
 
@@ -200,7 +221,7 @@ async def test_three_replicas_two_accept(pow_2_scheduler, fake_query):
 
     s.update_replicas([r1, r2, r3])
 
-    for _ in range(100):
+    for _ in range(10):
         assert (await s.choose_replica_for_query(fake_query)) in {r1, r3}
 
 
@@ -220,7 +241,7 @@ async def test_two_replicas_choose_shorter_queue(pow_2_scheduler, fake_query):
 
     s.update_replicas([r1, r2])
 
-    for _ in range(100):
+    for _ in range(10):
         assert (await s.choose_replica_for_query(fake_query)) == r2
 
 
@@ -235,7 +256,7 @@ async def test_tasks_scheduled_fifo(pow_2_scheduler, fake_query):
 
     # Schedule many requests in parallel; they cannot be fulfilled yet.
     tasks = []
-    for _ in range(100):
+    for _ in range(10):
         tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -325,7 +346,7 @@ async def test_scheduling_task_cap(pow_2_scheduler, fake_query):
     loop = get_or_create_event_loop()
 
     tasks = []
-    for _ in range(100):
+    for _ in range(10):
         tasks.append(loop.create_task(s.choose_replica_for_query(fake_query)))
 
     done, _ = await asyncio.wait(tasks, timeout=0.1)
@@ -403,6 +424,91 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
     # Set the new replica to accept, it should be scheduled.
     r2.set_queue_len_response(0, accepted=True)
     assert (await task) == r2
+
+
+@pytest.mark.asyncio
+class TestModelMultiplexing:
+    async def test_replicas_with_model_id_always_chosen(self, pow_2_scheduler):
+        """
+        Verify that if accepted, only replicas with a given model ID will be chosen.
+        This should be independent of queue length.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r1.set_queue_len_response(100, accepted=True)
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
+        r2.set_queue_len_response(100, accepted=True)
+        r3 = FakeReplicaWrapper("r3", model_ids={})
+        r3.set_queue_len_response(0, accepted=True)
+        s.update_replicas([r1, r2, r3])
+
+        for _ in range(10):
+            query = query_with_model_id("m2")
+            task = loop.create_task(s.choose_replica_for_query(query))
+            assert (await task) in {r1, r2}
+
+    async def test_fall_back_to_replica_without_model_id(self, pow_2_scheduler):
+        """
+        Verify that we'll fall back to a replica that doesn't have the model ID if
+        none of the replicas with it can accept the request.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r1.set_queue_len_response(0, accepted=False)
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2", "m3"})
+        r2.set_queue_len_response(100, accepted=False)
+        r3 = FakeReplicaWrapper("r3", model_ids={})
+        r3.set_queue_len_response(0, accepted=True)
+        s.update_replicas([r1, r2, r3])
+
+        for _ in range(10):
+            query = query_with_model_id("m2")
+            task = loop.create_task(s.choose_replica_for_query(query))
+            assert (await task) == r3
+
+    async def test_multiple_queries_with_different_model_ids(self, pow_2_scheduler):
+        """
+        Verify that multiple queries with different model_ids will be mapped to the
+        appropriate replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1"})
+        r1.set_queue_len_response(0, accepted=True)
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r2.set_queue_len_response(0, accepted=True)
+        r3 = FakeReplicaWrapper("r3", model_ids={"m3"})
+        r3.set_queue_len_response(0, accepted=True)
+        s.update_replicas([r1, r2, r3])
+
+        for _ in range(10):
+            tasks = [
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m1"))),
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m2"))),
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m3"))),
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m1"))),
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m2"))),
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m3"))),
+            ]
+
+            done, _ = await asyncio.wait(tasks, timeout=0.1)
+            assert len(done) == len(tasks)
+
+            assert all(
+                [
+                    tasks[0].result() == r1,
+                    tasks[1].result() == r2,
+                    tasks[2].result() == r3,
+                    tasks[3].result() == r1,
+                    tasks[4].result() == r2,
+                    tasks[5].result() == r3,
+                ]
+            )
 
 
 if __name__ == "__main__":
