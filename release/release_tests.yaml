@@ -3728,7 +3728,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3753,7 +3757,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3812,7 +3820,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
@@ -3837,7 +3849,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
@@ -3862,7 +3878,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -3890,7 +3910,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -3916,7 +3940,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -3945,7 +3973,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4102,6 +4134,9 @@
   team: rllib
   python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4126,7 +4161,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4151,7 +4190,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4179,7 +4222,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4266,7 +4313,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4291,7 +4342,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4319,7 +4374,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4347,7 +4406,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4372,7 +4435,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -4400,7 +4467,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -4425,8 +4496,11 @@
   working_dir: rllib_tests
   frequency: nightly
   team: rllib
-
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4455,7 +4529,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4480,7 +4558,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4570,7 +4652,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4626,7 +4712,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4651,7 +4741,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
@@ -4676,7 +4770,11 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
