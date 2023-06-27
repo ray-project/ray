@@ -265,7 +265,11 @@ class _LazyBatchQueueWrapper:
         self.batch_queue_cls = batch_queue_cls
 
     @property
-    def queue(self):
+    def queue(self) -> Type[_BatchQueue]:
+        """Returns _BatchQueue.
+
+        Initializes queue when called for the first time.
+        """
         if self._queue is None:
             self._queue = self.batch_queue_cls(
                 self.max_batch_size,
@@ -273,6 +277,26 @@ class _LazyBatchQueueWrapper:
                 self.handle_batch_func,
             )
         return self._queue
+
+    def set_max_batch_size(self, new_max_batch_size: int) -> None:
+        """Updates queue's max_batch_size."""
+
+        self.max_batch_size = new_max_batch_size
+
+        if self._queue is not None:
+            self._queue.max_batch_size = new_max_batch_size
+
+    def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float) -> None:
+        self.batch_wait_timeout_s = new_batch_wait_timeout_s
+
+        if self._queue is not None:
+            self._queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+
+    def get_max_batch_size(self) -> int:
+        return self.max_batch_size
+
+    def get_batch_wait_timeout_s(self) -> float:
+        return self.get_batch_wait_timeout_s
 
 
 def _validate_max_batch_size(max_batch_size):
@@ -386,8 +410,12 @@ def batch(
     _validate_batch_wait_timeout_s(batch_wait_timeout_s)
 
     def _batch_decorator(_func):
-
-        queue_holder = BatchQueueHolder()
+        lazy_batch_queue_wrapper = _LazyBatchQueueWrapper(
+            max_batch_size,
+            batch_wait_timeout_s,
+            _func,
+            batch_queue_cls,
+        )
 
         async def batch_handler_generator(
             first_future: asyncio.Future,
@@ -418,16 +446,7 @@ def batch(
                 # Trim the self argument from methods
                 flattened_args = flattened_args[2:]
 
-            if queue_holder.queue is None:
-                queue_holder.queue = batch_queue_cls(
-                    max_batch_size,
-                    batch_wait_timeout_s,
-                    _func,
-                )
-
-            # _BatchQueue cannot be serialized, so it must be initialized at
-            # runtime inside the replica. We initialize it lazily here.
-            batch_queue = queue_holder.queue
+            batch_queue = lazy_batch_queue_wrapper.queue
 
             # Magic batch_queue_object attributes that can be used to change the
             # batch queue attributes on the fly.
@@ -472,21 +491,16 @@ def batch(
         else:
             wrapper = batch_wrapper
 
-        # These are getters and setters for batch_queue's parameters. We make
-        # them batch_wrapper attributes, so they can be accessed in user code.
-        # wrapper._queue = batch_queue
-
-        # def set_max_batch_size(new_max_batch_size: int) -> None:
-        #     _validate_max_batch_size(new_max_batch_size)
-        #     batch_queue.max_batch_size = new_max_batch_size
-
-        # wrapper.set_max_batch_size = set_max_batch_size
-
-        # def set_batch_wait_timeout_s(new_batch_wait_timeout_s: float) -> None:
-        #     _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
-        #     batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
-
-        # wrapper.set_batch_wait_timeout_s = set_batch_wait_timeout_s
+        # We make the batch queue wrapper's getters and setters batch_wrapper
+        # attributes, so they can be accessed in user code.
+        wrapper._get_max_batch_size = lazy_batch_queue_wrapper.get_max_batch_size
+        wrapper._get_batch_wait_timeout_s = (
+            lazy_batch_queue_wrapper.get_batch_wait_timeout_s
+        )
+        wrapper.set_max_batch_size = lazy_batch_queue_wrapper.set_max_batch_size
+        wrapper.set_batch_wait_timeout_s = (
+            lazy_batch_queue_wrapper.set_batch_wait_timeout_s
+        )
 
         return wrapper
 
