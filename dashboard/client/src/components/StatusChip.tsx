@@ -61,6 +61,7 @@ const colorMap = {
     [ServeApplicationStatus.RUNNING]: green,
     [ServeApplicationStatus.DEPLOY_FAILED]: red,
     [ServeApplicationStatus.DELETING]: orange,
+    [ServeApplicationStatus.UNHEALTHY]: red,
   },
   serveDeployment: {
     [ServeDeploymentStatus.UPDATING]: orange,
@@ -105,7 +106,6 @@ const useStyles = makeStyles((theme) =>
       border: "solid 1px",
       borderRadius: 4,
       fontSize: 12,
-      margin: 2,
       display: "inline-flex",
       alignItems: "center",
     },

@@ -172,49 +172,47 @@ export const ServeSystemPreview = ({
 
   return (
     <div>
-      {serveDetails.http_options && (
-        <MetadataSection
-          metadataList={[
-            {
-              label: "Controller status",
-              content: (
-                <StatusChip
-                  type="serveController"
-                  status={convertActorStateForServeController(
-                    controllerActor.state,
-                  )}
-                />
-              ),
-            },
-            {
-              label: "HTTP Proxy status",
-              content: (
-                <StatusCountChips
-                  elements={httpProxies}
-                  statusKey="status"
-                  type="serveHttpProxy"
-                />
-              ),
-            },
-            {
-              label: "Application status",
-              content: (
-                <StatusCountChips
-                  elements={allApplications}
-                  statusKey="status"
-                  type="serveApplication"
-                />
-              ),
-            },
-          ]}
-          footer={
-            <LinkWithArrow
-              text="View system status and configuration"
-              to="system"
-            />
-          }
-        />
-      )}
+      <MetadataSection
+        metadataList={[
+          {
+            label: "Controller status",
+            content: (
+              <StatusChip
+                type="serveController"
+                status={convertActorStateForServeController(
+                  controllerActor.state,
+                )}
+              />
+            ),
+          },
+          {
+            label: "HTTP Proxy status",
+            content: (
+              <StatusCountChips
+                elements={httpProxies}
+                statusKey="status"
+                type="serveHttpProxy"
+              />
+            ),
+          },
+          {
+            label: "Application status",
+            content: (
+              <StatusCountChips
+                elements={allApplications}
+                statusKey="status"
+                type="serveApplication"
+              />
+            ),
+          },
+        ]}
+        footer={
+          <LinkWithArrow
+            text="View system status and configuration"
+            to="system"
+          />
+        }
+      />
     </div>
   );
 };
@@ -236,14 +234,15 @@ const StatusCountChips = <T,>({
   );
 
   return (
-    <div>
+    <Box display="inline-flex" gridGap={8} flexWrap="wrap">
       {Object.entries(statusCounts).map(([status, count]) => (
         <StatusChip
+          key={status}
           status={status}
           type={type}
           suffix={<React.Fragment>&nbsp;{`x ${count}`}</React.Fragment>}
         />
       ))}
-    </div>
+    </Box>
   );
 };
