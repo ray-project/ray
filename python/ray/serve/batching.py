@@ -362,7 +362,9 @@ def batch(
                 except StopAsyncIteration:
                     break
 
-        def enqueue_request(args, kwargs) -> asyncio.Future:
+        def enqueue_request(
+            batch_queue: Type[_BatchQueue], args, kwargs
+        ) -> asyncio.Future:
             self = extract_self_if_method_call(args, _func)
             flattened_args: List = flatten_args(extract_signature(_func), args, kwargs)
 
@@ -376,18 +378,6 @@ def batch(
                 batch_queue_object = self
                 # Trim the self argument from methods
                 flattened_args = flattened_args[2:]
-
-            # The first time the function runs, we lazily construct the batch
-            # queue and inject it under a custom attribute name. On subsequent
-            # runs, we just get a reference to the attribute.
-            batch_queue_attr = f"__serve_batch_queue_{_func.__name__}"
-            if not hasattr(batch_queue_object, batch_queue_attr):
-                batch_queue = batch_queue_cls(
-                    max_batch_size, batch_wait_timeout_s, _func
-                )
-                setattr(batch_queue_object, batch_queue_attr, batch_queue)
-            else:
-                batch_queue = getattr(batch_queue_object, batch_queue_attr)
 
             # Magic batch_queue_object attributes that can be used to change the
             # batch queue attributes on the fly.
@@ -412,19 +402,30 @@ def batch(
             return future
 
         @wraps(_func)
-        def generator_batch_wrapper(*args, **kwargs):
-            first_future = enqueue_request(args, kwargs)
-            return batch_handler_generator(first_future)
+        class BatchWrapper:
+            def __init__(self):
+                self.batch_queue = batch_queue_cls(
+                    max_batch_size,
+                    batch_wait_timeout_s,
+                    _func,
+                )
 
-        @wraps(_func)
-        async def batch_wrapper(*args, **kwargs):
-            # This will raise if the underlying call raised an exception.
-            return await enqueue_request(args, kwargs)
+            def __call__(self, *args, **kwargs):
+                if isasyncgenfunction(_func):
+                    first_future = enqueue_request(self.batch_queue, args, kwargs)
+                    return batch_handler_generator(first_future)
+                else:
+                    enqueue_request(self.batch_queue, args, kwargs)
 
-        if isasyncgenfunction(_func):
-            return generator_batch_wrapper
-        else:
-            return batch_wrapper
+            def set_max_batch_size(self, new_max_batch_size: int):
+                _validate_max_batch_size(new_max_batch_size)
+                self.batch_queue.max_batch_size = new_max_batch_size
+
+            def set_batch_wait_timeout_s(self, new_batch_wait_timeout_s: float):
+                _validate_batch_wait_timeout_s(new_batch_wait_timeout_s)
+                self.batch_queue.batch_wait_timeout_s = new_batch_wait_timeout_s
+
+        return BatchWrapper()
 
     # Unfortunately, this is required to handle both non-parametrized
     # (@serve.batch) and parametrized (@serve.batch(**kwargs)) usage.
