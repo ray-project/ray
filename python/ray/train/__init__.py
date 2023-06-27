@@ -11,15 +11,12 @@ from ray.train._internal.session import (
 )
 from ray.train.trainer import TrainingIterator
 
-from ray.air import Checkpoint
-from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 
 usage_lib.record_library_usage("train")
 
 __all__ = [
     "BackendConfig",
-    "Checkpoint",
-    "CheckpointConfig",
     "DataConfig",
     "RunConfig",
     "ScalingConfig",
