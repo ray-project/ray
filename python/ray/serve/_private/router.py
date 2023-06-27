@@ -442,11 +442,13 @@ class Router:
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
         if deployment_info.deployment_config.autoscaling_config:
-            self.metrics_pusher = MetricsPusher(
-                controller_handle.record_handle_metrics.remote,
-                HANDLE_METRIC_PUSH_INTERVAL_S,
+            self.metrics_pusher = MetricsPusher()
+            self.metrics_pusher.register_task(
                 self._collect_handle_queue_metrics,
+                HANDLE_METRIC_PUSH_INTERVAL_S,
+                controller_handle.record_handle_metrics.remote,
             )
+
             self.metrics_pusher.start()
 
     def _collect_handle_queue_metrics(self) -> Dict[str, int]:
