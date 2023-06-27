@@ -6,11 +6,12 @@ Working with PyTorch
 Ray Data integrates with the PyTorch ecosystem.
 
 This guide describes how to:
-* `Iterate over your dataset as torch tensors for model training <iterating_pytorch>`_
-* `Write transformations that deal with torch tensors <transform_pytorch>`_
-* `Perform batch inference with torch models <batch_inference_pytorch>`_
-* `Save Datasets containing torch tensors <save_pytorch>`_
-* `Migrate from PyTorch Datasets to Ray Data <migrate_pytorch>`_
+
+* :ref:`Iterate over your dataset as torch tensors for model training <iterating_pytorch>`
+* :ref:`Write transformations that deal with torch tensors <transform_pytorch>`
+* :ref:`Perform batch inference with torch models <batch_inference_pytorch>`
+* :ref:`Save Datasets containing torch tensors <saving_pytorch>`
+* :ref:`Migrate from PyTorch Datasets to Ray Data <migrate_pytorch>`
 
 .. _iterating_pytorch:
 
@@ -96,7 +97,7 @@ For more information on transforming data, read
 
 .. tab-set::
 
-     .. tab-item:: map
+    .. tab-item:: map
 
         .. testcode::
             
@@ -309,7 +310,7 @@ For more information on saving data, read
 
 .. tab-set::
 
-     .. tab-item:: Parquet
+    .. tab-item:: Parquet
 
         .. testcode::
             
@@ -345,11 +346,11 @@ PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtract
 Built-in PyTorch Datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you are using built-in PyTorch datasets, for example from `torchvision`, these can be converted to a Ray Dataset using the :meth:`from_torch()` API.
+If you are using built-in PyTorch datasets, for example from `torchvision`, these can be converted to a Ray Dataset using the :meth:`from_torch() <ray.data.from_torch>` API.
 
 .. caution::
 
-    `from_torch` requires the PyTorch Dataset to fit in memory. Use this only for small, built-in datasets for prototyping or testing.
+    :meth:`from_torch() <ray.data.from_torch>` requires the PyTorch Dataset to fit in memory. Use this only for small, built-in datasets for prototyping or testing.
 
 .. testcode::
 
@@ -479,7 +480,7 @@ The PyTorch DataLoader can be replaced by calling :meth:`Dataset.iter_torch_batc
 
 The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the the behavior may not necessarily be identical. See the API reference for exact semantics and usage.
 
-.. list-table:: PyTorch DataLoader vs. Ray Data
+.. list-table::
    :header-rows: 1
 
    * - PyTorch DataLoader arguments
