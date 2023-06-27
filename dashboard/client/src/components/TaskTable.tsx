@@ -326,27 +326,32 @@ export default TaskTable;
 
 type TaskTableActionsProps = {
   task: Task;
-  jobId?: string;
 };
 
-const TaskTableActions = ({ task, jobId }: TaskTableActionsProps) => {
+const TaskTableActions = ({ task }: TaskTableActionsProps) => {
   const errorDetails =
     task.error_type !== null && task.error_message !== null
       ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
   const { job } = useJobDetail();
-  const isActiveTask = task.state === "RUNNING" && task.task_id;
+  const isActiveTask = task.state === "RUNNING" && task.worker_id;
+
   return (
     <React.Fragment>
       <Link component={RouterLink} to={`tasks/${task.task_id}`}>
         Log
       </Link>
-      <br />
-      <CpuProfilingLink
-        pid={job?.driver_info?.pid}
-        ip={job?.driver_info?.node_ip_address}
-        type=""
-      />
+      {isActiveTask && (
+        <React.Fragment>
+          <br />
+          <CpuProfilingLink
+            pid={job?.driver_info?.pid}
+            ip={job?.driver_info?.node_ip_address}
+            type=""
+          />
+        </React.Fragment>
+      )}
+
       <br />
       <CpuStackTraceLink
         pid={job?.driver_info?.pid}
