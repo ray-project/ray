@@ -301,7 +301,6 @@ def compute_bootstrap_value(sample_batch: SampleBatch, policy: Policy) -> Sample
 
     vf_preds = np.array(sample_batch[SampleBatch.VF_PREDS])
     # We need to squeeze out the time dimension if there is one
-    # Sanity check that both have the same shape
     if len(vf_preds.shape) == 2:
         vf_preds = np.squeeze(vf_preds, axis=1)
         squeezed = True
