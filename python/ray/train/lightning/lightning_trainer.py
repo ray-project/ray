@@ -1,7 +1,7 @@
 import os
 import pytorch_lightning as pl
 
-from copy import deepcopy
+from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 from pytorch_lightning.plugins.environments import ClusterEnvironment
@@ -383,7 +383,7 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        run_config = deepcopy(run_config) or RunConfig()
+        run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
         if datasets and not datasets_iter_config:
