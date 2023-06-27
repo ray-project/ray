@@ -1,5 +1,8 @@
 # syntax=docker/dockerfile:1.3-labs
 
+# rayforge contains the additional toolchain required for building a ray linux
+# wheel.
+
 ARG BASE_IMAGE=quay.io/pypa/manylinux2014_x86_64:2022-12-20-b4884d9
 FROM $BASE_IMAGE
 

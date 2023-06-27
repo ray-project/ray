@@ -30,6 +30,8 @@ PYTHON_NUMPYS=(
   "py310 cp310-cp310 1.22.0"
   "py311 cp311-cp311 1.22.0"
 )
+CYTHON_VERSION="0.29.32"
+
 for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON_VERSION_KEY="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f1)"
   if [[ "${BUILD_ONE_PYTHON_ONLY:-}" != "" && "${PYTHON_VERSION_KEY}" != "${BUILD_ONE_PYTHON_ONLY}" ]]; then
@@ -51,7 +53,7 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
     cd python
     # Fix the numpy version because this will be the oldest numpy version we can
     # support.
-    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython==0.29.32
+    /opt/python/"${PYTHON}"/bin/pip install -q numpy=="${NUMPY_VERSION}" cython=="${CYTHON_VERSION}"
     # Set the commit SHA in __init__.py.
     if [[ -n "$TRAVIS_COMMIT" ]]; then
       sed -i.bak "s/{{RAY_COMMIT_SHA}}/$TRAVIS_COMMIT/g" ray/__init__.py && rm ray/__init__.py.bak
