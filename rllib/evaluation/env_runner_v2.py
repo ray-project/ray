@@ -1068,6 +1068,7 @@ class EnvRunnerV2:
                 policy: Policy = _try_find_policy_again(eval_data)
 
             if policy.config.get("_enable_rl_module_api", False):
+                # _batch_inference_sample_batches does nothing but concatenating AND setting SEQ_LENS to ones in the recurrent case. We do not need this because RLModules do not care about SEQ_LENS anymore. They have an expected input shape convention of [B, T, ...]
                 input_dict = concat_samples([d.data.sample_batch for d in eval_data])
             else:
                 input_dict = _batch_inference_sample_batches(
