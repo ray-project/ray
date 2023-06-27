@@ -13,7 +13,7 @@ from ray.rllib.utils.numpy import SMALL_NUMBER, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OU
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import TensorType, List, Union, Tuple, ModelConfigDict
 from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
-from ray.rllib.utils import log_once
+from ray.util.debug import log_once
 
 torch, nn = try_import_torch()
 
