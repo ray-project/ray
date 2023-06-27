@@ -365,6 +365,10 @@ def batch(
     and executed asynchronously once there is a batch of `max_batch_size`
     or `batch_wait_timeout_s` has elapsed, whichever occurs first.
 
+    `max_batch_size` and `batch_wait_timeout_s` can be updated using setter
+    methods from the batch_handler (`set_max_batch_size` and
+    `set_batch_wait_timeout_s`).
+
     Example:
 
     .. code-block:: python
@@ -382,6 +386,10 @@ def batch(
                         response_batch.append(f"Hello {name}!")
 
                     return response_batch
+
+                def update_batch_params(self, max_batch_size, batch_wait_timeout_s):
+                    self.batch_handler.set_max_batch_size(max_batch_size)
+                    self.batch_handler.set_batch_wait_timeout_s(batch_wait_timeout_s)
 
                 async def __call__(self, request: Request):
                     return await self.batch_handler(request)
