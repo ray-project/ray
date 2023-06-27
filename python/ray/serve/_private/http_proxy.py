@@ -370,7 +370,7 @@ class HTTPProxy:
 
         if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
             status_code = await self.send_request_to_replica_streaming(
-                request_id, handle, scope, receive, send
+                request_context_info["request_id"], handle, scope, receive, send
             )
         else:
             status_code = await self.send_request_to_replica_unary(
@@ -581,6 +581,9 @@ class HTTPProxy:
                         # message containing the "status" field. Other response types
                         # (e.g., WebSockets) may not.
                         status_code = str(asgi_message["status"])
+                        asgi_message["headers"].append(
+                            [RAY_SERVE_REQUEST_ID, request_id]
+                        )
                     elif asgi_message["type"] == "websocket.disconnect":
                         status_code = str(asgi_message["code"])
 
