@@ -831,6 +831,8 @@
   group: AIR examples
   working_dir: air_examples/dreambooth
 
+  python: "3.9"
+
   stable: false
 
   frequency: weekly
