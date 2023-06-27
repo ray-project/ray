@@ -63,11 +63,15 @@ class ClusterManager(abc.ABC):
         ] = f"test_name={self.test.get_name()};smoke_test={self.smoke_test}"
 
         if self.test.is_byod_cluster():
-            self.cluster_env_name = (
+            byod_image_name_normalized = (
                 self.test.get_anyscale_byod_image()
                 .replace("/", "_")
                 .replace(":", "_")
                 .replace(".", "_")
+            )
+            self.cluster_env_name = (
+                f"{byod_image_name_normalized}"
+                f"__env__{dict_hash(self.test.get_byod_runtime_env())}"
             )
         else:
             self.cluster_env_name = (
