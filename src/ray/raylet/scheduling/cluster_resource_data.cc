@@ -36,6 +36,17 @@ ResourceRequest ResourceMapToResourceRequest(
 }
 
 /// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
+    const absl::flat_hash_map<ResourceID, double> &resource_map,
+    bool requires_object_store_memory) {
+  ResourceRequest res({}, requires_object_store_memory);
+  for (auto entry : resource_map) {
+    res.Set(entry.first, FixedPoint(entry.second));
+  }
+  return res;
+}
+
+/// Convert a map of resources to a ResourceRequest data structure.
 ///
 /// \param string_to_int_map: Map between names and ids maintained by the
 /// \param resource_map_total: Total capacities of resources we want to convert.

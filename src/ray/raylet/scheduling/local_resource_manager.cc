@@ -33,6 +33,10 @@ LocalResourceManager::LocalResourceManager(
       resource_change_subscriber_(resource_change_subscriber) {
   local_resources_.available = TaskResourceInstances(node_resources.available);
   local_resources_.total = TaskResourceInstances(node_resources.total);
+  const auto now = absl::Now();
+  for (const auto &resource_id : local_resources_.total.ResourceIds()) {
+    resources_last_idle_time_[resource_id] = now;
+  }
   RAY_LOG(DEBUG) << "local resources: " << local_resources_.DebugString();
 }
 
@@ -40,6 +44,7 @@ void LocalResourceManager::AddLocalResourceInstances(
     scheduling::ResourceID resource_id, const std::vector<FixedPoint> &instances) {
   local_resources_.available.Add(resource_id, instances);
   local_resources_.total.Add(resource_id, instances);
+  resources_last_idle_time_[resource_id] = absl::Now();
   OnResourceChanged();
 }
 
@@ -67,7 +72,8 @@ uint64_t LocalResourceManager::GetNumCpus() const {
 std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
     const std::vector<FixedPoint> &available,
     const std::vector<FixedPoint> &local_total,
-    std::vector<FixedPoint> &local_available) const {
+    std::vector<FixedPoint> &local_available,
+    bool *is_idle) const {
   RAY_CHECK(available.size() == local_available.size())
       << available.size() << ", " << local_available.size();
   std::vector<FixedPoint> overflow(available.size(), 0.);
@@ -76,6 +82,10 @@ std::vector<FixedPoint> LocalResourceManager::AddAvailableResourceInstances(
     if (local_available[i] > local_total[i]) {
       overflow[i] = (local_available[i] - local_total[i]);
       local_available[i] = local_total[i];
+    }
+    // If any resource instance is not idle, the whole resource is not idle.
+    if (is_idle != nullptr) {
+      *is_idle = *is_idle && (local_available[i] == local_total[i]);
     }
   }
 
@@ -202,18 +212,26 @@ bool LocalResourceManager::AllocateTaskResourceInstances(
       FreeTaskResourceInstances(task_allocation);
       return false;
     }
+
+    SetResourceNonIdle(resource_id);
   }
   return true;
 }
 
 void LocalResourceManager::FreeTaskResourceInstances(
-    std::shared_ptr<TaskResourceInstances> task_allocation) {
+    std::shared_ptr<TaskResourceInstances> task_allocation, bool record_idle_resource) {
   RAY_CHECK(task_allocation != nullptr);
   for (auto &resource_id : task_allocation->ResourceIds()) {
     if (local_resources_.total.Has(resource_id)) {
+      bool is_idle = true;
       AddAvailableResourceInstances(task_allocation->Get(resource_id),
                                     local_resources_.total.GetMutable(resource_id),
-                                    local_resources_.available.GetMutable(resource_id));
+                                    local_resources_.available.GetMutable(resource_id),
+                                    &is_idle);
+
+      if (record_idle_resource && is_idle) {
+        SetResourceIdle(resource_id);
+      }
     }
   }
 }
@@ -227,10 +245,16 @@ std::vector<double> LocalResourceManager::AddResourceInstances(
     return resource_instances;  // No overflow.
   }
 
+  bool is_idle = true;
   auto overflow =
       AddAvailableResourceInstances(resource_instances_fp,
                                     local_resources_.total.GetMutable(resource_id),
-                                    local_resources_.available.GetMutable(resource_id));
+                                    local_resources_.available.GetMutable(resource_id),
+                                    &is_idle);
+
+  if (is_idle) {
+    SetResourceIdle(resource_id);
+  }
   OnResourceChanged();
 
   return FixedPointVectorToDouble(overflow);
@@ -254,6 +278,33 @@ std::vector<double> LocalResourceManager::SubtractResourceInstances(
   OnResourceChanged();
 
   return FixedPointVectorToDouble(underflow);
+}
+
+void LocalResourceManager::SetResourceNonIdle(const scheduling::ResourceID &resource_id) {
+  // We o
+  resources_last_idle_time_[resource_id] = absl::nullopt;
+}
+
+void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resource_id) {
+  resources_last_idle_time_[resource_id] = absl::Now();
+}
+
+absl::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
+  // If all the resources are idle.
+  absl::Time all_idle_time = absl::InfinitePast();
+
+  for (const auto &iter : resources_last_idle_time_) {
+    const auto &idle_time_or_busy = iter.second;
+
+    if (idle_time_or_busy == absl::nullopt) {
+      // One resource is busy, entire resources should be considered non-idle.
+      return absl::nullopt;
+    }
+
+    // Update the all resource idle time to be the most recent idle time.
+    all_idle_time = std::max(all_idle_time, idle_time_or_busy.value());
+  }
+  return all_idle_time;
 }
 
 bool LocalResourceManager::AllocateLocalTaskResources(
@@ -312,6 +363,19 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     local_resources_.available.Set(ResourceID::ObjectStoreMemory(),
                                    std::move(new_available));
     OnResourceChanged();
+
+    // This is more of a discrete approximate of the last idle object store memory usage.
+    // TODO(rickyx): in order to know exactly when object store becomes idle/busy, we
+    // would need to plumb the info out of the object store directly.
+    if (used == 0.0) {
+      // Set it to idle as of now.
+      RAY_LOG(INFO) << "Object store memory is idle.";
+      resources_last_idle_time_[ResourceID::ObjectStoreMemory()] = absl::Now();
+    } else {
+      // Clear the idle info since we know it's being used.
+      RAY_LOG(INFO) << "Object store memory is not idle.";
+      resources_last_idle_time_[ResourceID::ObjectStoreMemory()] = absl::nullopt;
+    }
   }
 }
 
@@ -402,6 +466,10 @@ std::optional<syncer::RaySyncMessage> LocalResourceManager::CreateSyncMessage(
   }
 
   resources_data.set_resources_available_changed(true);
+
+  const auto now = absl::Now();
+  resources_data.set_idle_duration_ms(
+      absl::ToInt64Milliseconds(now - GetResourceIdleTime().value_or(now)));
 
   msg.set_node_id(local_node_id_.Binary());
   msg.set_version(version_);
