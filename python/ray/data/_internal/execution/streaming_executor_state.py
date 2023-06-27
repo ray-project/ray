@@ -405,6 +405,7 @@ def select_operator_to_run(
             and state.num_queued() > 0
             and op.should_add_input()
             and under_resource_limits
+            and not op.completed()
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
@@ -432,7 +433,7 @@ def select_operator_to_run(
         ops = [
             op
             for op, state in topology.items()
-            if op.need_more_inputs() and state.num_queued() > 0
+            if op.need_more_inputs() and state.num_queued() > 0 and not op.completed()
         ]
 
     # Nothing to run.

@@ -2265,7 +2265,18 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+
+        # First check if the schema is already known from materialized blocks.
+        base_schema = self._plan.schema(fetch_if_missing=False)
+        if base_schema is not None:
+            return Schema(base_schema)
+        if not fetch_if_missing:
+            return None
+
+        # Lazily execute only the first block to minimize computation.
+        # We achieve this by appending a Limit[1] operation to a copy
+        # of this Dataset, which we then execute to get its schema.
+        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
             return Schema(base_schema)
         else:
