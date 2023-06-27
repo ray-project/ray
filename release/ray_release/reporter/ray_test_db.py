@@ -1,7 +1,7 @@
 import json
 
 from ray_release.reporter.reporter import Reporter
-from ray_release.result import Result
+from ray_release.result import Result, ResultStatus
 from ray_release.test import Test
 from ray_release.test_automation.state_machine import TestStateMachine
 from ray_release.logger import logger
@@ -17,6 +17,12 @@ class RayTestDBReporter(Reporter):
     """
 
     def report_result(self, test: Test, result: Result) -> None:
+        if result.status == ResultStatus.TRANSIENT_INFRA_ERROR.value:
+            logger.info(
+                f"Skip recording result for test {test.get_name()} due to transient "
+                "infra error result"
+            )
+            return
         logger.info(
             f"Updating test object {test.get_name()} with result {result.status}"
         )

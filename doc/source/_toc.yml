@@ -97,17 +97,6 @@ parts:
           - file: data/key-concepts
           - file: data/user-guide
           - file: data/examples/index
-            sections:
-              - file: data/examples/nyc_taxi_basic_processing
-                title: Processing the NYC taxi dataset
-              - file: data/examples/batch_training
-                title: Batch Training with Ray Data
-              - file: data/examples/ocr_example
-                title: Scaling OCR with Ray Data
-              - file: data/examples/random-access
-              - file: data/examples/batch_inference_object_detection
-                title: Object Detection Batch Inference with PyTorch
-              - file: data/examples/custom-datasource
           - file: data/faq
           - file: data/api/api
 
@@ -267,27 +256,34 @@ parts:
         sections:
           - file: serve/getting_started
           - file: serve/key-concepts
-          - file: serve/user-guide
+          - file: serve/model_composition
+          - file: serve/deploy-many-models/index
             sections:
-              - file: serve/http-guide
-              - file: serve/scaling-and-resource-allocation
-              - file: serve/model_composition
-              - file: serve/dev-workflow
-              - file: serve/app-builder-guide
-              - file: serve/multi-app
-              - file: serve/production-guide/index
-                sections:
-                  - file: serve/production-guide/config
-                  - file: serve/production-guide/deploy-vm
-                  - file: serve/production-guide/kubernetes
-                  - file: serve/production-guide/monitoring
-                  - file: serve/production-guide/fault-tolerance
-              - file: serve/performance
-              - file: serve/handling-dependencies
-              - file: serve/managing-java-deployments
-              - file: serve/migration
-              - file: serve/direct-ingress
-              - file: serve/model-multiplexing
+            - file: serve/deploy-many-models/multi-app
+            - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/http-guide
+          - file: serve/production-guide/index
+            title: Production Guide
+            sections:
+              - file: serve/production-guide/config
+              - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/fault-tolerance
+              - file: serve/production-guide/handling-dependencies
+              - file: serve/production-guide/best-practices
+          - file: serve/monitoring
+          - file: serve/scaling-and-resource-allocation
+          - file: serve/advanced-guides/index
+            sections:
+              - file: serve/advanced-guides/app-builder-guide
+              - file: serve/advanced-guides/performance
+              - file: serve/advanced-guides/dyn-req-batch
+              - file: serve/advanced-guides/inplace-updates
+              - file: serve/advanced-guides/dev-workflow
+              - file: serve/advanced-guides/deployment-graphs
+              - file: serve/advanced-guides/direct-ingress
+              - file: serve/advanced-guides/managing-java-deployments
+              - file: serve/advanced-guides/migration
+              - file: serve/advanced-guides/deploy-vm
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
@@ -329,7 +325,6 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: ray-more-libs/dask-on-ray
           - file: ray-more-libs/raydp
           - file: ray-more-libs/mars-on-ray

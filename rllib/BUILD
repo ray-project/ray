@@ -63,27 +63,62 @@
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
-# TODO(@bveeramani): Enable doctests.
-# doctest(
-#     files = glob(
-#         ["**/*.py"],
-#         exclude=[
-#             "**/examples/**",
-#             "**/tests/**",
-#             # Deprecations
-#             "utils/window_stat.py",
-#             "utils/timer.py",
-#             "utils/memory.py",
-#             "offline/off_policy_estimator.py",
-#             "offline/estimators/feature_importance.py",
-#             "env/wrappers/recsim_wrapper.py",
-#             "env/remote_vector_env.py",
-#             # Missing imports
-#             "algorithms/dreamerv3/**"
-#         ]
-#     ),
-#     tags = ["team:rllib"]
-# )
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "**/examples/**",
+            "**/tests/**",
+            "**/test_*.py",
+            # Deprecated modules
+            "utils/window_stat.py",
+            "utils/timer.py",
+            "utils/memory.py",
+            "offline/off_policy_estimator.py",
+            "offline/estimators/feature_importance.py",
+            "env/wrappers/recsim_wrapper.py",
+            "env/remote_vector_env.py",
+            # Missing imports
+            "algorithms/dreamerv3/**",
+            # FIXME: These modules contain broken examples that weren't previously
+            # tested.
+            "algorithms/algorithm_config.py",
+            "algorithms/alpha_star/alpha_star.py",
+            "algorithms/r2d2/r2d2.py",
+            "algorithms/sac/rnnsac.py",
+            "algorithms/simple_q/simple_q.py",
+            "core/models/base.py",
+            "core/models/specs/checker.py",
+            "core/models/specs/specs_base.py",
+            "core/models/specs/specs_dict.py",
+            "env/wrappers/pettingzoo_env.py",
+            "evaluation/collectors/sample_collector.py",
+            "evaluation/episode.py",
+            "evaluation/metrics.py",
+            "evaluation/observation_function.py",
+            "evaluation/postprocessing.py",
+            "execution/buffers/mixin_replay_buffer.py",
+            "models/base_model.py",
+            "models/catalog.py",
+            "models/distributions.py",
+            "models/preprocessors.py",
+            "models/repeated_values.py",
+            "models/tf/tf_distributions.py",
+            "models/torch/model.py",
+            "models/torch/torch_distributions.py",
+            "policy/rnn_sequencing.py",
+            "utils/actor_manager.py",
+            "utils/filter.py",
+            "utils/from_config.py",
+            "utils/metrics/window_stat.py",
+            "utils/nested_dict.py",
+            "utils/pre_checks/env.py",
+            "utils/replay_buffers/multi_agent_mixin_replay_buffer.py",
+            "utils/spaces/space_utils.py"
+        ]
+    ),
+    tags = ["team:rllib"]
+)
 
 # --------------------------------------------------------------------
 # Algorithms learning regression tests.
@@ -263,6 +298,16 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/cartpole-appo-vtrace-fake-gpus.yaml"],
+    args = ["--dir=tuned_examples/appo"]
+)
+
+py_test(
+    name = "learning_tests_stateless_cartpole_appo_vtrace",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_cartpole", "learning_tests_discrete"],
+    size = "large",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/appo/stateless-cartpole-appo-vtrace.py"],
     args = ["--dir=tuned_examples/appo"]
 )
 
@@ -1031,13 +1076,23 @@ py_test(
     srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
 )
 
-# Dreamer
+# Dreamer (V1)
 py_test(
     name = "test_dreamer",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     srcs = ["algorithms/dreamer/tests/test_dreamer.py"]
 )
+
+# DreamerV3
+# TODO (sven): Enable once the version conflict for gymnasium/supersuit/pettingzoo
+#  /shimmy/mujoco has been resolved.
+#py_test(
+#    name = "test_dreamerv3",
+#    tags = ["team:rllib", "algorithms_dir"],
+#    size = "large",
+#    srcs = ["algorithms/dreamerv3/tests/test_dreamerv3.py"]
+#)
 
 # DT
 py_test(
@@ -2047,6 +2102,13 @@ py_test(
 )
 
 py_test(
+    name = "test_torch_learner_compile",
+    tags = ["team:rllib", "core", "ray_data"],
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
+)
+
+py_test(
     name ="tests/test_algorithm_save_load_checkpoint_learner",
     tags = ["team:rllib", "core"],
     size = "medium",
@@ -2091,7 +2153,7 @@ py_test(
 py_test(
     name = "test_convtranspose2d_stack",
     tags = ["team:rllib", "models"],
-    size = "small",
+    size = "medium",
     data = glob(["tests/data/images/obstacle_tower.png"]),
     srcs = ["models/tests/test_convtranspose2d_stack.py"]
 )
@@ -3658,7 +3720,7 @@ py_test(
 )
 
 # Taking out this test for now: Mixed torch- and tf- policies within the same
-# Trainer never really worked.
+# Algorithm never really worked.
 # py_test(
 #     name = "examples/multi_agent_two_trainers_mixed_torch_tf",
 #     main = "examples/multi_agent_two_trainers.py",
@@ -4310,6 +4372,7 @@ py_test_module_list(
   files = [
     "tests/test_dnc.py",
     "tests/test_perf.py",
+    "algorithms/dreamerv3/tests/test_dreamerv3.py",
     "env/wrappers/tests/test_kaggle_wrapper.py",
     "examples/env/tests/test_cliff_walking_wall_env.py",
     "examples/env/tests/test_coin_game_non_vectorized_env.py",

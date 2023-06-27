@@ -425,12 +425,12 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
       JobID::FromBinary(request.placement_group_spec().creator_job_id());
   auto placement_group = std::make_shared<GcsPlacementGroup>(
       request, get_ray_namespace_(job_id), placement_group_state_counter_);
-  RAY_LOG(DEBUG) << "Registering placement group, " << placement_group->DebugString();
+  RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(placement_group,
                          [reply, send_reply_callback, placement_group](Status status) {
                            if (status.ok()) {
-                             RAY_LOG(DEBUG) << "Finished registering placement group, "
-                                            << placement_group->DebugString();
+                             RAY_LOG(INFO) << "Finished registering placement group, "
+                                           << placement_group->DebugString();
                            } else {
                              RAY_LOG(INFO) << "Failed to register placement group, "
                                            << placement_group->DebugString()
@@ -749,10 +749,15 @@ void GcsPlacementGroupManager::RemoveFromPendingQueue(const PlacementGroupID &pg
   }
 }
 
+absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>
+GcsPlacementGroupManager::GetBundlesOnNode(const NodeID &node_id) const {
+  return gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
+}
+
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
   RAY_LOG(INFO) << "Node " << node_id
                 << " failed, rescheduling the placement groups on the dead node.";
-  auto bundles = gcs_placement_group_scheduler_->GetBundlesOnNode(node_id);
+  auto bundles = gcs_placement_group_scheduler_->GetAndRemoveBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);
     if (iter != registered_placement_groups_.end()) {

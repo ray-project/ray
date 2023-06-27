@@ -124,7 +124,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// \param raylet_client_pool Raylet client pool to
   /// construct connections to raylets.
   /// \param client_factory Factory to create remote
-  /// core worker client, default factor will be used if not set.
+  /// core worker client, default factory will be used if not set.
   explicit GcsActorScheduler(
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
