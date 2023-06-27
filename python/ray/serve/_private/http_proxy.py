@@ -597,8 +597,9 @@ class HTTPProxy:
                 return DISCONNECT_ERROR_CODE
             except RayTaskError as e:
                 error_message = f"Unexpected error, traceback: {e}."
-                await Response(
-                    error_message, status_code=500).send(scope, receive, send)
+                await Response(error_message, status_code=500).send(
+                    scope, receive, send
+                )
                 return "500"
             except RayActorError:
                 logger.info(
@@ -617,9 +618,7 @@ class HTTPProxy:
                 backoff = False
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(
-                scope, receive, send
-            )
+            await Response(error_message, status_code=500).send(scope, receive, send)
             return "500"
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
             await result(scope, receive, send)
@@ -717,6 +716,7 @@ class RequestIdMiddleware:
                 headers = MutableHeaders(scope=message)
                 headers.append(RAY_SERVE_REQUEST_ID, request_id)
             await send(message)
+
         await self.app(scope, receive, send_with_request_id)
 
 
