@@ -11,7 +11,6 @@ from ray.serve._private.constants import RAY_SERVE_REQUEST_ID
 def test_http_request_id(ray_shutdown, deploy_type):
     """Test request id in http headers."""
 
-    # Non FastAPI
     if deploy_type == "fastapi":
         app = FastAPI()
 
