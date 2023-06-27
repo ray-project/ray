@@ -6,12 +6,11 @@ import pytest
 from unittest.mock import patch
 
 from ray_release.test_plugin import Test
-from ray_release.test import (
-    _convert_env_list_to_dict,
-    DATAPLANE_ECR,
-    DATAPLANE_ECR_REPO,
-    DATAPLANE_ECR_ML_REPO,
-)
+from ray_release.test import _convert_env_list_to_dict
+
+DATAPLANE_ECR = Test.DATAPLANE_ECR
+DATAPLANE_ECR_REPO = Test.DATAPLANE_ECR_REPO
+DATAPLANE_ECR_ML_REPO = Test.DATAPLANE_ECR_ML_REPO
 
 
 def _stub_test(val: dict) -> Test:
