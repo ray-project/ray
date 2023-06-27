@@ -10,7 +10,7 @@ import traceback
 from collections import defaultdict, OrderedDict
 from copy import copy
 from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, cloudpickle
@@ -1227,6 +1227,20 @@ class DeploymentState:
             for replica in self._replicas.get([ReplicaState.RUNNING])
         ]
 
+    def get_active_node_ids(self) -> Set[str]:
+        """Get the node ids of all running replicas in this deployment.
+
+        This is used to determine which node has replicas. Only nodes with replicas and
+        head node should have active proxies.
+        """
+        active_states = [
+            ReplicaState.STARTING,
+            ReplicaState.UPDATING,
+            ReplicaState.RECOVERING,
+            ReplicaState.RUNNING,
+        ]
+        return {replica.actor_node_id for replica in self._replicas.get(active_states)}
+
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]
 
@@ -1645,9 +1659,9 @@ class DeploymentState:
                     name=self._name,
                     status=DeploymentStatus.UNHEALTHY,
                     message=(
-                        f"The Deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with the deployment "
-                        "constructor or the initial health check failing. See "
+                        f"The deployment failed to start {failed_to_start_count} times "
+                        "in a row. This may be due to a problem with its "
+                        "constructor or initial health check failing. See "
                         "controller logs for details. Retrying after "
                         f"{self._backoff_time_s} seconds. Error:\n"
                         f"{self._replica_constructor_error_msg}"
@@ -2496,3 +2510,14 @@ class DeploymentStateManager:
         self._deployment_states[info.deployment_name].record_multiplexed_model_ids(
             info.replica_tag, info.model_ids
         )
+
+    def get_active_node_ids(self) -> Set[str]:
+        """Return set of node ids with running replicas of any deployment.
+
+        This is used to determine which node has replicas. Only nodes with replicas and
+        head node should have active proxies.
+        """
+        node_ids = set()
+        for deployment_state in self._deployment_states.values():
+            node_ids.update(deployment_state.get_active_node_ids())
+        return node_ids

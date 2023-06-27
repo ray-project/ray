@@ -61,6 +61,7 @@ Grouped and Global Aggregations
    :toctree: doc/
 
    Dataset.groupby
+   Dataset.unique
    Dataset.aggregate
    Dataset.sum
    Dataset.min

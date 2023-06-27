@@ -346,7 +346,6 @@ class Dataset:
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
 
@@ -831,7 +830,6 @@ class Dataset:
                 :meth:`~Dataset.map_batches` instead.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
 
@@ -889,7 +887,6 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_filter_fn()
 
@@ -1719,6 +1716,47 @@ class Dataset:
             _validate_key_fn(self.schema(fetch_if_missing=True), key)
 
         return GroupedData(self, key)
+
+    def unique(self, column: str) -> List[Any]:
+        """List of unique elements in the given column.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
+            >>> ds.unique("item")
+            [1, 2, 3]
+
+            This function is very useful for computing labels
+            in a machine learning dataset:
+
+            >>> import ray
+            >>> ds = ray.data.read_csv("example://iris.csv")
+            >>> ds.unique("variety")
+            ['Setosa', 'Versicolor', 'Virginica']
+
+            One common use case is to convert the class labels
+            into integers for training and inference:
+
+            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> def preprocessor(df, classes):
+            ...     df["variety"] = df["variety"].map(classes)
+            ...     return df
+            >>> train_ds = ds.map_batches(
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
+            [{'sepal.length': 4.3, ..., 'variety': 0}]
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        Args:
+            column: The column to collect unique elements over.
+
+        Returns:
+            A list with unique elements in the given column.
+        """
+        ds = self.groupby(column).count().select_columns([column])
+        return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
@@ -4403,14 +4441,6 @@ class Dataset:
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
-
-    def _warn_slow(self):
-        if ray.util.log_once("dataset_slow_warned"):
-            logger.warning(
-                "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. If you're using a vectorized transformation, "
-                "consider using `.map_batches()` instead."
-            )
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.
