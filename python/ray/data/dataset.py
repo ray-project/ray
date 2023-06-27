@@ -2266,6 +2266,13 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
 
+        # First check if the schema is already known from materialized blocks.
+        base_schema = self._plan.schema(fetch_if_missing=False)
+        if base_schema is not None:
+            return Schema(base_schema)
+        if not fetch_if_missing:
+            return None
+
         # Lazily execute only the first block to minimize computation.
         # We achieve this by appending a Limit[1] operation to a copy
         # of this Dataset, which we then execute to get its schema.
