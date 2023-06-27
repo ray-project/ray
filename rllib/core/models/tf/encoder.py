@@ -26,7 +26,7 @@ from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.policy.rnn_sequencing import get_fold_unfold_b_t_dims
+from ray.rllib.policy.rnn_sequencing import get_fold_unfold_fns
 
 _, tf, _ = try_import_tf()
 
@@ -419,7 +419,7 @@ def tokenize(tokenizer: Encoder, inputs: dict) -> dict:
     tokenizer_inputs = {SampleBatch.OBS: obs}
     shape = list(obs.shape)
     b_dim, t_dim = shape[:2]
-    fold, unfold = get_fold_unfold_b_t_dims(b_dim, t_dim, framework="tf2")
+    fold, unfold = get_fold_unfold_fns(b_dim, t_dim, framework="tf2")
     # Push through the tokenizer encoder.
     out = tokenizer(fold(tokenizer_inputs))
     out = out[ENCODER_OUT]
