@@ -207,9 +207,8 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.DebugString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_workers_soft_limit =
-            soft_limit_config >= 0 ? soft_limit_config : num_cpus;
+            RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;

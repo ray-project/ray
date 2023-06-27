@@ -31,7 +31,7 @@ namespace raylet {
 int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
 int MAX_IO_WORKER_SIZE = 2;
-int POOL_SIZE_SOFT_LIMIT = 5;
+int POOL_SIZE_SOFT_LIMIT = 3;
 int WORKER_REGISTER_TIMEOUT_SECONDS = 3;
 JobID JOB_ID = JobID::FromInt(1);
 JobID JOB_ID2 = JobID::FromInt(2);
@@ -133,7 +133,7 @@ class WorkerPoolMock : public WorkerPool {
             io_service,
             NodeID::FromRandom(),
             "",
-            POOL_SIZE_SOFT_LIMIT,
+            [this]() { return num_available_cpus_; },
             PYTHON_PRESTART_WORKERS,
             MAXIMUM_STARTUP_CONCURRENCY,
             0,
@@ -380,6 +380,8 @@ class WorkerPoolMock : public WorkerPool {
     promise.get_future().get();
     return popped_worker;
   }
+
+  int num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
  private:
   Process last_worker_process_;
@@ -656,17 +658,17 @@ TEST_F(WorkerPoolDriverRegisteredTest, InitialWorkerProcessCount) {
 TEST_F(WorkerPoolDriverRegisteredTest, TestPrestartingWorkers) {
   const auto task_spec = ExampleTaskSpec();
   // Prestarts 2 workers.
-  worker_pool_->PrestartWorkers(task_spec, 2, /*num_available_cpus=*/5);
+  worker_pool_->PrestartWorkers(task_spec, 2);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 2);
   // Prestarts 1 more worker.
-  worker_pool_->PrestartWorkers(task_spec, 3, /*num_available_cpus=*/5);
+  worker_pool_->PrestartWorkers(task_spec, 3);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
   // No more needed.
-  worker_pool_->PrestartWorkers(task_spec, 1, /*num_available_cpus=*/5);
+  worker_pool_->PrestartWorkers(task_spec, 1);
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 3);
-  // Capped by soft limit of 5.
-  worker_pool_->PrestartWorkers(task_spec, 20, /*num_available_cpus=*/5);
-  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 5);
+  // Capped by soft limit.
+  worker_pool_->PrestartWorkers(task_spec, 20);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerPushPop) {
@@ -1168,7 +1170,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   RegisterDriver(Language::PYTHON, job_id);
 
   ///
-  /// Register 7 workers (2 more than soft limit).
+  /// Register 4 workers (2 more than soft limit).
   ///
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   int num_workers = POOL_SIZE_SOFT_LIMIT + 2;
@@ -1186,10 +1188,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     worker_pool_->PushWorker(worker);
   }
   ///
-  /// Pop 2 workers for tasks.
+  /// Pop all workers to reset their order.
   ///
   std::vector<std::shared_ptr<WorkerInterface>> popped_workers;
-  for (int i = 0; i < 2; i++) {
+  for (int i = 0; i < num_workers; i++) {
     // Pop workers for actor creation tasks.
     auto task_spec =
         ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
@@ -1199,7 +1201,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     ASSERT_EQ(worker->GetAssignedJobId(), job_id);
   }
   // After scheduling an actor and task, there's no more idle worker.
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
 
   ///
   /// Return workers and test KillingIdleWorkers
@@ -1216,60 +1218,50 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   // 2000 ms has passed, so idle workers should be killed.
   worker_pool_->SetCurrentTimeMs(2000);
   worker_pool_->TryKillingIdleWorkers();
-  // Idle workers haven't been killed because the workers haven't replied yet.
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
 
   // The first core worker exits, so one of idle workers should've been killed.
   // Since the idle workers are killed in FIFO, we can assume the first entry in the idle
   // workers will be killed.
-  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(
-      worker_pool_->GetIdleWorkers().front().first->WorkerId());
+  auto mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[0]->WorkerId());
   ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
   ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   mock_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
 
   // The second core worker doesn't exit, meaning idle worker shouldn't have been killed.
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(
-      worker_pool_->GetIdleWorkers().front().first->WorkerId());
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[1]->WorkerId());
   ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
   ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   mock_rpc_client_it->second->ExitReplyFailed();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT + 1);
+  // Try killing the idle workers again.
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 1);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
 
-  // Another 1000ms has passed, and we kill the idle worker again.
-  worker_pool_->SetCurrentTimeMs(3000);
-  worker_pool_->TryKillingIdleWorkers();
-
-  // Make sure 1000ms has passed again, and it won't kill new worker because there's still
-  // a pending exiting worker.
-  worker_pool_->SetCurrentTimeMs(4000);
-  worker_pool_->TryKillingIdleWorkers();
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(
-      worker_pool_->GetIdleWorkers().back().first->WorkerId());
-  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
-  ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
-
-  // Now let's make sure the pending exiting workers exitted properly.
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(
-      worker_pool_->GetIdleWorkers().front().first->WorkerId());
-  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
-  ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
+  // We retry the exit request at the next worker in the queue.
+  // This tests that if a worker can't be killed (e.g., because it owns
+  // objects), we will still try to cap the workers by killing other workers
+  // that may have been idle for less time.
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[2]->WorkerId());
   mock_rpc_client_it->second->ExitReplySucceed();
-  worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
 
   // Now that we have the number of workers == soft limit, it shouldn't kill any idle
   // worker.
-  worker_pool_->SetCurrentTimeMs(5000);
   worker_pool_->TryKillingIdleWorkers();
-  mock_rpc_client_it = mock_worker_rpc_clients_.find(
-      worker_pool_->GetIdleWorkers().front().first->WorkerId());
-  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 0);
-  ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
+
+  // Try decreasing and increasing the soft limit.
+  worker_pool_->num_available_cpus_ = 2;
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), worker_pool_->num_available_cpus_);
+  mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[3]->WorkerId());
+  mock_rpc_client_it->second->ExitReplyFailed();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
+  worker_pool_->num_available_cpus_ = POOL_SIZE_SOFT_LIMIT;
 
   // Start two IO workers. These don't count towards the limit.
   {
@@ -1297,7 +1289,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   // All workers still alive.
   worker_pool_->SetCurrentTimeMs(10000);
   worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers - 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
   for (auto &worker : worker_pool_->GetIdleWorkers()) {
     mock_rpc_client_it = mock_worker_rpc_clients_.find(worker.first->WorkerId());
     ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
@@ -1309,70 +1301,6 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   worker_pool_->PopRestoreWorker(callback);
   ASSERT_EQ(num_callbacks, 2);
   worker_pool_->ClearProcesses();
-}
-
-TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingLaterNWorkersNotOwningObjects) {
-  ///
-  /// When there are 2 * N idle workers where the first N workers own objects,
-  /// make sure the later N workers are properly killed.
-  ///
-  auto job_id = JOB_ID;
-
-  // The driver of job 1 is already registered. Here we register the driver for job 2.
-  RegisterDriver(Language::PYTHON, job_id);
-
-  ///
-  /// Register 10 workers
-  ///
-  std::vector<std::shared_ptr<WorkerInterface>> workers;
-  int num_workers = POOL_SIZE_SOFT_LIMIT * 2;
-  for (int i = 0; i < num_workers; i++) {
-    PopWorkerStatus status;
-    auto [proc, token] = worker_pool_->StartWorkerProcess(
-        Language::PYTHON, rpc::WorkerType::WORKER, job_id, &status);
-    auto worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
-    worker->SetStartupToken(worker_pool_->GetStartupToken(proc));
-    workers.push_back(worker);
-    RAY_CHECK_OK(worker_pool_->RegisterWorker(
-        worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
-    worker_pool_->OnWorkerStarted(worker);
-    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
-    worker_pool_->PushWorker(worker);
-  }
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
-
-  ///
-  /// The first N workers will always failed to be killed because they own objects.
-  ///
-  // 2000 ms has passed, so idle workers should be killed.
-  worker_pool_->SetCurrentTimeMs(1000);
-  worker_pool_->TryKillingIdleWorkers();
-
-  for (int i = 0; i < num_workers / 2; i++) {
-    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[i]->WorkerId());
-    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplyFailed());
-  }
-  worker_pool_->TryKillingIdleWorkers();
-  // None of first N workers are killed because they own objects.
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
-
-  ///
-  /// After 1000ms, when it kills idle workers, it should kill the rest of them.
-  ///
-  worker_pool_->SetCurrentTimeMs(2000);
-  worker_pool_->TryKillingIdleWorkers();
-  for (int i = 0; i < num_workers / 2; i++) {
-    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[i]->WorkerId());
-    // These workers shouldn't get any Exit request.
-    ASSERT_FALSE(mock_rpc_client_it->second->ExitReplyFailed());
-  }
-  for (int i = num_workers / 2; i < num_workers; i++) {
-    auto mock_rpc_client_it = mock_worker_rpc_clients_.find(workers[i]->WorkerId());
-    // These workers shouldn't get any Exit request.
-    ASSERT_TRUE(mock_rpc_client_it->second->ExitReplySucceed());
-  }
-  worker_pool_->TryKillingIdleWorkers();
-  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers / 2);
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {

@@ -35,7 +35,7 @@ def test_worker_stats(shutdown_only):
         ray._private.worker.show_in_dashboard("test")
         return os.getpid()
 
-    @ray.remote
+    @ray.remote(num_cpus=1)
     class Actor:
         def __init__(self):
             pass
