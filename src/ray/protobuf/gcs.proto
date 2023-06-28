@@ -552,6 +552,10 @@ message ResourcesData {
   int64 resources_normal_task_timestamp = 13;
   // Whether this node has detected a resource deadlock (full of actors).
   bool cluster_full_of_actors_detected = 14;
+  // The duration in ms during which all the node's resources are idle. If the
+  // node currently has any resource being used, this will 0.
+  int64 idle_duration_ms = 15;
+  // Last unused = 16
 }
 
 message ResourceUsageBatchData {
