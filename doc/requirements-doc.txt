@@ -65,8 +65,8 @@ autodoc_pydantic==1.6.1
 sphinx_design==0.4.1
 
 # MyST
-myst-parser==0.15.2
-myst-nb==0.13.1
+myst-parser==0.19.2
+myst-nb==0.17.2
 
 # Jupyter conversion
 jupytext==1.13.6
