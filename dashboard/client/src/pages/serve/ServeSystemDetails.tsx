@@ -235,7 +235,11 @@ const StatusCountChips = <T,>({
 
   return (
     <Box display="inline-flex" gridGap={8} flexWrap="wrap">
-      {Object.entries(statusCounts).map(([status, count]) => (
+      {_.orderBy(
+        Object.entries(statusCounts),
+        ([, count]) => count,
+        "desc",
+      ).map(([status, count]) => (
         <StatusChip
           key={status}
           status={status}
