@@ -19,7 +19,7 @@ Iterating over torch tensors for training
 -----------------------------------------
 To iterate over batches of data in torch format, call :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`. Each batch is represented as `Dict[str, torch.Tensor]`, with one tensor per column in the dataset. 
 
-This is useful for training torch models with batches from your dataset. See `the API reference <ray.data.Dataset.iter_torch_batches>` for more configuration details such as providing a `collate_fn` for customizing the conversion.
+This is useful for training torch models with batches from your dataset. For configuration details such as providing a `collate_fn` for customizing the conversion, see `the API reference <ray.data.Dataset.iter_torch_batches>`.
 
 .. testcode::
 
@@ -40,9 +40,7 @@ This is useful for training torch models with batches from your dataset. See `th
 
 Integration with Ray Train
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Ray Data also integrates with :ref:`Ray Train <train-docs>` for easy data ingest for data parallel training, with support for PyTorch, PyTorch Lightning, or Huggingface training.
-
-See the :ref:`Ray Train user guide <train-datasets>` for more details.
+Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for data parallel training, with support for PyTorch, PyTorch Lightning, or Huggingface training.
 
 .. testcode::
     
@@ -82,18 +80,18 @@ See the :ref:`Ray Train user guide <train-datasets>` for more details.
     :hide:
 
     ...
+
+For more details, see the :ref:`Ray Train user guide <train-datasets>`.
     
 .. _transform_pytorch:
 
 Transformations with torch tensors
 ----------------------------------
-Transformations applied with `map` or `map_batches` can return PyTorch tensors. 
-For more information on transforming data, read
-:ref:`Transforming data <transforming_data>`.
+Transformations applied with `map` or `map_batches` can return torch tensors. 
 
 .. caution::
     
-    PyTorch tensors are automatically converted to Numpy arrays under the hood. Subsequent transformations accept Numpy arrays as input, not PyTorch tensors.
+    Under the hood, Ray Data automatically converts torch tensors to numpy arrays. Subsequent transformations accept numpy arrays as input, not torch tensors.
 
 .. tab-set::
 
@@ -109,7 +107,6 @@ For more information on transforming data, read
             ds = ray.data.read_images("example://image-datasets/simple")
 
             def convert_to_torch(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-                # Return torch tensor inside the UDF.
                 return {"tensor": torch.as_tensor(row["image"])}
             
             # The tensor gets converted into a Numpy array under the hood
@@ -138,11 +135,9 @@ For more information on transforming data, read
             import torch
             import ray
             
-
             ds = ray.data.read_images("example://image-datasets/simple")
 
             def convert_to_torch(batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
-                # Return torch tensor inside the UDF.
                 return {"tensor": torch.as_tensor(batch["image"])}
             
             # The tensor gets converted into a Numpy array under the hood
@@ -162,10 +157,12 @@ For more information on transforming data, read
             ------  ----
             tensor  numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
 
+For more information on transforming data, see :ref:`Transforming data <transforming_data>`.
+
 Built-in PyTorch transforms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Built-in PyTorch transforms from `torchvision`, `torchtext`, and `torchaudio` can also be used in Ray Data transformations.
+You can use built-in torch transforms from `torchvision`, `torchtext`, and `torchaudio` Ray Data transformations.
 
 .. tab-set::
 
@@ -190,7 +187,7 @@ Built-in PyTorch transforms from `torchvision`, `torchtext`, and `torchaudio` ca
                 ]
             )
 
-            # Define the map UDF
+            # Define the map function
             def transform_image(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 row["transformed_image"] = transform(row["image"])
                 return row
@@ -222,7 +219,7 @@ Built-in PyTorch transforms from `torchvision`, `torchtext`, and `torchaudio` ca
             VOCAB_FILE = "https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt"
             transform = transforms.BERTTokenizer(vocab_path=VOCAB_FILE, do_lower_case=True, return_tokens=True)
 
-            # Define the map_batches UDF.
+            # Define the map_batches function.
             def tokenize_text(batch: Dict[str, np.ndarray]) -> Dict[str, List[str]]:
                 batch["tokenized_text"] = transform(list(batch["text"]))
                 return batch
@@ -243,9 +240,7 @@ Built-in PyTorch transforms from `torchvision`, `torchtext`, and `torchaudio` ca
 Batch inference with PyTorch
 ----------------------------
 
-With Ray Datasets, you can do scalable offline batch inference with PyTorch models by mapping your pre-trained model over your data. 
-
-See the :ref:`Batch inference user guide <batch_inference_home>` for more details.
+With Ray Datasets, you can do scalable offline batch inference with torch models by mapping a pre-trained model over your data.
 
 .. testcode::
 
@@ -294,10 +289,12 @@ See the :ref:`Batch inference user guide <batch_inference_home>` for more detail
 
     {'output': array([0.5590901], dtype=float32)}
 
+For more details, see the :ref:`Batch inference user guide <batch_inference_home>`.
+
 .. _saving_pytorch:
 
-Saving Datasets containing PyTorch Tensors
-------------------------------------------
+Saving Datasets containing torch tensors
+----------------------------------------
 
 Datasets containing torch tensors can be saved to files, like parquet or numpy. 
 
@@ -306,7 +303,7 @@ For more information on saving data, read
 
 .. caution::
 
-    PyTorch tensors that are still on GPU device cannot be serialized and written to disk. Make sure to convert the tensors to CPU (``tensor.to("cpu")``) before saving the data.
+    Torch tensors that are on GPU devices can't be serialized and written to disk. Convert the tensors to CPU (``tensor.to("cpu")``) before saving the data.
 
 .. tab-set::
 
@@ -320,7 +317,7 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_parquet("local:///tmp/tensor.parquet")
+            ds.write_parquet("local:///tmp/tensor")
 
     .. tab-item:: Numpy
 
@@ -332,16 +329,16 @@ For more information on saving data, read
             tensor = torch.Tensor(1)
             ds = ray.data.from_items([{"tensor": tensor}])
 
-            ds.write_numpy("local:///tmp/tensor.npy", column="tensor")
+            ds.write_numpy("local:///tmp/tensor", column="tensor")
 
 .. _migrate_pytorch:
 
 Migrating from PyTorch Datasets and DataLoaders
 -----------------------------------------------
 
-If you are currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
+If you're currently using PyTorch Datasets and DataLoaders, you can migrate to Ray Data for working with distributed datasets.
 
-PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by the :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
+PyTorch Datasets are replaced by the :class:`Dataset <ray.data.Dataset>` abtraction, and the PyTorch DataLoader is replaced by :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>`.
 
 Built-in PyTorch Datasets
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -370,7 +367,7 @@ Custom PyTorch Datasets
 
 If you have a custom PyTorch Dataset, you can migrate to Ray Data by converting the logic in ``__getitem__`` to Ray Data read and transform operations. 
 
-Any logic for reading data from cloud storage and disk, can be replaced by one of the Ray Data ``read_*`` APIs, and any transformation logic can be applied as a :meth:`map <ray.data.Dataset.map>` call on the Dataset.
+Any logic for reading data from cloud storage and disk can be replaced by one of the Ray Data ``read_*`` APIs, and any transformation logic can be applied as a :meth:`map <ray.data.Dataset.map>` call on the Dataset.
 
 The following example shows a custom PyTorch Dataset, and what the analagous would look like with Ray Data.
 
@@ -478,7 +475,7 @@ PyTorch DataLoader
 
 The PyTorch DataLoader can be replaced by calling :meth:`Dataset.iter_torch_batches() <ray.data.Dataset.iter_torch_batches>` to iterate over batches of the dataset.
 
-The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the the behavior may not necessarily be identical. See the API reference for exact semantics and usage.
+The following table describes how the arguments for PyTorch DataLoader map to Ray Data. Note the the behavior may not necessarily be identical. For exact semantics and usage, :meth:`see the API reference <ray.data.Dataset.iter_torch_batches>`.
 
 .. list-table::
    :header-rows: 1

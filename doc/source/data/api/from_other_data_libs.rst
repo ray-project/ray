@@ -91,4 +91,4 @@ For PyArrow Users
 For PyTorch Dataset & DataLoader Users
 --------------------------------------
 
-See the :ref:`Migrating from PyTorch to Ray Data guide <migrate_pytorch>` for more details.
+For more details, see the :ref:`Migrating from PyTorch to Ray Data <migrate_pytorch>`.
