@@ -240,7 +240,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     @property
     def target_num_scheduling_tasks(self) -> int:
-        """Target number of scheduling tasks to be running based on pending assignments.
+        """Target number of scheduling tasks to be running based on pending requests.
 
         This will never exceed `self.max_num_scheduling_tasks`.
         """
@@ -254,7 +254,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Update the set of available replicas to be considered for scheduling.
 
         When the set of replicas changes, we may spawn additional scheduling tasks
-        if there are pending assignments.
+        if there are pending requests.
         """
         new_replicas = {}
         new_replica_id_set = set()
@@ -422,9 +422,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         replica: ReplicaWrapper,
         request_metadata: Optional[RequestMetadata] = None,
     ):
-        """Assign the replica to the next pending assignment in FIFO order.
+        """Assign the replica to the next pending request in FIFO order.
 
-        If a pending assignment has been cancelled, it will be popped from the queue
+        If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
         # First try to match a pending request based on the request metadata (currently
@@ -455,10 +455,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         return None
 
-    async def fulfill_pending_requests(
-        self, multiplexed_model_id: Optional[str] = None
-    ):
-        """Repeatedly tries to fulfill a pending assignment with an available replica.
+    async def fulfill_pending_requests(self):
+        """Repeatedly tries to fulfill a pending request with an available replica.
 
         This is expected to be run inside a task in self._scheduling tasks.
 
@@ -483,9 +481,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
 
     def maybe_start_scheduling_tasks(self):
-        """Start scheduling tasks to fulfill pending assignments if necessary.
+        """Start scheduling tasks to fulfill pending requests if necessary.
 
-        Starts tasks so that there is at least one task per pending assignment
+        Starts tasks so that there is at least one task per pending request
         (respecting the max number of scheduling tasks).
 
         In the common case, this will start a single task when a new request comes
@@ -534,7 +532,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
-        request, so it's up to the caller to time out or cancel the assignment.
+        request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
         return replica.send_query(query)

@@ -537,7 +537,10 @@ class TestModelMultiplexing:
         r1 = FakeReplicaWrapper("r1")
         r1.set_queue_state_response(0, accepted=False)
 
-        tasks = [loop.create_task(s.choose_replica_for_query(query_with_model_id("m1"))) for _ in range(100)]
+        tasks = [
+            loop.create_task(s.choose_replica_for_query(query_with_model_id("m1")))
+            for _ in range(100)
+        ]
 
         # Scheduling tasks should be in backoff.
         done, _ = await asyncio.wait(tasks, timeout=0.1)
