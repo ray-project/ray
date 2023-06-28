@@ -120,6 +120,14 @@ class DeploymentTargetState:
         return cls(info, num_replicas, version, deleting)
 
 
+@dataclass
+class DeploymentStateUpdateResult:
+    deleted: bool
+    any_replicas_recovering: bool
+    upscale: List[ReplicaSchedulingRequest]
+    downscale: Optional[DeploymentDownscaleRequest]
+
+
 CHECKPOINT_KEY = "serve-deployment-state-checkpoint"
 SLOW_STARTUP_WARNING_S = int(os.environ.get("SERVE_SLOW_STARTUP_WARNING_S", 30))
 SLOW_STARTUP_WARNING_PERIOD_S = int(
@@ -1909,17 +1917,13 @@ class DeploymentState:
             if not stopped:
                 self._replicas.add(ReplicaState.STOPPING, replica)
 
-    def update(
-        self,
-    ) -> Tuple[bool, bool, List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
+    def update(self) -> DeploymentStateUpdateResult:
         """Attempts to reconcile this deployment to match its goal state.
 
         This is an asynchronous call; it's expected to be called repeatedly.
 
         Also updates the internal DeploymentStatusInfo based on the current
         state of the system.
-
-        Returns (deleted, any_replicas_recovering).
         """
         deleted, any_replicas_recovering = False, False
         upscale = []
@@ -1946,7 +1950,12 @@ class DeploymentState:
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
 
-        return deleted, any_replicas_recovering, upscale, downscale
+        return DeploymentStateUpdateResult(
+            deleted=deleted,
+            any_replicas_recovering=any_replicas_recovering,
+            upscale=upscale,
+            downscale=downscale,
+        )
 
     def record_multiplexed_model_ids(
         self, replica_name: str, multiplexed_model_ids: List[str]
@@ -2006,16 +2015,23 @@ class DriverDeploymentState(DeploymentState):
 
     def _deploy_driver(self) -> List[ReplicaSchedulingRequest]:
         """Deploy the driver deployment to each node."""
-        num_existing_replicas = self._replicas.count()
-        if num_existing_replicas >= self._target_state.num_replicas:
-            num_running_replicas = self._replicas.count(states=[ReplicaState.RUNNING])
-            if num_running_replicas >= self._target_state.num_replicas:
-                for replica in self._replicas.pop(states=[ReplicaState.STARTING]):
-                    self._stop_replica(replica)
+        num_running_replicas = self._replicas.count(states=[ReplicaState.RUNNING])
+        if num_running_replicas >= self._target_state.num_replicas:
+            # Cancel starting replicas when driver deployment state creates
+            # more replicas than alive nodes.
+            # For example, get_all_node_ids returns 4 nodes when
+            # the driver deployment state decides the target number of replicas
+            # but later on when the deployment scheduler schedules these 4 replicas,
+            # there are only 3 alive nodes (1 node dies in between).
+            # In this case, 1 replica will be in the PENDING_ALLOCATION and we
+            # cancel it here.
+            for replica in self._replicas.pop(states=[ReplicaState.STARTING]):
+                self._stop_replica(replica)
 
             return []
 
         upscale = []
+        num_existing_replicas = self._replicas.count()
         for _ in range(self._target_state.num_replicas - num_existing_replicas):
             replica_name = ReplicaName(self._name, get_random_letters())
             new_deployment_replica = DeploymentReplica(
@@ -2058,16 +2074,7 @@ class DriverDeploymentState(DeploymentState):
         pending_replicas = num_nodes - new_running_replicas - old_running_replicas
         return max(rollout_size - pending_replicas, 0)
 
-    def update(
-        self,
-    ) -> Tuple[bool, bool, List[ReplicaSchedulingRequest], DeploymentDownscaleRequest]:
-        """
-        Returns:
-            deleted
-            any_replicas_recovering
-            list of scheduling requests
-            a downscale request
-        """
+    def update(self) -> DeploymentStateUpdateResult:
         try:
             self._check_and_update_replicas()
 
@@ -2093,14 +2100,21 @@ class DriverDeploymentState(DeploymentState):
                 upscale = self._deploy_driver()
 
             deleted, any_replicas_recovering = self._check_curr_status()
-            return deleted, any_replicas_recovering, upscale, None
+            return DeploymentStateUpdateResult(
+                deleted=deleted,
+                any_replicas_recovering=any_replicas_recovering,
+                upscale=upscale,
+                downscale=None,
+            )
         except Exception:
             self._curr_status_info = DeploymentStatusInfo(
                 name=self._name,
                 status=DeploymentStatus.UNHEALTHY,
                 message="Failed to update deployment:" f"\n{traceback.format_exc()}",
             )
-            return False, False, [], None
+            return DeploymentStateUpdateResult(
+                deleted=False, any_replicas_recovering=False, upscale=[], downscale=None
+            )
 
     def should_autoscale(self) -> bool:
         return False
@@ -2474,13 +2488,13 @@ class DeploymentStateManager:
                     current_num_ongoing_requests, current_handle_queued_queries
                 )
 
-            deleted, recovering, upscale, downscale = deployment_state.update()
-            if upscale:
-                upscales[deployment_name] = upscale
-            if downscale:
-                downscales[deployment_name] = downscale
+            deployment_state_update_result = deployment_state.update()
+            if deployment_state_update_result.upscale:
+                upscales[deployment_name] = deployment_state_update_result.upscale
+            if deployment_state_update_result.downscale:
+                downscales[deployment_name] = deployment_state_update_result.downscale
 
-            if deleted:
+            if deployment_state_update_result.deleted:
                 deleted_tags.append(deployment_name)
                 deployment_info = deployment_state.target_info
                 deployment_info.end_time_ms = int(time.time() * 1000)
@@ -2488,7 +2502,7 @@ class DeploymentStateManager:
                     self._deleted_deployment_metadata.popitem(last=False)
                 self._deleted_deployment_metadata[deployment_name] = deployment_info
 
-            any_recovering |= recovering
+            any_recovering |= deployment_state_update_result.any_replicas_recovering
 
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(
             upscales, downscales

@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Tuple, Optional, List, Union, Set
+from typing import Callable, Dict, Tuple, List, Union, Set
 from dataclasses import dataclass
 from collections import defaultdict
 
@@ -55,7 +55,7 @@ class DeploymentScheduler:
     It makes a batch of scheduling decisions in each update cycle.
     """
 
-    def __init__(self, gcs_client: Optional[GcsClient] = None):
+    def __init__(self):
         # {deployment_name: scheduling_policy}
         self._deployments = {}
         # Replicas that are waiting to be scheduled.
@@ -74,10 +74,7 @@ class DeploymentScheduler:
         # {deployment_name: {replica_name: running_node_id}}
         self._running_replicas = defaultdict(dict)
 
-        if gcs_client:
-            self._gcs_client = gcs_client
-        else:
-            self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+        self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
 
     def on_deployment_created(
         self,
