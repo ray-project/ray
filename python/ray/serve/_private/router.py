@@ -234,6 +234,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         return min(self.num_pending_assignments, self.max_num_scheduling_tasks)
 
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return self._replicas
+
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
 
