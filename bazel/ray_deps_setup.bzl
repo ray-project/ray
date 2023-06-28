@@ -257,10 +257,13 @@ def ray_deps_setup():
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
+    # Using shallow_since allows the rule to clone down fewer commits.
+    # Reference:  https://bazel.build/rules/lib/repo/git
     git_repository(
         name = "rules_perl",
         remote = "https://github.com/bazelbuild/rules_perl.git",
         commit = "022b8daf2bb4836ac7a50e4a1d8ea056a3e1e403",
+        shallow_since = "1663780239 -0700",
     )
 
     http_archive(

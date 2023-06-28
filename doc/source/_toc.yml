@@ -325,7 +325,6 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: ray-more-libs/dask-on-ray
           - file: ray-more-libs/raydp
           - file: ray-more-libs/mars-on-ray

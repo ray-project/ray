@@ -4,14 +4,18 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.typing import (
     ResultDict,
 )
 
 
 class ApexDDPGConfig(DDPGConfig):
-    """Defines a configuration class from which an ApexDDPG Trainer can be built.
+    """Defines a configuration class from which an ApexDDPG can be built.
 
     Example:
 
@@ -20,7 +24,7 @@ class ApexDDPGConfig(DDPGConfig):
             from ray.rllib.algorithms.apex_ddpg.apex_ddpg import ApexDDPGConfig
             config = ApexDDPGConfig().training(lr=0.01).resources(num_gpus=1)
             print(config.to_dict())
-            # Build a Trainer object from the config and run one training iteration.
+            # Build an Algorithm object from the config and run one training iteration.
             algo = config.build(env="Pendulum-v1")
             algo.train()
 
@@ -63,7 +67,8 @@ class ApexDDPGConfig(DDPGConfig):
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_replay_manager = 0.0
 
-        # Override some of Trainer/DDPG's default values with ApexDDPG-specific values.
+        # Override some of Algorithm/DDPG's default values with ApexDDPG-specific
+        # values.
         self.n_step = 3
         self.exploration_config = {"type": "PerWorkerOrnsteinUhlenbeckNoise"}
         self.num_gpus = 0
@@ -137,6 +142,12 @@ class ApexDDPGConfig(DDPGConfig):
         return self
 
 
+@Deprecated(
+    old="rllib/algorithms/apex_ddpg/",
+    new="rllib_contrib/apex_ddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ApexDDPG(DDPG, ApexDQN):
     @classmethod
     @override(DDPG)

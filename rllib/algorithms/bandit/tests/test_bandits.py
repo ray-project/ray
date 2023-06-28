@@ -48,9 +48,7 @@ class TestBandits(unittest.TestCase):
         )
         num_iterations = 5
 
-        for _ in framework_iterator(
-            config, frameworks=("tf2", "torch"), with_eager_tracing=True
-        ):
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
                 algo = config.build()
@@ -73,9 +71,7 @@ class TestBandits(unittest.TestCase):
 
         num_iterations = 5
 
-        for _ in framework_iterator(
-            config, frameworks=("tf2", "torch"), with_eager_tracing=True
-        ):
+        for _ in framework_iterator(config, frameworks=("tf2", "torch")):
             for train_batch_size in [1, 10]:
                 config.training(train_batch_size=train_batch_size)
                 algo = config.build()
@@ -104,9 +100,7 @@ class TestBandits(unittest.TestCase):
                     env_config={"best_arm_prob": best_arm_prob},
                 )
             )
-            for _ in framework_iterator(
-                config, frameworks=("tf2", "torch"), with_eager_tracing=True
-            ):
+            for _ in framework_iterator(config, frameworks=("tf2", "torch")):
                 algo = config.build()
                 model = algo.get_policy().model
                 arm_means, arm_stds = [], []
