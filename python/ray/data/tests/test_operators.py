@@ -232,7 +232,8 @@ def test_split_operator(ray_start_regular_shared, equal, chunk_size):
     num_input_blocks = 100
     num_splits = 3
     # Add this many input blocks each time.
-    # Make sure it is greater than num_splits * 2, so we can test the output order of `OutputSplitter.get_next`.
+    # Make sure it is greater than num_splits * 2,
+    # so we can test the output order of `OutputSplitter.get_next`.
     num_add_input_blocks = 10
     input_op = InputDataBuffer(
         make_ref_bundles([[i] * chunk_size for i in range(num_input_blocks)])
