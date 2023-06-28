@@ -681,10 +681,11 @@ def get_head_node_id() -> str:
     Iterate through all nodes in the ray cluster and return the node id of the first
     alive node with head node resource.
     """
-    head_node_id = ""
+    head_node_id = None
     for node in ray.nodes():
         if HEAD_NODE_RESOURCE_NAME in node["Resources"] and node["Alive"]:
             head_node_id = node["NodeID"]
             break
+    assert head_node_id is not None, "Cannot find alive head node."
 
     return head_node_id

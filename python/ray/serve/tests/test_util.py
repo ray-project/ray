@@ -539,6 +539,7 @@ def test_get_head_node_id():
 
     When there are woker node, dead head node, and other alive head nodes,
     get_head_node_id() should return the node id of the first alive head node.
+    When there are no alive head nodes, get_head_node_id() should raise assertion error.
     """
     nodes = [
         {"NodeID": "worker_node1", "Alive": True, "Resources": {"CPU": 1}},
@@ -560,6 +561,10 @@ def test_get_head_node_id():
     ]
     with patch("ray.nodes", return_value=nodes):
         assert get_head_node_id() == "alive_head_node1"
+
+    with patch("ray.nodes", return_value=[]):
+        with pytest.raises(AssertionError):
+            get_head_node_id()
 
 
 if __name__ == "__main__":

@@ -474,23 +474,17 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
         expected_code=200,
         expected_text="success",
     )
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8000/-/routes",
-        expected_code=200,
-        expected_text='{"/":"default_HelloModel"}',
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8000/-/routes").text
+        == '{"/":"default_HelloModel"}'
     )
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8001/-/healthz",
-        expected_code=200,
-        expected_text="success",
-    )
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8001/-/routes",
-        expected_code=200,
-        expected_text='{"/":"default_HelloModel"}',
+    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 200
+    assert requests.get("http://127.0.0.1:8001/-/healthz").text == "success"
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8001/-/routes").text
+        == '{"/":"default_HelloModel"}'
     )
 
     # Delete the deployment should bring the active actors down to 3 and drop
@@ -522,23 +516,16 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
         expected_code=200,
         expected_text="success",
     )
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8000/-/routes",
-        expected_code=200,
-        expected_text="{}",
+    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8001/-/healthz").text
+        == "This node is being drained."
     )
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8001/-/healthz",
-        expected_code=503,
-        expected_text="This node is being drained.",
-    )
-    wait_for_condition(
-        condition_predictor=check_request,
-        url="http://127.0.0.1:8001/-/routes",
-        expected_code=503,
-        expected_text="This node is being drained.",
+    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 503
+    assert (
+        requests.get("http://127.0.0.1:8001/-/routes").text
+        == "This node is being drained."
     )
 
     # Clean up serve.

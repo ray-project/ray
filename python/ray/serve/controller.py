@@ -112,9 +112,9 @@ class ServeController:
         detached: bool = False,
         _disable_http_proxy: bool = False,
     ):
-        controller_node_id = ray.get_runtime_context().get_node_id()
+        self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
-            controller_node_id == get_head_node_id()
+            self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
 
         configure_component_logger(
@@ -148,6 +148,7 @@ class ServeController:
                 controller_name,
                 detached,
                 http_config,
+                self._controller_node_id,
                 gcs_client,
             )
 
@@ -292,8 +293,7 @@ class ServeController:
         replicas). If the active nodes set changes, it will notify the long poll client.
         """
         new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        head_node_id = ray.get_runtime_context().node_id
-        new_active_nodes.add(head_node_id)
+        new_active_nodes.add(self._controller_node_id)
         if self._active_nodes != new_active_nodes:
             self._active_nodes = new_active_nodes
             self.long_poll_host.notify_changed(

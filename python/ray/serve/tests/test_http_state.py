@@ -20,11 +20,13 @@ HEAD_NODE_ID = "node_id-index-head"
 
 def _make_http_state(
     http_options: HTTPOptions,
+    head_node_id: str = HEAD_NODE_ID,
 ) -> HTTPState:
     return HTTPState(
         SERVE_CONTROLLER_NAME,
         detached=True,
         config=http_options,
+        head_node_id=head_node_id,
         gcs_client=None,
         _start_proxies_on_init=False,
     )
@@ -41,13 +43,6 @@ def all_nodes() -> List[Tuple[str, str]]:
 def mock_get_all_node_ids(all_nodes):
     with patch("ray.serve._private.http_state.get_all_node_ids") as func:
         func.return_value = all_nodes
-        yield
-
-
-@pytest.fixture()
-def mock_get_head_node_id(all_nodes):
-    with patch("ray.serve._private.http_state.get_head_node_id") as func:
-        func.return_value = HEAD_NODE_ID
         yield
 
 
@@ -122,7 +117,7 @@ def _update_and_check_http_state(
     )
 
 
-def test_node_selection(all_nodes, mock_get_all_node_ids, mock_get_head_node_id):
+def test_node_selection(all_nodes, mock_get_all_node_ids):
     # Test NoServer
     state = _make_http_state(HTTPOptions(location=DeploymentMode.NoServer))
     assert state._get_target_nodes() == []
@@ -162,7 +157,7 @@ def test_node_selection(all_nodes, mock_get_all_node_ids, mock_get_head_node_id)
 
 
 def test_http_state_update_restarts_unhealthy_proxies(
-    mock_get_all_node_ids, setup_controller, mock_get_head_node_id
+    mock_get_all_node_ids, setup_controller
 ):
     """Test the update method in HTTPState would kill and restart unhealthy proxies.
 
@@ -593,9 +588,7 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed(setup_controller
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_update_draining(
-    mock_get_all_node_ids, setup_controller, all_nodes, mock_get_head_node_id
-):
+def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
