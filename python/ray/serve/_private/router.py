@@ -285,11 +285,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # TODO: comment.
         replica_ids_with_multiplexed_model_id = set()
         if request_metadata is not None and request_metadata.multiplexed_model_id:
-            replica_ids_with_multiplexed_model_id = copy.copy(
-                self._multiplexed_model_id_to_replica_ids[
-                    request_metadata.multiplexed_model_id
-                ]
-            )
+            if (
+                request_metadata.multiplexed_model_id
+                in self._multiplexed_model_id_to_replica_ids
+            ):
+                replica_ids_with_multiplexed_model_id = copy.copy(
+                    self._multiplexed_model_id_to_replica_ids[
+                        request_metadata.multiplexed_model_id,
+                    ]
+                )
 
         backoff_index = 0
         while True:
@@ -383,6 +387,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 == request_metadata.multiplexed_model_id
             ):
                 return pr
+
+        return None
 
     def fulfill_next_pending_request(
         self,

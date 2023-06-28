@@ -449,6 +449,22 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) in {r1, r2}
 
+    async def test_no_replica_has_model_id(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, we should fall back to normal procedure.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        r1 = FakeReplicaWrapper("r1", model_ids={})
+        r1.set_queue_state_response(0, accepted=True)
+        s.update_replicas([r1])
+
+        for _ in range(10):
+            query = query_with_model_id("m1")
+            task = loop.create_task(s.choose_replica_for_query(query))
+            assert (await task) == r1
+
     async def test_fall_back_to_replica_without_model_id(self, pow_2_scheduler):
         """
         Verify that we'll fall back to a replica that doesn't have the model ID if
