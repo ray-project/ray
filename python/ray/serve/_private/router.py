@@ -165,11 +165,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     # The sequence of backoff timeouts to use when all replicas' queues are full.
     # The last item in the list is the max timeout and will be used repeatedly.
-    backoff_sequence_s = [0, 0.05, 0.1, 0.15, 0.2, 0.5, 1.0]
+    backoff_sequence_s = [0, 0.001, 0.005, 0.05, 0.1, 0.2, 0.5, 1.0]
 
     # Deadline for replicas to respond with their queue length. If the response isn't
     # received within this deadline, the replica will not be considered.
-    queue_len_response_deadline_s = 0.1
+    queue_len_response_deadline_s = 0.01
 
     def __init__(
         self,
