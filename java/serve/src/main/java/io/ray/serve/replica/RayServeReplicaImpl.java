@@ -280,7 +280,7 @@ public class RayServeReplicaImpl implements RayServeReplica {
 
   @Override
   public int getNumOngoingRequests() {
-    return numOngoingRequests.get()
+    return numOngoingRequests.get();
   }
 
   @Override
