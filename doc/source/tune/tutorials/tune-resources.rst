@@ -147,24 +147,13 @@ each other. Ray Tune will run multiple trials in parallel, with each trial runni
 How to limit concurrency in Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If using a :ref:`search algorithm <tune-search-alg>`, you may want to limit the number of trials that are being evaluated.
-For example, you may want to serialize the evaluation of trials to do sequential optimization.
+To specifies the max number of trials to run concurrently, set `max_concurrent_trials` in :class:`TuneConfig <ray.tune.tune_config.TuneConfig>`
 
-In this case, ``ray.tune.search.ConcurrencyLimiter`` to limit the amount of concurrency:
+Note that actual parallelism can be less than `max_concurrent_trials` and will be determined by how many trials
+can fit in the cluster at once (i.e., if you have a trial that requires 16 GPUs, your cluster has 32 GPUs,
+and `max_concurrent_trials=10`, the `Tuner` can only run 2 trials concurrently).
 
-.. code-block:: python
-
-    algo = BayesOptSearch(utility_kwargs={
-        "kind": "ucb",
-        "kappa": 2.5,
-        "xi": 0.0
-    })
-    algo = ConcurrencyLimiter(algo, max_concurrent=4)
-    scheduler = AsyncHyperBandScheduler()
-
-.. note::
-
-    It is also possible to directly use ``tune.TuneConfig(max_concurrent_trials=4, ...)``, which is taken in by ``Tuner``. This automatically wraps
-    the underlying search algorithm in a ``ConcurrencyLimiter`` for you.
-
-To understand concurrency limiting in depth, please see :ref:`limiter` for more details.
+.. literalinclude:: doc_code/tuner.py # FIXTHIS
+    :language: python
+    :start-after: __tune_parallelism_start__
+    :end-before: __tune_parallelism_end__

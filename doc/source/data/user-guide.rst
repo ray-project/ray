@@ -19,6 +19,8 @@ show you how achieve several tasks.
     saving-data
     working-with-text
     working-with-tensors
+    preprocessors
     data-internals
     performance-tips
     batch_inference
+    

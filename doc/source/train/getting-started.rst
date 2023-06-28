@@ -3,86 +3,15 @@
 Getting Started with Distributed Model Training in Ray Train
 ============================================================
 
-Ray Train offers multiple ``Trainers`` which implement scalable model training for different machine learning frameworks.
-Here are examples for some of the commonly used trainers:
+.. https://docs.google.com/drawings/d/1anmT0JVFH9abR5wX5_WcxNHJh6jWeDL49zWxGpkfORA/edit
+
+.. image:: images/train.svg
+
+Ray Train offers multiple ``Trainers`` which implement scalable model training for different machine learning frameworks. Trainers enable users to run distributed multi-node training with fault tolerance.
+
+Here are some quick-start guides for some of the commonly used trainers:
 
 .. tab-set::
-
-    .. tab-item:: XGBoost
-
-        In this example we will train a model using distributed XGBoost.
-
-        First, we load the dataset from S3 using Ray Data and split it into a
-        train and validation dataset.
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-           :language: python
-           :start-after: __xgb_detail_intro_start__
-           :end-before: __xgb_detail_intro_end__
-
-        In the :class:`ScalingConfig <ray.air.config.ScalingConfig>`,
-        we configure the number of workers to use:
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-           :language: python
-           :start-after: __xgb_detail_scaling_start__
-           :end-before: __xgb_detail_scaling_end__
-
-        We then instantiate our XGBoostTrainer by passing in:
-
-        - The aforementioned ``ScalingConfig``.
-        - The ``label_column`` refers to the column name containing the labels in the Dataset
-        - The ``params`` are `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-            :language: python
-            :start-after: __xgb_detail_training_start__
-            :end-before: __xgb_detail_training_end__
-
-        Lastly, we call ``trainer.fit()`` to kick off training and obtain the results.
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-            :language: python
-            :start-after: __xgb_detail_fit_start__
-            :end-before: __xgb_detail_fit_end__
-
-    .. tab-item:: LightGBM
-
-        In this example we will train a model using distributed LightGBM.
-
-        First, we load the dataset from S3 using Ray Data and split it into a
-        train and validation dataset.
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-            :language: python
-            :start-after: __lgbm_detail_intro_start__
-            :end-before: __lgbm_detail_intro_end__
-
-        In the :class:`ScalingConfig <ray.air.config.ScalingConfig>`,
-        we configure the number of workers to use:
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-            :language: python
-            :start-after: __xgb_detail_scaling_start__
-            :end-before: __xgb_detail_scaling_end__
-
-        We then instantiate our LightGBMTrainer by passing in:
-
-        - The aforementioned ``ScalingConfig``
-        - The ``label_column`` refers to the column name containing the labels in the Dataset
-        - The ``params`` are core `LightGBM training parameters <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-            :language: python
-            :start-after: __lgbm_detail_training_start__
-            :end-before: __lgbm_detail_training_end__
-
-        And lastly we call ``trainer.fit()`` to kick off training and obtain the results.
-
-        .. literalinclude:: doc_code/gbdt_user_guide.py
-            :language: python
-            :start-after: __lgbm_detail_fit_start__
-            :end-before: __lgbm_detail_fit_end__
 
     .. tab-item:: PyTorch
 
@@ -185,6 +114,83 @@ Here are examples for some of the commonly used trainers:
             :dedent:
 
         See :ref:`train-porting-code` for a more comprehensive example.
+
+    .. tab-item:: XGBoost
+
+        In this example we will train a model using distributed XGBoost.
+
+        First, we load the dataset from S3 using Ray Data and split it into a
+        train and validation dataset.
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __xgb_detail_intro_start__
+           :end-before: __xgb_detail_intro_end__
+
+        In the :class:`ScalingConfig <ray.air.config.ScalingConfig>`,
+        we configure the number of workers to use:
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+           :language: python
+           :start-after: __xgb_detail_scaling_start__
+           :end-before: __xgb_detail_scaling_end__
+
+        We then instantiate our XGBoostTrainer by passing in:
+
+        - The aforementioned ``ScalingConfig``.
+        - The ``label_column`` refers to the column name containing the labels in the Dataset
+        - The ``params`` are `XGBoost training parameters <https://xgboost.readthedocs.io/en/stable/parameter.html>`__
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __xgb_detail_training_start__
+            :end-before: __xgb_detail_training_end__
+
+        Lastly, we call ``trainer.fit()`` to kick off training and obtain the results.
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __xgb_detail_fit_start__
+            :end-before: __xgb_detail_fit_end__
+
+    .. tab-item:: LightGBM
+
+        In this example we will train a model using distributed LightGBM.
+
+        First, we load the dataset from S3 using Ray Data and split it into a
+        train and validation dataset.
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __lgbm_detail_intro_start__
+            :end-before: __lgbm_detail_intro_end__
+
+        In the :class:`ScalingConfig <ray.air.config.ScalingConfig>`,
+        we configure the number of workers to use:
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __xgb_detail_scaling_start__
+            :end-before: __xgb_detail_scaling_end__
+
+        We then instantiate our LightGBMTrainer by passing in:
+
+        - The aforementioned ``ScalingConfig``
+        - The ``label_column`` refers to the column name containing the labels in the Dataset
+        - The ``params`` are core `LightGBM training parameters <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __lgbm_detail_training_start__
+            :end-before: __lgbm_detail_training_end__
+
+        And lastly we call ``trainer.fit()`` to kick off training and obtain the results.
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __lgbm_detail_fit_start__
+            :end-before: __lgbm_detail_fit_end__
+
 
 
 Next Steps
