@@ -55,9 +55,10 @@ def assert_python_version(expected_python_version: str) -> None:
     actual_major, actual_minor = sys.version_info[:2]
     actual_version = f"{actual_major}.{actual_minor}"
     expected_version = expected_python_version.strip()
-    assert (
-        expected_version == actual_version
-    ), f"Expected Python version {expected_version=}, {actual_version=}"
+    assert expected_version == actual_version, (
+        f"Expected Python version expected_version={expected_version}, "
+        f"actual_version={actual_version}"
+    )
 
 
 if __name__ == "__main__":
