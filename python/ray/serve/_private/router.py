@@ -291,7 +291,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             ):
                 replica_ids_with_multiplexed_model_id = copy.copy(
                     self._multiplexed_model_id_to_replica_ids[
-                        request_metadata.multiplexed_model_id,
+                        request_metadata.multiplexed_model_id
                     ]
                 )
 
