@@ -1,4 +1,4 @@
-#ci:group=ARM64 wheels and containers
+#ci:group=:mechanical_arm: :ferris_wheel: ARM64 wheels and containers
 
 - label: ":mechanical_arm: :ferris_wheel: ARM64 Linux wheels"
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
