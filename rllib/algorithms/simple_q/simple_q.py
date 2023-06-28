@@ -24,7 +24,11 @@ from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_st
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -284,6 +288,12 @@ class SimpleQConfig(AlgorithmConfig):
             validate_buffer_config(self)
 
 
+@Deprecated(
+    old="rllib/algorithms/simple_q/",
+    new="rllib_contrib/simple_q/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class SimpleQ(Algorithm):
     @classmethod
     @override(Algorithm)
