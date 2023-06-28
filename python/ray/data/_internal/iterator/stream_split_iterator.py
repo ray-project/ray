@@ -97,6 +97,8 @@ class StreamSplitDataIterator(DataIterator):
 
     def stats(self) -> str:
         """Implements DataIterator."""
+        # Merge the locally recorded iter stats and the remotely recorded
+        # stream execution stats.
         summary = ray.get(self._coord_actor.stats.remote())
         summary.iter_stats = self._iter_stats.to_summary().iter_stats
         return summary.to_string()
