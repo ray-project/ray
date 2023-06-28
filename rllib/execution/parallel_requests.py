@@ -4,6 +4,8 @@ from typing import Any, Callable, Dict, List, Optional, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,11 @@ class AsyncRequestsManager:
             list(workers) if not isinstance(workers, list) else workers.copy()
         )
         self._curr_actor_ptr = 0
+        if log_once("multi_gpu_learner_thread_deprecation_warning"):
+            deprecation_warning(
+                old="ray.rllib.execution.multi_gpu_learner_thread."
+                "MultiGPULearnerThread"
+            )
 
     def call(
         self,
