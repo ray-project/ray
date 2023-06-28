@@ -18,7 +18,11 @@ from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -307,6 +311,12 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
+@Deprecated(
+    old="rllib/algorithms/maddpg/",
+    new="rllib_contrib/maddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class MADDPG(DQN):
     @classmethod
     @override(DQN)

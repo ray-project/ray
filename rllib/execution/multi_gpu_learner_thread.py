@@ -11,6 +11,7 @@ from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -82,6 +83,11 @@ class MultiGPULearnerThread(LearnerThread):
         """
         # Deprecated: No need to specify as we don't need the actual
         # minibatch-buffer anyways.
+        if log_once("multi_gpu_learner_thread_deprecation_warning"):
+            deprecation_warning(
+                old="ray.rllib.execution.multi_gpu_learner_thread."
+                "MultiGPULearnerThread"
+            )
         if minibatch_buffer_size:
             deprecation_warning(
                 old="MultiGPULearnerThread.minibatch_buffer_size",

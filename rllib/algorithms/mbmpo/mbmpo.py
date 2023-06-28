@@ -30,7 +30,11 @@ from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -478,6 +482,12 @@ def post_process_samples(samples, config: AlgorithmConfig):
     return samples, split_lst
 
 
+@Deprecated(
+    old="rllib/algorithms/mbmpo/",
+    new="rllib_contrib/mbmpo/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class MBMPO(Algorithm):
     """Model-Based Meta Policy Optimization (MB-MPO) Algorithm.
 

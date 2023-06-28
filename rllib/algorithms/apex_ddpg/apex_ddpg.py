@@ -4,7 +4,11 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.apex_dqn.apex_dqn import ApexDQN
 from ray.rllib.algorithms.ddpg.ddpg import DDPG, DDPGConfig
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.typing import (
     ResultDict,
 )
@@ -138,6 +142,12 @@ class ApexDDPGConfig(DDPGConfig):
         return self
 
 
+@Deprecated(
+    old="rllib/algorithms/apex_ddpg/",
+    new="rllib_contrib/apex_ddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ApexDDPG(DDPG, ApexDQN):
     @classmethod
     @override(DDPG)
