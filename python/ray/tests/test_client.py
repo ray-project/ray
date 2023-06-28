@@ -903,7 +903,7 @@ def test_serialize_client_actor_handle(call_ray_start_shared):
         assert ray.get(deserialized.get_value.remote()) == 1234
 
 
-def test_get_runtime_context(call_ray_start_shared):
+def test_get_runtime_context_gcs_client(call_ray_start_shared):
     """
     Tests get_runtime_context
     """
