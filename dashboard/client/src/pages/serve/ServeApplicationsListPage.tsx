@@ -199,17 +199,17 @@ export const ServeApplicationsListPage = () => {
               </Table>
             </TableContainer>
           </CollapsibleSection>
+          <CollapsibleSection
+            title="Logs"
+            startExpanded
+            className={classes.section}
+          >
+            <Section noTopPadding>
+              <ServeControllerLogs controller={serveDetails.controller_info} />
+            </Section>
+          </CollapsibleSection>
         </React.Fragment>
       )}
-      <CollapsibleSection
-        title="Logs"
-        startExpanded
-        className={classes.section}
-      >
-        <Section noTopPadding>
-          <ServeControllerLogs controller={serveDetails.controller_info} />
-        </Section>
-      </CollapsibleSection>
       <ServeMetricsSection className={classes.section} />
     </div>
   );

@@ -79,6 +79,15 @@ export const ServeApplicationDetailPage = () => {
   }
 
   const appName = application.name ? application.name : "-";
+  // Expand all deployments if there is only 1 deployment or
+  // there are less than 10 replicas across all deployments.
+  const deploymentsStartExpanded =
+    Object.keys(application.deployments).length === 1 ||
+    Object.values(application.deployments).reduce(
+      (acc, deployment) => acc + deployment.replicas.length,
+      0,
+    ) < 10;
+
   return (
     <div className={classes.root}>
       <MetadataSection
@@ -248,6 +257,7 @@ export const ServeApplicationDetailPage = () => {
                     key={deployment.name}
                     deployment={deployment}
                     application={application}
+                    startExpanded={deploymentsStartExpanded}
                   />
                 ))}
             </TableBody>
