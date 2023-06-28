@@ -7,7 +7,7 @@ import logging
 import math
 import pickle
 import random
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, Union
+from typing import Any, AsyncGenerator, Deque, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -220,8 +220,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # best-effort grab the metadata of requests waiting to be fulfilled. This is
         # currently used for scheduling tasks to know which multiplexed model IDs they
         # should be trying to get replicas for.
-        self._pending_requests_to_fulfill: deque[PendingRequest] = deque()
-        self._pending_requests_to_schedule: deque[PendingRequest] = deque()
+        self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
+        self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
     @property
     def num_pending_requests(self) -> int:
