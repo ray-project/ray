@@ -29,7 +29,11 @@ from ray.rllib.evaluation.worker_set import handle_remote_call_result_errors
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -310,6 +314,12 @@ class ApexDQNConfig(DQNConfig):
         super().validate()
 
 
+@Deprecated(
+    old="rllib/algorithms/apex_dqn/",
+    new="rllib_contrib/apex_dqn/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ApexDQN(DQN):
     @override(Trainable)
     def setup(self, config: AlgorithmConfig):
