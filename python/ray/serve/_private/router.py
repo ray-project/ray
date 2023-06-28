@@ -409,7 +409,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 pr.future.set_result(replica)
                 break
 
-    def _get_next_pending_request_to_schedule(self) -> Optional[RequestMetadata]:
+    def _get_next_pending_request_metadata_to_schedule(
+        self,
+    ) -> Optional[RequestMetadata]:
         while len(self._pending_requests_to_schedule) > 0:
             pr = self._pending_requests_to_schedule.popleft()
             if not pr.future.done():
@@ -430,8 +432,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
-                # TODO: comment.
-                request_metadata = self._get_next_pending_request_to_schedule()
+                request_metadata = self._get_next_pending_request_metadata_to_schedule()
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
