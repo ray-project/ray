@@ -2254,7 +2254,7 @@ class DeploymentStateManager:
         """
         return (
             len(self._deployment_states) == 0
-            and self.kv_store.get(CHECKPOINT_KEY) is None
+            and self._kv_store.get(CHECKPOINT_KEY) is None
         )
 
     def _save_checkpoint_func(

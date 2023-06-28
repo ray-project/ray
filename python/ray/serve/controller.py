@@ -16,7 +16,6 @@ from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentInfo,
     EndpointInfo,
     EndpointTag,
@@ -299,7 +298,6 @@ class ServeController:
             )
 
     async def run_control_loop(self) -> None:
-        logger.warning("Controller run_control_loop called.")
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
@@ -442,43 +440,6 @@ class ServeController:
                 )
         return http_config.root_url
 
-    def check_resources(self):
-        logger.warning("controller check_resources called")
-        kv_store_released = self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
-        logger.warning(f"kv_store_released: {kv_store_released}")
-        all_app_deleting = all(
-            [
-                _app.status == ApplicationStatus.DELETING
-                for _app in self.application_state_manager.list_app_statuses().values()
-            ]
-        )
-        logger.warning(f"all_app_deleting: {all_app_deleting}")
-        all_deployment_deleted = len(self.get_all_deployment_statuses()) == 0
-        logger.warning(f"all_deployment_deleted: {all_deployment_deleted}")
-        endpoint_deleted = self.endpoint_state.check_resource() is None
-        logger.warning(f"endpoint_deleted: {endpoint_deleted}")
-        http_shutdown = (self.http_state is None) or (self.http_state.is_shutdown())
-        logger.warning(f"http_shutdown: {http_shutdown}")
-
-        if (
-            kv_store_released
-            and all_app_deleting
-            and all_deployment_deleted
-            and endpoint_deleted
-            and http_shutdown
-        ):
-            _controller_actor = ray.get_actor(
-                self.controller_name, namespace=SERVE_NAMESPACE
-            )
-            ray.kill(_controller_actor, no_restart=True)
-
-        actor_name_and_state = [
-            (_actor["Name"], _actor["State"])
-            for _actor in ray._private.state.actors().values()
-        ]
-        logger.warning(f"actor_name_and_state: {actor_name_and_state}")
-        time.sleep(1)
-
     def config_checkpoint_deleted(self) -> bool:
         """Returns whether the config checkpoint has been deleted.
 
@@ -498,7 +459,7 @@ class ServeController:
         if not self._shutting_down:
             return
 
-        logger.warning("Controller shutdown called")
+        logger.warning("Controller shutdown started!")
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
@@ -506,7 +467,6 @@ class ServeController:
         if self.http_state:
             self.http_state.shutdown()
 
-        # TODO: complete the logic of shutdown
         config_checkpoint_deleted = self.config_checkpoint_deleted()
         application_is_shutdown = self.application_state_manager.is_shutdown()
         deployment_is_shutdown = self.deployment_state_manager.is_shutdown()
@@ -521,11 +481,33 @@ class ServeController:
             and endpoint_is_shutdown
             and http_state_is_shutdown
         ):
-            logger.warning("All resources are shutdown, controller shutdown completed")
+            logger.warning("All resources are shutdown, shutting down controller!")
             _controller_actor = ray.get_actor(
                 self.controller_name, namespace=SERVE_NAMESPACE
             )
             ray.kill(_controller_actor, no_restart=True)
+        else:
+            if not config_checkpoint_deleted:
+                logger.warning(
+                    f"{CONFIG_CHECKPOINT_KEY} not yet deleted",
+                    extra={"log_to_stderr": True},
+                )
+            if not application_is_shutdown:
+                logger.warning(
+                    "application not yet shutdown", extra={"log_to_stderr": True}
+                )
+            if not deployment_is_shutdown:
+                logger.warning(
+                    "deployment not yet shutdown", extra={"log_to_stderr": True}
+                )
+            if not endpoint_is_shutdown:
+                logger.warning(
+                    "endpoint not yet shutdown", extra={"log_to_stderr": True}
+                )
+            if not http_state_is_shutdown:
+                logger.warning(
+                    "http_state not yet shutdown", extra={"log_to_stderr": True}
+                )
 
     def deploy(
         self,
