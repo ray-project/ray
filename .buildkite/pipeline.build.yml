@@ -1,3 +1,5 @@
+#ci:group=Rebuild Ray tests
+
 - label: ":book: Lint"
   commands:
     - export LINT=1

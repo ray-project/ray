@@ -1,3 +1,5 @@
+#ci:group=Minimal dependency tests
+
 - label: ":book: LinkCheck"
   instance_size: small
   commands:
