@@ -1,6 +1,6 @@
 -r dl-cpu-requirements.txt
 
-aim==3.16.1
+aim==3.17.5
 
 # Requires decord which is unavailable for arm64
 gluoncv==0.10.5.post0; platform_machine != "arm64"
