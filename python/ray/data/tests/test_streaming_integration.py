@@ -113,7 +113,7 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
         return outputs
 
     assert get_outputs(c0.out) == list(range(0, 20, 2))
-    assert get_outputs(c1.out) == list(range(1, 21, 2))
+    assert get_outputs(c1.out) == list(range(1, 20, 2))
     assert len(c0.out) == 10, c0.out
     assert len(c1.out) == 10, c0.out
 
