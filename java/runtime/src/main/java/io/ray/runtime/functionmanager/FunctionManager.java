@@ -138,7 +138,7 @@ public class FunctionManager {
                   })
               .toArray(URL[]::new);
       classLoader = new URLClassLoader(urls);
-      LOGGER.debug("Resource loaded from path {}.", urls);
+      LOGGER.debug("Resource loaded from path {}.", (Object[]) (urls));
     }
 
     return new JobFunctionTable(classLoader);
