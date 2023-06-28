@@ -10,12 +10,13 @@ from ray.rllib.models.tf.tf_modelv2 import TFModelV2
 from ray.rllib.policy.rnn_sequencing import add_time_dimension
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.tf_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.util.debug import log_once
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -120,7 +121,7 @@ class RecurrentNetwork(TFModelV2):
         raise NotImplementedError("You must implement this for a RNN model")
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class LSTMWrapper(RecurrentNetwork):
     """An LSTM wrapper serving as an interface for ModelV2s that set use_lstm."""
 
@@ -132,7 +133,8 @@ class LSTMWrapper(RecurrentNetwork):
         model_config: ModelConfigDict,
         name: str,
     ):
-
+        if log_once("lstm_wrapper_tf"):
+            deprecation_warning(old="ray.rllib.models.tf.recurrent_net.LSTMWrapper")
         super(LSTMWrapper, self).__init__(
             obs_space, action_space, None, model_config, name
         )
