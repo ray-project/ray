@@ -428,21 +428,21 @@ def prep_ray_ml():
     ml_requirements_files = [
         "python/requirements/docker/ml-docker-requirements.txt",
         "python/requirements/docker/ray-docker-requirements.txt",
-        "python/requirements/air/core-requirements.txt",
-        "python/requirements/air/data-requirements.txt",
-        "python/requirements/air/dl-gpu-requirements.txt",
-        "python/requirements/air/dl-cpu-requirements.txt",
-        "python/requirements/air/tune-requirements.txt",
-        "python/requirements/air/tune-test-requirements.txt",
-        "python/requirements/air/rllib-requirements.txt",
-        "python/requirements/air/rllib-test-requirements.txt",
-        "python/requirements/air/train-requirements.txt",
-        "python/requirements/air/train-test-requirements.txt",
+        "python/requirements/ml/core-requirements.txt",
+        "python/requirements/ml/data-requirements.txt",
+        "python/requirements/ml/dl-gpu-requirements.txt",
+        "python/requirements/ml/dl-cpu-requirements.txt",
+        "python/requirements/ml/tune-requirements.txt",
+        "python/requirements/ml/tune-test-requirements.txt",
+        "python/requirements/ml/rllib-requirements.txt",
+        "python/requirements/ml/rllib-test-requirements.txt",
+        "python/requirements/ml/train-requirements.txt",
+        "python/requirements/ml/train-test-requirements.txt",
     ]
     # We don't need these in the ml docker image (or they are installed elsewhere)
     ignore_requirements = [
         "python/requirements/compat/requirements_legacy_compat.txt",
-        "python/requirements/air/data-test-requirements.txt",
+        "python/requirements/ml/data-test-requirements.txt",
     ]
 
     files_on_disk = glob.glob(
@@ -451,7 +451,7 @@ def prep_ray_ml():
     for file_on_disk in files_on_disk:
         rel = os.path.relpath(file_on_disk, start=root_dir)
         print(rel)
-        if not rel.startswith("python/requirements/air"):
+        if not rel.startswith("python/requirements/ml"):
             continue
         elif rel not in ml_requirements_files and rel not in ignore_requirements:
             raise RuntimeError(
