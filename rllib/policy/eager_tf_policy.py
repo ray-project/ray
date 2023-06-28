@@ -440,15 +440,20 @@ def _build_eager_tf_policy(
             # action).
             self._lock = threading.RLock()
 
-            # Auto-update model's inference view requirements, if recurrent.
-            self._update_model_view_requirements_from_init_state()
+            if self.config.get("_enable_rl_module_api", False):
+                # Maybe update view_requirements, e.g. for recurrent case.
+                self.view_requirements = self.model.update_default_view_requirements(
+                    self.view_requirements
+                )
+            else:
+                # Auto-update model's inference view requirements, if recurrent.
+                self._update_model_view_requirements_from_init_state()
+                # Combine view_requirements for Model and Policy.
+                self.view_requirements.update(self.model.view_requirements)
 
             self.exploration = self._create_exploration()
             self._state_inputs = self.model.get_initial_state()
             self._is_recurrent = len(self._state_inputs) > 0
-
-            # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)

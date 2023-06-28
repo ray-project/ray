@@ -1,9 +1,10 @@
-import gymnasium as gym
-from gymnasium.spaces import Discrete, MultiDiscrete
 import logging
+from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
-from typing import Any, Callable, List, Optional, Type, TYPE_CHECKING, Union
+from gymnasium.spaces import Discrete, MultiDiscrete
 
 from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf

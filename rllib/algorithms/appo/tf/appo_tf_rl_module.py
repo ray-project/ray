@@ -4,7 +4,7 @@ from ray.rllib.algorithms.appo.appo_learner import (
     OLD_ACTION_DIST_LOGITS_KEY,
 )
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
-from ray.rllib.core.models.base import ACTOR, CRITIC, STATE_IN
+from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
     RLModuleWithTargetNetworksInterface,
@@ -45,19 +45,8 @@ class APPOTfRLModule(PPOTfRLModule, RLModuleWithTargetNetworksInterface):
     @override(PPOTfRLModule)
     def _forward_train(self, batch: NestedDict):
         outs = super()._forward_train(batch)
-
-        # TODO (Artur): Remove this once Policy supports RNN
         batch = batch.copy()
-        if self.encoder.config.shared:
-            batch[STATE_IN] = None
-        else:
-            batch[STATE_IN] = {
-                ACTOR: None,
-                CRITIC: None,
-            }
-        batch[SampleBatch.SEQ_LENS] = None
         old_pi_inputs_encoded = self.old_encoder(batch)[ENCODER_OUT][ACTOR]
-
         old_action_dist_logits = tf.stop_gradient(self.old_pi(old_pi_inputs_encoded))
         outs[OLD_ACTION_DIST_LOGITS_KEY] = old_action_dist_logits
         return outs

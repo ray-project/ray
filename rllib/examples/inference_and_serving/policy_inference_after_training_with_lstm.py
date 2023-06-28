@@ -85,12 +85,9 @@ if __name__ == "__main__":
                 "lstm_use_prev_action": args.prev_action,
                 "lstm_use_prev_reward": args.prev_reward,
             },
-            # TODO (Kourosh): Enable when LSTMs are supported.
-            _enable_learner_api=False,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
-        .rl_module(_enable_rl_module_api=False)
     )
 
     stop = {
@@ -133,7 +130,10 @@ if __name__ == "__main__":
     # Set LSTM's initial internal state.
     lstm_cell_size = config["model"]["lstm_cell_size"]
     # range(2) b/c h- and c-states of the LSTM.
-    init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]
+    if algo.config._enable_rl_module_api:
+        init_state = state = algo.get_policy().model.get_initial_state()
+    else:
+        init_state = state = [np.zeros([lstm_cell_size], np.float32) for _ in range(2)]
     # Do we need prev-action/reward as part of the input?
     if args.prev_action:
         init_prev_a = prev_a = 0

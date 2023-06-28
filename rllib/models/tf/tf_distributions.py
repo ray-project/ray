@@ -227,7 +227,7 @@ class TfDiagGaussian(TfDistribution):
     @classmethod
     @override(Distribution)
     def from_logits(cls, logits: TensorType, **kwargs) -> "TfDiagGaussian":
-        loc, log_std = tf.split(logits, num_or_size_splits=2, axis=1)
+        loc, log_std = tf.split(logits, num_or_size_splits=2, axis=-1)
         scale = tf.math.exp(log_std)
         return TfDiagGaussian(loc=loc, scale=scale)
 

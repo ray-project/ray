@@ -1,10 +1,12 @@
 import abc
 from typing import List, Optional, Tuple, Union
 
+
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.policy.rnn_sequencing import get_fold_unfold_fns
+from ray.rllib.utils.annotations import ExperimentalAPI, DeveloperAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import TensorType
 
@@ -429,3 +431,27 @@ class StatefulActorCriticEncoder(Encoder):
             }
 
         return outputs
+
+
+@DeveloperAPI
+def tokenize(tokenizer: Encoder, inputs: dict, framework: str) -> dict:
+    """Tokenizes the observations from the input dict.
+
+    Args:
+        tokenizer: The tokenizer to use.
+        inputs: The input dict.
+
+    Returns:
+        The output dict.
+    """
+    # Tokenizer may depend solely on observations.
+    obs = inputs[SampleBatch.OBS]
+    tokenizer_inputs = {SampleBatch.OBS: obs}
+    size = list(obs.size() if framework == "torch" else obs.shape)
+    b_dim, t_dim = size[:2]
+    fold, unfold = get_fold_unfold_fns(b_dim, t_dim, framework=framework)
+    # Push through the tokenizer encoder.
+    out = tokenizer(fold(tokenizer_inputs))
+    out = out[ENCODER_OUT]
+    # Then unfold batch- and time-dimensions again.
+    return unfold(out)
