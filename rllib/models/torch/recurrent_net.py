@@ -15,13 +15,13 @@ from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.torch_utils import flatten_inputs_to_1d_tensor, one_hot
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.util.debug import log_once
 
 torch, nn = try_import_torch()
 
 
-@Deprecated(error=False)
+@DeveloperAPI
 class RecurrentNetwork(TorchModelV2):
     """Helper class to simplify implementing RNN models with TorchModelV2.
 
@@ -76,6 +76,14 @@ class RecurrentNetwork(TorchModelV2):
         """Adds time dimension to batch before sending inputs to forward_rnn().
 
         You should implement forward_rnn() in your subclass."""
+        # Creating a __init__ function that acts as a passthrough and adding the warning
+        # there led to errors probably due to the multiple inheritance. We encountered
+        # the same error if we add the Deprecated decorator. We therefore add the
+        # deprecation warning here.
+        if log_once("recurrent_network_tf"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.recurrent_net.RecurrentNetwork"
+            )
         flat_inputs = input_dict["obs_flat"].float()
         # Note that max_seq_len != input_dict.max_seq_len != seq_lens.max()
         # as input_dict may have extra zero-padding beyond seq_lens.max().
