@@ -64,5 +64,5 @@ WORKDIR /ray
 # Below should be re-run each time
 COPY . .
 
-RUN ./ci/ci.sh compile_pip_dependencies && pip uninstall -y torch
 RUN ./ci/env/install-dependencies.sh init
+RUN bash --login -i ./ci/ci.sh compile_pip_dependencies && python -m pip uninstall -y torch
