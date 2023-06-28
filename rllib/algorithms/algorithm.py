@@ -2227,17 +2227,13 @@ class Algorithm(Trainable):
             # time as gpus
             if cf.num_gpus_per_learner_worker:
                 learner_bundles = [
-                    {
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                    for _ in range(cf.num_learner_workers)
+                    {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
                 ]
             elif cf.num_cpus_per_learner_worker:
                 learner_bundles = [
                     {
-                        "CPU": cf.num_cpus_per_learner_worker,
+                        "CPU": cf.num_cpus_per_learner_worker * cf.num_learner_workers,
                     }
-                    for _ in range(cf.num_learner_workers)
                 ]
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles

@@ -842,29 +842,40 @@ class Impala(Algorithm):
             if cf.num_learner_workers == 0:
                 # if num_learner_workers is 0, then we need to allocate one gpu if
                 # num_gpus_per_learner_worker is greater than 0.
-                trainer_bundle = [
+                learner_bundles = [
                     {
                         "CPU": cf.num_cpus_per_learner_worker,
                         "GPU": cf.num_gpus_per_learner_worker,
                     }
                 ]
             else:
+                # if cf.num_gpus_per_learner_worker:
+                #     trainer_bundle = [
+                #         {
+                #             "GPU": cf.num_gpus_per_learner_worker,
+                #         }
+                #         for _ in range(cf.num_learner_workers)
+                #     ]
+                # elif cf.num_cpus_per_learner_worker:
+                #     trainer_bundle = [
+                #         {
+                #             "CPU": cf.num_cpus_per_learner_worker,
+                #         }
+                #         for _ in range(cf.num_learner_workers)
+                # ]
                 if cf.num_gpus_per_learner_worker:
-                    trainer_bundle = [
-                        {
-                            "GPU": cf.num_gpus_per_learner_worker,
-                        }
-                        for _ in range(cf.num_learner_workers)
+                    learner_bundles = [
+                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
                     ]
                 elif cf.num_cpus_per_learner_worker:
-                    trainer_bundle = [
+                    learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner_worker,
+                            "CPU": cf.num_cpus_per_learner_worker
+                            * cf.num_learner_workers,
                         }
-                        for _ in range(cf.num_learner_workers)
                     ]
 
-            bundles += trainer_bundle
+            bundles += learner_bundles
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
