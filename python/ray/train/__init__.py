@@ -6,6 +6,7 @@ from ray.train._internal import session as context
 from ray.train.trainer import TrainingIterator
 
 from ray.air.config import RunConfig, ScalingConfig
+from ray.air.result import Result
 
 usage_lib.record_library_usage("train")
 
@@ -15,6 +16,7 @@ __all__ = [
     "DataConfig",
     "RunConfig",
     "ScalingConfig",
+    "Result",
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]
