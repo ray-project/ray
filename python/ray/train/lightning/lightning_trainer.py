@@ -450,9 +450,18 @@ class LightningTrainer(TorchTrainer):
 
         # Auto-fill the AIR CheckpointConfig if the user didn't specify it.
         if air_ckpt_config == CheckpointConfig():
+            # save_tok_k = 1 -> num_to_keep = 1     : Lightning saves 1 ckpt by default
+            # save_top_k = 0 -> num_to_keep = 1     : AIR saves at least 1 ckpt
+            # save_top_k = -1 -> num_to_keep = None : Save all ckpts
+
             save_top_k = ptl_ckpt_config.get("save_top_k", 1)
+            if save_top_k == -1:
+                num_to_keep = None
+            else:
+                num_to_keep = max(save_top_k, 1)
+
             return CheckpointConfig(
-                num_to_keep=None if save_top_k == -1 else save_top_k,
+                num_to_keep=num_to_keep,
                 checkpoint_score_attribute=ptl_ckpt_config.get("monitor", None),
                 checkpoint_score_order=ptl_ckpt_config.get("mode", "min"),
             )
