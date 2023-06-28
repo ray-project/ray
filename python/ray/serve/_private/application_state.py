@@ -18,7 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve.schema import DeploymentDetails
 import time
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.utils import check_obj_ref_ready_nowait
@@ -335,17 +335,17 @@ class ApplicationState:
         if check_obj_ref_ready_nowait(self._deploy_obj_ref):
             deploy_obj_ref, self._deploy_obj_ref = self._deploy_obj_ref, None
             try:
-                err = ray.get(deploy_obj_ref)
-                if err is None:
-                    logger.info(f"Deploy task for app '{self._name}' ran successfully.")
-                    return BuildAppStatus.SUCCEEDED, ""
-                else:
-                    error_msg = (
-                        f"Deploying app '{self._name}' failed with "
-                        f"exception:\n{err}"
-                    )
-                    logger.warning(error_msg)
-                    return BuildAppStatus.FAILED, error_msg
+                ray.get(deploy_obj_ref)
+                logger.info(f"Deploy task for app '{self._name}' ran successfully.")
+                return BuildAppStatus.SUCCEEDED, ""
+            except RayTaskError as e:
+                # NOTE(zcin): we should use str(e) instead of traceback.format_exc()
+                # here because the full details of the error is not displayed
+                # properly with traceback.format_exc(). RayTaskError has its own
+                # custom __str__ function.
+                error_msg = f"Deploying app '{self._name}' failed:\n{str(e)}"
+                logger.warning(error_msg)
+                return BuildAppStatus.FAILED, error_msg
             except RuntimeEnvSetupError:
                 error_msg = (
                     f"Runtime env setup for app '{self._name}' failed:\n"
