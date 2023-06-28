@@ -496,7 +496,10 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -697,9 +700,12 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
   stable: false
 
   cluster:
+    byod:
+      type: gpu
     cluster_env: app_config.yaml
     cluster_compute: compute_gpu_4x4_aws.yaml
 
@@ -835,7 +841,10 @@
 
   frequency: weekly
   team: ml
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
     cluster_env: dreambooth_env.yaml
     cluster_compute: dreambooth_compute_aws.yaml
 
@@ -888,6 +897,12 @@
   frequency: weekly
   team: ml
   cluster:
+    byod:
+      type: cu118
+      pip:
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
     cluster_env: dolly_v2_fsdp_env.yaml
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -3531,7 +3546,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
+      post_build_script: byod_alpa_test.sh
     cluster_env: app_config.yaml
     cluster_compute: gpu_2x4_t4_aws.yaml
 
@@ -3565,7 +3584,11 @@
 
   frequency: nightly
   team: ml
+  python: "3.8"
   cluster:
+    byod: 
+      type: gpu
+      post_build_script: byod_alpa_test.sh
     cluster_env: app_config.yaml
     cluster_compute: gpu_1x8_v100_aws.yaml
 
@@ -4954,7 +4977,12 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      post_build_script: byod_dask_test.sh
     cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
@@ -4981,6 +5009,10 @@
   team: data
   python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      post_build_script: byod_dask_test.sh
     cluster_env: dask_on_ray/large_scale_dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
@@ -5269,6 +5301,10 @@
   team: core
   python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_memory_usage_threshold=0.7
+        - RAY_task_oom_retries=-1
     cluster_env: oom/stress_tests_tune_air_oom_app_config.yaml
     cluster_compute: oom/stress_tests_tune_air_oom_compute.yaml
 
@@ -5283,7 +5319,12 @@
 
   frequency: nightly-3x
   team: core
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      post_build_script: byod_dask_test.sh
     cluster_env: dask_on_ray/dask_on_ray_app_config.yaml
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
@@ -6428,7 +6469,12 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_lineage_pinning_enabled=1
+      post_build_script: byod_dask_test.sh
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
 
@@ -6455,7 +6501,12 @@
 
   frequency: nightly
   team: data
+  python: "3.8"
   cluster:
+    byod:
+      runtime_env:
+        - RAY_lineage_pinning_enabled=1
+      post_build_script: byod_dask_test.sh
     cluster_env: chaos_test/dask_on_ray_app_config_reconstruction.yaml
     cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
 
@@ -6699,11 +6750,10 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  stable: true
-
   frequency: nightly
   team: core
   cluster:
+    byod: {}
     cluster_env: aws/tests/aws_config.yaml
     cluster_compute: aws/tests/aws_compute.yaml
 
