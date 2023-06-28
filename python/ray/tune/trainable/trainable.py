@@ -10,7 +10,6 @@ import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
-import warnings
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
@@ -52,7 +51,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
