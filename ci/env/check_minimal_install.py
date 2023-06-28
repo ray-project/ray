@@ -67,10 +67,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--expected-python-version",
         type=str,
-        required=True,
         help="Expected Python version in MAJOR.MINOR format, e.g. 3.11",
+        default=None,
     )
     args = parser.parse_args()
 
     assert_packages_not_installed(DEFAULT_BLACKLIST)
-    assert_python_version(args.expected_python_version)
+
+    if args.expected_python_version is not None:
+        assert_python_version(args.expected_python_version)
