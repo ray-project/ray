@@ -111,17 +111,22 @@ class ActorReplicaWrapper:
         return self.replica_info.replica_tag
 
     async def get_queue_state(self) -> Tuple[str, int, bool]:
-        queue_len = (
-            await self.actor_handle.get_num_ongoing_requests.remote()
-        )
+        queue_len = await self.actor_handle.get_num_ongoing_requests.remote()
         accepted = queue_len < self.replica_info.max_concurrent_queries
         return self.replica_id, queue_len, accepted
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
+        """Send the query to a Java replica.
+
+        Does not currently support streaming.
+        """
         if query.metadata.is_streaming:
             raise RuntimeError("Streaming not supported for Java.")
 
+        # Java only supports a single argument.
         arg = query.args[0]
+
+        # Convert HTTP requests to Java-accepted format (single string).
         if query.metadata.is_http_request:
             assert isinstance(arg, bytes)
             loaded_http_input = pickle.loads(arg)
@@ -130,13 +135,17 @@ class ActorReplicaWrapper:
                 arg = query_string.decode().split("=", 1)[1]
             elif loaded_http_input.body:
                 arg = loaded_http_input.body.decode()
+
+        # Default call method in java is "call," not "__call__" like Python.
+        call_method = query.metadata.call_method
+        if call_method == "__call__":
+            call_method = "call"
+
         return self.actor_handle.handle_request.remote(
             RequestMetadataProto(
                 request_id=query.metadata.request_id,
                 endpoint=query.metadata.endpoint,
-                call_method=query.metadata.call_method
-                if query.metadata.call_method != "__call__"
-                else "call",
+                call_method=call_method,
             ).SerializeToString(),
             [arg],
         )
@@ -144,6 +153,7 @@ class ActorReplicaWrapper:
     def _send_query_python(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Send the query to a Python replica."""
         if query.metadata.is_streaming:
             obj_ref = self.actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
