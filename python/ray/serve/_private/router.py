@@ -101,31 +101,67 @@ class ActorReplicaWrapper:
     def __init__(self, replica_info: RunningReplicaInfo):
         self.replica_info = replica_info
 
+        if replica_info.is_cross_language:
+            self.actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
+        else:
+            self.actor_handle = replica_info.actor_handle
+
     @property
     def replica_id(self) -> str:
         return self.replica_info.replica_tag
 
     async def get_queue_state(self) -> Tuple[str, int, bool]:
         queue_len = (
-            await self.replica_info.actor_handle.get_num_ongoing_requests.remote()
+            await self.actor_handle.get_num_ongoing_requests.remote()
         )
         accepted = queue_len < self.replica_info.max_concurrent_queries
         return self.replica_id, queue_len, accepted
 
-    def send_query(
+    def _send_query_java(self, query: Query) -> ray.ObjectRef:
+        if query.metadata.is_streaming:
+            raise RuntimeError("Streaming not supported for Java.")
+
+        arg = query.args[0]
+        if query.metadata.is_http_request:
+            assert isinstance(arg, bytes)
+            loaded_http_input = pickle.loads(arg)
+            query_string = loaded_http_input.scope.get("query_string")
+            if query_string:
+                arg = query_string.decode().split("=", 1)[1]
+            elif loaded_http_input.body:
+                arg = loaded_http_input.body.decode()
+        return self.actor_handle.handle_request.remote(
+            RequestMetadataProto(
+                request_id=query.metadata.request_id,
+                endpoint=query.metadata.endpoint,
+                call_method=query.metadata.call_method
+                if query.metadata.call_method != "__call__"
+                else "call",
+            ).SerializeToString(),
+            [arg],
+        )
+
+    def _send_query_python(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
-        actor = self.replica_info.actor_handle
         if query.metadata.is_streaming:
-            obj_ref = actor.handle_request_streaming.options(
+            obj_ref = self.actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
             ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
         else:
-            _, obj_ref = actor.handle_request.remote(
+            _, obj_ref = self.actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs
             )
 
         return obj_ref
+
+    def send_query(
+        self, query: Query
+    ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        if self.replica_info.is_cross_language:
+            return self._send_query_java(query)
+        else:
+            return self._send_query_python(query)
 
 
 class ReplicaScheduler(ABC):
