@@ -741,8 +741,10 @@ class HTTPProxyActor:
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
-
-        http_middlewares = [Middleware(RequestIdMiddleware)]
+        if http_middlewares is None:
+            http_middlewares = [Middleware(RequestIdMiddleware)]
+        else:
+            http_middlewares.append(Middleware(RequestIdMiddleware))
 
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
