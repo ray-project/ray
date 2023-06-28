@@ -10,7 +10,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=1,
-        title="Deployments",
+        title="Replicas per deployment",
         description='Number of replicas per deployment. Ignores "Route" variable.',
         unit="replicas",
         targets=[
