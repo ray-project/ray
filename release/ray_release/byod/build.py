@@ -174,7 +174,7 @@ def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
     """
     if os.environ.get("BYOD_NO_CACHE", False):
         return False
-    client = boto3.client("ecr")
+    client = boto3.client("ecr", region_name="us-west-2")
     image_tag = (
         test.get_byod_base_image_tag() if base_image else test.get_byod_image_tag()
     )
