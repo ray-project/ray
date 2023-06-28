@@ -716,13 +716,12 @@ class RequestIdMiddleware:
 
     async def __call__(self, scope, receive, send):
         async def send_with_request_id(message: Dict):
-            if (
-                message["type"] == "http.response.start"
-                or message["type"] == "websocket.accept"
-            ):
-                request_id = ray.serve.context._serve_request_context.get().request_id
+            request_id = ray.serve.context._serve_request_context.get().request_id
+            if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
                 headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+            if message["type"] == "websocket.accept":
+                message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)
