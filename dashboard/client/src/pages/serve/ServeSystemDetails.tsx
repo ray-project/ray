@@ -8,26 +8,33 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { Pagination } from "@material-ui/lab";
+import _ from "lodash";
 import React, { ReactElement } from "react";
-import { RiErrorWarningFill } from "react-icons/ri";
-import { CollapsibleSection } from "../../common/CollapsibleSection";
+import Loading from "../../components/Loading";
 import { MetadataSection } from "../../components/MetadataSection";
+import { StatusChip, StatusChipProps } from "../../components/StatusChip";
 import { HelpInfo } from "../../components/Tooltip";
-import { ServeApplicationsRsp, ServeHttpProxy } from "../../type/serve";
+import {
+  ServeApplication,
+  ServeApplicationsRsp,
+  ServeHttpProxy,
+} from "../../type/serve";
+import { useFetchActor } from "../actor/hook/useActorDetail";
+import { LinkWithArrow } from "../overview/cards/OverviewCard";
+import { convertActorStateForServeController } from "./ServeSystemActorDetailPage";
 import { ServeControllerRow, ServeHttpProxyRow } from "./ServeSystemDetailRows";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
     table: {},
+    title: {
+      marginBottom: theme.spacing(2),
+    },
     helpInfo: {
       marginLeft: theme.spacing(1),
-    },
-    errorIcon: {
-      color: theme.palette.error.main,
-      width: 20,
-      height: 20,
     },
   }),
 );
@@ -60,18 +67,11 @@ export const ServeSystemDetails = ({
 }: ServeSystemDetailsProps) => {
   const classes = useStyles();
 
-  const isUnhealthy = httpProxies.some(({ status }) => status === "UNHEALTHY");
-
   return (
-    <CollapsibleSection
-      title="System"
-      startExpanded
-      icon={
-        isUnhealthy ? (
-          <RiErrorWarningFill className={classes.errorIcon} />
-        ) : undefined
-      }
-    >
+    <div>
+      <Typography variant="h3" className={classes.title}>
+        System
+      </Typography>
       {serveDetails.http_options && (
         <MetadataSection
           metadataList={[
@@ -147,6 +147,106 @@ export const ServeSystemDetails = ({
           </TableBody>
         </Table>
       </TableContainer>
-    </CollapsibleSection>
+    </div>
+  );
+};
+
+type ServeSystemPreviewProps = {
+  serveDetails: ServeDetails;
+  httpProxies: ServeHttpProxy[];
+  allApplications: ServeApplication[];
+};
+
+export const ServeSystemPreview = ({
+  serveDetails,
+  httpProxies,
+  allApplications,
+}: ServeSystemPreviewProps) => {
+  const { data: controllerActor } = useFetchActor(
+    serveDetails.controller_info.actor_id,
+  );
+
+  if (!controllerActor) {
+    return <Loading loading />;
+  }
+
+  return (
+    <div>
+      <MetadataSection
+        metadataList={[
+          {
+            label: "Controller status",
+            content: (
+              <StatusChip
+                type="serveController"
+                status={convertActorStateForServeController(
+                  controllerActor.state,
+                )}
+              />
+            ),
+          },
+          {
+            label: "HTTP Proxy status",
+            content: (
+              <StatusCountChips
+                elements={httpProxies}
+                statusKey="status"
+                type="serveHttpProxy"
+              />
+            ),
+          },
+          {
+            label: "Application status",
+            content: (
+              <StatusCountChips
+                elements={allApplications}
+                statusKey="status"
+                type="serveApplication"
+              />
+            ),
+          },
+        ]}
+        footer={
+          <LinkWithArrow
+            text="View system status and configuration"
+            to="system"
+          />
+        }
+      />
+    </div>
+  );
+};
+
+type StatusCountChipsProps<T> = {
+  elements: T[];
+  statusKey: keyof T;
+  type: StatusChipProps["type"];
+};
+
+const StatusCountChips = <T,>({
+  elements,
+  statusKey,
+  type,
+}: StatusCountChipsProps<T>) => {
+  const statusCounts = _.mapValues(
+    _.groupBy(elements, statusKey),
+    (group) => group.length,
+  );
+
+  return (
+    <Box display="inline-flex" gridGap={8} flexWrap="wrap">
+      {_.orderBy(
+        Object.entries(statusCounts),
+        ([, count]) => count,
+        "desc",
+      ).map(([status, count]) => (
+        <StatusChip
+          key={status}
+          status={status}
+          type={type}
+          suffix={<React.Fragment>&nbsp;{`x ${count}`}</React.Fragment>}
+        />
+      ))}
+    </Box>
   );
 };

@@ -8,7 +8,7 @@ import {
   ServeSystemActorStatus,
 } from "../../type/serve";
 import { TEST_APP_WRAPPER } from "../../util/test-utils";
-import { ServeApplicationsListPage } from "./ServeApplicationsListPage";
+import { ServeSystemDetailPage } from "./ServeSystemDetailPage";
 
 jest.mock("../../service/actor");
 jest.mock("../../service/serve");
@@ -16,9 +16,9 @@ jest.mock("../../service/serve");
 const mockGetServeApplications = jest.mocked(getServeApplications);
 const mockGetActor = jest.mocked(getActor);
 
-describe("ServeApplicationsListPage", () => {
+describe("ServeSystemDetailPage", () => {
   it("renders list", async () => {
-    expect.assertions(5);
+    expect.assertions(7);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({
@@ -78,17 +78,19 @@ describe("ServeApplicationsListPage", () => {
       },
     } as any);
 
-    render(<ServeApplicationsListPage />, { wrapper: TEST_APP_WRAPPER });
-    await screen.findByText("Application status");
+    render(<ServeSystemDetailPage />, { wrapper: TEST_APP_WRAPPER });
 
-    // First row
-    expect(screen.getByText("home")).toBeVisible();
-    expect(screen.getByText("/")).toBeVisible();
+    await screen.findByText("System");
+    expect(screen.getByText("System")).toBeVisible();
+    expect(screen.getByText("1.2.3.4")).toBeVisible();
+    expect(screen.getByText("8000")).toBeVisible();
 
-    // Second row
-    expect(screen.getByText("second-app")).toBeVisible();
-    expect(screen.getByText("/second-app")).toBeVisible();
+    // HTTP Proxy row
+    expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
+    expect(screen.getByText("STARTING")).toBeVisible();
 
-    expect(screen.getByText("Metrics")).toBeVisible();
+    // Serve Controller row
+    expect(screen.getByText("Serve Controller")).toBeVisible();
+    expect(screen.getByText("HEALTHY")).toBeVisible();
   });
 });
