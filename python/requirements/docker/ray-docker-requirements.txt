@@ -1,3 +1,12 @@
 # Todo: Fix conflicts with pinned boto3/botocore
 # awscli
 gsutil
+
+# Requirements that are shipped in the ML docker image.
+ipython
+
+# Needed for rich visualization for Ray Train and Ray Data.
+ipywidgets>=8
+
+# Needed for Ray Client error message serialization/deserialization.
+tblib

@@ -7,7 +7,6 @@ COPY requirements.txt ./
 COPY dl-cpu-requirements.txt ./
 COPY dl-gpu-requirements.txt ./
 COPY ray-docker-requirements.txt ./
-COPY ml-docker-requirements.txt ./
 COPY core-requirements.txt ./
 COPY data-requirements.txt ./
 COPY rllib-requirements.txt ./
@@ -43,8 +42,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -r train-test-requirements.txt \
            -r tune-requirements.txt \
            -r tune-test-requirements.txt \
-           -r ray-docker-requirements.txt \
-           -r ml-docker-requirements.txt
+           -r ray-docker-requirements.txt
 
 # explicitly install (overwrite) pytorch with CUDA support
 RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U \

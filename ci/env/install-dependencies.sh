@@ -313,6 +313,37 @@ retry_pip_install() {
   fi
 }
 
+compile_ray_requirements() {
+  # Compile boundaries
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
+  pip install pip-tools
+
+  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+    echo requirements_compiled already exists
+  else
+    pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
+      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
+      "${WORKSPACE_DIR}/python/requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+  fi
+
+  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+}
+
 install_pip_packages() {
   # Install modules needed in all jobs.
   # shellcheck disable=SC2262
@@ -435,6 +466,10 @@ install_pip_packages() {
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
         requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
       fi
+
+      # Todo: Move this. We currently have it here because some torch-subpackages need
+      # torch to be installed.
+      compile_ray_requirements
   fi
 
   # AIR core dependencies
