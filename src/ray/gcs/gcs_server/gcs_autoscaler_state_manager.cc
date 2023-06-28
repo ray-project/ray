@@ -175,41 +175,52 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
-  auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info,
-                                 rpc::autoscaler::NodeStatus status) {
+  auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
     node_state_proto->set_ray_node_type_name(gcs_node_info.node_type_name());
     node_state_proto->set_node_state_version(last_cluster_resource_state_version_);
-    node_state_proto->set_status(status);
 
-    if (status == rpc::autoscaler::RUNNING) {
-      auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
-          scheduling::NodeID(node_state_proto->node_id()));
+    if (gcs_node_info.state() == rpc::GcsNodeInfo::DEAD) {
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
+      // We don't need populate other info for a dead node.
+      return;
+    }
 
-      // Copy resource available
-      const auto &available = node_resource_data.available.ToResourceMap();
-      node_state_proto->mutable_available_resources()->insert(available.begin(),
-                                                              available.end());
+    // THe node is alive. We need to check if the node is idle.
+    auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
+        scheduling::NodeID(node_state_proto->node_id()));
+    if (node_resource_data.idle_resource_duration_ms > 0) {
+      // The node is idle.
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::IDLE);
+      node_state_proto->set_idle_duration_ms(
+          node_resource_data.idle_resource_duration_ms);
+    } else {
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
+    }
 
-      // Copy total resources
-      const auto &total = node_resource_data.total.ToResourceMap();
-      node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+    // Copy resource available
+    const auto &available = node_resource_data.available.ToResourceMap();
+    node_state_proto->mutable_available_resources()->insert(available.begin(),
+                                                            available.end());
 
-      // Add dynamic PG labels.
-      const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
-          NodeID::FromBinary(gcs_node_info.node_id()));
-      for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
-        node_state_proto->mutable_dynamic_labels()->insert(
-            {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
-      }
+    // Copy total resources
+    const auto &total = node_resource_data.total.ToResourceMap();
+    node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+
+    // Add dynamic PG labels.
+    const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
+        NodeID::FromBinary(gcs_node_info.node_id()));
+    for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
+      node_state_proto->mutable_dynamic_labels()->insert(
+          {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
     }
   };
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   std::for_each(alive_nodes.begin(), alive_nodes.end(), [&](const auto &gcs_node_info) {
-    populate_node_state(*gcs_node_info.second, rpc::autoscaler::RUNNING);
+    populate_node_state(*gcs_node_info.second);
   });
 
   // This might be large if there are many nodes for a long-running cluster.
@@ -219,7 +230,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
   // https://github.com/ray-project/ray/issues/35874
   const auto &dead_nodes = gcs_node_manager_.GetAllDeadNodes();
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
-    populate_node_state(*gcs_node_info.second, rpc::autoscaler::DEAD);
+    populate_node_state(*gcs_node_info.second);
   });
 }
 

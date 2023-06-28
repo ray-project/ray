@@ -123,9 +123,8 @@ message NodeState {
   // The status of the node.
   NodeStatus status = 8;
 
-  // The time since the last status change of the node, i.e. how long
-  // the node has been in the current status.
-  int64 time_since_last_status_change_ms = 9;
+  // The time in ms since the node is idle.
+  int64 idle_duration_ms = 9;
 }
 
 // ============= Autoscaling State Service API =======================

@@ -204,6 +204,7 @@ struct Mocker {
     node->set_node_manager_address(address);
     node->set_node_name(node_name);
     node->set_instance_id("instance_x");
+    node->set_state(rpc::GcsNodeInfo::ALIVE);
     return node;
   }
 
@@ -311,7 +312,8 @@ struct Mocker {
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
-      bool available_resources_changed) {
+      bool available_resources_changed,
+      int64_t idle_ms = 0) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -320,6 +322,7 @@ struct Mocker {
       (*resources_data.mutable_resources_total())[resource.first] = resource.second;
     }
     resources_data.set_resources_available_changed(available_resources_changed);
+    resources_data.set_idle_duration_ms(idle_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,
