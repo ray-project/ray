@@ -163,7 +163,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param node_id The id of the current node.
   /// \param node_address The address of the current node.
-  /// \param num_workers_soft_limit The soft limit of the number of workers.
   /// \param num_prestarted_python_workers The number of prestarted Python
   /// workers.
   /// \param maximum_startup_concurrency The maximum number of worker processes
@@ -187,7 +186,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   WorkerPool(instrumented_io_context &io_service,
              const NodeID node_id,
              const std::string node_address,
-             int num_workers_soft_limit,
+             const std::function<int64_t()> &get_num_cpus_available,
              int num_prestarted_python_workers,
              int maximum_startup_concurrency,
              int min_worker_port,
@@ -350,11 +349,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \param task_spec The returned worker must be able to execute this task.
   /// \param backlog_size The number of tasks in the client backlog of this shape.
-  /// \param num_available_cpus The number of CPUs that are currently unused.
   /// We aim to prestart 1 worker per CPU, up to the the backlog size.
-  void PrestartWorkers(const TaskSpecification &task_spec,
-                       int64_t backlog_size,
-                       int64_t num_available_cpus);
+  void PrestartWorkers(const TaskSpecification &task_spec, int64_t backlog_size);
 
   /// Try to prestart a number of CPU workers with the given language.
   ///
@@ -449,6 +445,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Look up worker's dynamic options by startup token.
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
+
+  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
@@ -704,8 +702,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const NodeID node_id_;
   /// Address of the current node.
   const std::string node_address_;
-  /// The soft limit of the number of registered workers.
-  int num_workers_soft_limit_;
+  /// A callback to get the number of CPUs available. We use this to determine
+  /// how many idle workers to keep around.
+  std::function<int64_t()> get_num_cpus_available_;
   /// The maximum number of worker processes that can be started concurrently.
   int maximum_startup_concurrency_;
   /// Keeps track of unused ports that newly-created workers can bind on.
@@ -743,11 +742,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
-
-  /// This map stores the same data as `idle_of_all_languages_`, but in a map structure
-  /// for lookup performance.
-  absl::flat_hash_map<std::shared_ptr<WorkerInterface>, int64_t>
-      idle_of_all_languages_map_;
 
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
