@@ -28,7 +28,7 @@ ModuleID = str
 class MultiAgentRLModule(RLModule):
     """Base class for multi-agent RLModules.
 
-    This class holds a mapping from module_ids to the underlying RLModules. It provides
+    This class holds a mapping from module_ids to the underlying RLModules. It provide
     a convenient way of accessing each individual module, as well as accessing all of
     them with only one API call. Whether or not a given module is trainable is
     determined by the caller of this class (not the instance of this class itself).
