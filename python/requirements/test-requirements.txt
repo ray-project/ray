@@ -80,7 +80,7 @@ xlrd==2.0.1
 memray; platform_system != "Windows" and sys_platform != "darwin"
 
 # For doc tests
-myst-parser==0.15.2
+myst-parser==0.18.1
 myst-nb==0.17.2
 sphinx==4.3.2
 jupytext==1.13.6
