@@ -44,16 +44,9 @@ parts:
       - file: ray-air/getting-started
         title: "Ray AI Runtime (AIR)"
         sections:
-          - file: ray-air/key-concepts
           - file: ray-air/user-guides
             sections:
-              - file: ray-air/preprocessors
-              - file: ray-air/trainers
-              - file: ray-air/check-ingest
-              - file: ray-air/tuner
-              - file: ray-air/predictors
               - file: ray-air/computer-vision
-              - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
               - file: ray-air/experimental-features
           - file: ray-air/examples/index
@@ -85,7 +78,6 @@ parts:
               - file: ray-air/examples/gptj_serving
               - file: ray-air/examples/dreambooth_finetuning
               - file: ray-air/examples/dolly_lightning_fsdp_finetuning
-          - file: ray-air/api/api
           - file: ray-air/benchmarks
 
       - file: data/data
@@ -118,6 +110,11 @@ parts:
                 title: "XGBoost/LightGBM guide"
               - file: train/architecture
                 title: "Ray Train Architecture"
+              - file: train/train-with-tune
+                title: "Using Ray Train with Ray Tune"
+              - file: train/check-ingest
+                title: "Configuring Training Datasets"
+              - file: train/predictors
           - file: train/examples
             title: "Examples"
             sections:
@@ -284,6 +281,7 @@ parts:
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
+              - file: serve/advanced-guides/from-predictor
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
