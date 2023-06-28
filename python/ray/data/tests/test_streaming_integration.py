@@ -103,6 +103,17 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     c1.start()
     c0.join()
     c1.join()
+
+    def get_outputs(out: List[RefBundle]):
+        outputs = []
+        for bundle in out:
+            for block, _ in bundle.blocks:
+                ids: pd.Series = ray.get(block)["id"]
+                outputs.extend(ids.values)
+        return outputs
+
+    assert get_outputs(c0.out) == list(range(0, 20, 2))
+    assert get_outputs(c1.out) == list(range(1, 21, 2))
     assert len(c0.out) == 10, c0.out
     assert len(c1.out) == 10, c0.out
 
