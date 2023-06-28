@@ -508,7 +508,20 @@ class ServeController:
 
         # TODO: complete the logic of shutdown
         config_checkpoint_deleted = self.config_checkpoint_deleted()
-        if config_checkpoint_deleted:
+        application_is_shutdown = self.application_state_manager.is_shutdown()
+        deployment_is_shutdown = self.deployment_state_manager.is_shutdown()
+        endpoint_is_shutdown = self.endpoint_state.is_shutdown()
+        http_state_is_shutdown = (
+            self.http_state is None or self.http_state.is_shutdown()
+        )
+        if (
+            config_checkpoint_deleted
+            and application_is_shutdown
+            and deployment_is_shutdown
+            and endpoint_is_shutdown
+            and http_state_is_shutdown
+        ):
+            logger.warning("All resources are shutdown, controller shutdown completed")
             _controller_actor = ray.get_actor(
                 self.controller_name, namespace=SERVE_NAMESPACE
             )

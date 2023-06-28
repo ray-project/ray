@@ -34,6 +34,14 @@ class EndpointState:
     def shutdown(self):
         self._kv_store.delete(CHECKPOINT_KEY)
 
+    def is_shutdown(self) -> bool:
+        """Returns whether the endpoint checkpoint has been deleted.
+
+        Get the endpoint checkpoint from the kv store. If it is None, then it has been
+        deleted.
+        """
+        self._kv_store.delete(CHECKPOINT_KEY)
+
     def check_resource(self):
         return self._kv_store.get(CHECKPOINT_KEY)
 
