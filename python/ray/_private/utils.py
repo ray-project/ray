@@ -1421,13 +1421,17 @@ def parse_resources_json(
     try:
         resources = json.loads(resources)
         if not isinstance(resources, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={resources}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
             cf.bold(
-                f'{command_arg}=\'{{"CustomResource3": 1, ' '"CustomResource2": 2}}\''
+                f'{command_arg}=\'{{"CustomResource3": 1, "CustomResource2": 2}}\''
             ),
         )
     return resources
@@ -1439,12 +1443,16 @@ def parse_metadata_json(
     try:
         metadata = json.loads(metadata)
         if not isinstance(metadata, dict):
-            raise ValueError
-    except Exception:
-        cli_logger.error("`{}` is not a valid JSON string.", cf.bold(command_arg))
+            raise ValueError("The format after deserialization is not a dict")
+    except Exception as e:
+        cli_logger.error(
+            "`{}` is not a valid JSON string, detail error:{}",
+            cf.bold(f"{command_arg}={metadata}"),
+            str(e),
+        )
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(f'{command_arg}=\'{{"key1": "value1", ' '"key2": "value2"}}\''),
+            cf.bold(f'{command_arg}=\'{{"key1": "value1", "key2": "value2"}}\''),
         )
     return metadata
 
@@ -1650,8 +1658,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
     version >= 3.7, if not possible, one should create and manage the event
     loops explicitly.
     """
-    import sys
-
     vers_info = sys.version_info
     if vers_info.major >= 3 and vers_info.minor >= 10:
         # This follows the implementation of the deprecating `get_event_loop`
@@ -1669,6 +1675,19 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
             return asyncio.get_event_loop_policy().get_event_loop()
 
     return asyncio.get_event_loop()
+
+
+def make_asyncio_event_version_compat(
+    event_loop: asyncio.AbstractEventLoop,
+) -> asyncio.Event:
+    # Python 3.8 has deprecated the 'loop' parameter, and Python 3.10 has
+    # removed it altogether. Construct an `asyncio.Event` accordingly.
+    if sys.version_info.major >= 3 and sys.version_info.minor >= 10:
+        event = asyncio.Event()
+    else:
+        event = asyncio.Event(loop=event_loop)
+
+    return event
 
 
 def get_entrypoint_name():
@@ -1925,11 +1944,11 @@ def parse_node_labels_json(
     except Exception as e:
         cli_logger.error(
             "`{}` is not a valid JSON string, detail error:{}",
-            cf.bold(command_arg),
+            cf.bold(f"{command_arg}={labels_json}"),
             str(e),
         )
         cli_logger.abort(
             "Valid values look like this: `{}`",
-            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", ' '"region": "us"}}\''),
+            cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
         )
     return labels

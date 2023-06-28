@@ -21,9 +21,6 @@
 				"stable": {
 					"type": "boolean"
 				},
-				"jailed": {
-					"type": "boolean"
-				},
 				"python": {
 					"type": "string",
 					"enum": [
@@ -106,7 +103,8 @@
 					"type": "string",
 					"enum": [
 						"cpu",
-						"gpu"
+						"gpu",
+						"cu118"
 					]
 				},
 				"post_build_script":{

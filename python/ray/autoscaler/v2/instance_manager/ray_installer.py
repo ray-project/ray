@@ -56,11 +56,13 @@ class RayInstaller(object):
             # `RAY_HEAD_IP=<head_node_ip> \
             #  RAY_CLOUD_INSTANCE_ID=<instance_id> \
             #  ray start --head ...`
+            #  See src/ray/common/constants.h for ENV name definitions.
             ray_start_commands=with_envs(
                 ray_start_commands,
                 {
                     "RAY_HEAD_IP": head_node_ip,
                     "RAY_CLOUD_INSTANCE_ID": instance.instance_id,
+                    "RAY_NODE_TYPE_NAME": instance.instance_type,
                 },
             ),
             runtime_hash=self._config.runtime_hash,

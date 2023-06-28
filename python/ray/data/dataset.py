@@ -1,4 +1,5 @@
 import collections
+import copy
 import html
 import itertools
 import logging
@@ -345,7 +346,6 @@ class Dataset:
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
 
@@ -830,7 +830,6 @@ class Dataset:
                 :meth:`~Dataset.map_batches` instead.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
 
@@ -888,7 +887,6 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_filter_fn()
 
@@ -1719,6 +1717,47 @@ class Dataset:
 
         return GroupedData(self, key)
 
+    def unique(self, column: str) -> List[Any]:
+        """List of unique elements in the given column.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
+            >>> ds.unique("item")
+            [1, 2, 3]
+
+            This function is very useful for computing labels
+            in a machine learning dataset:
+
+            >>> import ray
+            >>> ds = ray.data.read_csv("example://iris.csv")
+            >>> ds.unique("variety")
+            ['Setosa', 'Versicolor', 'Virginica']
+
+            One common use case is to convert the class labels
+            into integers for training and inference:
+
+            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> def preprocessor(df, classes):
+            ...     df["variety"] = df["variety"].map(classes)
+            ...     return df
+            >>> train_ds = ds.map_batches(
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
+            [{'sepal.length': 4.3, ..., 'variety': 0}]
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        Args:
+            column: The column to collect unique elements over.
+
+        Returns:
+            A list with unique elements in the given column.
+        """
+        ds = self.groupby(column).count().select_columns([column])
+        return [item[column] for item in ds.take_all()]
+
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate the entire dataset as one group.
@@ -2226,7 +2265,18 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+
+        # First check if the schema is already known from materialized blocks.
+        base_schema = self._plan.schema(fetch_if_missing=False)
+        if base_schema is not None:
+            return Schema(base_schema)
+        if not fetch_if_missing:
+            return None
+
+        # Lazily execute only the first block to minimize computation.
+        # We achieve this by appending a Limit[1] operation to a copy
+        # of this Dataset, which we then execute to get its schema.
+        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
             return Schema(base_schema)
         else:
@@ -4149,7 +4199,8 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4401,14 +4452,6 @@ class Dataset:
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
-
-    def _warn_slow(self):
-        if ray.util.log_once("dataset_slow_warned"):
-            logger.warning(
-                "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. If you're using a vectorized transformation, "
-                "consider using `.map_batches()` instead."
-            )
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.

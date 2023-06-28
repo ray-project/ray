@@ -1,3 +1,4 @@
+import logging
 import os
 import sys
 import tempfile
@@ -327,6 +328,35 @@ def test_initial_num_replicas(mock, serve_instance):
     assert len(get_running_replicas(controller, "A")) == 2
 
 
+def test_smoothing_factor_with_0_replica():
+    """Unit test for smoothing_factor with 0 replica."""
+    config = AutoscalingConfig(
+        min_replicas=0,
+        max_replicas=2,
+        smoothing_factor=10,
+    )
+    policy = BasicAutoscalingPolicy(config)
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=[],
+        curr_target_num_replicas=0,
+        current_handle_queued_queries=1,
+    )
+
+    # 1 * 10
+    assert new_num_replicas == 10
+
+    config.smoothing_factor = 0.5
+    policy = BasicAutoscalingPolicy(config)
+    new_num_replicas = policy.get_decision_num_replicas(
+        current_num_ongoing_requests=[],
+        curr_target_num_replicas=0,
+        current_handle_queued_queries=1,
+    )
+
+    # math.ceil(1 * 0.5)
+    assert new_num_replicas == 1
+
+
 def test_upscale_downscale_delay():
     """Unit test for upscale_delay_s and downscale_delay_s."""
 
@@ -628,9 +658,9 @@ def test_e2e_bursty(serve_instance):
             "metrics_interval_s": 0.1,
             "min_replicas": 1,
             "max_replicas": 2,
-            "look_back_period_s": 0.2,
-            "downscale_delay_s": 0.2,
-            "upscale_delay_s": 0.2,
+            "look_back_period_s": 0.5,
+            "downscale_delay_s": 0.5,
+            "upscale_delay_s": 0.5,
         },
         # We will send over a lot of queries. This will make sure replicas are
         # killed quickly during cleanup.
@@ -639,6 +669,9 @@ def test_e2e_bursty(serve_instance):
         version="v1",
     )
     class A:
+        def __init__(self):
+            logging.getLogger("ray.serve").setLevel(logging.ERROR)
+
         def __call__(self):
             ray.get(signal.wait.remote())
 
@@ -664,10 +697,11 @@ def test_e2e_bursty(serve_instance):
     # it back to 0. This bursty behavior should be smoothed by the delay
     # parameters.
     for _ in range(5):
-        time.sleep(0.05)
         assert check_autoscale_num_replicas(controller, "A") == num_replicas
-        [handle.remote() for _ in range(100)]
+        refs = [handle.remote() for _ in range(100)]
         signal.send.remote()
+        ray.get(refs)
+        time.sleep(0.05)
 
     # As the queue is drained, we should scale back down.
     wait_for_condition(
