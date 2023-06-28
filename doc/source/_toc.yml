@@ -106,6 +106,8 @@ parts:
                 title: "Configuring Ray Train"
               - file: train/dl_guide
                 title: "Deep Learning Guide"
+              - file: train/hf_trainers
+                title: "Hugging Face Trainers"
               - file: train/gbdt
                 title: "XGBoost/LightGBM guide"
               - file: train/architecture
