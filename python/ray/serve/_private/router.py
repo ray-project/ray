@@ -1,7 +1,6 @@
 from abc import ABC
 import asyncio
 from collections import defaultdict, deque
-import copy
 from dataclasses import dataclass
 import itertools
 import logging
@@ -207,7 +206,20 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             set
         )
 
+        # Tasks running the scheduling loop. The size of this set may vary over time
+        # as new tasks will be scheduled when a request comes in or new replicas are
+        # added, but it will not exceed self.max_num_scheduling_tasks.
         self._scheduling_tasks: Set[asyncio.Task] = set()
+
+        # We keep two separate queues of pending requests:
+        # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
+        # requests in FIFO order by scheduling tasks once they've acquired a replica.
+        # To avoid long tail latencies due to backoff, the scheduling task started by
+        # a given request may not be the one to fulfill it.
+        # - self._pending_requests_to_schedule is a queue that is used for tasks to
+        # best-effort grab the metadata of requests waiting to be fulfilled. This is
+        # currently used for scheduling tasks to know which multiplexed model IDs they
+        # should be trying to get replicas for.
         self._pending_requests_to_fulfill: deque[PendingRequest] = deque()
         self._pending_requests_to_schedule: deque[PendingRequest] = deque()
 
@@ -272,6 +284,30 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
+    def _get_candidate_replica_ids(
+        self,
+        blacklist_replica_ids: Set[str],
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Set[str]:
+        """Get candidates from the current replica set excluding the blacklist.
+
+        If a model ID is present in request_metadata, any replicas that have it are
+        prioritized.
+        """
+        if (
+            request_metadata is not None
+            and request_metadata.multiplexed_model_id
+            and request_metadata.multiplexed_model_id
+            in self._multiplexed_model_id_to_replica_ids
+        ):
+            candidates = self._multiplexed_model_id_to_replica_ids[
+                request_metadata.multiplexed_model_id
+            ].difference(blacklist_replica_ids)
+            if len(candidates) > 0:
+                return candidates
+
+        return self._replica_id_set.difference(blacklist_replica_ids)
+
     async def choose_two_replicas_with_backoff(
         self,
         request_metadata: Optional[RequestMetadata] = None,
@@ -282,20 +318,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
         """
-        # TODO: comment.
-        replica_ids_with_multiplexed_model_id = set()
-        if request_metadata is not None and request_metadata.multiplexed_model_id:
-            if (
-                request_metadata.multiplexed_model_id
-                in self._multiplexed_model_id_to_replica_ids
-            ):
-                replica_ids_with_multiplexed_model_id = copy.copy(
-                    self._multiplexed_model_id_to_replica_ids[
-                        request_metadata.multiplexed_model_id
-                    ]
-                )
 
         backoff_index = 0
+        replica_ids_attempted = set()
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
@@ -312,19 +337,21 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     extra={"log_to_stderr": False},
                 )
 
-            if len(replica_ids_with_multiplexed_model_id) > 0:
-                replica_ids_to_consider = replica_ids_with_multiplexed_model_id
-            else:
-                replica_ids_to_consider = self._replica_id_set
-
+            # Get candidates to sample from; this will exclude replicas used in a
+            # previous iteration until all replicas have been tried.
+            candidate_replica_ids = self._get_candidate_replica_ids(
+                replica_ids_attempted, request_metadata
+            )
             chosen_ids = random.sample(
-                replica_ids_to_consider, k=min(2, len(replica_ids_to_consider))
+                candidate_replica_ids, k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            if len(replica_ids_with_multiplexed_model_id) > 0:
-                for chosen_id in chosen_ids:
-                    replica_ids_with_multiplexed_model_id.remove(chosen_id)
+            # If another iteration occurrs, the chosen replicas did not accept the
+            # request. Blacklist them until we've attempted all replicas.
+            replica_ids_attempted.update(chosen_ids)
+            if replica_ids_attempted.issuperset(self._replica_id_set):
+                replica_ids_attempted.clear()
 
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
@@ -376,7 +403,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self,
         replica: ReplicaWrapper,
         request_metadata: Optional[RequestMetadata] = None,
-    ):
+    ) -> Optional[PendingRequest]:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
             return None
 
@@ -400,6 +427,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         If a pending assignment has been cancelled, it will be popped from the queue
         and not assigned.
         """
+        # First try to match a pending request based on the request metadata (currently
+        # this only looks at the multiplexed model ID).
         matched_pending_request = self._get_pending_request_matching_metadata(
             replica, request_metadata
         )
@@ -408,9 +437,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             self._pending_requests_to_fulfill.remove(matched_pending_request)
             return
 
+        # If no pending request matches the request metadata, fulfill the next in the
+        # queue in FIFO order, passing over futures that have been cancelled.
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
-            # Pass over futures that have been cancelled.
             if not pr.future.done():
                 pr.future.set_result(replica)
                 break
@@ -481,16 +511,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         over when a replica becomes available.
         """
         pending_request = PendingRequest(asyncio.Future(), query.metadata)
-        # TODO: better naming.
-        self._pending_requests_to_fulfill.append(pending_request)
-        self._pending_requests_to_schedule.append(pending_request)
         try:
+            self._pending_requests_to_fulfill.append(pending_request)
+            self._pending_requests_to_schedule.append(pending_request)
             self.maybe_start_scheduling_tasks()
             replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
             try:
                 self._pending_requests_to_fulfill.remove(pending_request)
+                self._pending_requests_to_schedule.remove(pending_request)
             except ValueError:
                 pass
 
