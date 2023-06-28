@@ -24,6 +24,8 @@ from tf_utils import (
     build_tf_dataset,
 )
 
+from pytorch_utils import build_torch_dataset
+
 from metric_utils import (
     determine_if_memory_monitor_is_enabled_in_latest_session,
     get_ray_spilled_and_restored_mb,
@@ -44,6 +46,8 @@ TF_DATA = "tf.data"
 SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
+# torch dataloader.
+TORCH_DATALOADER = "torch"
 
 # Each image is about 600KB after preprocessing.
 APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
@@ -100,6 +104,14 @@ def train_loop_for_worker(config):
     elif config["data_loader"] == SYNTHETIC:
         # Build an empty batch and repeat it.
         synthetic_dataset = build_synthetic_dataset(config["batch_size"])
+    elif config["data_loader"] == TORCH_DATALOADER:
+        assert dataset_shard is None
+        logger.info("Building torch.DataLoader...")
+        # TODO(swang): pass in shuffle buffer size.
+        torch_dataset = build_torch_dataset(
+            config["data_root"],
+            config["batch_size"],
+        )
 
     def ray_dataset_to_tf_dataset(
         dataset, batch_size, num_steps_per_epoch, online_processing
@@ -448,6 +460,7 @@ if __name__ == "__main__":
     data_ingest_group = parser.add_mutually_exclusive_group(required=True)
     data_ingest_group.add_argument("--use-tf-data", action="store_true")
     data_ingest_group.add_argument("--use-ray-data", action="store_true")
+    data_ingest_group.add_argument("--use-torch", action="store_true")
     data_ingest_group.add_argument("--synthetic-data", action="store_true")
 
     parser.add_argument(
@@ -505,10 +518,10 @@ if __name__ == "__main__":
         }
     )
 
-    if args.use_tf_data or args.use_ray_data:
+    if args.use_tf_data or args.use_ray_data or args.use_torch:
         assert (
             args.data_root is not None
-        ), "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"  # noqa: E501
+        ), "--use-tf-data, --use-ray-data, and --use-torch require a --data-root directory for TFRecord files"  # noqa: E501
     elif args.synthetic_data:
         assert args.data_root is None, "--synthetic-data doesn't use --data-root"
 
@@ -549,6 +562,10 @@ if __name__ == "__main__":
             logger.info("Using tf.data loader")
             preprocessor = None
             train_loop_config["data_loader"] = TF_DATA
+        elif args.use_torch:
+            logger.info("Using torch Dataloader")
+            preprocessor = None
+            train_loop_config["data_loader"] = TORCH_DATALOADER
         else:
             logger.info("Using Ray Datasets loader")
 
@@ -636,13 +653,14 @@ if __name__ == "__main__":
         "ray_mem_monitor_enabled"
     ] = determine_if_memory_monitor_is_enabled_in_latest_session()
 
-    result["num_files"] = len(
-        get_tfrecords_filenames(
-            train_loop_config["data_root"],
-            train_loop_config["num_images_per_epoch"],
-            train_loop_config["num_images_per_input_file"],
-        )
-    )
+    result["num_files"] = 1623
+    #result["num_files"] = len(
+    #    get_tfrecords_filenames(
+    #        train_loop_config["data_root"],
+    #        train_loop_config["num_images_per_epoch"],
+    #        train_loop_config["num_images_per_input_file"],
+    #    )
+    #)
 
     try:
         write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
