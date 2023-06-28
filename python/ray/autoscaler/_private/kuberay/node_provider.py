@@ -343,8 +343,8 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
         return True
 
     def _get_pods_resource_version(self) -> str:
-        """Extract a recent pods resource version by patching the head pod's annotations
-        and reading the metadata.resourceVersion of the response.
+        """
+        Extract a recent pods resource version by reading the head pod's metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
             return None
