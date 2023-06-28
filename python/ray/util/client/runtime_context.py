@@ -1,13 +1,9 @@
 from typing import TYPE_CHECKING
+from types import SimpleNamespace
 
 if TYPE_CHECKING:
     from ray import JobID, NodeID
     from ray.runtime_context import RuntimeContext
-
-
-class _FakeGcsClient:
-    def __init__(self, address):
-        self.address = address
 
 
 class _ClientWorkerPropertyAPI:
@@ -66,4 +62,4 @@ class _ClientWorkerPropertyAPI:
 
     @property
     def gcs_client(self) -> str:
-        return _FakeGcsClient(self._fetch_runtime_context().gcs_address)
+        return SimpleNamespace(address=self._fetch_runtime_context().gcs_address)
