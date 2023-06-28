@@ -51,6 +51,7 @@ def setup_replicas(request, monkeypatch):
     monkeypatch.setenv("TEST_EXTERNAL_REDIS_REPLICAS", str(request.param))
     yield
 
+
 @pytest.mark.skipif(not enable_external_redis(), reason="Only work for redis mode")
 @pytest.mark.skipif(sys.platform != "linux", reason="Only work in linux")
 @pytest.mark.parametrize("setup_replicas", [1, 3], indirect=True)

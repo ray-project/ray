@@ -174,7 +174,9 @@ def start_redis(db_dir):
         is_need_restart = False
         # Setup external Redis and env var for initialization.
         redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
-        redis_ports = list(zip(redis_ports[0:redis_replicas()], redis_ports[redis_replicas():]))
+        redis_ports = list(
+            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
+        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
@@ -214,7 +216,6 @@ def start_redis(db_dir):
             continue
 
         if redis_replicas() > 1:
-            import redis
 
             redis_cli = get_redis_cli(str(leader_port), True)
             while redis_cli.cluster("info")["cluster_state"] != "ok":
