@@ -526,11 +526,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             replica = await pending_request.future
         except asyncio.CancelledError as e:
             pending_request.future.cancel()
-            try:
-                self._pending_requests_to_fulfill.remove(pending_request)
-                self._pending_requests_to_schedule.remove(pending_request)
-            except ValueError:
-                pass
 
             raise e from None
 
