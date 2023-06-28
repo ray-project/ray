@@ -246,7 +246,7 @@ class _BatchQueue:
 class _LazyBatchQueueWrapper:
     """Stores a _BatchQueue and updates its settings.
 
-    _BatchQueue cannot be pickled, so it must be constructed lazily
+    _BatchQueue cannot be pickled, you must construct it lazily
     at runtime inside a replica. This class initializes a queue only upon
     first access.
     """
