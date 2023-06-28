@@ -790,7 +790,7 @@ test_minimal() {
   ./ci/env/install-minimal.sh "$1"
   echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py "$1"
+  python ./ci/env/check_minimal_install.py --expected-python-version "$1"
   run_minimal_test "$1"
 }
 
