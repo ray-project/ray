@@ -2,4 +2,4 @@ steps:
     - commands:
         - echo "hello"
       agents:
-        - queue: runner_queue_branch
+        - queue: runner_queue_small_pr
