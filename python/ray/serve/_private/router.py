@@ -368,29 +368,39 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
+    def _get_pending_request_matching_metadata(
+        self,
+        replica: ReplicaWrapper,
+        request_metadata: Optional[RequestMetadata] = None,
+    ):
+        if request_metadata is None or not request_metadata.multiplexed_model_id:
+            return None
+
+        for pr in self._pending_requests_to_fulfill:
+            if (
+                not pr.future.done()
+                and pr.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            ):
+                return pr
+
     def fulfill_next_pending_request(
-        self, replica: ReplicaWrapper, multiplexed_model_id: Optional[str] = None
+        self,
+        replica: ReplicaWrapper,
+        request_metadata: Optional[RequestMetadata] = None,
     ):
         """Assign the replica to the next pending assignment in FIFO order.
 
         If a pending assignment has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        # TODO: comment.
-        if multiplexed_model_id is not None:
-            matched_pending_request = None
-            for pr in self._pending_requests_to_fulfill:
-                if (
-                    not pr.future.done()
-                    and pr.metadata.multiplexed_model_id == multiplexed_model_id
-                ):
-                    matched_pending_request = pr
-                    break
-
-            if matched_pending_request is not None:
-                matched_pending_request.future.set_result(replica)
-                self._pending_requests_to_fulfill.remove(matched_pending_request)
-                return
+        matched_pending_request = self._get_pending_request_matching_metadata(
+            replica, request_metadata
+        )
+        if matched_pending_request is not None:
+            matched_pending_request.future.set_result(replica)
+            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            return
 
         while len(self._pending_requests_to_fulfill) > 0:
             pr = self._pending_requests_to_fulfill.popleft()
@@ -427,7 +437,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 ):
                     replica = await self.select_from_candidate_replicas(candidates)
                     if replica is not None:
-                        self.fulfill_next_pending_request(replica, multiplexed_model_id)
+                        self.fulfill_next_pending_request(replica, request_metadata)
                         break
 
         except Exception:
