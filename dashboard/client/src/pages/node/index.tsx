@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   ButtonGroup,
   Grid,
@@ -10,6 +11,7 @@ import {
   TableContainer,
   TableHead,
   TableRow,
+  Typography,
 } from "@material-ui/core";
 import { makeStyles } from "@material-ui/core/styles";
 import Pagination from "@material-ui/lab/Pagination";
@@ -21,6 +23,7 @@ import { SearchInput, SearchSelect } from "../../components/SearchComponent";
 import StateCounter from "../../components/StatesCounter";
 import { StatusChip } from "../../components/StatusChip";
 import TitleCard from "../../components/TitleCard";
+import { HelpInfo } from "../../components/Tooltip";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
@@ -33,23 +36,42 @@ const useStyles = makeStyles((theme) => ({
     width: "100%",
     position: "relative",
   },
+  helpInfo: {
+    marginLeft: theme.spacing(1),
+  },
 }));
 
 const columns = [
-  "", // Expand button
-  "Host / Cmd Line",
-  "State",
-  "ID",
-  "IP / PID",
-  "Actions",
-  "CPU Usage",
-  "Memory",
-  "GPU",
-  "GRAM",
-  "Object Store Memory",
-  "Disk(root)",
-  "Sent",
-  "Received",
+  { label: "" }, // Expand button
+  { label: "Host / Cmd Line" },
+  { label: "State" },
+  { label: "ID" },
+  { label: "IP / PID" },
+  { label: "Actions" },
+  { label: "CPU Usage" },
+  { label: "Memory" },
+  {
+    label: "GPU",
+    helpInfo: (
+      <Typography>
+        "Usage of each GPU device. \nIf no GPU usage is detected, here are the
+        potential root causes \n\n" + "1. library gpustsat is not installed.
+        Install gpustat and try again.\n" + "2. non-GPU Ray image is used on
+        this node.\n" + " Switch to a GPU Ray image and try again.\n" + "3. AMD
+        GPUs are being used. AMD GPUs are not currently supported by gpustat
+        module.\n" + "4. gpustat module raises an exception."
+      </Typography>
+    ),
+  },
+  { label: "GRAM" },
+  { label: "Object Store Memory" },
+  {
+    label: "Disk(root)",
+    helpInfo:
+      "For Ray Clusters on Kubernetes, multiple Ray Nodes/Pods may share the same Kubernetes Node's disk, resulting in multiple nodes having the same disk usage.",
+  },
+  { label: "Sent" },
+  { label: "Received" },
 ];
 
 export const brpcLinkChanger = (href: string) => {
@@ -267,9 +289,20 @@ const Nodes = () => {
             <Table>
               <TableHead>
                 <TableRow>
-                  {columns.map((col) => (
-                    <TableCell align="center" key={col}>
-                      {col}
+                  {columns.map(({ label, helpInfo }) => (
+                    <TableCell align="center" key={label}>
+                      <Box
+                        display="flex"
+                        justifyContent="center"
+                        alignItems="center"
+                      >
+                        {label}
+                        {helpInfo && (
+                          <HelpInfo className={classes.helpInfo}>
+                            {helpInfo}
+                          </HelpInfo>
+                        )}
+                      </Box>
                     </TableCell>
                   ))}
                 </TableRow>
