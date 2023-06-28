@@ -120,7 +120,7 @@ compile_pip_dependencies() {
   # Compile boundaries
 
   if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
-    echo "Skipping for arch64"
+    echo "Skipping for aarch64"
     return 0
   fi
 
