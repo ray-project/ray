@@ -86,7 +86,9 @@ def iter_batches(
             ``pyarrow.Table``, or None to use entire blocks
             as batches. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
-        collate_fn: A function to apply to each data batch before returning it.
+        collate_fn: A function to apply to each data batch before returning it. When
+            using a non-zero `gpu_prefetch_batches`, this function will be
+            applied on the GPU.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -149,12 +151,21 @@ def iter_batches(
         )
 
         # Step 4: Use a threadpool for formatting and collation.
+        # Step 4a: Format the batches.
         batch_iter = _format_in_threadpool(
             batch_iter,
             stats=stats,
             batch_format=batch_format,
+            num_threadpool_workers=prefetch_batches,
+        )
+
+        # Step 4b: Apply the collate function if applicable.
+        batch_iter = _collate_in_threadpool(
+            batch_iter,
+            stats=stats,
             collate_fn=collate_fn,
-            num_threadpool_workers=gpu_prefetch_batches,
+            num_threadpool_workers=prefetch_batches,
+            num_threadpool_workers_gpu=gpu_prefetch_batches,
         )
 
         # Step 5: Restore original order.
@@ -180,10 +191,9 @@ def _format_in_threadpool(
     batch_iter: Iterator[Batch],
     stats: DatasetStats,
     batch_format: Optional[str],
-    collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
 ) -> Iterator[Batch]:
-    """Executes the batching, formatting, and collation logic in a threadpool.
+    """Executes the batching and formatting logic in a threadpool.
 
     Args:
         logical_batch_iterator: An iterator over logical batches.
@@ -195,32 +205,73 @@ def _format_in_threadpool(
             ``pyarrow.Table``, or None to use entire blocks
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
-        num_threadpool_workers: The number of threads to use in the threadpool.
+        num_threadpool_workers: The number of CPU threads to use in the threadpool.
     """
 
-    def threadpool_computations(
+    def _threadpool_computations(
         batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
-        # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
             batch_iter, batch_format=batch_format, stats=stats
         )
+        yield from formatted_batch_iter
 
-        # Step 4b: Apply the collate function if applicable.
+    if num_threadpool_workers > 0:
+        return make_async_gen(
+            base_iterator=batch_iter,
+            fn=_threadpool_computations,
+            num_workers=num_threadpool_workers,
+        )
+    else:
+        return _threadpool_computations(batch_iter)
+
+
+def _collate_in_threadpool(
+    formatted_batch_iter: Iterator[Batch],
+    stats: DatasetStats,
+    collate_fn: Optional[Callable[[DataBatch], Any]],
+    num_threadpool_workers: int,
+    num_threadpool_workers_gpu: int,
+) -> Iterator[Batch]:
+    """Executes the batching and formatting, and collation logic in a threadpool.
+
+    Args:
+        logical_batch_iterator: An iterator over logical batches.
+        stats: DatasetStats object to record timing and other statistics.
+        batch_format: The format in which to return each batch.
+            Specify "default" to use the current block format (promoting
+            Arrow to pandas automatically), "pandas" to
+            select ``pandas.DataFrame`` or "pyarrow" to select
+            ``pyarrow.Table``, or None to use entire blocks
+            as batches.
+        collate_fn: A function to apply to each data batch before returning it.
+        num_threadpool_workers: The number of CPU threads to use in the threadpool.
+        num_threadpool_workers_gpu: The number of GPU threads to use in the threadpool.
+            Used to apply collate_fn on the GPU.
+    """
+
+    def _threadpool_computations(
+        formatted_batch_iter: Iterator[Batch],
+    ) -> Iterator[Batch]:
         if collate_fn is not None:
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
         yield from formatted_batch_iter
 
-    if num_threadpool_workers > 0:
+    if num_threadpool_workers_gpu > 0:
         return make_async_gen(
-            base_iterator=batch_iter,
-            fn=threadpool_computations,
+            base_iterator=formatted_batch_iter,
+            fn=_threadpool_computations,
+            num_workers=num_threadpool_workers_gpu,
+        )
+    elif num_threadpool_workers > 0:
+        return make_async_gen(
+            base_iterator=formatted_batch_iter,
+            fn=_threadpool_computations,
             num_workers=num_threadpool_workers,
         )
-    else:
-        return threadpool_computations(batch_iter)
+    return _threadpool_computations(formatted_batch_iter)
 
 
 def prefetch_batches_locally(
