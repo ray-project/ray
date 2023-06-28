@@ -356,11 +356,15 @@ If you are using built-in PyTorch datasets, for example from `torchvision`, thes
 
     mnist = torchvision.datasets.MNIST(root="/tmp/", download=True)
     ds = ray.data.from_torch(mnist)
+    
+    # The data for each item of the torch dataset is under the "item" key. 
+    print(ds.schema())
 
 .. testoutput::
-    :hide:
 
-    ...
+    Column  Type
+    ------  ----
+    item    <class 'object'>
 
 Custom PyTorch Datasets
 ~~~~~~~~~~~~~~~~~~~~~~~
