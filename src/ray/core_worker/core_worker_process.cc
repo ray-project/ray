@@ -255,6 +255,8 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   RAY_CHECK(global_worker);
   global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
+  // Make sure the stats module shutdown before shutting down the core worker.
+  stats::Shutdown();
   global_worker->Shutdown();
   {
     absl::WriterMutexLock lock(&mutex_);
