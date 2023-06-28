@@ -1717,34 +1717,46 @@ class Dataset:
 
         return GroupedData(self, key)
 
-    def distinct(self) -> "Dataset":
-        """Remove duplicate rows from the :class:`~ray.data.Dataset`.
+    def unique(self, column: str) -> List[Any]:
+        """List of unique elements in the given column.
 
         Examples:
+
             >>> import ray
             >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
-            >>> ds.distinct().take_all()
-            [{'item': 1}, {'item': 2}, {'item': 3}]
+            >>> ds.unique("item")
+            [1, 2, 3]
+
+            This function is very useful for computing labels
+            in a machine learning dataset:
+
+            >>> import ray
+            >>> ds = ray.data.read_csv("example://iris.csv")
+            >>> ds.unique("variety")
+            ['Setosa', 'Versicolor', 'Virginica']
+
+            One common use case is to convert the class labels
+            into integers for training and inference:
+
+            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> def preprocessor(df, classes):
+            ...     df["variety"] = df["variety"].map(classes)
+            ...     return df
+            >>> train_ds = ds.map_batches(
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
+            [{'sepal.length': 4.3, ..., 'variety': 0}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
-        .. note:: Currently distinct only supports
-            :class:`~ray.data.Dataset` with one single column.
+        Args:
+            column: The column to collect unique elements over.
 
         Returns:
-            A new :class:`~ray.data.Dataset` with distinct rows.
+            A list with unique elements in the given column.
         """
-        columns = self.columns(fetch_if_missing=True)
-        assert columns is not None
-        if len(columns) > 1:
-            # TODO(hchen): Remove this limitation once groupby supports
-            # multiple columns.
-            raise NotImplementedError(
-                "`distinct` currently only supports Datasets with one single column, "
-                "please apply `select_columns` before `distinct`."
-            )
-        column = columns[0]
-        return self.groupby(column).count().select_columns([column])
+        ds = self.groupby(column).count().select_columns([column])
+        return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
@@ -2253,7 +2265,18 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+
+        # First check if the schema is already known from materialized blocks.
+        base_schema = self._plan.schema(fetch_if_missing=False)
+        if base_schema is not None:
+            return Schema(base_schema)
+        if not fetch_if_missing:
+            return None
+
+        # Lazily execute only the first block to minimize computation.
+        # We achieve this by appending a Limit[1] operation to a copy
+        # of this Dataset, which we then execute to get its schema.
+        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
             return Schema(base_schema)
         else:
