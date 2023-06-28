@@ -21,7 +21,8 @@ class FakeReplicaWrapper(ReplicaWrapper):
         replica_id: str,
         *,
         reset_after_response: bool = False,
-        model_ids: Optional[Set[str]] = None
+        model_ids: Optional[Set[str]] = None,
+        sleep_time_s: float = 0.0
     ):
 
         self._replica_id = replica_id
@@ -30,6 +31,7 @@ class FakeReplicaWrapper(ReplicaWrapper):
         self._has_queue_len_response = asyncio.Event()
         self._reset_after_response = reset_after_response
         self._model_ids = model_ids or set()
+        self._sleep_time_s = sleep_time_s
 
     @property
     def replica_id(self) -> str:
@@ -47,6 +49,9 @@ class FakeReplicaWrapper(ReplicaWrapper):
     async def get_queue_state(self) -> Tuple[str, int, bool]:
         while not self._has_queue_len_response.is_set():
             await self._has_queue_len_response.wait()
+
+        if self._sleep_time_s > 0:
+            await asyncio.sleep(self._sleep_time_s)
 
         if self._reset_after_response:
             self._has_queue_len_response.clear()
@@ -556,6 +561,55 @@ class TestModelMultiplexing:
         s.update_replicas([r1, r2, r3])
 
         assert all(replica == r3 for replica in await asyncio.gather(*tasks))
+
+    @pytest.mark.asyncio
+    async def test_tasks_scheduled_fifo_among_model_ids(
+        self, pow_2_scheduler, fake_query
+    ):
+        """
+        Verify that requests are scheduled FIFO based on model ID.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        # Schedule many requests to each model ID in parallel
+        # that cannot be fulfilled yet.
+        m1_tasks = []
+        m2_tasks = []
+        for _ in range(10):
+            m1_tasks.append(
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m1")))
+            )
+            m2_tasks.append(
+                loop.create_task(s.choose_replica_for_query(query_with_model_id("m2")))
+            )
+
+        done, _ = await asyncio.wait(m1_tasks + m2_tasks, timeout=0.1)
+        assert len(done) == 0
+
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1"}, reset_after_response=True)
+        r1.set_queue_state_response(0, accepted=True)
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"}, reset_after_response=True)
+        r2.set_queue_state_response(0, accepted=True)
+        s.update_replicas([r1, r2])
+
+        # In each iteration, allow one replica of w/ each model ID to be scheduled.
+        # The tasks for each model ID should be scheduled in FIFO order.
+        for i in range(10):
+            r1.set_queue_state_response(0, accepted=True)
+            r2.set_queue_state_response(0, accepted=True)
+
+            done, pending = await asyncio.wait(
+                m1_tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            assert done.pop() == m1_tasks[0]
+            m1_tasks = m1_tasks[1:]
+
+            done, pending = await asyncio.wait(
+                m2_tasks, return_when=asyncio.FIRST_COMPLETED
+            )
+            assert done.pop() == m2_tasks[0]
+            m2_tasks = m2_tasks[1:]
 
 
 if __name__ == "__main__":
