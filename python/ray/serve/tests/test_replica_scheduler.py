@@ -70,7 +70,7 @@ def pow_2_scheduler() -> PowerOfTwoChoicesReplicaScheduler:
 
     # Always verify that all scheduling tasks exit once all queries are satisfied.
     assert s.curr_num_scheduling_tasks == 0
-    assert s.num_pending_assignments == 0
+    assert s.num_pending_requests == 0
 
 
 @pytest.fixture
@@ -302,7 +302,7 @@ async def test_cancellation(pow_2_scheduler, fake_query):
 
     # Verify that the scheduling tasks exit and there are no assignments left.
     assert s.curr_num_scheduling_tasks == 0
-    assert s.num_pending_assignments == 0
+    assert s.num_pending_requests == 0
 
 
 @pytest.mark.asyncio
@@ -328,7 +328,7 @@ async def test_only_task_cancelled(pow_2_scheduler, fake_query):
     start = time.time()
     while time.time() - start < 10:
         # Verify that the scheduling task exits and there are no assignments left.
-        if s.curr_num_scheduling_tasks == 0 and s.num_pending_assignments == 0:
+        if s.curr_num_scheduling_tasks == 0 and s.num_pending_requests == 0:
             break
         await asyncio.sleep(0.1)
     else:

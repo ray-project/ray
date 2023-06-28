@@ -154,7 +154,7 @@ class ReplicaScheduler(ABC):
 
 
 @dataclass
-class PendingAssignment:
+class PendingRequest:
     future: asyncio.Future
     metadata: RequestMetadata
 
@@ -208,13 +208,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
 
         self._scheduling_tasks: Set[asyncio.Task] = set()
-        self._pending_assignments: deque[PendingAssignment] = deque()
-        self._pending_multiplexed_assignments: deque[PendingAssignment] = deque()
+        self._pending_requests_to_fulfill: deque[PendingRequest] = deque()
+        self._pending_requests_to_schedule: deque[PendingRequest] = deque()
 
     @property
-    def num_pending_assignments(self) -> int:
-        """Current number of assignments pending scheduling."""
-        return len(self._pending_assignments)
+    def num_pending_requests(self) -> int:
+        """Current number of requests pending assignment."""
+        return len(self._pending_requests_to_fulfill)
 
     @property
     def curr_num_scheduling_tasks(self) -> int:
@@ -232,7 +232,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         This will never exceed `self.max_num_scheduling_tasks`.
         """
-        return min(self.num_pending_assignments, self.max_num_scheduling_tasks)
+        return min(self.num_pending_requests, self.max_num_scheduling_tasks)
 
     @property
     def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
@@ -274,7 +274,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     async def choose_two_replicas_with_backoff(
         self,
-        multiplexed_model_id: Optional[str] = None,
+        request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """Generator that repeatedly chooses two random replicas from `self._replicas`.
 
@@ -284,9 +284,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         # TODO: comment.
         replica_ids_with_multiplexed_model_id = set()
-        if multiplexed_model_id is not None:
+        if request_metadata is not None and request_metadata.multiplexed_model_id:
             replica_ids_with_multiplexed_model_id = copy.copy(
-                self._multiplexed_model_id_to_replica_ids[multiplexed_model_id]
+                self._multiplexed_model_id_to_replica_ids[
+                    request_metadata.multiplexed_model_id
+                ]
             )
 
         backoff_index = 0
@@ -308,18 +310,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
             if len(replica_ids_with_multiplexed_model_id) > 0:
                 replica_ids_to_consider = replica_ids_with_multiplexed_model_id
-                remove_chosen_replica_ids = True
             else:
                 replica_ids_to_consider = self._replica_id_set
-                remove_chosen_replica_ids = False
 
             chosen_ids = random.sample(
                 replica_ids_to_consider, k=min(2, len(replica_ids_to_consider))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
-            if remove_chosen_replica_ids:
-                [replica_ids_to_consider.remove(chosen_id) for chosen_id in chosen_ids]
+            if len(replica_ids_with_multiplexed_model_id) > 0:
+                for chosen_id in chosen_ids:
+                    replica_ids_with_multiplexed_model_id.remove(chosen_id)
 
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
@@ -367,7 +368,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
-    def fulfill_next_pending_assignment(
+    def fulfill_next_pending_request(
         self, replica: ReplicaWrapper, multiplexed_model_id: Optional[str] = None
     ):
         """Assign the replica to the next pending assignment in FIFO order.
@@ -377,36 +378,36 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         # TODO: comment.
         if multiplexed_model_id is not None:
-            matched_pending_assignment = None
-            for pa in self._pending_assignments:
+            matched_pending_request = None
+            for pr in self._pending_requests_to_fulfill:
                 if (
-                    not pa.future.done()
-                    and pa.metadata.multiplexed_model_id == multiplexed_model_id
+                    not pr.future.done()
+                    and pr.metadata.multiplexed_model_id == multiplexed_model_id
                 ):
-                    matched_pending_assignment = pa
+                    matched_pending_request = pr
                     break
 
-            if matched_pending_assignment is not None:
-                matched_pending_assignment.future.set_result(replica)
-                self._pending_assignments.remove(matched_pending_assignment)
+            if matched_pending_request is not None:
+                matched_pending_request.future.set_result(replica)
+                self._pending_requests_to_fulfill.remove(matched_pending_request)
                 return
 
-        while len(self._pending_assignments) > 0:
-            pa = self._pending_assignments.popleft()
+        while len(self._pending_requests_to_fulfill) > 0:
+            pr = self._pending_requests_to_fulfill.popleft()
             # Pass over futures that have been cancelled.
-            if not pa.future.done():
-                pa.future.set_result(replica)
+            if not pr.future.done():
+                pr.future.set_result(replica)
                 break
 
-    def _get_next_pending_multiplexed_model_id(self) -> Optional[str]:
-        while len(self._pending_multiplexed_assignments) > 0:
-            pa = self._pending_multiplexed_assignments.popleft()
-            if not pa.future.done():
-                return pa.metadata.multiplexed_model_id or None
+    def _get_next_pending_request_to_schedule(self) -> Optional[RequestMetadata]:
+        while len(self._pending_requests_to_schedule) > 0:
+            pr = self._pending_requests_to_schedule.popleft()
+            if not pr.future.done():
+                return pr.metadata
 
         return None
 
-    async def fulfill_pending_assignments(
+    async def fulfill_pending_requests(
         self, multiplexed_model_id: Optional[str] = None
     ):
         """Repeatedly tries to fulfill a pending assignment with an available replica.
@@ -420,19 +421,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
                 # TODO: comment.
-                multiplexed_model_id = self._get_next_pending_multiplexed_model_id()
+                request_metadata = self._get_next_pending_request_to_schedule()
                 async for candidates in self.choose_two_replicas_with_backoff(
-                    multiplexed_model_id
+                    request_metadata
                 ):
                     replica = await self.select_from_candidate_replicas(candidates)
                     if replica is not None:
-                        self.fulfill_next_pending_assignment(
-                            replica, multiplexed_model_id
-                        )
+                        self.fulfill_next_pending_request(replica, multiplexed_model_id)
                         break
 
         except Exception:
-            logger.exception("Unexpected error in fulfill_pending_assignments.")
+            logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
 
@@ -451,7 +450,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
-                self._loop.create_task(self.fulfill_pending_assignments())
+                self._loop.create_task(self.fulfill_pending_requests())
             )
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
@@ -464,17 +463,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
-        pending_assignment = PendingAssignment(asyncio.Future(), query.metadata)
+        pending_request = PendingRequest(asyncio.Future(), query.metadata)
         # TODO: better naming.
-        self._pending_assignments.append(pending_assignment)
-        self._pending_multiplexed_assignments.append(pending_assignment)
+        self._pending_requests_to_fulfill.append(pending_request)
+        self._pending_requests_to_schedule.append(pending_request)
         try:
             self.maybe_start_scheduling_tasks()
-            replica = await pending_assignment.future
+            replica = await pending_request.future
         except asyncio.CancelledError as e:
-            pending_assignment.future.cancel()
+            pending_request.future.cancel()
             try:
-                self._pending_assignments.remove(pending_assignment)
+                self._pending_requests_to_fulfill.remove(pending_request)
             except ValueError:
                 pass
 
