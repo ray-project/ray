@@ -309,29 +309,19 @@ def set_omp_num_threads_if_unset() -> bool:
     """
     num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
 
-    logger.warning("SSSSSS:1")
     if num_threads_from_env is not None:
         # No ops if it's set
-        logger.warning("SSSSSS:2," + str(num_threads_from_env))
         return False
 
     # If unset, try setting the correct CPU count assigned.
     runtime_ctx = ray.get_runtime_context()
     if runtime_ctx.worker.mode != ray._private.worker.WORKER_MODE:
         # Non worker mode, no ops.
-        logger.warning("SSSSSS:3," + str(runtime_ctx.worker.mode))
-        import traceback
-        import io
-        buf = io.StringIO()
-        traceback.print_stack(file=buf)
-        logger.warning("SSSSSS:buf1:" + buf.getvalue())
         return False
 
     num_assigned_cpus = runtime_ctx.get_assigned_resources().get("CPU")
 
-    logger.warning("SSSSSS:4," + str(num_assigned_cpus))
     if num_assigned_cpus is None:
-        logger.warning("SSSSSS:5," + str(num_assigned_cpus))
         # This is an actor task w/o any num_cpus specified, set it to 1
         logger.debug(
             "[ray] Forcing OMP_NUM_THREADS=1 to avoid performance "
@@ -346,7 +336,6 @@ def set_omp_num_threads_if_unset() -> bool:
     # For num_cpus >= 1: Set to the floor of the actual assigned cpus.
     omp_num_threads = max(math.floor(num_assigned_cpus), 1)
     os.environ["OMP_NUM_THREADS"] = str(omp_num_threads)
-    logger.warning("SSSSSS:6," + str(omp_num_threads))
     return True
 
 
