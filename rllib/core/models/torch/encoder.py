@@ -235,7 +235,7 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
         if self.tokenizer is not None:
             # Push observations through the tokenizer encoder if we built one.
-            out = tokenize(self.tokenizer, inputs)
+            out = tokenize(self.tokenizer, inputs, framework="torch")
         else:
             # Otherwise, just use the raw observations.
             out = inputs[SampleBatch.OBS].float()
@@ -347,7 +347,7 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         if self.tokenizer is not None:
             # Push observations through the tokenizer encoder if we built one.
-            out = tokenize(self.tokenizer, inputs)
+            out = tokenize(self.tokenizer, inputs, framework="torch")
         else:
             # Otherwise, just use the raw observations.
             out = inputs[SampleBatch.OBS].float()

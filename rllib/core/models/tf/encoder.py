@@ -251,7 +251,7 @@ class TfGRUEncoder(TfModel, Encoder):
 
         if self.tokenizer is not None:
             # Push observations through the tokenizer encoder if we built one.
-            out = tokenize(self.tokenizer, inputs)
+            out = tokenize(self.tokenizer, inputs, framework="tf2")
         else:
             # Otherwise, just use the raw observations.
             out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
@@ -377,7 +377,7 @@ class TfLSTMEncoder(TfModel, Encoder):
 
         if self.tokenizer is not None:
             # Push observations through the tokenizer encoder if we built one.
-            out = tokenize(self.tokenizer, inputs)
+            out = tokenize(self.tokenizer, inputs, framework="tf2")
         else:
             # Otherwise, just use the raw observations.
             out = tf.cast(inputs[SampleBatch.OBS], tf.float32)
