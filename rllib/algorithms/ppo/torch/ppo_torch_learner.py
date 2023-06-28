@@ -47,7 +47,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # learning rate for that agent.
 
         # RNN case: Mask away 0-padded chunks at end of time axis.
-        if self.module[module_id].is_recurrent():
+        if self.module[module_id].is_stateful():
             # In the RNN case, we expect incoming tensors to be padded to the maximum
             # sequence length. We infer the max sequence length from the actions
             # tensor.
