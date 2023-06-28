@@ -438,7 +438,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     serve.start(http_options={"location": "EveryNode"})
 
     # Deploy 2 replicas, both should be on the worker node.
-    @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 0.9})
+    @serve.deployment(num_replicas=2)
     class HelloModel:
         def __call__(self):
             return "hello"
@@ -464,19 +464,33 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
     # on both nodes.
-    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
-    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8000/-/routes").text
-        == '{"/":"default_HelloModel"}'
+    def check_request(url: str, expected_code: int, expected_text: str):
+        req = requests.get(url)
+        return req.status_code == expected_code and req.text == expected_text
+
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
     )
-    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8001/-/healthz").text == "success"
-    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8001/-/routes").text
-        == '{"/":"default_HelloModel"}'
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/routes",
+        expected_code=200,
+        expected_text='{"/":"default_HelloModel"}',
+    )
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/routes",
+        expected_code=200,
+        expected_text='{"/":"default_HelloModel"}',
     )
 
     # Delete the deployment should bring the active actors down to 3 and drop
@@ -502,20 +516,30 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
     # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
     # and unavailable responses.
-    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
-    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
-    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8001/-/healthz").text
-        == "This node is being drained."
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
     )
-    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 503
-    assert (
-        requests.get("http://127.0.0.1:8001/-/routes").text
-        == "This node is being drained."
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/routes",
+        expected_code=200,
+        expected_text="{}",
     )
-    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=503,
+        expected_text="This node is being drained.",
+    )
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/routes",
+        expected_code=503,
+        expected_text="This node is being drained.",
+    )
 
     # Clean up serve.
     serve.shutdown()

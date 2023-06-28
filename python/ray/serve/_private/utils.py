@@ -42,6 +42,7 @@ from ray.util.serialization import StandaloneSerializationContext
 from ray._raylet import MessagePackSerializer
 from ray._private.utils import import_attr
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 import __main__
 
@@ -672,3 +673,18 @@ def call_function_from_import_path(import_path: str) -> Any:
         return callback_func()
     except Exception as e:
         raise RuntimeError(f"The function {import_path} raised an exception: {e}")
+
+
+def get_head_node_id() -> str:
+    """Get the head node id.
+
+    Iterate through all nodes in the ray cluster and return the node id of the first
+    alive node with head node resource.
+    """
+    head_node_id = ""
+    for node in ray.nodes():
+        if HEAD_NODE_RESOURCE_NAME in node["Resources"] and node["Alive"]:
+            head_node_id = node["NodeID"]
+            break
+
+    return head_node_id

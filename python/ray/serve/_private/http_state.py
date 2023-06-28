@@ -27,6 +27,7 @@ from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.utils import (
     format_actor_name,
     get_all_node_ids,
+    get_head_node_id,
 )
 from ray.serve._private.common import EndpointTag, NodeId, HTTPProxyStatus
 from ray.serve.schema import HTTPProxyDetails
@@ -242,7 +243,6 @@ class HTTPState:
         controller_name: str,
         detached: bool,
         config: HTTPOptions,
-        head_node_id: str,
         gcs_client: GcsClient,
         # Used by unit testing
         _start_proxies_on_init: bool = True,
@@ -254,11 +254,11 @@ class HTTPState:
         else:
             self._config = HTTPOptions()
         self._proxy_states: Dict[NodeId, HTTPProxyState] = dict()
-        self._head_node_id: str = head_node_id
+        self._head_node_id: str = get_head_node_id()
 
         self._gcs_client = gcs_client
 
-        assert isinstance(head_node_id, str)
+        assert isinstance(self._head_node_id, str)
 
         # Will populate self.proxy_actors with existing actors.
         if _start_proxies_on_init:

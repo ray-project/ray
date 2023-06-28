@@ -73,6 +73,7 @@ class MockReplicaActorWrapper:
         deployment_name: str,
         version: DeploymentVersion,
         scheduling_strategy="SPREAD",
+        node_id=None,
     ):
         self._actor_name = actor_name
         self._replica_tag = replica_tag
@@ -99,6 +100,8 @@ class MockReplicaActorWrapper:
         self._is_cross_language = False
         self._scheduling_strategy = scheduling_strategy
         self._actor_handle = MockActorHandle()
+        self._node_id = node_id
+        self._node_id_is_set = False
 
     @property
     def is_cross_language(self) -> bool:
@@ -146,6 +149,8 @@ class MockReplicaActorWrapper:
 
     @property
     def node_id(self) -> Optional[str]:
+        if self._node_id_is_set:
+            return self._node_id
         if isinstance(self._scheduling_strategy, NodeAffinitySchedulingStrategy):
             return self._scheduling_strategy.node_id
         if self.ready == ReplicaStartupStatus.SUCCEEDED or self.started:
@@ -179,6 +184,10 @@ class MockReplicaActorWrapper:
     def set_starting_version(self, version: DeploymentVersion):
         """Mocked deployment_worker return version from reconfigure()"""
         self.starting_version = version
+
+    def set_node_id(self, node_id: str):
+        self._node_id = node_id
+        self._node_id_is_set = True
 
     def start(self, deployment_info: DeploymentInfo):
         self.started = True
@@ -2753,6 +2762,61 @@ def test_get_active_node_ids(mock_get_all_node_ids, mock_deployment_state_manage
     )
     assert deployment_state.get_active_node_ids() == set()
     assert deployment_state_manager.get_active_node_ids() == set()
+
+
+@patch.object(DriverDeploymentState, "_get_all_node_ids")
+def test_get_active_node_ids_none(
+    mock_get_all_node_ids, mock_deployment_state_manager_full
+):
+    """Test get_active_node_ids() are not collecting none node ids.
+
+    When the running replicas has None as the node id, `get_active_node_ids()` should
+    not include it in the set.
+    """
+    node_ids = ("node1", "node2", "node2")
+    mock_get_all_node_ids.return_value = [node_ids]
+
+    tag = "test_deployment"
+    create_deployment_state_manager, _ = mock_deployment_state_manager_full
+    deployment_state_manager = create_deployment_state_manager()
+
+    # Deploy deployment with version "1" and 3 replicas
+    info1, version1 = deployment_info(version="1", num_replicas=3)
+    updating = deployment_state_manager.deploy(tag, info1)
+    deployment_state = deployment_state_manager._deployment_states[tag]
+    assert updating
+
+    # When the replicas are in the STARTING state, `get_active_node_ids()` should
+    # return a set of node ids.
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=3,
+        version=version1,
+        by_state=[(ReplicaState.STARTING, 3)],
+    )
+    mocked_replicas = deployment_state._replicas.get()
+    for idx, mocked_replica in enumerate(mocked_replicas):
+        mocked_replica._actor.set_scheduling_strategy(
+            NodeAffinitySchedulingStrategy(node_id=node_ids[idx], soft=True)
+        )
+    assert deployment_state.get_active_node_ids() == set(node_ids)
+    assert deployment_state_manager.get_active_node_ids() == set(node_ids)
+
+    # When the replicas are in the RUNNING state and are having None node id,
+    # `get_active_node_ids()` should return empty set.
+    for mocked_replica in mocked_replicas:
+        mocked_replica._actor.set_node_id(None)
+        mocked_replica._actor.set_ready()
+    deployment_state_manager.update()
+    check_counts(
+        deployment_state,
+        total=3,
+        version=version1,
+        by_state=[(ReplicaState.RUNNING, 3)],
+    )
+    assert None not in deployment_state.get_active_node_ids()
+    assert None not in deployment_state_manager.get_active_node_ids()
 
 
 if __name__ == "__main__":

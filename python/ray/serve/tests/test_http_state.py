@@ -20,13 +20,11 @@ HEAD_NODE_ID = "node_id-index-head"
 
 def _make_http_state(
     http_options: HTTPOptions,
-    head_node_id: str = HEAD_NODE_ID,
 ) -> HTTPState:
     return HTTPState(
         SERVE_CONTROLLER_NAME,
         detached=True,
         config=http_options,
-        head_node_id=head_node_id,
         gcs_client=None,
         _start_proxies_on_init=False,
     )
@@ -47,6 +45,13 @@ def mock_get_all_node_ids(all_nodes):
 
 
 @pytest.fixture()
+def mock_get_head_node_id(all_nodes):
+    with patch("ray.serve._private.http_state.get_head_node_id") as func:
+        func.return_value = HEAD_NODE_ID
+        yield
+
+
+@pytest.fixture()
 def setup_controller():
     try:
         controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
@@ -56,7 +61,6 @@ def setup_controller():
         ).remote(
             SERVE_CONTROLLER_NAME,
             http_config=None,
-            head_node_id=HEAD_NODE_ID,
             detached=True,
             _disable_http_proxy=True,
         )
@@ -118,7 +122,7 @@ def _update_and_check_http_state(
     )
 
 
-def test_node_selection(all_nodes, mock_get_all_node_ids):
+def test_node_selection(all_nodes, mock_get_all_node_ids, mock_get_head_node_id):
     # Test NoServer
     state = _make_http_state(HTTPOptions(location=DeploymentMode.NoServer))
     assert state._get_target_nodes() == []
@@ -158,7 +162,7 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
 
 
 def test_http_state_update_restarts_unhealthy_proxies(
-    mock_get_all_node_ids, setup_controller
+    mock_get_all_node_ids, setup_controller, mock_get_head_node_id
 ):
     """Test the update method in HTTPState would kill and restart unhealthy proxies.
 
@@ -589,7 +593,9 @@ def test_http_proxy_state_update_unhealthy_check_health_succeed(setup_controller
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
+def test_update_draining(
+    mock_get_all_node_ids, setup_controller, all_nodes, mock_get_head_node_id
+):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while

@@ -64,6 +64,7 @@ from ray.serve._private.utils import (
     DEFAULT,
     override_runtime_envs_except_env_vars,
     call_function_from_import_path,
+    get_head_node_id,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -108,10 +109,14 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        head_node_id: str,
         detached: bool = False,
         _disable_http_proxy: bool = False,
     ):
+        controller_node_id = ray.get_runtime_context().get_node_id()
+        assert (
+            controller_node_id == get_head_node_id()
+        ), "Controller must be on the head node."
+
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
@@ -143,7 +148,6 @@ class ServeController:
                 controller_name,
                 detached,
                 http_config,
-                head_node_id,
                 gcs_client,
             )
 
@@ -186,7 +190,6 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        self._head_node_id = head_node_id
         self._active_nodes = set()
         self._update_active_nodes()
 
@@ -289,7 +292,8 @@ class ServeController:
         replicas). If the active nodes set changes, it will notify the long poll client.
         """
         new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_active_nodes.add(self._head_node_id)
+        head_node_id = ray.get_runtime_context().node_id
+        new_active_nodes.add(head_node_id)
         if self._active_nodes != new_active_nodes:
             self._active_nodes = new_active_nodes
             self.long_poll_host.notify_changed(
@@ -932,8 +936,6 @@ class ServeControllerAvatar:
         except ValueError:
             self._controller = None
         if self._controller is None:
-            # Used for scheduling things to the head node explicitly.
-            head_node_id = ray.get_runtime_context().get_node_id()
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
@@ -948,7 +950,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                head_node_id=head_node_id,
                 detached=detached,
             )
 
