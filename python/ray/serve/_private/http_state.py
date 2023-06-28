@@ -90,15 +90,16 @@ class HTTPProxyState:
         UNHEALTHY. Also, when status is set to HEALTHY, we will reset
         self._consecutive_health_check_failures to 0.
         """
-        # Early return to skip setting UNHEALTHY status if there are still room for
-        # retry.
-        if (
-            status == HTTPProxyStatus.UNHEALTHY
-            and self._consecutive_health_check_failures
-            < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
-        ):
+
+        if status == HTTPProxyStatus.UNHEALTHY:
             self._consecutive_health_check_failures += 1
-            return
+            # Early return to skip setting UNHEALTHY status if there are still room for
+            # retry.
+            if (
+                self._consecutive_health_check_failures
+                < PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
+            ):
+                return
 
         # Reset self._consecutive_health_check_failures when status is not UNHEALTHY.
         if status != HTTPProxyStatus.UNHEALTHY:
