@@ -1120,6 +1120,8 @@ def init(
     resources: Optional[Dict[str, float]] = None,
     ## my part
     plugin_name: Optional[str] = None,
+    plugin_path: Optional[str] = None,
+    plugin_params: Optional[Dict[str, Any]] = None,
     object_store_memory: Optional[int] = None,
     local_mode: bool = False,
     ignore_reinit_error: bool = False,
@@ -1501,6 +1503,8 @@ def init(
             memory=_memory,
             ## my part
             plugin_name = plugin_name,
+            plugin_path = plugin_path,
+            plugin_params = plugin_params,
             object_store_memory=object_store_memory,
             redis_max_memory=_redis_max_memory,
             plasma_store_socket_name=None,
@@ -1539,6 +1543,16 @@ def init(
             raise ValueError(
                 "When connecting to an existing cluster, "
                 "plugin_name must not be provided."
+            )
+        if plugin_path is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "plugin_path must not be provided."
+            )
+        if plugin_params is not None:
+            raise ValueError(
+                "When connecting to an existing cluster, "
+                "plugin_params must not be provided."
             )
         if object_store_memory is not None:
             raise ValueError(

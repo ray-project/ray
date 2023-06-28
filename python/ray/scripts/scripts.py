@@ -367,6 +367,24 @@ def debug(address):
     "By default, this is capped at 20GB but can be set higher.",
 )
 @click.option(
+    "--plugin-name",
+    required=False,
+    default=None,
+    help="The name of the plugin object store.",
+)
+@click.option(
+    "--plugin-path",
+    required=False,
+    default=None,
+    help="The full path of the library if the plugin is a shared library.",
+)
+@click.option(
+    "--plugin-params",
+    required=False,
+    default=None,
+    help="The objectstore startup parameters as a series of key-value pairs.",
+)
+@click.option(
     "--redis-max-memory",
     required=False,
     hidden=True,
@@ -542,6 +560,9 @@ def start(
     ray_client_server_port,
     memory,
     object_store_memory,
+    plugin_name,
+    plugin_path,
+    plugin_params,
     redis_max_memory,
     num_cpus,
     num_gpus,
@@ -620,6 +641,9 @@ def start(
         object_manager_port=object_manager_port,
         node_manager_port=node_manager_port,
         memory=memory,
+        plugin_name=plugin_name,
+        plugin_path=plugin_path,
+        plugin_params=plugin_params,
         object_store_memory=object_store_memory,
         redis_password=redis_password,
         redirect_output=redirect_output,
@@ -2450,3 +2474,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -25,10 +25,9 @@ namespace asio = boost::asio;
 namespace ray {
 
 
-void PluginManager::LoadObjectStorePlugin(const std::string plugin_name) {
-
-using ObjectStoreRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)();
-using ObjectStoreClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
+void PluginManager::LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_params) {
+  using ObjectStoreRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)();
+  using ObjectStoreClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
 
   RAY_LOG(INFO) << " yiweizh: Calling LoadOBjectStorePlugin with name " << plugin_name;
   void *handle = dlopen(plugin_name.c_str(), RTLD_NOW);
@@ -82,8 +81,9 @@ std::unique_ptr<plasma::ObjectStoreRunnerInterface> PluginManager::CreateObjectS
   return std::move(object_stores_[name].runner_);
 }
 
-void PluginManager::SetDefaultObjectStores(const ObjectManagerConfig config) {
-    RAY_LOG(INFO) << "Entering PluginManager::SetDefaultObjectStore";
+void PluginManager::SetObjectStores(const ObjectManagerConfig config) {
+    RAY_LOG(INFO) << "Entering PluginManager::SetDefaultObjectStore " << config.plugin_name ;
+    // i
     object_stores_["default"] = PluginManagerObjectStore{
         std::make_shared<plasma::PlasmaClient>(),
         std::make_unique<plasma::PlasmaStoreRunner>(config.store_socket_name,
@@ -92,6 +92,11 @@ void PluginManager::SetDefaultObjectStores(const ObjectManagerConfig config) {
                                                     config.plasma_directory,
                                                     config.fallback_directory)
     };
+    // LoadPlugin
+    if (config.plugin_name != "default"){
+        LoadObjectStorePlugin(config.plugin_path, config.plugin_params);
+    }
+    // object_stores_[config.plugin_name] = Plugin
 }
 
 

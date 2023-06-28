@@ -62,7 +62,9 @@ DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
-DEFINE_string(plugin_name, "", "The name for the plugin.");
+DEFINE_string(plugin_name, "", "The name of the plugin object store. ");
+DEFINE_string(plugin_path, "", "The full path of the library if the plugin is a shared library.");
+DEFINE_string(plugin_params, "", "The objectstore startup parameters as a series of key-value pairs.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
 #ifdef __linux__
@@ -117,6 +119,8 @@ int main(int argc, char *argv[]) {
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plugin_name = (FLAGS_plugin_name == "None") ? "default" : FLAGS_plugin_name;
+  const std::string plugin_path = FLAGS_plugin_path;
+  const std::string plugin_params = FLAGS_plugin_params;
   const std::string plasma_directory = FLAGS_plasma_directory;
   const bool huge_pages = FLAGS_huge_pages;
   const int metrics_export_port = FLAGS_metrics_export_port;
@@ -124,8 +128,9 @@ int main(int argc, char *argv[]) {
   const bool is_head_node = FLAGS_head;
   gflags::ShutDownCommandLineFlags();
 
-  RAY_LOG(INFO) << plugin_name;
-
+  RAY_LOG(INFO) << "main.cc :" << plugin_name;
+  RAY_LOG(INFO) << "main.cc :" << plugin_path;
+  RAY_LOG(INFO) << "main.cc :" << plugin_params;
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
@@ -245,6 +250,8 @@ int main(int argc, char *argv[]) {
         }
         object_manager_config.object_store_memory = object_store_memory;
         object_manager_config.plugin_name = plugin_name;
+        object_manager_config.plugin_path = plugin_path;
+        object_manager_config.plugin_params = plugin_params;
         object_manager_config.max_bytes_in_flight =
             RayConfig::instance().object_manager_max_bytes_in_flight();
         object_manager_config.plasma_directory = plasma_directory;

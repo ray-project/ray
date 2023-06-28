@@ -1357,6 +1357,8 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     plugin_name: str,
+    plugin_path: str,
+    plugin_params: str,
     session_name: str,
     is_head_node: bool,
     min_worker_port: Optional[int] = None,
@@ -1439,6 +1441,7 @@ def start_raylet(
     """
     assert node_manager_port is not None and type(node_manager_port) == int
 
+    print("Entering service.start_raylet()")
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
@@ -1604,6 +1607,8 @@ def start_raylet(
         f"--metrics_export_port={metrics_export_port}",
         f"--object_store_memory={object_store_memory}",
         f"--plugin_name={plugin_name}",
+        f"--plugin_path={plugin_path}",
+        f"--plugin_params={plugin_params}",
         f"--plasma_directory={plasma_directory}",
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
@@ -1639,7 +1644,7 @@ def start_raylet(
         fate_share=fate_share,
         env_updates=env_updates,
     )
-
+    print("Exiting service.start_raylet()")
     return process_info
 
 

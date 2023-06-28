@@ -78,6 +78,10 @@ struct ObjectManagerConfig {
   int64_t object_store_memory = -1;
   /// Plugin name (yiweizh)
   std::string plugin_name;
+  /// Plugin path (yiweizh)
+  std::string plugin_path;
+  /// Plugin params (yiweizh)
+  std::string plugin_params;
   /// The directory for shared memory files.
   std::string plasma_directory;
   /// The directory for fallback allocation files.
@@ -118,14 +122,14 @@ class PluginManager {
 
   std::unique_ptr<plasma::ObjectStoreRunnerInterface> CreateObjectStoreRunnerInstance(const std::string& name);
   std::shared_ptr<plasma::ObjectStoreClientInterface> CreateObjectStoreClientInstance(const std::string& name);
-  void LoadObjectStorePlugin(const std::string plugin_name);
-  void SetDefaultObjectStores(const ObjectManagerConfig config);
+  void LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_params);
+  void SetObjectStores(const ObjectManagerConfig config);
 
   static PluginManager& GetInstance(const ObjectManagerConfig config) {
   //object manager config AS PARAMETERS, AND set default runner/client as parameters?
   // add it inside object_manager.cc/h , not as a separate files.
     static PluginManager instance;
-    instance.SetDefaultObjectStores(config);
+    instance.SetObjectStores(config);
     return instance;
   }
   PluginManager(){}

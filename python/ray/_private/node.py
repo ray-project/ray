@@ -990,6 +990,8 @@ class Node:
         plasma_directory: str,
         object_store_memory: int,
         plugin_name: str, ## yiweizh
+        plugin_path: str,
+        plugin_params: str,
         use_valgrind: bool = False,
         use_profiler: bool = False,
     ):
@@ -1001,6 +1003,7 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
+        print("Entering node.start_raylet()")
         stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
         process_info = ray._private.services.start_raylet(
             self.redis_address,
@@ -1020,6 +1023,8 @@ class Node:
             plasma_directory,
             object_store_memory,
             plugin_name,
+            plugin_path,
+            plugin_params,
             self.session_name,
             is_head_node=self.is_head(),
             min_worker_port=self._ray_params.min_worker_port,
@@ -1045,6 +1050,7 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
         )
+        print("Finishing node.start_raylet()")
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -1215,7 +1221,11 @@ class Node:
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-        self.start_raylet(plasma_directory, object_store_memory, self._ray_params.plugin_name)
+        print("In _private.node.py start_ray_processes")
+        print(json.dumps(self._ray_params.plugin_params))
+        self.start_raylet(plasma_directory, object_store_memory, self._ray_params.plugin_name, 
+                                                                 self._ray_params.plugin_path,  
+                                                                 json.dumps(self._ray_params.plugin_params))
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 

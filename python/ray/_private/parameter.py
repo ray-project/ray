@@ -124,6 +124,9 @@ class RayParams:
         self,
         ## Adding my part
         plugin_name: Optional[str] = None,
+        plugin_path: Optional[str] = None,
+        plugin_params: Optional[Dict[str, any]] = None,
+        ##object_store_params: Optional[Dict[str, str]] = None,
 
         redis_address: Optional[str] = None,
         gcs_address: Optional[str] = None,
@@ -181,14 +184,15 @@ class RayParams:
         webui: Optional[str] = None,
     ):
         self.plugin_name = plugin_name
-        print("ray._private.parameter plugin_name {}".format(plugin_name))
+        self.plugin_path = plugin_path
+        self.plugin_params = plugin_params
+        print("ray._private.parameter plugin_params {}".format(plugin_params))
         self.redis_address = redis_address
         self.gcs_address = gcs_address
         self.num_cpus = num_cpus
         self.num_gpus = num_gpus
         self.memory = memory
         self.object_store_memory = object_store_memory
-        print("ray._private.parameter object_store_memory {}".format(object_store_memory))
         self.resources = resources
         self.redis_max_memory = redis_max_memory
         self.redis_port = redis_port
