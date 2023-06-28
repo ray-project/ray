@@ -527,6 +527,7 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
         requests.get("http://127.0.0.1:8001/-/routes").text
         == "This node is being drained."
     )
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
 
     # Clean up serve.
     serve.shutdown()
