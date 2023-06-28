@@ -160,6 +160,8 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         pass
     cdef cppclass CWorkerExitType "ray::rpc::WorkerExitType":
         pass
+    cdef cppclass CErrorType "ray::rpc::ErrorType":
+        pass
     cdef cppclass CTaskType "ray::TaskType":
         pass
     cdef cppclass CPlacementStrategy "ray::core::PlacementStrategy":
@@ -191,6 +193,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         const c_string &SerializeAsString() const
         void ParseFromString(const c_string &serialized)
         void CopyFrom(const CAddress& address)
+        const c_string &ip_address()
         const c_string &worker_id()
     cdef cppclass CObjectReference "ray::rpc::ObjectReference":
         CObjectReference()
@@ -206,6 +209,27 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
     cdef CLanguage LANGUAGE_JAVA "Language::JAVA"
 
 cdef extern from "src/ray/protobuf/common.pb.h" nogil:
+    cdef CErrorType ERROR_TYPE_TASK_EXECUTION_EXCEPTION "ray::rpc::ErrorType::TASK_EXECUTION_EXCEPTION"
+    cdef CErrorType ERROR_TYPE_WORKER_DIED "ray::rpc::ErrorType::WORKER_DIED"
+    cdef CErrorType ERROR_TYPE_ACTOR_DIED "ray::rpc::ErrorType::ACTOR_DIED"
+    cdef CErrorType ERROR_TYPE_LOCAL_RAYLET_DIED "ray::rpc::ErrorType::LOCAL_RAYLET_DIED"
+    cdef CErrorType ERROR_TYPE_TASK_CANCELLED "ray::rpc::ErrorType::TASK_CANCELLED"
+    cdef CErrorType ERROR_TYPE_OBJECT_LOST "ray::rpc::ErrorType::OBJECT_LOST"
+    cdef CErrorType ERROR_TYPE_OBJECT_FETCH_TIMED_OUT "ray::rpc::ErrorType::OBJECT_FETCH_TIMED_OUT"
+    cdef CErrorType ERROR_TYPE_OUT_OF_DISK_ERROR "ray::rpc::ErrorType::OUT_OF_DISK_ERROR"
+    cdef CErrorType ERROR_TYPE_OUT_OF_MEMORY "ray::rpc::ErrorType::OUT_OF_MEMORY"
+    cdef CErrorType ERROR_TYPE_NODE_DIED "ray::rpc::ErrorType::NODE_DIED"
+    cdef CErrorType ERROR_TYPE_OBJECT_DELETED "ray::rpc::ErrorType::OBJECT_DELETED"
+    cdef CErrorType ERROR_TYPE_OBJECT_FREED "ray::rpc::ErrorType::OBJECT_FREED"
+    cdef CErrorType ERROR_TYPE_OWNER_DIED "ray::rpc::ErrorType::OWNER_DIED"
+    cdef CErrorType ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE "ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE"
+    cdef CErrorType ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED "ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"
+    cdef CErrorType ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED "ray::rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"
+    cdef CErrorType ERROR_TYPE_RUNTIME_ENV_SETUP_FAILED "ray::rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED"
+    cdef CErrorType ERROR_TYPE_TASK_PLACEMENT_GROUP_REMOVED "ray::rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED"
+    cdef CErrorType ERROR_TYPE_ACTOR_PLACEMENT_GROUP_REMOVED "ray::rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED"
+    cdef CErrorType ERROR_TYPE_TASK_UNSCHEDULABLE_ERROR "ray::rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR"
+    cdef CErrorType ERROR_TYPE_ACTOR_UNSCHEDULABLE_ERROR "ray::rpc::ErrorType::ACTOR_UNSCHEDULABLE_ERROR"
     cdef CWorkerType WORKER_TYPE_WORKER "ray::core::WorkerType::WORKER"
     cdef CWorkerType WORKER_TYPE_DRIVER "ray::core::WorkerType::DRIVER"
     cdef CWorkerType WORKER_TYPE_SPILL_WORKER "ray::core::WorkerType::SPILL_WORKER"  # noqa: E501
@@ -424,6 +448,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
 
     cdef cppclass CJobConfig "ray::rpc::JobConfig":
         c_string ray_namespace() const
+
         const c_string &SerializeAsString()
 
     cdef cppclass CGcsNodeInfo "ray::rpc::GcsNodeInfo":

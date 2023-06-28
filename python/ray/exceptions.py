@@ -7,13 +7,10 @@ import colorama
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as pickle
 from ray._raylet import ActorID, TaskID, WorkerID
-from ray.core.generated.common_pb2 import (
-    PYTHON,
-    ActorDiedErrorContext,
-    Address,
-    Language,
-    RayException,
-)
+# from ray.core.generated.common_pb2 import (
+#     Language,
+#     RayException,
+# )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 import setproctitle
@@ -28,7 +25,7 @@ class RayError(Exception):
         exc_info = (type(self), self, self.__traceback__)
         formatted_exception_string = "\n".join(format_exception(*exc_info))
         return RayException(
-            language=PYTHON,
+            language=ray._raylet.RAY_LANGUAGE_PYTHON,
             serialized_exception=pickle.dumps(self),
             formatted_exception_string=formatted_exception_string,
         ).SerializeToString()
@@ -41,7 +38,7 @@ class RayError(Exception):
 
     @staticmethod
     def from_ray_exception(ray_exception):
-        if ray_exception.language == PYTHON:
+        if ray_exception.language == RAY_LANGUAGE_PYTHON:
             try:
                 return pickle.loads(ray_exception.serialized_exception)
             except Exception as e:
@@ -49,6 +46,19 @@ class RayError(Exception):
                 raise RuntimeError(msg) from e
         else:
             return CrossLanguageError(ray_exception)
+
+
+class ActorDiedErrorContext:
+
+    def __init__(self, error_message, actor_id, class_name):
+        self.error_message = error_message
+        self.actor_id = actor_id
+        self.class_name = class_name
+        self.pid = 0
+        self.name = ""
+        self.ray_namespace = ""
+        self.node_ip_address = ""
+        self.never_started = False
 
 
 @PublicAPI
@@ -527,10 +537,7 @@ class OwnerDiedError(ObjectLostError):
         log_loc = "`/tmp/ray/session_latest/logs`"
         if self.owner_address:
             try:
-                addr = Address()
-                addr.ParseFromString(self.owner_address)
-                ip_addr = addr.ip_address
-                worker_id = WorkerID(addr.worker_id)
+                ip_addr, worker_id = ray._raylet._get_data_from_owner_address(self.owner_address)
                 log_loc = (
                     f"`/tmp/ray/session_latest/logs/*{worker_id.hex()}*`"
                     f" at IP address {ip_addr}"

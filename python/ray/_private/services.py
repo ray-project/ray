@@ -24,7 +24,7 @@ import psutil
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
-from ray.core.generated.common_pb2 import Language
+# from ray.core.generated.common_pb2 import Language
 
 resource = None
 if sys.platform != "win32":
@@ -2017,7 +2017,7 @@ def start_ray_client_server(
         f"--host={ray_client_server_host}",
         f"--port={ray_client_server_port}",
         f"--mode={server_type}",
-        f"--language={Language.Name(Language.PYTHON)}",
+        # f"--language={Language.Name(Language.PYTHON)}",
     ]
     if redis_password:
         command.append(f"--redis-password={redis_password}")

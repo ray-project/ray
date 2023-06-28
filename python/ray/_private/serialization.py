@@ -17,7 +17,6 @@ from ray._raylet import (
     split_buffer,
     unpack_pickle5_buffers,
 )
-from ray.core.generated.common_pb2 import ErrorType, RayErrorInfo
 from ray.exceptions import (
     ActorPlacementGroupRemoved,
     ActorUnschedulableError,
@@ -238,9 +237,10 @@ class SerializationContext:
         pb_bytes = self._deserialize_msgpack_data(data, metadata_fields)
         assert pb_bytes
 
-        ray_error_info = RayErrorInfo()
-        ray_error_info.ParseFromString(pb_bytes)
-        return ray_error_info
+        # ray_error_info = RayErrorInfo()
+        # ray_error_info.ParseFromString(pb_bytes)
+        # return ray_error_info
+        return None
 
     def _deserialize_actor_died_error(self, data, metadata_fields):
         if not data:
@@ -285,78 +285,74 @@ class SerializationContext:
             # RayTaskError is serialized with pickle5 in the data field.
             # TODO (kfstorm): exception serialization should be language
             # independent.
-            if error_type == ErrorType.Value("TASK_EXECUTION_EXCEPTION"):
+            if error_type == ray._raylet.RAY_ERROR_TYPE_TASK_EXECUTION_EXCEPTION:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return RayError.from_bytes(obj)
-            elif error_type == ErrorType.Value("WORKER_DIED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_WORKER_DIED:
                 return WorkerCrashedError()
-            elif error_type == ErrorType.Value("ACTOR_DIED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_ACTOR_DIED:
                 return self._deserialize_actor_died_error(data, metadata_fields)
-            elif error_type == ErrorType.Value("LOCAL_RAYLET_DIED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_LOCAL_RAYLET_DIED:
                 return LocalRayletDiedError()
-            elif error_type == ErrorType.Value("TASK_CANCELLED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_TASK_CANCELLED:
                 return TaskCancelledError()
-            elif error_type == ErrorType.Value("OBJECT_LOST"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_LOST:
                 return ObjectLostError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OBJECT_FETCH_TIMED_OUT"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_FETCH_TIMED_OUT:
                 return ObjectFetchTimedOutError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OUT_OF_DISK_ERROR"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OUT_OF_DISK_ERROR:
                 return OutOfDiskError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OUT_OF_MEMORY"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OUT_OF_MEMORY:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return OutOfMemoryError(error_info.error_message)
-            elif error_type == ErrorType.Value("NODE_DIED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_NODE_DIED:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return NodeDiedError(error_info.error_message)
-            elif error_type == ErrorType.Value("OBJECT_DELETED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_DELETED:
                 return ReferenceCountingAssertionError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OBJECT_FREED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_FREED:
                 return ObjectFreedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OWNER_DIED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OWNER_DIED:
                 return OwnerDiedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("OBJECT_UNRECONSTRUCTABLE"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE:
                 return ObjectReconstructionFailedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED"
-            ):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED:
                 return ObjectReconstructionFailedMaxAttemptsExceededError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value(
-                "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED"
-            ):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED:
                 return ObjectReconstructionFailedLineageEvictedError(
                     object_ref.hex(), object_ref.owner_address(), object_ref.call_site()
                 )
-            elif error_type == ErrorType.Value("RUNTIME_ENV_SETUP_FAILED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_RUNTIME_ENV_SETUP_FAILED:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 # TODO(sang): Assert instead once actor also reports error messages.
                 error_msg = ""
                 if error_info.HasField("runtime_env_setup_failed_error"):
                     error_msg = error_info.runtime_env_setup_failed_error.error_message
                 return RuntimeEnvSetupError(error_message=error_msg)
-            elif error_type == ErrorType.Value("TASK_PLACEMENT_GROUP_REMOVED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_TASK_PLACEMENT_GROUP_REMOVED:
                 return TaskPlacementGroupRemoved()
-            elif error_type == ErrorType.Value("ACTOR_PLACEMENT_GROUP_REMOVED"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_ACTOR_PLACEMENT_GROUP_REMOVED:
                 return ActorPlacementGroupRemoved()
-            elif error_type == ErrorType.Value("TASK_UNSCHEDULABLE_ERROR"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_TASK_UNSCHEDULABLE_ERROR:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return TaskUnschedulableError(error_info.error_message)
-            elif error_type == ErrorType.Value("ACTOR_UNSCHEDULABLE_ERROR"):
+            elif error_type == ray._raylet.RAY_ERROR_TYPE_ACTOR_UNSCHEDULABLE_ERROR:
                 error_info = self._deserialize_error_info(data, metadata_fields)
                 return ActorUnschedulableError(error_info.error_message)
             else:
@@ -416,7 +412,7 @@ class SerializationContext:
         contained_object_refs = []
 
         if isinstance(value, RayTaskError):
-            metadata = str(ErrorType.Value("TASK_EXECUTION_EXCEPTION")).encode("ascii")
+            metadata = str(ray._raylet.RAY_ERROR_TYPE_TASK_EXECUTION_EXCEPTION).encode("ascii")
             value = value.to_bytes()
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the

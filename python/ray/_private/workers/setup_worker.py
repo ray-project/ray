@@ -1,10 +1,11 @@
 import argparse
 import logging
 
+import ray
 from ray._private.ray_constants import LOGGER_FORMAT, LOGGER_LEVEL
 from ray._private.ray_logging import setup_logger
 from ray._private.runtime_env.context import RuntimeEnvContext
-from ray.core.generated.common_pb2 import Language
+# from ray.core.generated.common_pb2 import Language
 
 logger = logging.getLogger(__name__)
 
@@ -30,4 +31,4 @@ if __name__ == "__main__":
     runtime_env_context = RuntimeEnvContext.deserialize(
         args.serialized_runtime_env_context or "{}"
     )
-    runtime_env_context.exec_worker(remaining_args, Language.Value(args.language))
+    runtime_env_context.exec_worker(remaining_args, ray._raylet.RAY_LANGUAGE_PYTHON)

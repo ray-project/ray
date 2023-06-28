@@ -1465,12 +1465,12 @@ def init(
         # In this case, we need to start a new cluster.
 
         # Don't collect usage stats in ray.init() unless it's a nightly wheel.
-        from ray._private.usage import usage_lib
+        # from ray._private.usage import usage_lib
 
-        if usage_lib.is_nightly_wheel():
-            usage_lib.show_usage_stats_prompt(cli=False)
-        else:
-            usage_lib.set_usage_stats_enabled_via_env_var(False)
+        # if usage_lib.is_nightly_wheel():
+        #     usage_lib.show_usage_stats_prompt(cli=False)
+        # else:
+        #     usage_lib.set_usage_stats_enabled_via_env_var(False)
 
         # Use a random port by not specifying Redis port / GCS server port.
         ray_params = ray._private.parameter.RayParams(

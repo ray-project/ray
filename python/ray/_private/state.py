@@ -2,15 +2,15 @@ import json
 import logging
 from collections import defaultdict
 
-from google.protobuf.json_format import MessageToDict
+# from google.protobuf.json_format import MessageToDict
 
 import ray
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.resource_spec import NODE_ID_PREFIX, HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import binary_to_hex, decode, hex_to_binary
 from ray._raylet import GlobalStateAccessor
-from ray.core.generated import common_pb2
-from ray.core.generated import gcs_pb2
+# from ray.core.generated import common_pb2
+# from ray.core.generated import gcs_pb2
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -328,8 +328,8 @@ class GlobalState:
             "bundles": {
                 # The value here is needs to be dictionarified
                 # otherwise, the payload becomes unserializable.
-                bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
-                for bundle in placement_group_info.bundles
+                # bundle.bundle_id.bundle_index: MessageToDict(bundle)["unitResources"]
+                # for bundle in placement_group_info.bundles
             },
             "bundles_to_node_id": {
                 bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)

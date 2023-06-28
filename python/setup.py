@@ -322,7 +322,7 @@ if setup_spec.type == SetupType.RAY:
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
         "packaging",
-        "protobuf >= 3.15.3, != 3.19.5",
+        # "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
         "frozenlist",
@@ -543,6 +543,7 @@ def build(build_python, build_java, build_cpp):
     # version of Python to build packages inside the build.sh script. Note
     # that certain flags will not be passed along such as --user or sudo.
     # TODO(rkn): Fix this.
+    """
     if not os.getenv("SKIP_THIRDPARTY_INSTALL"):
         pip_packages = ["psutil", "setproctitle==1.2.2", "colorama"]
         subprocess.check_call(
@@ -557,6 +558,7 @@ def build(build_python, build_java, build_cpp):
             + pip_packages,
             env=dict(os.environ, CC="gcc"),
         )
+    """
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:
