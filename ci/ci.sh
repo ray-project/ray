@@ -115,6 +115,41 @@ upload_wheels() {
   )
 }
 
+
+compile_pip_dependencies() {
+    # Compile boundaries
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
+  pip install pip-tools
+
+  # Required packages to lookup e.g. dragonfly-opt
+  pip install numpy
+
+  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+    echo requirements_compiled already exists
+  else
+    pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -q -o \
+      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
+      "${WORKSPACE_DIR}/python/requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+  fi
+
+  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+}
+
 test_core() {
   local args=(
     "//:*"
