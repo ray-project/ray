@@ -114,7 +114,7 @@ async def test_no_replicas_available_then_one_available(pow_2_scheduler, fake_qu
 
 
 @pytest.mark.asyncio
-async def test_no_replicas_accept_then_one_accepts(pow_2_scheduler, fake_query):
+async def test_replica_does_not_accept_then_accepts(pow_2_scheduler, fake_query):
     """
     If none of the replicas accept the request, we should repeatedly try with backoff.
     Once one accepts, the pending assignment should be fulfilled.
@@ -135,6 +135,33 @@ async def test_no_replicas_accept_then_one_accepts(pow_2_scheduler, fake_query):
 
     r1.set_queue_state_response(0, accepted=True)
     assert (await task) == r1
+
+
+@pytest.mark.asyncio
+async def test_no_replicas_accept_then_new_one_accepts(pow_2_scheduler, fake_query):
+    """
+    If none of the replicas accept the request, we should repeatedly try with backoff.
+    Once one accepts, the pending assignment should be fulfilled.
+    """
+    s = pow_2_scheduler
+    loop = get_or_create_event_loop()
+
+    task = loop.create_task(s.choose_replica_for_query(fake_query))
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    r1 = FakeReplicaWrapper("r1")
+    r1.set_queue_state_response(0, accepted=False)
+    s.update_replicas([r1])
+
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    r2 = FakeReplicaWrapper("r2")
+    r2.set_queue_state_response(0)
+    s.update_replicas([r1, r2])
+
+    assert (await task) == r2
 
 
 @pytest.mark.asyncio
