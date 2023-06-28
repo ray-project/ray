@@ -219,16 +219,6 @@ class MLflowTest(unittest.TestCase):
         with self.assertRaises(DeprecationWarning):
             wrap_function(train_fn_2)(trial_config)
 
-    # TODO(ml-team): Remove in 2.6.
-    def testMlFlowSetupConfigDeprecated(self):
-        clear_env_vars()
-        trial_config = {"par1": 4, "par2": 9.0}
-
-        trial_config.update({"mlflow": {"experiment_name": "asdf"}})
-        # No tracking uri or experiment_id/name passed in.
-        with self.assertRaises(DeprecationWarning):
-            setup_mlflow(trial_config)
-
     def testMlFlowSetupExplicit(self):
         clear_env_vars()
         trial_config = {"par1": 4, "par2": 9.0}
