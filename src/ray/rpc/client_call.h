@@ -148,10 +148,10 @@ class ClientCallImpl : public ClientCall {
 /// The lifecycle of a `ClientCallTag` is as follows.
 ///
 /// When a client submits a new gRPC request, a new `ClientCallTag` object will be created
-/// by `ClientCallMangager::CreateCall`. Then the object will be used as the tag of
+/// by `ClientCallManager::CreateCall`. Then the object will be used as the tag of
 /// `CompletionQueue`.
 ///
-/// When the reply is received, `ClientCallMangager` will get the address of this object
+/// When the reply is received, `ClientCallManager` will get the address of this object
 /// via `CompletionQueue`'s tag. And the manager should call
 /// `GetCall()->OnReplyReceived()` and then delete this object.
 class ClientCallTag {
@@ -271,7 +271,7 @@ class ClientCallManager {
   }
 
   void SetClusterId(const ClusterID &cluster_id) {
-    auto old_id = cluster_id_.exchange(ClusterID::Nil());
+    auto old_id = cluster_id_.exchange(cluster_id);
     if (!old_id.IsNil() && (old_id != cluster_id)) {
       RAY_LOG(FATAL) << "Expected cluster ID to be Nil or " << cluster_id << ", but got"
                      << old_id;

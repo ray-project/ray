@@ -90,18 +90,35 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
 
   if (cluster_id.IsNil()) {
     rpc::GetClusterIdReply reply;
+    std::promise<bool> temporary_start;
+    std::promise<bool> wait_sync;
     gcs_rpc_client_->GetClusterId(
         rpc::GetClusterIdRequest(),
-        [this, &io_service](const Status &status, const rpc::GetClusterIdReply &reply) {
+        [this,
+         &io_service,
+         &wait_sync,
+         do_stop = std::shared_future(temporary_start.get_future())](
+            const Status &status, const rpc::GetClusterIdReply &reply) {
           RAY_CHECK(status.ok()) << "Failed to get Cluster ID! Status: " << status;
           auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
           RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
           client_call_manager_->SetClusterId(cluster_id);
-          io_service.stop();
+          if (do_stop.get()) {
+            io_service.stop();
+          }
+          wait_sync.set_value(true);
         });
     // Run the IO service here to make the above call synchronous.
-    io_service.run();
-    io_service.restart();
+    // If it is already running, then wait for our particular callback
+    // to be processed.
+    if (!io_service.running()) {
+      temporary_start.set_value(true);
+      io_service.run();
+      io_service.restart();
+    } else {
+      temporary_start.set_value(false);
+      wait_sync.get_future().get();
+    }
   } else {
     client_call_manager_->SetClusterId(cluster_id);
   }

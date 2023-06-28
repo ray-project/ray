@@ -69,15 +69,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     config_.node_ip_address = "127.0.0.1";
     config_.enable_sharding_conn = false;
 
-    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
-    // test targets.
-    client_io_service_ = std::make_unique<instrumented_io_context>();
-    client_io_service_thread_ = std::make_unique<std::thread>([this] {
-      std::unique_ptr<boost::asio::io_service::work> work(
-          new boost::asio::io_service::work(*client_io_service_));
-      client_io_service_->run();
-    });
-
     server_io_service_ = std::make_unique<instrumented_io_context>();
     gcs_server_ = std::make_unique<gcs::GcsServer>(config_, *server_io_service_);
     gcs_server_->Start();
@@ -95,7 +86,15 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Create GCS client.
     gcs::GcsClientOptions options("127.0.0.1:5397");
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    // Tests legacy code paths. The poller and broadcaster have their own dedicated unit
+    // test targets.
+    client_io_service_ = std::make_unique<instrumented_io_context>();
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+    client_io_service_thread_ = std::make_unique<std::thread>([this] {
+      std::unique_ptr<boost::asio::io_service::work> work(
+          new boost::asio::io_service::work(*client_io_service_));
+      client_io_service_->run();
+    });
   }
 
   void TearDown() override {
