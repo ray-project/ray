@@ -5,6 +5,11 @@ if TYPE_CHECKING:
     from ray.runtime_context import RuntimeContext
 
 
+class _FakeGcsClient:
+    def __init__(self, address):
+        self.address = address
+
+
 class _ClientWorkerPropertyAPI:
     """Emulates the properties of the ray._private.worker object for the client"""
 
@@ -60,5 +65,5 @@ class _ClientWorkerPropertyAPI:
         return self.worker.ping_server()
 
     @property
-    def gcs_address(self) -> str:
-        return self._fetch_runtime_context().gcs_address
+    def gcs_client(self) -> str:
+        return _FakeGcsClient(self._fetch_runtime_context().gcs_address)
