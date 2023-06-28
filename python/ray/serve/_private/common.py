@@ -173,9 +173,11 @@ class StatusOverview:
         )
 
 
-HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
+# Concurrency group used for operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
 }
 
 
@@ -376,6 +378,7 @@ class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
 
 
 class ServeComponentType(str, Enum):
