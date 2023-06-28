@@ -99,7 +99,7 @@ export const ServeApplicationsListPage = () => {
             serveDetails={serveDetails}
           />
           <CollapsibleSection
-            title="Serve applications"
+            title="Applications"
             startExpanded
             className={classes.applicationsSection}
           >
