@@ -7,7 +7,18 @@ import logging
 import math
 import pickle
 import random
-from typing import Any, AsyncGenerator, Deque, Dict, List, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    DefaultDict,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -202,7 +213,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
-        self._multiplexed_model_id_to_replica_ids: defaultdict[Set[str]] = defaultdict(
+        self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
             set
         )
 
@@ -265,6 +276,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 
+        if self._replica_id_set != new_replica_id_set:
+            logger.info(
+                "Got updated replicas for deployment "
+                f"{self._deployment_name}: {new_replica_id_set}.",
+                extra={"log_to_stderr": False},
+            )
+
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
         self._multiplexed_model_id_to_replica_ids = (
@@ -272,13 +290,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
-
-        if self._replica_id_set != new_replica_id_set:
-            logger.info(
-                "Got updated replicas for deployment "
-                f"{self._deployment_name}: {new_replica_id_set}.",
-                extra={"log_to_stderr": False},
-            )
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Shim for compatibility with the existing round robin scheduler."""
@@ -296,7 +307,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         if (
             request_metadata is not None
-            and request_metadata.multiplexed_model_id
             and request_metadata.multiplexed_model_id
             in self._multiplexed_model_id_to_replica_ids
         ):
