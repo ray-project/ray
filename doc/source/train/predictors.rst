@@ -13,14 +13,14 @@ Using Predictors for Inference
 
 
 After you train a model, you will often want to use the model to do inference and prediction.
-To do so, you can use a Ray AIR Predictor. In this guide, we'll cover how to use the Predictor
+To do so, you can use a Predictor. In this guide, we'll cover how to use the Predictor
 on different types of data.
 
 
 What are predictors?
 --------------------
 
-Ray AIR Predictors are a class that loads models from `Checkpoint` to perform inference.
+Predictors are a class that loads models from `Checkpoint` to perform inference.
 
 Predictors are used by `BatchPredictor` and `PredictorDeployment` to do large-scale scoring or online inference.
 
@@ -50,7 +50,7 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 Batch Prediction
 ----------------
 
-Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
+Ray provides a ``BatchPredictor`` utility for large-scale batch inference.
 
 The BatchPredictor takes in a checkpoint and a predictor class and executes
 large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.
@@ -499,4 +499,4 @@ Execution can be triggered by pulling from the pipeline, as shown in the example
 Online Inference
 ----------------
 
-Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.
+Check out the :ref:`air-serving-guide` for details on how to perform online inference.
