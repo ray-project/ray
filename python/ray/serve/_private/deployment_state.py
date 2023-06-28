@@ -1565,7 +1565,7 @@ class DeploymentState:
                         time.time() - self._last_retry
                         < self._backoff_time_s + random.uniform(0, 3)
                     ):
-                        return (upscale, downscale)
+                        return upscale, downscale
 
                 self._last_retry = time.time()
                 logger.info(
@@ -2006,7 +2006,6 @@ class DriverDeploymentState(DeploymentState):
 
     def _deploy_driver(self) -> List[ReplicaSchedulingRequest]:
         """Deploy the driver deployment to each node."""
-        upscale = []
         num_existing_replicas = self._replicas.count()
         if num_existing_replicas >= self._target_state.num_replicas:
             num_running_replicas = self._replicas.count(states=[ReplicaState.RUNNING])
@@ -2014,8 +2013,9 @@ class DriverDeploymentState(DeploymentState):
                 for replica in self._replicas.pop(states=[ReplicaState.STARTING]):
                     self._stop_replica(replica)
 
-            return upscale
+            return []
 
+        upscale = []
         for _ in range(self._target_state.num_replicas - num_existing_replicas):
             replica_name = ReplicaName(self._name, get_random_letters())
             new_deployment_replica = DeploymentReplica(

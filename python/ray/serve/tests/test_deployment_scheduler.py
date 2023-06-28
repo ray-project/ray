@@ -20,6 +20,7 @@ class Replica:
 
 
 def test_spread_deployment_scheduling_policy_upscale(ray_start_cluster):
+    """Test to make sure replicas are spreaded."""
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3)
     cluster.add_node(num_cpus=3)
@@ -77,6 +78,9 @@ def test_spread_deployment_scheduling_policy_upscale(ray_start_cluster):
 
 
 def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
+    """Test to make sure downscale prefers replicas without node id
+    and then replicas with fewest copies on a node.
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3)
     cluster.wait_for_nodes()
@@ -161,6 +165,9 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
 
 
 def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
+    """Test to make sure there is only one replica on each node
+    for the driver deployment.
+    """
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=3)
     cluster.add_node(num_cpus=3)
