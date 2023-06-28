@@ -82,6 +82,11 @@ class SklearnTrainer(BaseTrainer):
         )
         result = trainer.fit()
 
+    .. testoutput::
+        :hide:
+
+        ...
+
     Args:
         estimator: A scikit-learn compatible estimator to use.
         datasets: Datasets to use for training and validation. Must include a

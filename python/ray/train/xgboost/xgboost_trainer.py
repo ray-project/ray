@@ -50,6 +50,11 @@ class XGBoostTrainer(GBDTTrainer):
             )
             result = trainer.fit()
 
+        .. testoutput::
+            :hide:
+
+            ...
+
     Args:
         datasets: Datasets to use for training and validation. Must include a
             "train" key denoting the training dataset. If a ``preprocessor``

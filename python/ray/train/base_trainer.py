@@ -269,6 +269,11 @@ class BaseTrainer(abc.ABC):
 
             result = trainer.fit()
 
+        .. testoutput::
+            :hide:
+
+            ...
+
         Args:
             path: The path to the experiment directory of the training run to restore.
                 This can be a local path or a remote URI if the experiment was

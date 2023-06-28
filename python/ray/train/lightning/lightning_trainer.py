@@ -81,10 +81,6 @@ class LightningConfigBuilder:
                 .build()
             )
 
-        .. testoutput::
-            :hide:
-
-            ...
     """
 
     def __init__(self) -> None:
@@ -346,6 +342,11 @@ class LightningTrainer(TorchTrainer):
             )
             result = trainer.fit()
             result
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
