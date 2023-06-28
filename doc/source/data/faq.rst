@@ -80,10 +80,10 @@ What should I not use Ray Data for?
 
 Ray Data is not meant to be used for generic ETL pipelines (like Spark) or
 scalable data science (like Dask, Modin, or Mars). However, each of these frameworks
-are :ref:`runnable on Ray <data_integrations>`, and Datasets integrates tightly with
+are runnable on Ray, and Datasets integrates tightly with
 these frameworks, allowing for efficient exchange of distributed data partitions often
 with zero-copy. Check out the
-:ref:`dataset creation feature guide <dataset_from_in_memory_data_distributed>` to learn
+:ref:`dataset creation feature guide <loading_datasets_from_distributed_df>` to learn
 more about these integrations.
 
 Datasets is specifically targeting
@@ -294,10 +294,6 @@ In Ray 2.5, Ray Data by default always requires data schemas, dropping support f
 standalone Python objects. In addition to unification and simplicity benefits, this
 aligns the Ray Data API closer to industry-standard distributed data APIs like Apache
 Spark and also emerging standards for machine learning datasets like HuggingFace.
-
-You can disable strict mode temporarily by setting the environment variable
-``RAY_DATA_STRICT_MODE=0`` on all cluster processes. Strict mode will not be
-possible to disable in future releases.
 
 Migrating existing code is straightforward. There are two common changes you may need
 to make to your code to be compatible:

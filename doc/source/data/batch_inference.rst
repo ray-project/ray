@@ -5,36 +5,13 @@ End-to-end: Offline Batch Inference
 
 .. tip::
 
-    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference. 
+    `Get in touch <https://forms.gle/sGX7PQhheBGL6yxQ6>`_ to get help using Ray Data, the industry's fastest and cheapest solution for offline batch inference.
 
 Offline batch inference is a process for generating model predictions on a fixed set of input data. Ray Data offers an efficient and scalable solution for batch inference, providing faster execution and cost-effectiveness for deep learning applications.
 
+For an overview on why you should use Ray Data for offline batch inference, and how it compares to alternatives, see the :ref:`Ray Data Overview <data_overview>`.
+
 .. figure:: images/batch_inference.png
-
-
-Why choose Ray Data for offline inference?
-------------------------------------------
-
-.. dropdown:: Faster and cheaper for modern deep learning applications
-
-    Ray Data is designed for deep learning applications that involve both CPU preprocessing and GPU inference. Ray Data streams working data from CPU preprocessing tasks to GPU inferencing tasks, allowing you to utilize both sets of resources concurrently.
-
-    By using Ray Data, your GPUs are no longer idle during CPU computation, reducing overall cost of the batch inference job.
-
-.. dropdown:: Cloud, framework, and data format agnostic
-
-    Ray Data has no restrictions on cloud provider, ML framework, or data format.
-    
-    Through the :ref:`Ray cluster launcher <cluster-index>`, you can start a Ray cluster on AWS, GCP, or Azure clouds. You can use any ML framework of your choice, including PyTorch, HuggingFace, or Tensorflow. Ray Data also does not require a particular file format, and supports a :ref:`wide variety of formats <loading_data>` including CSV, Parquet, and raw images.
-
-.. dropdown:: Out of the box scaling
-
-    Ray Data is built on Ray, so it easily scales to many machines. Code that works on one machine also runs on a large cluster without any changes.
-
-.. dropdown:: Python first
-
-    With Ray Data, you can express your inference job directly in Python instead of
-    YAML or other formats, allowing for faster iterations, easier debugging, and a native developer experience.
 
 
 .. _batch_inference_quickstart:
@@ -50,23 +27,24 @@ To start, install Ray Data:
 Using Ray Data for offline inference involves four basic steps:
 
 - **Step 1:** Load your data into a Ray Dataset. Ray Data supports many different data sources and formats. For more details, see :ref:`Loading Data <loading_data>`.
-- **Step 2:** Define a Python class to load the pre-trained model. 
-- **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming-data>`.
-- **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see :ref:`Consuming data <consuming_data>`.
+- **Step 2:** Define a Python class to load the pre-trained model.
+- **Step 3:** Transform your dataset using the pre-trained model by calling :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`. For more details, see :ref:`Transforming Data <transforming_data>`.
+- **Step 4:** Get the final predictions by either iterating through the output or saving the results. For more details, see the :ref:`Iterating over data <iterating-over-data>` and :ref:`Saving data <saving-data>` user guides.
 
-For more in-depth examples for your use case, see :ref:`batch_inference_examples`_. For how to configure batch inference, see :ref:`batch_inference_configuration`_.
+For more in-depth examples for your use case, see :ref:`our batch inference examples<batch_inference_examples>`.
+For how to configure batch inference, see :ref:`the configuration guide<batch_inference_configuration>`.
 
 .. tabs::
 
     .. group-tab:: HuggingFace
-        
+
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
 
             import ray
-            
+
             # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
             # You can also create a Ray Dataset from many other sources and file
             # formats.
@@ -99,12 +77,12 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
             predictions = ds.map_batches(HuggingFacePredictor, compute=scale)
             # Step 4: Show one prediction output.
             predictions.show(limit=1)
-        
+
         .. testoutput::
             :options: +MOCK
 
             {'data': 'Complete this', 'output': 'Complete this information or purchase any item from this site.\n\nAll purchases are final and non-'}
-        
+
 
     .. group-tab:: PyTorch
 
@@ -163,7 +141,7 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
             import numpy as np
 
             import ray
-            
+
             # Step 1: Create a Ray Dataset from in-memory Numpy arrays.
             # You can also create a Ray Dataset from many other sources and file
             # formats.
@@ -204,14 +182,14 @@ For more in-depth examples for your use case, see :ref:`batch_inference_examples
 
 More examples
 -------------
-- :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>` 
+- :doc:`Image Classification Batch Inference with PyTorch ResNet18 </data/examples/pytorch_resnet_batch_prediction>`
 - :doc:`Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50 </data/examples/batch_inference_object_detection>`
 - :doc:`Image Classification Batch Inference with Huggingface Vision Transformer </data/examples/huggingface_vit_batch_prediction>`
 
 .. _batch_inference_configuration:
 
 Configuration and troubleshooting
--------------------------------
+---------------------------------
 
 .. _batch_inference_gpu:
 
@@ -221,7 +199,7 @@ Using GPUs for inference
 To use GPUs for inference, make the following changes to your code:
 
 1. Update the class implementation to move the model and data to and from GPU.
-2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU. 
+2. Specify `num_gpus=1` in the :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` call to indicate that each actor should use 1 GPU.
 3. Specify a `batch_size` for inference. For more details on how to configure the batch size, see `batch_inference_batch_size`_.
 
 The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
@@ -229,14 +207,14 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 .. tabs::
 
     .. group-tab:: HuggingFace
-        
+
         .. testcode::
-            
+
             from typing import Dict
             import numpy as np
 
             import ray
-            
+
             ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 
             class HuggingFacePredictor:
@@ -252,21 +230,21 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             # Use 2 actors, each actor using 1 GPU. 2 GPUs total.
             predictions = ds.map_batches(
-                HuggingFacePredictor, 
+                HuggingFacePredictor,
                 num_gpus=1,
-                # Specify the batch size for inference. 
+                # Specify the batch size for inference.
                 # Increase this for larger datasets.
-                batch_size=1, 
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2), 
+                compute=ray.data.ActorPoolStrategy(size=2),
                 )
             predictions.show(limit=1)
-        
+
         .. testoutput::
             :options: +MOCK
 
             {'data': 'Complete this', 'output': 'Complete this poll. Which one do you think holds the most promise for you?\n\nThank you'}
-        
+
 
     .. group-tab:: PyTorch
 
@@ -299,13 +277,13 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             # Use 2 actors, each actor using 1 GPU. 2 GPUs total.
             predictions = ds.map_batches(
-                TorchPredictor, 
+                TorchPredictor,
                 num_gpus=1,
-                # Specify the batch size for inference. 
+                # Specify the batch size for inference.
                 # Increase this for larger datasets.
-                batch_size=1, 
+                batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2) 
+                compute=ray.data.ActorPoolStrategy(size=2)
                 )
             predictions.show(limit=1)
 
@@ -324,7 +302,7 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
             from tensorflow import keras
 
             import ray
-            
+
             ds = ray.data.from_numpy(np.ones((1, 100)))
 
             class TFPredictor:
@@ -342,13 +320,13 @@ The remaining is the same as the :ref:`Quickstart <batch_inference_quickstart>`.
 
             # Use 2 actors, each actor using 1 GPU. 2 GPUs total.
             predictions = ds.map_batches(
-                TFPredictor, 
+                TFPredictor,
                 num_gpus=1,
-                # Specify the batch size for inference. 
+                # Specify the batch size for inference.
                 # Increase this for larger datasets.
                 batch_size=1,
                 # Set the ActorPool size to the number of GPUs in your cluster.
-                compute=ray.data.ActorPoolStrategy(size=2) 
+                compute=ray.data.ActorPoolStrategy(size=2)
                 )
             predictions.show(limit=1)
 
@@ -367,7 +345,7 @@ Configure the size of the input batch that is passed to ``__call__`` by setting 
 Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter OOMs, decreasing ``batch_size`` may help.
 
 .. testcode::
-    
+
     import numpy as np
 
     import ray
@@ -377,7 +355,7 @@ Increasing batch size results in faster execution because inference is a vectori
     def assert_batch(batch: Dict[str, np.ndarray]):
         assert len(batch) == 2
         return batch
-    
+
     # Specify that each input batch should be of size 2.
     ds.map_batches(assert_batch, batch_size=2)
 
@@ -388,7 +366,7 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <_batch_inference_batch_size>`.
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease the batch size by following :ref:`these steps <batch_inference_batch_size>`.
 
 If your batch size is already set to 1, then use either a smaller model or GPU devices with more memory.
 
@@ -414,12 +392,12 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
 
 .. testcode::
     :skipif: True
-            
+
     from typing import Dict
     import numpy as np
 
     import ray
-    
+
     ds = ray.data.from_numpy(np.asarray(["Complete this", "for me"]))
 
     class HuggingFacePredictor:
@@ -433,38 +411,10 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
             return batch
 
     predictions = ds.map_batches(
-        HuggingFacePredictor, 
+        HuggingFacePredictor,
         # Require 5 CPUs per actor (so at most 3 can fit per 16 CPU node).
         num_cpus=5,
         # 3 actors per node, with 4 nodes in the cluster means ActorPool size of 12.
-        compute=ray.data.ActorPoolStrategy(size=12) 
+        compute=ray.data.ActorPoolStrategy(size=12)
         )
     predictions.show(limit=1)
-
-How does Ray Data compare to X for offline inference?
------------------------------------------------------
-
-.. dropdown:: Batch Services: AWS Batch, GCP Batch
-
-    Cloud providers such as AWS, GCP, and Azure provide batch services to manage compute infrastructure for you. Each service uses the same process: you provide the code, and the service runs your code on each node in a cluster. However, while infrastructure management is necessary, it is often not enough. These services have limitations, such as a lack of software libraries to address optimized parallelization, efficient data transfer, and easy debugging. These solutions are suitable only for experienced users who can write their own optimized batch inference code.
-
-    Ray Data abstracts away not only the infrastructure management, but also the sharding your dataset, the parallelization of the inference over these shards, and the transfer of data from storage to CPU to GPU.
-
-
-.. dropdown:: Online inference solutions: Bento ML, Sagemaker Batch Transform
-
-    Solutions like `Bento ML <https://www.bentoml.com/>`_, `Sagemaker Batch Transform <https://docs.aws.amazon.com/sagemaker/latest/dg/batch-transform.html>`_, or :ref:`Ray Serve <rayserve>` provide APIs to make it easy to write performant inference code and can abstract away infrastructure complexities. But they are designed for online inference rather than offline batch inference, which are two different problems with different sets of requirements. These solutions introduce additional complexity like HTTP, and cannot effectively handle large datasets leading inference service providers like `Bento ML to integrating with Apache Spark <https://modelserving.com/blog/unifying-real-time-and-batch-inference-with-bentoml-and-spark>`_ for offline inference.
-
-    Ray Data is built for offline batch jobs, without all the extra complexities of starting servers or sending HTTP requests.
-
-    For a more detailed performance comparison between Ray Data and Sagemaker Batch Transform, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
-
-.. dropdown:: Distributed Data Processing Frameworks: Apache Spark
-
-    Ray Data handles many of the same batch processing workloads as `Apache Spark <https://spark.apache.org/>`_, but with a streaming paradigm that is better suited for GPU workloads for deep learning inference.
-
-    For a more detailed performance comarison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
-
-Case studies
-------------
-- `Sewer AI speeds up object detection on videos 3x using Ray Data <https://www.anyscale.com/blog/inspecting-sewer-line-safety-using-thousands-of-hours-of-video>`_

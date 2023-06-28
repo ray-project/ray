@@ -398,7 +398,7 @@ def test_run_get_ingress_app(serve_instance):
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_deployments(["g"])
+    serve_instance.delete_apps(["default"])
 
     no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
     ingress_handle = serve.run(no_ingress_app)
@@ -479,7 +479,7 @@ def test_deploy_application(serve_instance):
 
     @serve.deployment
     class Model1:
-        def __call__(self):
+        def __call__(self, *args):
             return "got model1"
 
     app = FastAPI()

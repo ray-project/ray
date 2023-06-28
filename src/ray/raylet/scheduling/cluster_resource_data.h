@@ -422,6 +422,7 @@ class NodeResources {
         available(other.available),
         load(other.load),
         normal_task_resources(other.normal_task_resources),
+        labels(other.labels),
         latest_resources_normal_task_timestamp(
             other.latest_resources_normal_task_timestamp),
         object_pulls_queued(other.object_pulls_queued) {}
@@ -431,6 +432,10 @@ class NodeResources {
   ResourceRequest load;
   /// Resources owned by normal tasks.
   ResourceRequest normal_task_resources;
+
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
+
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
   /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
   /// upload is latest.
@@ -500,11 +505,17 @@ struct Node {
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
-    const absl::flat_hash_map<std::string, double> &resource_map_available);
+    const absl::flat_hash_map<std::string, double> &resource_map_available,
+    const absl::flat_hash_map<std::string, std::string> &node_labels = {});
 
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
+    bool requires_object_store_memory);
+
+/// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
+    const absl::flat_hash_map<ResourceID, double> &resource_map,
     bool requires_object_store_memory);
 
 }  // namespace ray
