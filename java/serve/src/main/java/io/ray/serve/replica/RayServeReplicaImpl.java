@@ -279,6 +279,11 @@ public class RayServeReplicaImpl implements RayServeReplica {
   }
 
   @Override
+  public int getNumOngoingRequests() {
+    return numOngoingRequests.get();
+  }
+
+  @Override
   public DeploymentVersion reconfigure(byte[] deploymentConfigBytes) {
     config = DeploymentConfig.fromProtoBytes(deploymentConfigBytes);
     Object userConfig = config.getUserConfig();
