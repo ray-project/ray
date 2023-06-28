@@ -1,6 +1,8 @@
 import numpy as np
 from gymnasium.spaces import Box
 
+from ray.rllib.utils.annotations import override
+from ray.rllib.core.rl_module import RLModule
 from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.core.models.base import STATE_OUT
@@ -14,9 +16,11 @@ class StatefulRandomRLModule(RandomRLModule):
         super().__init__(*args, **kwargs)
         self.state_space = Box(-1.0, 1.0, (1,))
 
-    def is_recurrent(self):
+    @override(RLModule)
+    def is_stateful(self):
         return True
 
+    @override(RLModule)
     def get_initial_state(self):
         return np.zeros_like([self.state_space.sample()])
 

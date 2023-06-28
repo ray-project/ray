@@ -403,10 +403,10 @@ class RLModule(abc.ABC):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_initial_state(self) -> NestedDict:
+    def get_initial_state(self) -> Any:
         """Returns the initial state of the module.
 
-        This is used for recurrent models.
+        This can be used for recurrent models.
         """
         return {}
 
