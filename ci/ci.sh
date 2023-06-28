@@ -117,7 +117,13 @@ upload_wheels() {
 
 
 compile_pip_dependencies() {
-    # Compile boundaries
+  # Compile boundaries
+
+  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
+    echo "Skipping for arch64"
+    return 0
+  fi
+
   # shellcheck disable=SC2262
   alias pip="python -m pip"
   pip install pip-tools
