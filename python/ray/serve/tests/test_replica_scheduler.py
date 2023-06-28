@@ -526,6 +526,34 @@ class TestModelMultiplexing:
                 ]
             )
 
+    async def test_no_replicas_available_then_choose_one_with_id(self, pow_2_scheduler):
+        """
+        Verify that if new replicas are added while the scheduling task is in backoff,
+        it will prioritize those with the model ID.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+
+        r1 = FakeReplicaWrapper("r1")
+        r1.set_queue_state_response(0, accepted=False)
+
+        tasks = [loop.create_task(s.choose_replica_for_query(query_with_model_id("m1"))) for _ in range(100)]
+
+        # Scheduling tasks should be in backoff.
+        done, _ = await asyncio.wait(tasks, timeout=0.1)
+        assert len(done) == 0
+
+        # Now add two more replicas, one of which has the model ID.
+        # That one should be chosen for all of the tasks.
+        r2 = FakeReplicaWrapper("r2")
+        r2.set_queue_state_response(0, accepted=False)
+        r3 = FakeReplicaWrapper("r3", model_ids={"m1"})
+        r3.set_queue_state_response(100, accepted=True)
+
+        s.update_replicas([r1, r2, r3])
+
+        assert all(replica == r3 for replica in await asyncio.gather(*tasks))
+
 
 if __name__ == "__main__":
     import sys
