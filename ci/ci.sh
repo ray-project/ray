@@ -123,7 +123,9 @@ compile_pip_dependencies() {
   pip install pip-tools
 
   # Required packages to lookup e.g. dragonfly-opt
-  pip install numpy
+  HAS_TORCH=0
+  python -c "import torch" 2>/dev/null && HAS_TORCH=1
+  pip install numpy torch
 
   if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
     echo requirements_compiled already exists
@@ -148,6 +150,10 @@ compile_pip_dependencies() {
   fi
 
   cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
+  if [ "$HAS_TORCH" -eq 0 ]; then
+    pip uninstall -y torch
+  fi
 }
 
 test_core() {
