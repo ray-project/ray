@@ -40,7 +40,7 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
 def test_batch_predictor_warns_deprecation(shutdown_only):
     with pytest.warns(DeprecationWarning):
         BatchPredictor.from_checkpoint(
-            Checkpoint.from_dict({"factor": 2.0}),
+            Checkpoint.from_dict({"factor": 0}),
             DummyPredictorFS,
         )
 
