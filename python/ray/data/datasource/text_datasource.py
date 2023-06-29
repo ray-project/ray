@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.binary_datasource import BinaryDatasource
@@ -32,16 +32,6 @@ class TextDatasource(BinaryDatasource):
             builder.add(item)
 
         block = builder.build()
-        return block
-
-    def _convert_block_to_tabular_block(
-        self,
-        block: List[str],
-        column_name: Optional[str] = None,
-    ) -> "pyarrow.Table":
-        import pyarrow as pa
-
-        assert isinstance(block, pa.Table)
         return block
 
     def _rows_per_file(self):
