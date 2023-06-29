@@ -47,6 +47,16 @@ print(ray.nodes())
 check_script = """
 import requests
 import json
+import time
+
+
+start_time = time.time()
+while time.time() - start_time < 30:
+    healthz = requests.get("http://127.0.0.1:8000/-/healthz/").text
+    print(f"HEALTHZ: {healthz}")
+    if healthz == "success":
+        break
+
 if {num_replicas} == 1:
     b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
     for i in range(5):
