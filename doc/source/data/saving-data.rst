@@ -20,13 +20,13 @@ Writing data to local disk
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 To save your :class:`~ray.data.dataset.Dataset` to local disk, call a method
-like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>`  and specify a local
-directory with the `local://` scheme.
+like :meth:`Dataset.write_parquet <ray.data.Dataset.write_parquet>`  and set
+``distributed=False``.
 
 .. warning::
 
-    If your cluster contains multiple nodes and you don't use `local://`, Ray Data
-    writes different partitions of data to different nodes.
+    If your cluster contains multiple nodes and you don't set ``distributed=False``, Ray
+    Data writes different partitions of data to different nodes.
 
 .. testcode::
 
@@ -34,7 +34,7 @@ directory with the `local://` scheme.
 
     ds = ray.data.read_csv("example://iris.csv")
 
-    ds.write_parquet("local:///tmp/iris/")
+    ds.write_parquet("/tmp/iris/", distributed=False)
 
 To write data to formats other than Parquet, read the
 :ref:`Input/Output reference <input-output>`.
@@ -58,7 +58,7 @@ the appropriate scheme. URI can point to buckets or folders.
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             ds.write_parquet("s3://my-bucket/my-folder")
 
@@ -78,7 +78,7 @@ the appropriate scheme. URI can point to buckets or folders.
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds.write_parquet("gcs://my-bucket/my-folder", filesystem=filesystem)
@@ -99,7 +99,7 @@ the appropriate scheme. URI can point to buckets or folders.
 
             import ray
 
-            ds = ray.data.read_csv("local:///tmp/iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             filesystem = adlfs.AzureBlobFileSystem(account_name="azureopendatastorage")
             ds.write_parquet("az://my-bucket/my-folder", filesystem=filesystem)

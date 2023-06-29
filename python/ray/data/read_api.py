@@ -1,6 +1,7 @@
 import collections
 import logging
 import math
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -268,6 +269,7 @@ def read_datasource(
     *,
     parallelism: int = -1,
     ray_remote_args: Dict[str, Any] = None,
+    distributed: bool = True,
     **read_args,
 ) -> Dataset:
     """Read a stream from a custom data source.
@@ -280,6 +282,8 @@ def read_datasource(
             resources and estimated in-memory data size.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        distributed: If ``True``, distribute read tasks across the cluster. Otherwise,
+            execute all read tasks on the head node.
 
     Returns:
         Dataset that reads data from the datasource.
@@ -289,18 +293,28 @@ def read_datasource(
     if ray_remote_args is None:
         ray_remote_args = {}
 
-    local_uri = False
     paths = read_args.get("paths", None)
     if paths and _is_local_scheme(paths):
+        warnings.warn(
+            "The `local://` scheme is deprecated. Set `distributed=False` instead.",
+            DeprecationWarning,
+        )
         if ray.util.client.ray.is_connected():
             raise ValueError(
                 f"The local scheme paths {paths} are not supported in Ray Client."
+            )
+        distributed = False
+
+    if not distributed:
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "You're using Ray Client, and you set `distributed=False`. This isn't "
+                "supported. To fix this error, set `distributed=True`."
             )
         ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
             ray.get_runtime_context().get_node_id(),
             soft=False,
         )
-        local_uri = True
 
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
@@ -317,6 +331,7 @@ def read_datasource(
             )
             force_local = True
 
+    local_uri = (not distributed)
     if force_local:
         (
             requested_parallelism,
@@ -511,6 +526,7 @@ def read_parquet(
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: ParquetMetadataProvider = DefaultParquetMetadataProvider(),
+    distributed: bool = True,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create an Arrow dataset from parquet files.
@@ -588,6 +604,8 @@ def read_parquet(
             be able to resolve file metadata more quickly and/or accurately.
         arrow_parquet_args: Other parquet read options to pass to pyarrow, see
             https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset producing Arrow records read from the specified paths.
@@ -604,6 +622,7 @@ def read_parquet(
         columns=columns,
         ray_remote_args=ray_remote_args,
         meta_provider=meta_provider,
+        distributed=distributed,
         **arrow_parquet_args,
     )
 
@@ -625,6 +644,7 @@ def read_images(
     mode: Optional[str] = None,
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
+    distributed: bool = True,
 ) -> Dataset:
     """Read images from the specified paths.
 
@@ -691,6 +711,8 @@ def read_images(
             stored in the ``'path'`` column.
         ignore_missing_paths: If True, ignores any file/directory paths in ``paths``
             that are not found. Defaults to False.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         A :class:`~ray.data.Dataset` producing tensors that represent the images at
@@ -715,6 +737,7 @@ def read_images(
         mode=mode,
         include_paths=include_paths,
         ignore_missing_paths=ignore_missing_paths,
+        distributed=distributed,
     )
 
 
@@ -732,6 +755,7 @@ def read_parquet_bulk(
     partition_filter: Optional[PathPartitionFilter] = (
         ParquetBaseDatasource.file_extension_filter()
     ),
+    distributed: bool = True,
     **arrow_parquet_args,
 ) -> Dataset:
     """Create an Arrow dataset from a large number (such as >1K) of parquet files
@@ -793,6 +817,8 @@ def read_parquet_bulk(
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
         arrow_parquet_args: Other parquet read options to pass to pyarrow.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset producing Arrow records read from the specified paths.
@@ -811,6 +837,7 @@ def read_parquet_bulk(
         open_stream_args=arrow_open_file_args,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        distributed=distributed,
         **arrow_parquet_args,
     )
 
@@ -829,6 +856,7 @@ def read_json(
     ] = JSONDatasource.file_extension_filter(),
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
+    distributed: bool = True,
     **arrow_json_args,
 ) -> Dataset:
     """Create an Arrow dataset from json files.
@@ -875,6 +903,8 @@ def read_json(
             `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset producing Arrow records read from the specified paths.
@@ -890,6 +920,7 @@ def read_json(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        distributed=distributed,
         **arrow_json_args,
     )
 
@@ -906,6 +937,7 @@ def read_csv(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = Partitioning("hive"),
     ignore_missing_paths: bool = False,
+    distributed: bool = True,
     **arrow_csv_args,
 ) -> Dataset:
     r"""Create an Arrow dataset from csv files.
@@ -980,6 +1012,8 @@ def read_csv(
         arrow_csv_args: Other csv read options to pass to pyarrow.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset producing Arrow records read from the specified paths.
@@ -995,6 +1029,7 @@ def read_csv(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        distributed=distributed,
         **arrow_csv_args,
     )
 
@@ -1014,6 +1049,7 @@ def read_text(
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    distributed: bool = True,
 ) -> Dataset:
     """Create a dataset from lines stored in text files.
 
@@ -1048,6 +1084,8 @@ def read_text(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset producing lines of text read from the specified paths.
@@ -1065,6 +1103,7 @@ def read_text(
         drop_empty_lines=drop_empty_lines,
         encoding=encoding,
         ignore_missing_paths=ignore_missing_paths,
+        distributed=distributed,
     )
 
 
@@ -1081,6 +1120,7 @@ def read_numpy(
     ] = NumpyDatasource.file_extension_filter(),
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
+    distributed: bool = True,
     **numpy_load_args,
 ) -> Dataset:
     """Create an Arrow dataset from numpy files.
@@ -1116,6 +1156,8 @@ def read_numpy(
             that describes how paths are organized. Defaults to ``None``.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
@@ -1130,6 +1172,7 @@ def read_numpy(
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
+        distributed=distributed,
         **numpy_load_args,
     )
 
@@ -1145,6 +1188,7 @@ def read_tfrecords(
     partition_filter: Optional[PathPartitionFilter] = None,
     ignore_missing_paths: bool = False,
     tf_schema: Optional["schema_pb2.Schema"] = None,
+    distributed: bool = True,
 ) -> Dataset:
     """Create a dataset from TFRecord files that contain
     `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_
@@ -1216,6 +1260,8 @@ def read_tfrecords(
             found. Defaults to False.
         tf_schema: Optional TensorFlow Schema which is used to explicitly set the schema
             of the underlying Dataset.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1233,6 +1279,7 @@ def read_tfrecords(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         tf_schema=tf_schema,
+        distributed=distributed,
     )
 
 
@@ -1250,6 +1297,7 @@ def read_webdataset(
     filerename: Optional[Union[list, callable]] = None,
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
+    distributed: bool = True,
 ) -> Dataset:
     """Create a dataset from WebDataset files.
 
@@ -1272,6 +1320,8 @@ def read_webdataset(
         filerename: A function or list of tuples to rename files prior to grouping.
         suffixes: A function or list of suffixes to select for creating samples.
         verbose_open: Whether to print the file names as they are opened.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1292,6 +1342,7 @@ def read_webdataset(
         filerename=filerename,
         suffixes=suffixes,
         verbose_open=verbose_open,
+        distributed=distributed,
     )
 
 
@@ -1309,6 +1360,7 @@ def read_binary_files(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     output_arrow_format: bool = False,
+    distributed: bool = True,
 ) -> Dataset:
     """Create a dataset from binary files of arbitrary contents.
 
@@ -1343,6 +1395,8 @@ def read_binary_files(
             found. Defaults to False.
         output_arrow_format: If True, returns data in Arrow format, instead of Python
             list format. Defaults to False.
+        distributed: If ``True``, read files from worker nodes. Otherwise, read files
+            from the head node only.
 
     Returns:
         Dataset producing records read from the specified paths.
@@ -1362,6 +1416,7 @@ def read_binary_files(
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         output_arrow_format=output_arrow_format,
+        distributed=distributed,
     )
 
 

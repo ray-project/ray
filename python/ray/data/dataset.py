@@ -5,6 +5,7 @@ import itertools
 import logging
 import sys
 import time
+import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -2812,6 +2813,7 @@ class Dataset:
         datasource: Datasource,
         *,
         ray_remote_args: Dict[str, Any] = None,
+        distributed: bool = True,
         **write_args,
     ) -> None:
         """Write the dataset to a custom datasource.
@@ -2830,15 +2832,29 @@ class Dataset:
         Args:
             datasource: The datasource to write to.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            distributed: If ``True``, distribute write tasks across the cluster.
+                Otherwise, execute all write tasks on the head node.
             write_args: Additional write args to pass to the datasource.
         """
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
         if path and _is_local_scheme(path):
+            warnings.warn(
+                "The `local://` scheme is deprecated. Set `distributed=False` instead.",
+                DeprecationWarning,
+            )
             if ray.util.client.ray.is_connected():
                 raise ValueError(
                     f"The local scheme paths {path} are not supported in Ray Client."
+                )
+            distributed = False
+
+        if not distributed:
+            if ray.util.client.ray.is_connected():
+                raise ValueError(
+                    "You're using Ray Client, and you set `distributed=False`. This isn't "
+                    "supported. To fix this error, set `distributed=True`."
                 )
             ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(),

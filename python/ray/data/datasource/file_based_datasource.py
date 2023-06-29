@@ -1,8 +1,11 @@
 import itertools
+import os
 import pathlib
 import posixpath
 import sys
 import urllib.parse
+from dataclasses import dataclass
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -299,7 +302,7 @@ class FileBasedDatasource(Datasource):
             logger.get_logger().warning(
                 f"Skipping writing empty dataset with UUID {dataset_uuid} at {path}",
             )
-            return "skip"
+            return None
 
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
@@ -332,7 +335,7 @@ class FileBasedDatasource(Datasource):
                 )
             # TODO: decide if we want to return richer object when the task
             # succeeds.
-            return "ok"
+            return write_path
 
         if not block_path_provider:
             block_path_provider = DefaultBlockWritePathProvider()
@@ -345,6 +348,14 @@ class FileBasedDatasource(Datasource):
             file_format=file_format,
         )
         return write_block(write_path, block)
+
+    def on_write_complete(self, write_results: List[WriteResult], **kwargs) -> None:
+        for path in write_results:
+            if path is None:
+                continue
+            scheme = urllib.parse.urlparse(path).scheme
+            if not scheme and not os.path.exists(path):
+                raise ValueError("Set `distributed=False`.")
 
     def _write_block(
         self,

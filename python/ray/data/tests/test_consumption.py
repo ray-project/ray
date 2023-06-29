@@ -6,10 +6,11 @@ import sys
 import time
 from unittest.mock import patch
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+
+import numpy as np
 
 import ray
 from ray.data._internal.block_builder import BlockBuilder
@@ -1424,11 +1425,20 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
     # Read/write from Ray Client will result in error.
     ray.init(address)
     with pytest.raises(ValueError):
-        ds = ray.data.read_parquet("local://" + path).materialize()
+        ds = ray.data.read_parquet(path, distributed=False).materialize()
     ds = ray.data.from_pandas(df)
     with pytest.raises(ValueError):
-        ds.write_parquet("local://" + data_path).materialize()
+        ds.write_parquet(data_path, distributed=False).materialize()
 
+def test_local_scheme_raises_deprecation_warning(ray_start_regular, tmpdir):
+    # Test reads
+    with tempfile.NamedTemporaryFile(suffix=".txt") as file:
+        with pytest.warns(DeprecationWarning):
+            ray.data.read_text("local://" + file.name).materialize()
+
+    # Test writes
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).write_parquet("local://" + str(tmpdir))
 
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):

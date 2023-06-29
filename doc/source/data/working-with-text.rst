@@ -188,6 +188,6 @@ To view the full list of supported file formats, see the
 
     ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
 
-    ds.write_parquet("local:///tmp/results")
+    ds.write_parquet("/tmp/results/", distributed=False)
 
 For more information on saving data, see :ref:`Saving data <saving-data>`.
