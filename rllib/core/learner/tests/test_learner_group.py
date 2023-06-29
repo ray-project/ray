@@ -7,6 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
+from ray.rllib.core.learner.learner import FrameworkHyperparameters
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,
@@ -62,8 +63,9 @@ class RemoteTrainingHelper:
             tf.random.set_seed(0)
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
-        learner_group = get_learner_group(fw, env, scaling_config, eager_tracing=True)
-        local_learner = get_learner(framework=fw, env=env)
+        learner_group = get_learner_group(fw, env, scaling_config)
+        framework_hps = FrameworkHyperparameters(eager_tracing=True)
+        local_learner = get_learner(framework=fw, framework_hps=framework_hps, env=env)
         local_learner.build()
 
         # make the state of the learner and the local learner_group identical
@@ -136,9 +138,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             env = gym.make("CartPole-v1")
 
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
+            learner_group = get_learner_group(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
@@ -188,9 +188,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
+            learner_group = get_learner_group(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=512)
             batch = reader.next()
 
@@ -267,7 +265,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                 scaling_mode
             ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
             learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True, is_multi_agent=True
+                fw, env, scaling_config, is_multi_agent=True
             )
             spec = get_module_spec(framework=fw, env=env)
             learner_group.add_module(module_id="0", module_spec=spec)
@@ -342,7 +340,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
         scaling_config = LOCAL_SCALING_CONFIGS["local-cpu"]
         learner_group = get_learner_group(
-            "torch", env, scaling_config, eager_tracing=True, is_multi_agent=True
+            "torch", env, scaling_config, is_multi_agent=True
         )
         spec = get_module_spec(framework="torch", env=env)
         learner_group.add_module(module_id="0", module_spec=spec)
@@ -404,9 +402,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             scaling_config = REMOTE_SCALING_CONFIGS.get(
                 scaling_mode
             ) or LOCAL_SCALING_CONFIGS.get(scaling_mode)
-            initial_learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
+            initial_learner_group = get_learner_group(fw, env, scaling_config)
 
             # checkpoint the initial learner state for later comparison
             initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
@@ -424,9 +420,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             # learner into the new one
             initial_learner_group.shutdown()
             del initial_learner_group
-            new_learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
+            new_learner_group = get_learner_group(fw, env, scaling_config)
             new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
 
             # do another update
@@ -438,9 +432,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del new_learner_group
 
             # construct a new learner group and load the initial state of the learner
-            learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
+            learner_group = get_learner_group(fw, env, scaling_config)
             learner_group.load_state(initial_learner_checkpoint_dir)
             check(learner_group.get_weights(), initial_learner_group_weights)
             learner_group.update(batch.as_multi_agent(), reduce_fn=None)
@@ -477,9 +469,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             scaling_config = REMOTE_SCALING_CONFIGS[scaling_mode]
-            learner_group = get_learner_group(
-                fw, env, scaling_config, eager_tracing=True
-            )
+            learner_group = get_learner_group(fw, env, scaling_config)
             reader = get_cartpole_dataset_reader(batch_size=512)
             min_loss = float("inf")
             batch = reader.next()

@@ -677,6 +677,17 @@ TEST(RayClusterModeTest, RuntimeEnvJobLevelEnvVarsTest) {
   ray::Shutdown();
 }
 
+TEST(RayClusterModeTest, UnsupportObjectRefTest) {
+  ray::RayConfig config;
+  ray::Init(config, cmd_argc, cmd_argv);
+  ray::ActorHandle<Counter> actor = ray::Actor(RAY_FUNC(Counter::FactoryCreate)).Remote();
+  auto int_ref = ray::Put(1);
+  EXPECT_THROW(actor.Task(&Counter::GetIntByObjectRef).Remote(int_ref),
+               std::invalid_argument);
+
+  ray::Shutdown();
+}
+
 int main(int argc, char **argv) {
   absl::ParseCommandLine(argc, argv);
   cmd_argc = argc;

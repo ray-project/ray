@@ -226,7 +226,6 @@ def _noop_logger_creator(
 
 def _get_trainable_kwargs(
     trial: "Trial",
-    additional_kwargs: Optional[Dict[str, Any]] = None,
     should_chdir: bool = False,
 ) -> Dict[str, Any]:
     trial.init_local_path()
@@ -253,9 +252,6 @@ def _get_trainable_kwargs(
         # with trainables that don't provide these keyword arguments
         kwargs["remote_checkpoint_dir"] = trial.remote_path
         kwargs["sync_config"] = trial.sync_config
-
-        if additional_kwargs:
-            kwargs.update(additional_kwargs)
 
     return kwargs
 

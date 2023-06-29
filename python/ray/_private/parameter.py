@@ -27,6 +27,7 @@ class RayParams:
         num_gpus: Number of GPUs to configure the raylet with.
         resources: A dictionary mapping the name of a resource to the quantity
             of that resource available.
+        labels: The key-value labels of the node.
         memory: Total available memory for workers requesting memory.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
@@ -95,7 +96,7 @@ class RayParams:
         raylet_socket_name: If provided, it will specify the socket path
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
-            directory for the Ray process.
+            directory for the Ray process. Must be an absolute path.
         storage: Specify a URI for persistent cluster-wide storage. This storage path
             must be accessible by all nodes of the cluster, otherwise an error will be
             raised.
@@ -121,7 +122,6 @@ class RayParams:
         env_vars: Override environment variables for the raylet.
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
-        labels: The key-value labels of the node.
     """
 
     def __init__(
@@ -131,6 +131,7 @@ class RayParams:
         num_cpus: Optional[int] = None,
         num_gpus: Optional[int] = None,
         resources: Optional[Dict[str, float]] = None,
+        labels: Optional[Dict[str, str]] = None,
         memory: Optional[float] = None,
         object_store_memory: Optional[float] = None,
         redis_max_memory: Optional[float] = None,
@@ -181,7 +182,6 @@ class RayParams:
         env_vars: Optional[Dict[str, str]] = None,
         session_name: Optional[str] = None,
         webui: Optional[str] = None,
-        labels: Optional[Dict[str, str]] = None,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -427,6 +427,9 @@ class RayParams:
                 "Using ray with numpy < 1.16.0 will result in slow "
                 "serialization. Upgrade numpy if using with ray."
             )
+
+        if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
+            raise ValueError("temp_dir must be absolute path or None.")
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

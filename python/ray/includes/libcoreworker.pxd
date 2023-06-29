@@ -153,6 +153,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
+        CObjectReference PeekObjectRefStream(
+            const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
             const CTaskID &task_id,
@@ -250,7 +252,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID &generator_id,
             const CAddress &caller_address,
             int64_t item_index,
-            c_bool finished)
+            uint64_t attempt_number)
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()
@@ -318,6 +320,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_string serialized_retry_exception_allowlist,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
             c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+            c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
             shared_ptr[LocalMemoryBuffer]
             &creation_task_exception_pb_bytes,
             c_bool *is_retryable_error,
@@ -325,8 +328,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const c_vector[CConcurrencyGroup] &defined_concurrency_groups,
             const c_string name_of_concurrency_group_to_execute,
             c_bool is_reattempt,
-            c_bool is_streaming_generator) nogil
-         ) task_execution_callback
+            c_bool is_streaming_generator) nogil) task_execution_callback
         (void(const CWorkerID &) nogil) on_worker_shutdown
         (CRayStatus() nogil) check_signals
         (void(c_bool) nogil) gc_collect

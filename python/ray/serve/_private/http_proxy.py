@@ -6,34 +6,40 @@ import logging
 import pickle
 import socket
 import time
-from typing import Any, Callable, Dict, List, Optional, Tuple
-from ray._private.utils import get_or_create_event_loop
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import uvicorn
 import starlette.responses
 import starlette.routing
-from starlette.types import Receive, Scope, Send
+from starlette.types import Message, Receive, Scope, Send
+from starlette.datastructures import MutableHeaders
+from starlette.middleware import Middleware
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
+from ray._private.utils import get_or_create_event_loop
 
 from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.http_util import (
+    ASGIMessageQueue,
     HTTPRequestWrapper,
     RawASGIResponse,
     receive_http_body,
     Response,
     set_socket_reuse_port,
+    validate_http_proxy_callback_return,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName
+from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName, NodeId
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_REQUEST_ID_HEADER,
+    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.logging_utils import (
@@ -42,7 +48,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.utils import get_random_letters
+from ray.serve._private.utils import get_random_letters, call_function_from_import_path
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -68,171 +74,12 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = (
 if os.environ.get("SERVE_REQUEST_PROCESSING_TIMEOUT_S") is not None:
     logger.warning(
         "The `SERVE_REQUEST_PROCESSING_TIMEOUT_S` environment variable has "
-        "been deprecated. Please use `RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S` "
-        "instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be ignored in "
-        "future versions."
+        "been deprecated. Please set `request_timeout_s` in your Serve config's "
+        "`http_options` field instead. `SERVE_REQUEST_PROCESSING_TIMEOUT_S` will be "
+        "ignored in future versions. See: https://docs.ray.io/en/releases-2.5.1/serve/a"
+        "pi/doc/ray.serve.schema.HTTPOptionsSchema.html#ray.serve.schema.HTTPOptionsSch"
+        "ema.request_timeout_s"
     )
-
-
-async def _handle_streaming_response(
-    asgi_response_generator: "ray._raylet.StreamingObjectRefGenerator",
-    scope: Scope,
-    receive: Receive,
-    send: Send,
-) -> str:
-    """Consumes the `asgi_response_generator` and sends its data over `send`.
-
-    This function is a proxy for a downstream ASGI response. The passed
-    generator is expected to return a stream of pickled ASGI messages
-    (dictionaries) that are sent using the provided ASGI interface.
-
-    Exception handling depends on whether the first message has already been sent:
-        - if an exception happens *before* the first message, a 500 status is sent.
-        - if an exception happens *after* the first message, the response stream is
-          terminated.
-
-    The difference in behavior is because once the first message has been sent, the
-    client has already received the status code so we cannot send a `500` (internal
-    server error).
-
-    Returns:
-        status_code
-    """
-
-    status_code = ""
-    try:
-        async for obj_ref in asgi_response_generator:
-            asgi_messages: List[Dict[str, Any]] = pickle.loads(await obj_ref)
-            for asgi_message in asgi_messages:
-                # There must be exactly one "http.response.start" message that
-                # always contains the "status" field.
-                if not status_code:
-                    assert asgi_message["type"] == "http.response.start", (
-                        "First response message must be 'http.response.start'",
-                    )
-                    assert "status" in asgi_message, (
-                        "'http.response.start' message must contain 'status'",
-                    )
-                    status_code = str(asgi_message["status"])
-
-                await send(asgi_message)
-    except Exception as e:
-        error_message = f"Unexpected error, traceback: {e}."
-        logger.warning(error_message)
-
-        if status_code == "":
-            # If first message hasn't been sent, return 500 status.
-            await Response(error_message, status_code=500).send(scope, receive, send)
-            return "500"
-        else:
-            # If first message has been sent, terminate the response stream.
-            return status_code
-
-    return status_code
-
-
-async def _send_request_to_handle(handle, scope, receive, send) -> str:
-    http_body_bytes = await receive_http_body(scope, receive, send)
-
-    # NOTE(edoakes): it's important that we defer building the starlette
-    # request until it reaches the replica to avoid unnecessary
-    # serialization cost, so we use a simple dataclass here.
-    request = HTTPRequestWrapper(scope, http_body_bytes)
-    # Perform a pickle here to improve latency. Stdlib pickle for simple
-    # dataclasses are 10-100x faster than cloudpickle.
-    request = pickle.dumps(request)
-
-    retries = 0
-    backoff_time_s = 0.05
-    backoff = False
-    loop = get_or_create_event_loop()
-    # We have received all the http request conent. The next `receive`
-    # call might never arrive; if it does, it can only be `http.disconnect`.
-    client_disconnection_task = loop.create_task(receive())
-    while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-        assignment_task: asyncio.Task = handle.remote(request)
-        done, _ = await asyncio.wait(
-            [assignment_task, client_disconnection_task],
-            return_when=FIRST_COMPLETED,
-        )
-        if client_disconnection_task in done:
-            message = await client_disconnection_task
-            assert message["type"] == "http.disconnect", (
-                "Received additional request payload that's not disconnect. "
-                "This is an invalid HTTP state."
-            )
-            logger.warning(
-                f"Client from {scope['client']} disconnected, cancelling the "
-                "request.",
-                extra={"log_to_stderr": False},
-            )
-            # This will make the .result() to raise cancelled error.
-            assignment_task.cancel()
-        try:
-            object_ref = await assignment_task
-
-            if isinstance(object_ref, ray._raylet.StreamingObjectRefGenerator):
-                return await _handle_streaming_response(
-                    object_ref, scope, receive, send
-                )
-
-            # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
-            # some replicas crash simultaneously (e.g. if the head node crashes),
-            # requests to the dead replicas hang until the gcs recovers.
-            # This asyncio.wait can kill those hanging requests and retry them
-            # at another replica. Release tests should kill the head node and
-            # check if latency drops significantly. See
-            # https://github.com/ray-project/ray/pull/29534 for more info.
-
-            _, request_timed_out = await asyncio.wait(
-                [object_ref], timeout=RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
-            )
-            if request_timed_out:
-                logger.info(
-                    "Request didn't finish within "
-                    f"{RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S} seconds. Retrying "
-                    "with another replica. You can modify this timeout by "
-                    'setting the "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S" env var.'
-                )
-                backoff = True
-            else:
-                result = await object_ref
-                client_disconnection_task.cancel()
-                break
-        except asyncio.CancelledError:
-            # Here because the client disconnected, we will return a custom
-            # error code for metric tracking.
-            return DISCONNECT_ERROR_CODE
-        except RayTaskError as e:
-            error_message = f"Unexpected error, traceback: {e}."
-            await Response(error_message, status_code=500).send(scope, receive, send)
-            return "500"
-        except RayActorError:
-            logger.info(
-                "Request failed due to replica failure. There are "
-                f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
-                "remaining."
-            )
-            backoff = True
-        if backoff:
-            await asyncio.sleep(backoff_time_s)
-            # Be careful about the expotential backoff scaling here.
-            # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
-            # initial backoff time, while 2x scaling means 512x the initial.
-            backoff_time_s *= 1.5
-            retries += 1
-            backoff = False
-    else:
-        error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-        await Response(error_message, status_code=500).send(scope, receive, send)
-        return "500"
-
-    if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-        await result(scope, receive, send)
-        return str(result.status_code)
-    else:
-        await Response(result).send(scope, receive, send)
-        return "200"
 
 
 class LongestPrefixRouter:
@@ -325,7 +172,15 @@ class HTTPProxy:
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    def __init__(self, controller_name: str):
+    def __init__(
+        self,
+        controller_name: str,
+        node_id: NodeId,
+        request_timeout_s: Optional[float] = None,
+    ):
+        self.request_timeout_s = request_timeout_s
+        self._node_id = node_id
+
         # Set the controller name so that serve will connect to the
         # controller instance this proxy is running in.
         ray.serve.context._set_internal_replica_context(
@@ -335,12 +190,21 @@ class HTTPProxy:
         # Used only for displaying the route table.
         self.route_info: Dict[str, EndpointTag] = dict()
 
+        self.self_actor_handle = ray.get_runtime_context().current_actor
+        self.asgi_receive_queues: Dict[str, ASGIMessageQueue] = dict()
+
+        if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+            logger.info(
+                "Experimental streaming feature flag enabled.",
+                extra={"log_to_stderr": False},
+            )
+
         def get_handle(name):
             return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
-                _internal_pickled_http_request=True,
+                _is_for_http_requests=True,
                 _stream=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
             )
 
@@ -349,6 +213,7 @@ class HTTPProxy:
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
+                LongPollNamespace.ACTIVE_NODES: self._update_draining,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -394,6 +259,14 @@ class HTTPProxy:
                 "status_code",
             ),
         )
+        # `self._ongoing_requests` is used to count the number of ongoing requests
+        # and determine whether to set/unset `self._prevent_node_downscale_ref`
+        self._ongoing_requests = 0
+        # `self._prevent_node_downscale_ref` is used to prevent the node from being
+        # downscaled when there are ongoing requests
+        self._prevent_node_downscale_ref = None
+        # `self._draining` is used to indicate whether the node is the draining state.
+        self._draining = False
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -402,6 +275,24 @@ class HTTPProxy:
             self.route_info[route] = endpoint
 
         self.prefix_router.update_routes(endpoints)
+
+    def _update_draining(self, active_nodes: Set[str]):
+        """Update draining flag on http proxy.
+
+        This is a callback for when controller detects there being a change in active
+        nodes. Each http proxy will check if it's nodes is still active and set
+        draining flag accordingly. Also, log a message when the draining flag is
+        changed.
+        """
+        draining = self._node_id not in active_nodes
+        if draining != self._draining:
+            logger.info(f"Setting draining flag on node {self._node_id} to {draining}.")
+            self._draining = draining
+
+            # Since the draining flag is changed, we need to check if
+            # `self._prevent_node_downscale_ref` is set to prevent the node from being
+            # downscaled when there are ongoing requests.
+            self._try_set_prevent_downscale_ref()
 
     async def block_until_endpoint_exists(
         self, endpoint: EndpointTag, timeout_s: float
@@ -424,24 +315,88 @@ class HTTPProxy:
         )
         await response.send(scope, receive, send)
 
+    async def _draining_response(self, scope, receive, send):
+        response = Response(
+            "This node is being drained.",
+            status_code=503,
+        )
+        await response.send(scope, receive, send)
+
+    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
+        queue = self.asgi_receive_queues.get(request_id, None)
+        if queue is None:
+            raise KeyError(f"Request ID {request_id} not found.")
+
+        await queue.wait_for_message()
+        return queue.get_messages_nowait()
+
+    def _try_set_prevent_downscale_ref(self):
+        """Try to set put a primary copy of object in the object store to prevent node
+        from downscale.
+
+        The only time we need to put the object store is when there are ongoing
+        requests, the node is not draining, and the object reference is not set yet.
+        This should be checked when either `self._ongoing_requests` or `self._draining`
+        is changed. Also, log when the object reference is set.
+        """
+        if (
+            self._ongoing_requests > 0
+            and self._draining
+            and self._prevent_node_downscale_ref is None
+        ):
+            logger.info("Putting keep alive object reference to prevent downscaling.")
+            self._prevent_node_downscale_ref = ray.put("ongoing_requests")
+
+    def _ongoing_requests_start(self):
+        """Ongoing requests start.
+
+        The current autoscale logic can downscale nodes with ongoing requests if the
+        node doesn't have replicas and has no primary copies of objects in the object
+        store. The counter and the dummy object reference will help to keep the node
+        alive while draining requests, so they are not dropped unintentionally.
+        """
+        self._ongoing_requests += 1
+        # Since the ongoing request is changed, we need to check if
+        # `self._prevent_node_downscale_ref` is set to prevent the node from being
+        # downscaled when the draining flag is true.
+        self._try_set_prevent_downscale_ref()
+
+    def _ongoing_requests_end(self):
+        """Ongoing requests end.
+
+        Decrement the ongoing request counter and drop the dummy object reference
+        signaling that the node can be downscaled safely.
+        """
+        self._ongoing_requests -= 1
+        if self._ongoing_requests == 0:
+            logger.info(
+                "Dropping keep alive object reference to allow downscaling.",
+                extra={"log_to_stderr": False},
+            )
+            self._prevent_node_downscale_ref = None
+
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
 
         See details at:
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
+        assert scope["type"] in {"http", "websocket"}
 
-        assert scope["type"] == "http"
+        method = scope.get("method", "websocket").upper()
 
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
         route_path = scope["path"][len(root_path) :]
 
         if route_path == "/-/routes":
+            if self._draining:
+                return await self._draining_response(scope, receive, send)
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
-                    "method": scope["method"].upper(),
+                    "method": method,
                     "application": "",
                     "status_code": "200",
                 }
@@ -451,10 +406,13 @@ class HTTPProxy:
             )
 
         if route_path == "/-/healthz":
+            if self._draining:
+                return await self._draining_response(scope, receive, send)
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
-                    "method": scope["method"].upper(),
+                    "method": method,
                     "application": "",
                     "status_code": "200",
                 }
@@ -463,90 +421,310 @@ class HTTPProxy:
                 scope, receive, send
             )
 
-        route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
-        if route_prefix is None:
-            self.request_error_counter.inc(
-                tags={
-                    "route": route_path,
-                    "error_code": "404",
-                    "method": scope["method"].upper(),
-                }
+        try:
+            self._ongoing_requests_start()
+
+            route_prefix, handle, app_name = self.prefix_router.match_route(route_path)
+            if route_prefix is None:
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": "404",
+                        "method": method,
+                    }
+                )
+                self.request_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "method": method,
+                        "application": "",
+                        "status_code": "404",
+                    }
+                )
+                return await self._not_found(scope, receive, send)
+
+            # Modify the path and root path so that reverse lookups and redirection
+            # work as expected. We do this here instead of in replicas so it can be
+            # changed without restarting the replicas.
+            if route_prefix != "/":
+                assert not route_prefix.endswith("/")
+                scope["path"] = route_path.replace(route_prefix, "", 1)
+                scope["root_path"] = root_path + route_prefix
+
+            request_id = get_random_letters(10)
+            request_context_info = {
+                "route": route_path,
+                "request_id": request_id,
+                "app_name": app_name,
+            }
+            start_time = time.time()
+            for key, value in scope.get("headers", []):
+                if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                    request_context_info["multiplexed_model_id"] = value.decode()
+                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                    request_context_info["request_id"] = value.decode()
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context.RequestContext(**request_context_info)
             )
+
+            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+                status_code = await self.send_request_to_replica_streaming(
+                    request_context_info["request_id"], handle, scope, receive, send
+                )
+            else:
+                status_code = await self.send_request_to_replica_unary(
+                    handle, scope, receive, send
+                )
+
             self.request_counter.inc(
                 tags={
                     "route": route_path,
-                    "method": scope["method"].upper(),
-                    "application": "",
-                    "status_code": "404",
+                    "method": method,
+                    "application": app_name,
+                    "status_code": status_code,
                 }
             )
-            return await self._not_found(scope, receive, send)
 
-        # Modify the path and root path so that reverse lookups and redirection
-        # work as expected. We do this here instead of in replicas so it can be
-        # changed without restarting the replicas.
-        if route_prefix != "/":
-            assert not route_prefix.endswith("/")
-            scope["path"] = route_path.replace(route_prefix, "", 1)
-            scope["root_path"] = root_path + route_prefix
-
-        request_context_info = {
-            "route": route_path,
-            "request_id": get_random_letters(10),
-            "app_name": app_name,
-        }
-        start_time = time.time()
-        for key, value in scope["headers"]:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                request_context_info["multiplexed_model_id"] = value.decode()
-                break
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
-        )
-        status_code = await _send_request_to_handle(handle, scope, receive, send)
-        self.request_counter.inc(
-            tags={
-                "route": route_path,
-                "method": scope["method"].upper(),
-                "application": app_name,
-                "status_code": status_code,
-            }
-        )
-
-        latency_ms = (time.time() - start_time) * 1000.0
-        self.processing_latency_tracker.observe(
-            latency_ms,
-            tags={
-                "route": route_path,
-                "application": app_name,
-                "status_code": status_code,
-            },
-        )
-        logger.info(
-            access_log_msg(
-                method=scope["method"],
-                status=str(status_code),
-                latency_ms=latency_ms,
-            ),
-            extra={"log_to_stderr": False},
-        )
-        if status_code != "200":
-            self.request_error_counter.inc(
+            latency_ms = (time.time() - start_time) * 1000.0
+            self.processing_latency_tracker.observe(
+                latency_ms,
                 tags={
-                    "route": route_path,
-                    "error_code": status_code,
-                    "method": scope["method"].upper(),
-                }
-            )
-            self.deployment_request_error_counter.inc(
-                tags={
-                    "deployment": handle.deployment_name,
-                    "error_code": status_code,
-                    "method": scope["method"].upper(),
                     "route": route_path,
                     "application": app_name,
-                }
+                    "status_code": status_code,
+                },
             )
+            logger.info(
+                access_log_msg(
+                    method=method,
+                    status=str(status_code),
+                    latency_ms=latency_ms,
+                ),
+                extra={"log_to_stderr": False},
+            )
+            if status_code != "200":
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": status_code,
+                        "method": method,
+                    }
+                )
+                self.deployment_request_error_counter.inc(
+                    tags={
+                        "deployment": handle.deployment_name,
+                        "error_code": status_code,
+                        "method": method,
+                        "route": route_path,
+                        "application": app_name,
+                    }
+                )
+        finally:
+            # If anything during the request failed, we still want to ensure the ongoing
+            # request counter is decremented and possibly reset the keep alive object.
+            self._ongoing_requests_end()
+
+    async def send_request_to_replica_unary(
+        self,
+        handle: RayServeHandle,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> str:
+        http_body_bytes = await receive_http_body(scope, receive, send)
+
+        # NOTE(edoakes): it's important that we defer building the starlette
+        # request until it reaches the replica to avoid unnecessary
+        # serialization cost, so we use a simple dataclass here.
+        request = HTTPRequestWrapper(scope, http_body_bytes)
+
+        # Perform a pickle here to improve latency. Stdlib pickle for simple
+        # dataclasses are 10-100x faster than cloudpickle.
+        request = pickle.dumps(request)
+
+        retries = 0
+        backoff_time_s = 0.05
+        backoff = False
+        loop = get_or_create_event_loop()
+        # We have received all the http request conent. The next `receive`
+        # call might never arrive; if it does, it can only be `http.disconnect`.
+        while retries < HTTP_REQUEST_MAX_RETRIES + 1:
+            assignment_task: asyncio.Task = handle.remote(request)
+            client_disconnection_task = loop.create_task(receive())
+            done, _ = await asyncio.wait(
+                [assignment_task, client_disconnection_task],
+                return_when=FIRST_COMPLETED,
+            )
+            if client_disconnection_task in done:
+                message = await client_disconnection_task
+                assert message["type"] == "http.disconnect", (
+                    "Received additional request payload that's not disconnect. "
+                    "This is an invalid HTTP state."
+                )
+                logger.warning(
+                    f"Client from {scope['client']} disconnected, cancelling the "
+                    "request.",
+                    extra={"log_to_stderr": False},
+                )
+                # This will make the .result() to raise cancelled error.
+                assignment_task.cancel()
+            else:
+                client_disconnection_task.cancel()
+
+            try:
+                object_ref = await assignment_task
+
+                # NOTE (shrekris-anyscale): when the gcs, Serve controller, and
+                # some replicas crash simultaneously (e.g. if the head node crashes),
+                # requests to the dead replicas hang until the gcs recovers.
+                # This asyncio.wait can kill those hanging requests and retry them
+                # at another replica. Release tests should kill the head node and
+                # check if latency drops significantly. See
+                # https://github.com/ray-project/ray/pull/29534 for more info.
+                _, request_timed_out = await asyncio.wait(
+                    [object_ref], timeout=self.request_timeout_s
+                )
+                if request_timed_out:
+                    logger.info(
+                        f"Request didn't finish within {self.request_timeout_s} seconds"
+                        ". Retrying with another replica. You can modify this timeout "
+                        'by setting "request_timeout_s" in your Serve config\'s '
+                        "`http_options` field."
+                    )
+                    backoff = True
+                else:
+                    result = await object_ref
+                    break
+            except asyncio.CancelledError:
+                # Here because the client disconnected, we will return a custom
+                # error code for metric tracking.
+                return DISCONNECT_ERROR_CODE
+            except RayTaskError as e:
+                error_message = f"Unexpected error, traceback: {e}."
+                await Response(error_message, status_code=500).send(
+                    scope, receive, send
+                )
+                return "500"
+            except RayActorError:
+                logger.info(
+                    "Request failed due to replica failure. There are "
+                    f"{HTTP_REQUEST_MAX_RETRIES - retries} retries "
+                    "remaining."
+                )
+                backoff = True
+            if backoff:
+                await asyncio.sleep(backoff_time_s)
+                # Be careful about the expotential backoff scaling here.
+                # Assuming 10 retries, 1.5x scaling means the last retry is 38x the
+                # initial backoff time, while 2x scaling means 512x the initial.
+                backoff_time_s *= 1.5
+                retries += 1
+                backoff = False
+        else:
+            error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
+            await Response(error_message, status_code=500).send(scope, receive, send)
+            return "500"
+
+        if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
+            await result(scope, receive, send)
+            return str(result.status_code)
+        else:
+            await Response(result).send(scope, receive, send)
+            return "200"
+
+    async def proxy_asgi_receive(
+        self, receive: Receive, queue: ASGIMessageQueue
+    ) -> Optional[int]:
+        """Proxies the `receive` interface, placing its messages into the queue.
+
+        Once a disconnect message is received, the call exits and `receive` is no longer
+        called.
+
+        For HTTP messages, `None` is always returned.
+        For websocket messages, the disconnect code is returned if a disconnect code is
+        received.
+        """
+        while True:
+            msg = await receive()
+            await queue(msg)
+
+            if msg["type"] == "http.disconnect":
+                return None
+
+            if msg["type"] == "websocket.disconnect":
+                return msg["code"]
+
+    async def send_request_to_replica_streaming(
+        self,
+        request_id: str,
+        handle: RayServeHandle,
+        scope: Scope,
+        receive: Receive,
+        send: Send,
+    ) -> str:
+        # Proxy the receive interface by placing the received messages on a queue.
+        # The downstream replica must call back into `receive_asgi_messages` on this
+        # actor to receive the messages.
+        receive_queue = ASGIMessageQueue()
+        self.asgi_receive_queues[request_id] = receive_queue
+        proxy_asgi_receive_task = get_or_create_event_loop().create_task(
+            self.proxy_asgi_receive(receive, receive_queue)
+        )
+
+        status_code = ""
+        try:
+            object_ref_generator = await handle.remote(
+                pickle.dumps(scope), self.self_actor_handle
+            )
+            async for obj_ref in object_ref_generator:
+                asgi_messages: List[Message] = pickle.loads(await obj_ref)
+                for asgi_message in asgi_messages:
+                    if asgi_message["type"] == "http.response.start":
+                        # HTTP responses begin with exactly one "http.response.start"
+                        # message containing the "status" field. Other response types
+                        # (e.g., WebSockets) may not.
+                        status_code = str(asgi_message["status"])
+                    elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
+
+                    await send(asgi_message)
+        except Exception as e:
+            logger.exception(e)
+            status_code = "500"
+        finally:
+            if not proxy_asgi_receive_task.done():
+                proxy_asgi_receive_task.cancel()
+            else:
+                # If the server disconnects, status_code is set above from the
+                # disconnect message. Otherwise the disconnect code comes from
+                # a client message via the receive interface.
+                if (
+                    status_code == ""
+                    and scope["type"] == "websocket"
+                    and proxy_asgi_receive_task.exception() is None
+                ):
+                    status_code = str(proxy_asgi_receive_task.result())
+
+            del self.asgi_receive_queues[request_id]
+
+        return status_code
+
+
+class RequestIdMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        async def send_with_request_id(message: Dict):
+            request_id = ray.serve.context._serve_request_context.get().request_id
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+            if message["type"] == "websocket.accept":
+                message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+            await send(message)
+
+        await self.app(scope, receive, send_with_request_id)
 
 
 @ray.remote(num_cpus=0)
@@ -558,14 +736,30 @@ class HTTPProxyActor:
         root_path: str,
         controller_name: str,
         node_ip_address: str,
+        node_id: NodeId,
+        request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
-
         if http_middlewares is None:
-            http_middlewares = []
+            http_middlewares = [Middleware(RequestIdMiddleware)]
+        else:
+            http_middlewares.append(Middleware(RequestIdMiddleware))
+
+        if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
+            logger.info(
+                "Calling user-provided callback from import path "
+                f" {RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH}."
+            )
+            middlewares = validate_http_proxy_callback_return(
+                call_function_from_import_path(
+                    RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH
+                )
+            )
+
+            http_middlewares.extend(middlewares)
 
         self.host = host
         self.port = port
@@ -573,9 +767,17 @@ class HTTPProxyActor:
 
         self.setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name)
+        self.app = HTTPProxy(controller_name, node_id)
+        self.app = HTTPProxy(
+            controller_name=controller_name,
+            node_id=node_id,
+            request_timeout_s=(
+                request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
+            ),
+        )
 
         self.wrapped_app = self.app
+
         for middleware in http_middlewares:
             self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
 
@@ -655,3 +857,6 @@ Please make sure your http-host and http-port are specified correctly."""
         Make sure the async event loop is not blocked.
         """
         pass
+
+    async def receive_asgi_messages(self, request_id: str) -> bytes:
+        return pickle.dumps(await self.app.receive_asgi_messages(request_id))

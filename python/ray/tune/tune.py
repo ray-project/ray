@@ -1068,7 +1068,8 @@ def run(
     else:
         air_progress_reporter = _detect_air_reporter(
             air_verbosity,
-            search_alg.total_samples,
+            num_samples=search_alg.total_samples,
+            entrypoint=_entrypoint,
             metric=metric,
             mode=mode,
             config=config,
@@ -1168,7 +1169,6 @@ def run(
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
-        sync_config=sync_config,
         remote_storage_path=remote_path,
     )
 

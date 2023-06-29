@@ -178,6 +178,7 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         void set_node_id(const c_string& node_id)
         void set_soft(c_bool soft)
         void set_spill_on_unavailable(c_bool spill_on_unavailable)
+        void set_fail_on_unavailable(c_bool fail_on_unavailable)
     cdef cppclass CSchedulingStrategy "ray::rpc::SchedulingStrategy":
         CSchedulingStrategy()
         void clear_scheduling_strategy()
@@ -237,6 +238,13 @@ cdef extern from "ray/common/buffer.h" namespace "ray" nogil:
     cdef cppclass LocalMemoryBuffer(CBuffer):
         LocalMemoryBuffer(uint8_t *data, size_t size, c_bool copy_data)
         LocalMemoryBuffer(size_t size)
+
+    cdef cppclass SharedMemoryBuffer(CBuffer):
+        SharedMemoryBuffer(
+            const shared_ptr[CBuffer] &buffer,
+            int64_t offset,
+            int64_t size)
+        c_bool IsPlasmaBuffer() const
 
 cdef extern from "ray/common/ray_object.h" nogil:
     cdef cppclass CRayObject "ray::RayObject":
@@ -389,9 +397,6 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
         CRayStatus PollLogs(
             c_string* key_id, int64_t timeout_ms, CLogBatch* data)
 
-        CRayStatus PollFunctionKey(
-            c_string* key_id, int64_t timeout_ms, CPythonFunction* data)
-
         CRayStatus PollActor(
             c_string* key_id, int64_t timeout_ms, CActorTableData* data)
 
@@ -403,6 +408,11 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
+
+    CRayStatus PythonCheckGcsHealth(
+        const c_string& gcs_address, const int gcs_port, const int64_t timeout_ms,
+        const c_string& ray_version, const c_bool skip_version_check,
+        c_bool& is_healthy)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":

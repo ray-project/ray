@@ -5,7 +5,6 @@ import os
 import re
 import sys
 import threading
-from logging.handlers import RotatingFileHandler
 import time
 from typing import Callable, Dict, List, Set, Tuple, Any, Optional
 
@@ -95,106 +94,6 @@ def setup_component_logger(
 """
 All components underneath here is used specifically for the default_worker.py.
 """
-
-
-class StandardStreamInterceptor:
-    """Used to intercept stdout and stderr.
-
-    Intercepted messages are handled by the given logger.
-
-    NOTE: The logger passed to this method should always have
-          logging.INFO severity level.
-
-    Example:
-
-        .. code-block:: python
-
-            from contextlib import redirect_stdout
-            logger = logging.getLogger("ray_logger")
-            hook = StandardStreamHook(logger)
-            with redirect_stdout(hook):
-                print("a") # stdout will be delegated to logger.
-
-    Args:
-        logger: Python logger that will receive messages streamed to
-                the standard out/err and delegate writes.
-        intercept_stdout: True if the class intercepts stdout. False
-                         if stderr is intercepted.
-    """
-
-    def __init__(self, logger, intercept_stdout=True):
-        self.logger = logger
-        assert (
-            len(self.logger.handlers) == 1
-        ), "Only one handler is allowed for the interceptor logger."
-        self.intercept_stdout = intercept_stdout
-
-    def write(self, message):
-        """Redirect the original message to the logger."""
-        self.logger.info(message)
-        return len(message)
-
-    def flush(self):
-        for handler in self.logger.handlers:
-            handler.flush()
-
-    def isatty(self):
-        # Return the standard out isatty. This is used by colorful.
-        fd = 1 if self.intercept_stdout else 2
-        return os.isatty(fd)
-
-    def close(self):
-        handler = self.logger.handlers[0]
-        handler.close()
-
-    def fileno(self):
-        handler = self.logger.handlers[0]
-        return handler.stream.fileno()
-
-
-class StandardFdRedirectionRotatingFileHandler(RotatingFileHandler):
-    """RotatingFileHandler that redirects stdout and stderr to the log file.
-
-    It is specifically used to default_worker.py.
-
-    The only difference from this handler vs original RotatingFileHandler is
-    that it actually duplicates the OS level fd using os.dup2.
-    """
-
-    def __init__(
-        self,
-        filename,
-        mode="a",
-        maxBytes=0,
-        backupCount=0,
-        encoding=None,
-        delay=False,
-        is_for_stdout=True,
-    ):
-        super().__init__(
-            filename,
-            mode=mode,
-            maxBytes=maxBytes,
-            backupCount=backupCount,
-            encoding=encoding,
-            delay=delay,
-        )
-        self.is_for_stdout = is_for_stdout
-        self.switch_os_fd()
-
-    def doRollover(self):
-        super().doRollover()
-        self.switch_os_fd()
-
-    def get_original_stream(self):
-        if self.is_for_stdout:
-            return sys.stdout
-        else:
-            return sys.stderr
-
-    def switch_os_fd(self):
-        # Old fd will automatically closed by dup2 when necessary.
-        os.dup2(self.stream.fileno(), self.get_original_stream().fileno())
 
 
 def get_worker_log_file_name(worker_type, job_id=None):
@@ -390,7 +289,7 @@ class LogDeduplicator:
                 self.recent[dedup_key] = state
             elif state.count > 0:
                 # Aggregation wasn't fruitful, print the line and stop aggregating.
-                output.append(dict(state.metadata, lines=[line]))
+                output.append(dict(state.metadata, lines=[state.line]))
 
         return output
 

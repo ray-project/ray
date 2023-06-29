@@ -46,12 +46,12 @@ class TestGPUs(unittest.TestCase):
                         ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
                     )
                     for _ in framework_iterator(config, frameworks=frameworks):
-                        # Expect that trainer creation causes a num_gpu error.
+                        # Expect that Algorithm creation causes a num_gpu error.
                         if (
                             actual_gpus < num_gpus + 2 * num_gpus_per_worker
                             and not fake_gpus
                         ):
-                            # "Direct" RLlib (create Trainer on the driver).
+                            # "Direct" RLlib (create Algorithm on the driver).
                             # Cannot run through ray.tune.Tuner().fit() as it would
                             # simply wait infinitely for the resources to
                             # become available.

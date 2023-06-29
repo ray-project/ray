@@ -25,10 +25,10 @@ Getting Started
 
 Take the following example:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
-    ray.init()
 
     @ray.remote
     def f(x):
@@ -113,11 +113,10 @@ Stepping between Ray tasks
 You can use the debugger to step between Ray tasks. Let's take the
 following recursive function as an example:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import ray
-
-    ray.init()
 
     @ray.remote
     def fact(n):
@@ -140,7 +139,7 @@ After running the program by executing the Python file and calling
 ``ray debug``, you can select the breakpoint by pressing ``0`` and
 enter. This will result in the following output:
 
-.. code-block:: python
+.. code-block:: shell
 
     Enter breakpoint index or press enter to refresh: 0
     > /home/ubuntu/tmp/stepping.py(16)<module>()
@@ -151,7 +150,7 @@ You can jump into the call with the ``remote`` command in Ray's debugger.
 Inside the function, print the value of `n` with ``p(n)``, resulting in
 the following output:
 
-.. code-block:: python
+.. code-block:: shell
 
     -> result_ref = fact.remote(5)
     (Pdb) remote
@@ -179,7 +178,7 @@ to the location where ``ray.get`` is called on the result by using the
 ``get`` debugger comand. Use ``get`` again to jump back to the original
 call site and use ``p(result)`` to print the result:
 
-.. code-block:: python
+.. code-block:: shell
 
     Enter breakpoint index or press enter to refresh: 0
     > /home/ubuntu/tmp/stepping.py(14)<module>()
@@ -231,7 +230,8 @@ We will show how this works using a Ray serve application. To get started, insta
 
 Next, copy the following code into a file called ``serve_debugging.py``:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     import time
 

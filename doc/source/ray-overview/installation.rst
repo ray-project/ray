@@ -105,14 +105,15 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
     .. tab-item:: MacOS
 
-        ================================  ================================
-         MacOS (x86_64)                    MacOS (arm64)
-        ================================  ================================
-        `MacOS Python 3.10 (x86_64)`_      `MacOS Python 3.10 (arm64)`_
-        `MacOS Python 3.9 (x86_64)`_       `MacOS Python 3.9 (arm64)`_
-        `MacOS Python 3.8 (x86_64)`_       `MacOS Python 3.8 (arm64)`_
-        `MacOS Python 3.7 (x86_64)`_
-        ================================  ================================
+        ============================================  ==============================================
+         MacOS (x86_64)                                MacOS (arm64)
+        ============================================  ==============================================
+        `MacOS Python 3.10 (x86_64)`_                  `MacOS Python 3.10 (arm64)`_
+        `MacOS Python 3.9 (x86_64)`_                   `MacOS Python 3.9 (arm64)`_
+        `MacOS Python 3.8 (x86_64)`_                   `MacOS Python 3.8 (arm64)`_
+        `MacOS Python 3.7 (x86_64)`_                   `MacOS Python 3.11 (arm64) (EXPERIMENTAL)`_
+        `MacOS Python 3.11 (x86_64) (EXPERIMENTAL)`_
+        ============================================  ==============================================
 
     .. tab-item:: Windows (beta)
 
@@ -151,12 +152,14 @@ You can install the nightly Ray wheels via the following links. These daily rele
 .. _`Linux Python 3.7 (aarch64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-manylinux2014_aarch64.whl
 
 
-.. _`MacOS Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_universal2.whl
+.. _`MacOS Python 3.11 (x86_64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_10_15_x86_64.whl
+.. _`MacOS Python 3.10 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.9 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
 .. _`MacOS Python 3.8 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_10_15_x86_64.whl
-.. _`MacOS Python 3.7 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+.. _`MacOS Python 3.7 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_x86_64.whl
 
 
+.. _`MacOS Python 3.11 (arm64) (EXPERIMENTAL)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp311-cp311-macosx_11_0_arm64.whl
 .. _`MacOS Python 3.10 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-macosx_11_0_arm64.whl
 .. _`MacOS Python 3.9 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-macosx_11_0_arm64.whl
 .. _`MacOS Python 3.8 (arm64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp38-cp38-macosx_11_0_arm64.whl
@@ -174,18 +177,16 @@ You can install the Ray wheels of any particular commit on ``master`` with the f
 
 .. code-block:: bash
 
-    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}m-{OS_VERSION}.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/{COMMIT_HASH}/ray-{RAY_VERSION}-{PYTHON_VERSION}-{PYTHON_VERSION}-{OS_VERSION}.whl
 
-For example, here are the Ray 3.0.0.dev0 wheels for Python 3.7, MacOS for commit ``ba6cebe30fab6925e5b2d9e859ad064d53015246``:
+For example, here are the Ray 3.0.0.dev0 wheels for Python 3.9, MacOS for commit ``4f2ec46c3adb6ba9f412f09a9732f436c4a5d0c9``:
 
 .. code-block:: bash
 
-    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/ba6cebe30fab6925e5b2d9e859ad064d53015246/ray-3.0.0.dev0-cp37-cp37m-macosx_10_15_intel.whl
+    pip install https://s3-us-west-2.amazonaws.com/ray-wheels/master/4f2ec46c3adb6ba9f412f09a9732f436c4a5d0c9/ray-3.0.0.dev0-cp39-cp39-macosx_10_15_x86_64.whl
 
 There are minor variations to the format of the wheel filename; it's best to match against the format in the URLs listed in the :ref:`Nightlies section <install-nightlies>`.
 Here's a summary of the variations:
-
-* For Python 3.8 and 3.9, the ``m`` before the OS version should be deleted and the OS version for MacOS should read ``macosx_10_15_x86_64`` instead of ``macosx_10_15_intel``.
 
 * For MacOS, commits predating August 7, 2021 will have ``macosx_10_13`` in the filename instead of ``macosx_10_15``.
 
@@ -265,6 +266,36 @@ You can install and use Ray C++ API as follows.
 .. note::
 
   If you build Ray from source, remove the build option ``build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0"`` from the file ``cpp/example/.bazelrc`` before running your application. The related issue is `this <https://github.com/ray-project/ray/issues/26031>`_.
+
+.. _apple-silcon-supprt:
+
+M1 Mac (Apple Silicon) Support
+------------------------------
+
+Ray has experimental support for machines running Apple Silicon (such as M1 macs).
+Multi-node clusters are untested. To get started with local Ray development:
+
+#. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
+
+   * ``wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh``
+
+   * ``bash Miniforge3-MacOSX-arm64.sh``
+
+   * ``rm Miniforge3-MacOSX-arm64.sh # Cleanup.``
+
+#. Ensure you're using the miniforge environment (you should see (base) in your terminal).
+
+   * ``source ~/.bash_profile``
+
+   * ``conda activate``
+
+#. Install Ray as you normally would.
+
+   * ``pip install ray``
+
+.. note::
+
+  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
 
 .. _windows-support:
 

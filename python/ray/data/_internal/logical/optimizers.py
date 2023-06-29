@@ -12,13 +12,24 @@ from ray.data._internal.logical.rules import (
 )
 from ray.data._internal.planner.planner import Planner
 
+# TODO(scottjlee): add back LimitPushdownRule once we
+# enforce number of input/output rows remains the same
+# for Map/MapBatches ops.
+LOGICAL_OPTIMIZER_RULES = [
+    ReorderRandomizeBlocksRule,
+]
+
+PHYSICAL_OPTIMIZER_RULES = [
+    OperatorFusionRule,
+]
+
 
 class LogicalOptimizer(Optimizer):
     """The optimizer for logical operators."""
 
     @property
     def rules(self) -> List[Rule]:
-        return [ReorderRandomizeBlocksRule()]
+        return [rule_cls() for rule_cls in LOGICAL_OPTIMIZER_RULES]
 
 
 class PhysicalOptimizer(Optimizer):
@@ -26,7 +37,7 @@ class PhysicalOptimizer(Optimizer):
 
     @property
     def rules(self) -> List["Rule"]:
-        return [OperatorFusionRule()]
+        return [rule_cls() for rule_cls in PHYSICAL_OPTIMIZER_RULES]
 
 
 def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
@@ -37,6 +48,7 @@ def get_execution_plan(logical_plan: LogicalPlan) -> PhysicalPlan:
     (2) planning: convert logical to physical operators.
     (3) physical optimization: optimize physical operators.
     """
-    logical_plan = LogicalOptimizer().optimize(logical_plan)
-    physical_plan = Planner().plan(logical_plan)
+    optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
+    logical_plan._dag = optimized_logical_plan.dag
+    physical_plan = Planner().plan(optimized_logical_plan)
     return PhysicalOptimizer().optimize(physical_plan)

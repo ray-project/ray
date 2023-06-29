@@ -17,7 +17,11 @@ from ray.rllib.models.torch.torch_action_dist import TorchCategorical
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
@@ -105,7 +109,7 @@ class AlphaZeroConfig(AlgorithmConfig):
         }
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
@@ -226,7 +230,7 @@ class AlphaZeroConfig(AlgorithmConfig):
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
-                depends on config["multiagent"]["count_steps_by"].
+                depends on config.multi_agent(count_steps_by=..).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -332,6 +336,12 @@ class AlphaZeroPolicyWrapperClass(AlphaZeroPolicy):
         )
 
 
+@Deprecated(
+    old="rllib/algorithms/alpha_star/",
+    new="rllib_contrib/alpha_star/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class AlphaZero(Algorithm):
     @classmethod
     @override(Algorithm)
@@ -352,7 +362,6 @@ class AlphaZero(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-
         # Sample n MultiAgentBatches from n workers.
         with self._timers[SAMPLE_TIMER]:
             new_sample_batches = synchronous_parallel_sample(
