@@ -198,7 +198,7 @@ class _TrackedCheckpoint:
                         )
                     return None
                 if USE_STORAGE_CONTEXT:
-                    return checkpoint_dir
+                    checkpoint = Checkpoint.from_uri(checkpoint_dir)
                 else:
                     checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
@@ -207,11 +207,6 @@ class _TrackedCheckpoint:
             checkpoint = Checkpoint.from_dict(checkpoint_data)
         else:
             raise RuntimeError(f"Unknown checkpoint data type: {type(checkpoint_data)}")
-
-        if USE_STORAGE_CONTEXT:
-            if not isinstance(checkpoint, str):
-                print("DOING FORCE CONVERT")
-                checkpoint = checkpoint.to_directory()
 
         return checkpoint
 
