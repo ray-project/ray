@@ -194,6 +194,7 @@ class Trainable:
         if USE_STORAGE_CONTEXT:
             assert storage
         if storage:
+            storage.check_valid_file()
             self.remote_checkpoint_dir = TrainableUtil.get_remote_storage_path(
                 self.logdir, storage.local_path, storage.storage_prefix
             )
@@ -559,6 +560,8 @@ class Trainable:
         if not prevent_upload:
             # First, upload the new trial checkpoint to cloud
             self._maybe_save_to_cloud(checkpoint_dir)
+            # XXX deduplicate logic
+            checkpoint_dir = self._remote_storage_path(checkpoint_dir)
             # Then, save other artifacts that live in the trial logdir
             self._maybe_save_artifacts_to_cloud()
 
@@ -617,6 +620,7 @@ class Trainable:
     @property
     def _should_upload_artifacts(self) -> bool:
         if not self.sync_config.sync_artifacts:
+            assert not USE_STORAGE_CONTEXT
             return False
 
         if self._last_artifact_sync_iter == self.iteration:

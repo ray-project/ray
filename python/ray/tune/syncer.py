@@ -658,9 +658,11 @@ class StorageContext:
             os.environ.get("RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results")
         )
         if os.path.expanduser(self.storage_prefix) == self.local_path:
+            print("**** NO SYNCER *****")
             # No need to sync, it's already local
             sync_config.syncer = None
         else:
+            print("SYNCER ENABLED")
             sync_config.syncer = _SimpleFilesystemSyncer(
                 self.storage_filesystem, self.storage_prefix
             )

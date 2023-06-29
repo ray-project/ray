@@ -162,6 +162,7 @@ class _TrackedCheckpoint:
             Checkpoint: The AIR checkpoint backed by the resolved data.
         """
         from ray.tune.trainable.util import TrainableUtil
+        from ray.tune.utils.util import USE_STORAGE_CONTEXT
 
         checkpoint_data = self.dir_or_data
 
@@ -196,13 +197,21 @@ class _TrackedCheckpoint:
                             f"{checkpoint_data}"
                         )
                     return None
-                checkpoint = Checkpoint.from_directory(checkpoint_dir)
+                if USE_STORAGE_CONTEXT:
+                    return checkpoint_dir
+                else:
+                    checkpoint = Checkpoint.from_directory(checkpoint_dir)
         elif isinstance(checkpoint_data, bytes):
             checkpoint = Checkpoint.from_bytes(checkpoint_data)
         elif isinstance(checkpoint_data, dict):
             checkpoint = Checkpoint.from_dict(checkpoint_data)
         else:
             raise RuntimeError(f"Unknown checkpoint data type: {type(checkpoint_data)}")
+
+        if USE_STORAGE_CONTEXT:
+            if not isinstance(checkpoint, str):
+                print("DOING FORCE CONVERT")
+                checkpoint = checkpoint.to_directory()
 
         return checkpoint
 

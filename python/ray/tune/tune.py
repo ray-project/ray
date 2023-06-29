@@ -694,6 +694,10 @@ def run(
         )
 
     if USE_STORAGE_CONTEXT:
+        if storage_path is None:
+            storage_path = os.path.expanduser(
+                os.environ.get("RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results")
+            )
         storage = StorageContext(storage_path, storage_filesystem, sync_config)
         local_path = storage.local_path
         remote_path = None
