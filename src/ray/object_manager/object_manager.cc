@@ -788,12 +788,13 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 
   // Request the current available memory from the object
   // store.
-  auto cb = [this](size_t available_memory) {
-    pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
-  };
-
-  plasma::plasma_store_runner->GetAvailableMemoryAsync(
-      boost::asio::bind_executor(*main_service_, cb));
+  plasma::plasma_store_runner->GetAvailableMemoryAsync([this](size_t available_memory) {
+    main_service_->post(
+        [this, available_memory]() {
+          pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
+        },
+        "ObjectManager.UpdateAvailableMemory");
+  });
 
   pull_manager_->Tick();
 
