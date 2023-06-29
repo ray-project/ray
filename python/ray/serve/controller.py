@@ -838,7 +838,7 @@ def deploy_serve_application(
     route_prefix: str,
     name: str,
     args: Dict,
-):
+) -> Optional[str]:
     """Deploy Serve application from a user-provided config.
 
     Args:
@@ -852,6 +852,8 @@ def deploy_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         route_prefix: route_prefix. Define the route path for the application.
+    Returns:
+        Returns None if no error is raised. Otherwise, returns error message.
     """
     try:
         from ray import serve
@@ -909,6 +911,8 @@ def deploy_serve_application(
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
         logger.debug("Existing config deployment request terminated.")
+    except Exception as e:
+        return repr(e)
 
 
 @ray.remote(num_cpus=0)
