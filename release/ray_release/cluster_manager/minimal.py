@@ -66,7 +66,7 @@ class MinimalClusterManager(ClusterManager):
                             config_json=dict(
                                 docker_image=self.test.get_anyscale_byod_image(),
                                 ray_version="nightly",
-                                env_vars={},
+                                env_vars=self.test.get_byod_runtime_env(),
                             ),
                         )
                     )
