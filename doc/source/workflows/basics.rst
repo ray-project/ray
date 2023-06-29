@@ -47,6 +47,11 @@ We can plot this DAG by using ``ray.dag.vis_utils.plot(output, "output.jpg")``:
 Next, let's execute the DAG we defined and inspect the result:
 
 .. testcode::
+    :hide:
+
+    ray.shutdown()
+
+.. testcode::
 
     # <follow the previous code>
     from ray import workflow
