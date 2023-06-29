@@ -181,7 +181,7 @@ def collate(
 
 
 def finalize_batches(
-    batch_iter: Iterator[CollatedBatch],
+    batch_iter: Iterator[Batch],
     finalize_fn: Optional[Callable[[DataBatch], Any]],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
@@ -189,7 +189,7 @@ def finalize_batches(
     iterator.
 
     Args:
-        batch_iter: An iterator over formatted batches.
+        batch_iter: An iterator over processed batches.
     """
     for batch in batch_iter:
         with stats.iter_finalize_batch_s.timer() if stats else nullcontext():

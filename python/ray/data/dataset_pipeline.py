@@ -230,11 +230,6 @@ class DatasetPipeline:
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
 
-        if _finalize_fn is not None:
-            def combined_fn(batch):
-                return _finalize_fn(_collate_fn(batch))
-            _collate_fn = combined_fn
-
         yield from batch_block_refs(
             self._iter_blocks(),
             stats=self._stats,
@@ -244,6 +239,7 @@ class DatasetPipeline:
             batch_format=batch_format,
             drop_last=drop_last,
             collate_fn=_collate_fn,
+            finalize_fn=_finalize_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )

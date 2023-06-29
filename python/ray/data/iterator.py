@@ -321,41 +321,24 @@ class DataIterator(abc.ABC):
             get_device,
         )
 
-        if collate_fn is not None and (dtypes is not None or device is not None):
+        if finalize_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
-                "collate_fn cannot be used with dtypes and device. It is expected that"
-                "the provided `collate_fn` will move the output Torch tensors to the"
+                "finalize_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `finalize_fn` will move the output Torch tensors to the"
                 "appropriate dtype and device."
             )
 
-        if collate_fn is None:
+        if finalize_fn is None:
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()
                 if default_device.type != "cpu":
                     device = default_device
 
-            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+            def finalize_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
                 return convert_ndarray_batch_to_torch_tensor_batch(
                     batch, dtypes=dtypes, device=device
                 )
-
-        # TODO(scott): debug this for a valid default finalize_fn.
-        # if finalize_fn is None:
-        #     def finalize_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
-        #         if isinstance(batch, dict):
-        #             dtype = next(iter(dtypes.values()))
-        #             return torch.as_tensor(batch, dtype=dtype, device=device)
-        #         else:
-        #             batch = {
-        #                 col_name: torch.as_tensor(
-        #                     col_ndarray,
-        #                     dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes, # noqa: E501
-        #                     device=device,
-        #                 )
-        #                 for col_name, col_ndarray in batch.items()
-        #             }
-        #             return batch
 
         yield from self.iter_batches(
             prefetch_batches=prefetch_batches,

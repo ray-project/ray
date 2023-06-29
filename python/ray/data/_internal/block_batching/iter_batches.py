@@ -233,14 +233,24 @@ def _apply_finalize_fn_in_threadpool(
     stats: DatasetStats,
     finalize_fn: Optional[Callable[[DataBatch], Any]],
 ):
-    if not finalize_fn:
-        yield from batch_iter
+    """Applies the `finalize_fn` function to each data batch after formatting
+    and collation, useful for operations such as host to device data transfer.
+    This is executed in a separate threadpool (with 1 thread) from the formatting
+    and collation logic in `_format_in_threadpool()`, which allows for independent
+    parallelization of these steps.
+
+    Args:
+        batch_iter: An iterator over data batches.
+        stats: DatasetStats object to record timing and other statistics.
+        finalize_fn: A function to apply to each data batch before returning it.
+    """
 
     def threadpool_computations(batch_iter):
-        finalized_batch_iter = finalize_batches(
-            batch_iter, finalize_fn=finalize_fn, stats=stats
-        )
-        yield from finalized_batch_iter
+        if finalize_fn is not None:
+            batch_iter = finalize_batches(
+                batch_iter, finalize_fn=finalize_fn, stats=stats
+            )
+        yield from batch_iter
 
     return make_async_gen(
         base_iterator=batch_iter,
