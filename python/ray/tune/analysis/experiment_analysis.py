@@ -87,7 +87,7 @@ class ExperimentAnalysis:
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
         remote_storage_path: Optional[str] = None,
-        # Deprecate: Raise in 2.6, remove in 2.7
+        # Deprecate: Remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
         self._local_experiment_path: str = None
@@ -130,8 +130,12 @@ class ExperimentAnalysis:
             self.default_metric = DEFAULT_METRIC
 
         # TODO(ml-team): Remove in 2.7 along with sync_config parameter
-        if sync_config and sync_config.upload_dir:
-            remote_storage_path = sync_config.upload_dir
+        if sync_config:
+            raise DeprecationWarning(
+                "Using `sync_config` to specify an `upload_dir` for initializing an "
+                "`ExperimentAnalysis` is deprecated. Remove this parameter and specify "
+                "`remote_storage_path` instead."
+            )
 
         if not self._local_experiment_path:
             self._local_experiment_path = str(self._checkpoints_and_paths[0][1])

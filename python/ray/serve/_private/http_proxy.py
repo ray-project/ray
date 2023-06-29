@@ -366,7 +366,10 @@ class HTTPProxy:
         """
         self._ongoing_requests -= 1
         if self._ongoing_requests == 0:
-            logger.info("Dropping keep alive object reference to allow downscaling.")
+            logger.info(
+                "Dropping keep alive object reference to allow downscaling.",
+                extra={"log_to_stderr": False},
+            )
             self._prevent_node_downscale_ref = None
 
     async def __call__(self, scope, receive, send):
