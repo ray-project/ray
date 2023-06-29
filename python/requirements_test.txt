@@ -31,6 +31,7 @@ google-api-python-client==2.65.0
 google-cloud-storage==2.5.0
 gradio==3.11; platform_system != "Windows"
 websockets==11.0.3
+joblib==1.2.0
 jsonpatch==1.32
 kubernetes==24.2.0
 llvmlite==0.39.1; python_version < '3.11'
