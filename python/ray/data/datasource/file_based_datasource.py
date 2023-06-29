@@ -250,26 +250,6 @@ class FileBasedDatasource(Datasource):
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
 
-    def _convert_block_to_tabular_block(
-        self, block: Block, column_name: Optional[str] = None
-    ) -> Union["pyarrow.Table", "pd.DataFrame"]:
-        """Convert block returned by `_read_file` or `_read_stream` to a tabular block.
-
-        If your `_read_file` or `_read_stream` implementation returns a list,
-        then you need to implement this method. Otherwise, `FileBasedDatasource` won't
-        be able to include partition data.
-        """
-        import pandas as pd
-        import pyarrow as pa
-
-        if isinstance(block, (pd.DataFrame, pa.Table)):
-            return block
-
-        raise NotImplementedError(
-            "If your `_read_file` or `_read_stream` implementation returns a list, "
-            "then you need to implement `_convert_block_to_tabular_block."
-        )
-
     def write(
         self,
         blocks: Iterable[Block],
@@ -442,8 +422,6 @@ class _FileBasedDatasourceReader(Reader):
 
         paths, file_sizes = self._paths, self._file_sizes
         read_stream = self._delegate._read_stream
-        convert_block_to_tabular_block = self._delegate._convert_block_to_tabular_block
-        column_name = reader_args.get("column_name", None)
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
         if open_stream_args is None:
@@ -499,7 +477,6 @@ class _FileBasedDatasourceReader(Reader):
                 with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
-                            data = convert_block_to_tabular_block(data, column_name)
                             data = _add_partitions(data, partitions)
 
                         output_buffer.add_block(data)

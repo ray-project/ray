@@ -12,6 +12,8 @@ import uvicorn
 import starlette.responses
 import starlette.routing
 from starlette.types import Message, Receive, Scope, Send
+from starlette.datastructures import MutableHeaders
+from starlette.middleware import Middleware
 
 import ray
 from ray.exceptions import RayActorError, RayTaskError
@@ -36,6 +38,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -366,7 +369,10 @@ class HTTPProxy:
         """
         self._ongoing_requests -= 1
         if self._ongoing_requests == 0:
-            logger.info("Dropping keep alive object reference to allow downscaling.")
+            logger.info(
+                "Dropping keep alive object reference to allow downscaling.",
+                extra={"log_to_stderr": False},
+            )
             self._prevent_node_downscale_ref = None
 
     async def __call__(self, scope, receive, send):
@@ -455,14 +461,15 @@ class HTTPProxy:
             for key, value in scope.get("headers", []):
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                     request_context_info["multiplexed_model_id"] = value.decode()
-                    break
+                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                    request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
             )
 
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
                 status_code = await self.send_request_to_replica_streaming(
-                    request_id, handle, scope, receive, send
+                    request_context_info["request_id"], handle, scope, receive, send
                 )
             else:
                 status_code = await self.send_request_to_replica_unary(
@@ -703,6 +710,23 @@ class HTTPProxy:
         return status_code
 
 
+class RequestIdMiddleware:
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        async def send_with_request_id(message: Dict):
+            request_id = ray.serve.context._serve_request_context.get().request_id
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+            if message["type"] == "websocket.accept":
+                message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+            await send(message)
+
+        await self.app(scope, receive, send_with_request_id)
+
+
 @ray.remote(num_cpus=0)
 class HTTPProxyActor:
     def __init__(
@@ -719,9 +743,10 @@ class HTTPProxyActor:
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
         )
-
         if http_middlewares is None:
-            http_middlewares = []
+            http_middlewares = [Middleware(RequestIdMiddleware)]
+        else:
+            http_middlewares.append(Middleware(RequestIdMiddleware))
 
         if RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH:
             logger.info(
