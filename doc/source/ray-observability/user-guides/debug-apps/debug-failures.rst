@@ -6,11 +6,11 @@ Debugging Failures
 What Kind of Failures Exist in Ray?
 -----------------------------------
 
-Ray consists of 2 major APIs. ``.remote()`` to create a task/actor and :func:`ray.get <ray.get>` to get the result.
-Debugging Ray means identifying and fixing failures from remote processes that run functions and classes (task and actor) created by the ``.remote`` API.
+Ray consists of two major APIs. ``.remote()`` to create a Task or Actor, and :func:`ray.get <ray.get>` to get the result.
+Debugging Ray means identifying and fixing failures from remote processes that run functions and classes (Tasks and Actors) created by the ``.remote`` API.
 
 Ray APIs are future APIs (indeed, it is :ref:`possible to convert Ray object references to standard Python future APIs <async-ref-to-futures>`),
-and the error handling model is the same. When any remote tasks or actors fail, the returned object ref will contain an exception.
+and the error handling model is the same. When any remote Tasks or Actors fail, the returned object ref contains an exception.
 When you call ``get`` API to the object ref, it raises an exception.
 
 .. testcode::
@@ -31,14 +31,14 @@ When you call ``get`` API to the object ref, it raises an exception.
   ...
   ValueError: it's an application error
 
-In Ray, there are 3 types of failures. See exception APIs for more details.
+In Ray, there are three types of failures. See exception APIs for more details.
 
 - **Application failures**: This means the remote task/actor fails by the user code. In this case, ``get`` API will raise the :func:`RayTaskError <ray.exceptions.RayTaskError>` which includes the exception raised from the remote process.
 - **Intentional system failures**: This means Ray is failed, but the failure is intended. For example, when you call cancellation APIs like ``ray.cancel`` (for task) or ``ray.kill`` (for actors), the system fails remote tasks and actors, but it is intentional.
 - **Unintended system failures**: This means the remote tasks and actors failed due to unexpected system failures such as processes crashing (for example, by out-of-memory error) or nodes failing.
 
   1. `Linux Out of Memory killer <https://www.kernel.org/doc/gorman/html/understand/understand016.html>`_ or :ref:`Ray Memory Monitor <ray-oom-monitor>` kills processes with high memory usages to avoid out-of-memory.
-  2. The machine shuts down (e.g., spot instance termination) or a :term:`raylet <raylet>` is crashed (e.g., by an unexpected failure).
+  2. The machine shuts down (e.g., spot instance termination) or a :term:`raylet <raylet>` crashed (e.g., by an unexpected failure).
   3. System is highly overloaded or stressed (either machine or system components like Raylet or :term:`GCS <GCS / Global Control Service>`), which makes the system unstable and fail.
 
 Debugging Application Failures
@@ -69,7 +69,7 @@ For example, some workers may need to communicate with GCS to schedule Actors (w
 Your Driver can invoke Actor methods (worker <-> worker connection).
 
 Ray can support 1000s of raylets and 10000s of worker processes. When a Ray cluster gets larger,
-each component can have an increasing number of network connections which requires file descriptors.
+each component can have an increasing number of network connections, which requires file descriptors.
 
 Linux typically limits the default file descriptors per process to 1024. When there are
 more than 1024 connections to the component, it can raise error messages below.
