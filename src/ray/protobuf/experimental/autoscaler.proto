@@ -70,9 +70,9 @@ message ResourceRequestByCount {
 message GangResourceRequest {
   // a map from bundles to the number of bundles requested.
   repeated ResourceRequest requests = 1;
-  // TODO(rickyx):
-  // Strategy of the placement group, e.g. STRICT_PACK.
-  string placement_group_strategy = 2;
+  // Metadata associated with the request for observability,
+  // e.g. placement group's strategy.
+  string details = 2;
 }
 
 // Cluster resource constraint represents minimial cluster size requirement,
