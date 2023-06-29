@@ -4116,6 +4116,17 @@ class Dataset:
         Note that this does not mutate the original Dataset. Only the blocks of the
         returned MaterializedDataset class are pinned in memory.
 
+        Examples:
+
+        .. testcode::
+            import ray
+            ds = ray.data.range(10)
+            materialized_ds = ds.materialize()
+            print(materialized_ds)
+
+        .. testoutput::
+            MaterializedDataset(num_blocks=..., num_rows=10, schema={id: int64})
+
         Returns:
             A MaterializedDataset holding the materialized data blocks.
         """
