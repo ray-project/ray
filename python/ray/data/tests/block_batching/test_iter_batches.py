@@ -143,8 +143,7 @@ def test_iter_batches_e2e(
         assert concat_df["foo"].iloc[i + 1] >= concat_df["foo"].iloc[i]
 
 
-@pytest.mark.parametrize("gpu_prefetch_batches", [1, 2, 4])
-def test_iter_batches_e2e_async(ray_start_regular_shared, gpu_prefetch_batches):
+def test_iter_batches_e2e_async(ray_start_regular_shared):
     """We add time.sleep in 3 places:
     1. In the base generator to simulate streaming executor blocking on next results.
     2. In the collate_fn to simulate expensive slicing/formatting/collation
@@ -165,7 +164,6 @@ def test_iter_batches_e2e_async(ray_start_regular_shared, gpu_prefetch_batches):
         batch_size=None,
         collate_fn=collate_fn,
         prefetch_batches=4,
-        gpu_prefetch_batches=gpu_prefetch_batches,
     )
     batches = []
     for batch in output_batches:
@@ -176,12 +174,7 @@ def test_iter_batches_e2e_async(ray_start_regular_shared, gpu_prefetch_batches):
     # 20 batches, 1.5 second sleep. Should be less than 45 seconds, even with some
     # overhead.
     # If there was no overlap, then we would expect this to take at least 20*2.5 = 50
-    if gpu_prefetch_batches == 1:
-        assert end_time - start_time < 45, end_time - start_time
-    elif gpu_prefetch_batches == 2:
-        assert end_time - start_time < 40, end_time - start_time
-    elif gpu_prefetch_batches == 4:
-        assert end_time - start_time < 35, end_time - start_time
+    assert end_time - start_time < 45, end_time - start_time
 
     assert len(batches) == 20
     assert all(len(batch) == 2 for batch in batches)

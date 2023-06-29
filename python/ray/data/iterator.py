@@ -88,13 +88,13 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
-        gpu_prefetch_batches: int = 1,
         batch_size: int = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -115,12 +115,6 @@ class DataIterator(abc.ABC):
                 to fetch the objects to the local node. Defaults to 1. You can revert
                 back to the old prefetching behavior that uses `prefetch_blocks` by
                 setting `use_legacy_iter_batches` to True in the DataContext.
-            gpu_prefetch_batches: The number of batches to fetch ahead of the current
-                batch to fetch on the GPU. If set to greater than 0, a separate
-                threadpool will be used to format batches and apply the collate_fn.
-                Defaults to 1. You can revert back to the old prefetching behavior
-                that uses `prefetch_blocks` by setting `use_legacy_iter_batches` to
-                True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -137,6 +131,9 @@ class DataIterator(abc.ABC):
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            _collate_fn: A function to apply to each data batch before returning it.
+            _finalize_fn: A function to apply to each data batch after it has been
+                collated. This is executed on a GPU-based threadpool if available.
 
         Returns:
             An iterator over record batches.
@@ -190,10 +187,10 @@ class DataIterator(abc.ABC):
                 batch_format=batch_format,
                 drop_last=drop_last,
                 collate_fn=_collate_fn,
+                finalize_fn=_finalize_fn,
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
-                gpu_prefetch_batches=gpu_prefetch_batches,
             )
 
         if stats:
@@ -249,11 +246,13 @@ class DataIterator(abc.ABC):
         self,
         *,
         prefetch_batches: int = 1,
-        gpu_prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         collate_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
+        finalize_fn: Optional[
             Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
         drop_last: bool = False,
@@ -285,10 +284,6 @@ class DataIterator(abc.ABC):
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
                 `use_legacy_iter_batches` to True in the DataContext.
-            gpu_prefetch_batches: The number of batches to fetch ahead of the current
-                batch to fetch on the GPU. If set to greater than 0, a separate
-                threadpool will be used to format batches and apply the collate_fn.
-                Defaults to 1.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -297,13 +292,15 @@ class DataIterator(abc.ABC):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
-            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
+            collate_fn: A function to apply to each data batch before returning it.
                 Potential use cases include collating along a dimension other than the
                 first, padding sequences of various lengths, or generally handling
                 batches of different length tensors. If not provided, the default
                 collate function is used which simply converts the batch of numpy
                 arrays to a batch of PyTorch tensors. This API is still experimental
                 and is subject to change.
+            _finalize_fn: A function to apply to each data batch after it has been
+                collated. This is executed on a GPU-based threadpool if available.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -343,15 +340,32 @@ class DataIterator(abc.ABC):
                     batch, dtypes=dtypes, device=device
                 )
 
+        # TODO(scott): debug this for a valid default finalize_fn.
+        # if finalize_fn is None:
+        #     def finalize_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+        #         if isinstance(batch, dict):
+        #             dtype = next(iter(dtypes.values()))
+        #             return torch.as_tensor(batch, dtype=dtype, device=device)
+        #         else:
+        #             batch = {
+        #                 col_name: torch.as_tensor(
+        #                     col_ndarray,
+        #                     dtype=dtypes[col_name] if isinstance(dtypes, dict) else dtypes, # noqa: E501
+        #                     device=device,
+        #                 )
+        #                 for col_name, col_ndarray in batch.items()
+        #             }
+        #             return batch
+
         yield from self.iter_batches(
             prefetch_batches=prefetch_batches,
-            gpu_prefetch_batches=gpu_prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
+            _finalize_fn=finalize_fn,
         )
 
     def iter_tf_batches(

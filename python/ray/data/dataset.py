@@ -2968,13 +2968,13 @@ class Dataset:
         self,
         *,
         prefetch_batches: int = 1,
-        gpu_prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         batch_format: Optional[str] = "default",
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -3015,6 +3015,9 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
+            _collate_fn: A function to apply to each data batch before returning it.
+            _finalize_fn: A function to apply to each data batch after it has been
+                collated. This is executed on a GPU-based threadpool if available.
 
         Returns:
             An iterator over record batches.
@@ -3024,7 +3027,6 @@ class Dataset:
             logger.warning("The 'native' batch format has been renamed 'default'.")
         return self.iterator().iter_batches(
             prefetch_batches=prefetch_batches,
-            gpu_prefetch_batches=gpu_prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
             batch_format=batch_format,
@@ -3032,6 +3034,7 @@ class Dataset:
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
+            _finalize_fn=_finalize_fn,
         )
 
     @ConsumptionAPI

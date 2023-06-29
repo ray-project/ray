@@ -180,6 +180,23 @@ def collate(
         yield CollatedBatch(batch.batch_idx, collated_batch)
 
 
+def finalize_batches(
+    batch_iter: Iterator[CollatedBatch],
+    finalize_fn: Optional[Callable[[DataBatch], Any]],
+    stats: Optional[DatasetStats] = None,
+) -> Iterator[CollatedBatch]:
+    """Returns an iterator with the provided finalize_fn applied to items of the batch
+    iterator.
+
+    Args:
+        batch_iter: An iterator over formatted batches.
+    """
+    for batch in batch_iter:
+        with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
+            finalized_batch = finalize_fn(batch.data)
+        yield CollatedBatch(batch.batch_idx, finalized_batch)
+
+
 def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
     for batch in batch_iter:
         yield batch.data

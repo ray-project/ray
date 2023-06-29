@@ -10,6 +10,7 @@ from ray.data._internal.block_batching.util import (
     blocks_to_batches,
     collate,
     extract_data_from_batch,
+    finalize_batches,
     format_batches,
     make_async_gen,
     resolve_block_refs,
@@ -30,11 +31,11 @@ def iter_batches(
     batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+    finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
     prefetch_batches: int = 1,
-    gpu_prefetch_batches: int = 1,
 ) -> Iterator[DataBatch]:
     """Create formatted batches of data from an iterator of block object references and
     corresponding metadata.
@@ -86,9 +87,9 @@ def iter_batches(
             ``pyarrow.Table``, or None to use entire blocks
             as batches. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
-        collate_fn: A function to apply to each data batch before returning it. When
-            using a non-zero `gpu_prefetch_batches`, this function will be
-            applied on the GPU.
+        collate_fn: A function to apply to each data batch before returning it.
+        finalize_fn: A function to apply to each data batch after it has been collated.
+            This is executed on a GPU-based threadpool if available.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -101,12 +102,6 @@ def iter_batches(
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
             formatting to be overlapped with the UDF. Defaults to 1.
-        gpu_prefetch_batches: The number of batches to fetch ahead of the current
-            batch to fetch on the GPU. If set to greater than 0, a separate
-            threadpool will be used to format batches and apply the collate_fn.
-            Defaults to 1. You can revert back to the old prefetching behavior
-            that uses `prefetch_blocks` by setting `use_legacy_iter_batches` to
-            True in the DataContext.
 
     Returns:
         An iterator over record batches.
@@ -151,21 +146,20 @@ def iter_batches(
         )
 
         # Step 4: Use a threadpool for formatting and collation.
-        # Step 4a: Format the batches.
         batch_iter = _format_in_threadpool(
             batch_iter,
             stats=stats,
             batch_format=batch_format,
+            collate_fn=collate_fn,
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 4b: Apply the collate function if applicable.
-        batch_iter = _collate_in_threadpool(
+        # Step 4: Apply the finalize_fn on the GPU-based threadpool,
+        # useful for operations such as host to device transfer.
+        batch_iter = _apply_finalize_fn_in_threadpool(
             batch_iter,
             stats=stats,
-            collate_fn=collate_fn,
-            num_threadpool_workers=prefetch_batches,
-            num_threadpool_workers_gpu=gpu_prefetch_batches,
+            finalize_fn=finalize_fn,
         )
 
         # Step 5: Restore original order.
@@ -191,9 +185,10 @@ def _format_in_threadpool(
     batch_iter: Iterator[Batch],
     stats: DatasetStats,
     batch_format: Optional[str],
+    collate_fn: Optional[Callable[[DataBatch], Any]],
     num_threadpool_workers: int,
 ) -> Iterator[Batch]:
-    """Executes the batching and formatting logic in a threadpool.
+    """Executes the batching, formatting, and collation logic in a threadpool.
 
     Args:
         logical_batch_iterator: An iterator over logical batches.
@@ -205,73 +200,53 @@ def _format_in_threadpool(
             ``pyarrow.Table``, or None to use entire blocks
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
-        num_threadpool_workers: The number of CPU threads to use in the threadpool.
+        num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
-    def _threadpool_computations(
+    def threadpool_computations(
         batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
+        # Step 4a: Format the batches.
         formatted_batch_iter = format_batches(
             batch_iter, batch_format=batch_format, stats=stats
         )
-        yield from formatted_batch_iter
 
-    if num_threadpool_workers > 0:
-        return make_async_gen(
-            base_iterator=batch_iter,
-            fn=_threadpool_computations,
-            num_workers=num_threadpool_workers,
-        )
-    else:
-        return _threadpool_computations(batch_iter)
-
-
-def _collate_in_threadpool(
-    formatted_batch_iter: Iterator[Batch],
-    stats: DatasetStats,
-    collate_fn: Optional[Callable[[DataBatch], Any]],
-    num_threadpool_workers: int,
-    num_threadpool_workers_gpu: int,
-) -> Iterator[Batch]:
-    """Executes the batching and formatting, and collation logic in a threadpool.
-
-    Args:
-        logical_batch_iterator: An iterator over logical batches.
-        stats: DatasetStats object to record timing and other statistics.
-        batch_format: The format in which to return each batch.
-            Specify "default" to use the current block format (promoting
-            Arrow to pandas automatically), "pandas" to
-            select ``pandas.DataFrame`` or "pyarrow" to select
-            ``pyarrow.Table``, or None to use entire blocks
-            as batches.
-        collate_fn: A function to apply to each data batch before returning it.
-        num_threadpool_workers: The number of CPU threads to use in the threadpool.
-        num_threadpool_workers_gpu: The number of GPU threads to use in the threadpool.
-            Used to apply collate_fn on the GPU.
-    """
-
-    def _threadpool_computations(
-        formatted_batch_iter: Iterator[Batch],
-    ) -> Iterator[Batch]:
+        # Step 4b: Apply the collate function if applicable.
         if collate_fn is not None:
             formatted_batch_iter = collate(
                 formatted_batch_iter, collate_fn=collate_fn, stats=stats
             )
         yield from formatted_batch_iter
 
-    if num_threadpool_workers_gpu > 0:
+    if num_threadpool_workers > 0:
         return make_async_gen(
-            base_iterator=formatted_batch_iter,
-            fn=_threadpool_computations,
-            num_workers=num_threadpool_workers_gpu,
-        )
-    elif num_threadpool_workers > 0:
-        return make_async_gen(
-            base_iterator=formatted_batch_iter,
-            fn=_threadpool_computations,
+            base_iterator=batch_iter,
+            fn=threadpool_computations,
             num_workers=num_threadpool_workers,
         )
-    return _threadpool_computations(formatted_batch_iter)
+    else:
+        return threadpool_computations(batch_iter)
+
+
+def _apply_finalize_fn_in_threadpool(
+    batch_iter: Iterator[Batch],
+    stats: DatasetStats,
+    finalize_fn: Optional[Callable[[DataBatch], Any]],
+):
+    if not finalize_fn:
+        yield from batch_iter
+
+    def threadpool_computations(batch_iter):
+        finalized_batch_iter = finalize_batches(
+            batch_iter, finalize_fn=finalize_fn, stats=stats
+        )
+        yield from finalized_batch_iter
+
+    return make_async_gen(
+        base_iterator=batch_iter,
+        fn=threadpool_computations,
+        num_workers=1,
+    )
 
 
 def prefetch_batches_locally(
