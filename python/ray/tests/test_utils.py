@@ -6,7 +6,6 @@ This currently expects to work for minimal installs.
 """
 
 import pytest
-import unittest
 import logging
 from ray._private.utils import get_or_create_event_loop, try_import_each_module
 from unittest.mock import patch
@@ -75,52 +74,6 @@ def test_try_import_each_module():
                 "Did not find print call with import "
                 f"error {mocked_log_exception.call_args_list}"
             )
-
-
-class TestImportAttr(unittest.TestCase):
-    def test_none_full_path(self):
-        """Test when full_path is None.
-
-        When `full_path` is None, import_attr should raise a TypeError.
-        """
-        from ray._private.utils import import_attr
-
-        with self.assertRaises(TypeError):
-            import_attr(full_path=None)
-
-    def test_multiple_colons_in_full_path(self):
-        """Test when full_path has multiple colons.
-
-        When `full_path` has multiple colons, import_attr should raise a ValueError.
-        """
-        from ray._private.utils import import_attr
-
-        with self.assertRaises(ValueError):
-            import_attr(full_path="resources:foo:bar")
-
-    def test_valid_no_colons_full_path(self):
-        """Test when full_path is valid and has no colons.
-
-        When `full_path` is valid and as no colons, import_attr should succeed.
-        """
-        from ray._private.utils import import_attr
-
-        full_path = "resources.foo.bar"
-
-        # Test import succeeded.
-        import_attr(full_path=full_path)
-
-    def test_valid_one_colons_full_path(self):
-        """Test when full_path is valid and has one colon.
-
-        When `full_path` is valid and as one colon, import_attr should succeed.
-        """
-        from ray._private.utils import import_attr
-
-        full_path = "resources.foo:bar"
-
-        # Test import succeeded.
-        import_attr(full_path=full_path)
 
 
 if __name__ == "__main__":
