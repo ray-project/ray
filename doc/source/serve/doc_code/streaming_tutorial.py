@@ -218,10 +218,20 @@ assert chunks == [
 
 print = original_print
 
-# __batched_streamer_start__
-from queue import Queue
+# __batchbot_setup_start__
+import asyncio
+import logging
+from queue import Empty, Queue
 
+from fastapi import FastAPI
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from ray import serve
+
+logger = logging.getLogger("ray.serve")
+# __batchbot_setup_end__
+
+# __raw_streamer_start__
 class RawStreamer:
     def __init__(self, timeout: float = None):
         self.q = Queue()
@@ -245,8 +255,10 @@ class RawStreamer:
             return result
 
 
-# __batched_streamer_end__
+# __raw_streamer_end__
 
+# __batchbot_constructor_start__
+fastapi_app = FastAPI()
 
 @serve.deployment
 @serve.ingress(fastapi_app)
@@ -258,7 +270,9 @@ class Batchbot:
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.tokenizer.pad_token = self.tokenizer.eos_token
+# __batchbot_constructor_end__
 
+# __batchbot_logic_start__
     @fastapi_app.post("/")
     async def handle_request(self, prompt: str):
         logger.info(f'Got prompt: "{prompt}"')
@@ -280,7 +294,7 @@ class Batchbot:
 
     def generate_text(self, prompts: str, streamer: RawStreamer):
         input_ids = self.tokenizer(prompts, return_tensors="pt", padding=True).input_ids
-        self.model.generate(input_ids, streamer=streamer, max_length=1000)
+        self.model.generate(input_ids, streamer=streamer, max_length=10000)
 
     async def consume_streamer(self, streamer: RawStreamer):
         while True:
@@ -296,9 +310,12 @@ class Batchbot:
                 break
             except Empty:
                 await asyncio.sleep(0.01)
+# __batchbot_logic_end__
 
 
+# __batchbot_bind_start__
 app = Batchbot.bind("microsoft/DialoGPT-small")
+# __batchbot_bind_end__
 
 serve.run(app)
 
