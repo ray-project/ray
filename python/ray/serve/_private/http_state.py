@@ -289,13 +289,6 @@ class HTTPState:
         Iterate through all proxy states and check if all their proxy actors
         are shutdown.
         """
-        print("is_shutdown")
-        count = 0
-        for proxy_state in self._proxy_states.values():
-            if not proxy_state.is_shutdown():
-                # print("proxy_state", proxy_state)
-                count += 1
-        print("count", count)
         return all(
             proxy_state.is_shutdown() for proxy_state in self._proxy_states.values()
         )
