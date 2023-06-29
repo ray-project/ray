@@ -2,7 +2,7 @@
 
 Tracing
 =======
-To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to make it easy to export traces to external tracing stacks such as Jaeger.
+To help debug and monitor Ray applications, Ray integrates with OpenTelemetry to facilitate exporting traces to external tracing stacks such as Jaeger.
 
 
 .. note::
