@@ -184,5 +184,5 @@ To enable deterministic execution, set the above to True. This may decrease perf
 Monitoring your application
 ---------------------------
 
-View the Ray dashboard to monitor your application and troubleshoot issues. To learn
+View the Ray Dashboard to monitor your application and troubleshoot issues. To learn
 more about the Ray dashboard, see :ref:`Ray Dashboard <observability-getting-started>`.
