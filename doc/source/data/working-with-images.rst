@@ -244,7 +244,8 @@ and :ref:`Transforming batches with actors <transforming_data_actors>`.
 Saving images
 -------------
 
-Save images in Parquet or Numpy files. Other formats aren't supported.
+Save images with formats like Parquet, NumPy, and JSON. To view all supported formats,
+see the :ref:`Input/Output reference <input-output>`.
 
 .. tab-set::
 
@@ -270,5 +271,16 @@ Save images in Parquet or Numpy files. Other formats aren't supported.
 
             ds = ray.data.read_images("example://image-datasets/simple")
             ds.write_numpy("/tmp/simple", column="image")
+
+    .. tab-item:: JSON
+
+        To save images in a JSON file, call :meth:`~ray.data.Dataset.write_json`.
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.read_images("example://image-datasets/simple")
+            ds.write_json("/tmp/simple")
 
 For more information on saving data, see :ref:`Saving data <loading_data>`.
