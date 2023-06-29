@@ -3242,7 +3242,7 @@ class Dataset:
         ``Dataset`` will be treated as the label, and the output label tensor
         will be ``None``.
 
-        Note that you probably want to call ``.split()`` on this dataset if
+        Note that you probably want to call :meth:`Dataset.split` on this dataset if
         there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
@@ -3352,12 +3352,12 @@ class Dataset:
 
             If your model accepts a single tensor as input, specify a single feature column.
 
-            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
+            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts a dictionary as input, specify a list of feature columns.
 
-            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
             <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
@@ -3380,7 +3380,7 @@ class Dataset:
                      target: int64
                   }
                )
-            >>> ds.to_tf("features", "target")  # doctest: +SKIP
+            >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
@@ -3572,15 +3572,15 @@ class Dataset:
         """Convert this dataset into a Modin dataframe.
 
         This works by first converting this dataset into a distributed set of
-        Pandas dataframes (using ``.to_pandas_refs()``). Please see caveats
+        Pandas dataframes (using :meth:`Dataset.to_pandas_refs`). Please see caveats
         there. Then the individual dataframes are used to create the modin
         DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or
-        ``.get_internal_block_refs()``.
+        underlying data, consider using :meth:`Dataset.to_arrow` or
+        :meth:`.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3617,8 +3617,17 @@ class Dataset:
 
         This is only supported for datasets convertible to Arrow or Pandas
         records. An error is raised if the number of records exceeds the
-        provided limit. Note that you can use ``.limit()`` on the dataset
+        provided limit. Note that you can use :meth:`.limit` on the dataset
         beforehand to truncate the dataset manually.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([{"a": i} for i in range(3)])
+            >>> ds.to_pandas()
+               a
+            0  0
+            1  1
+            2  2
 
         Time complexity: O(dataset size)
 
@@ -3652,8 +3661,8 @@ class Dataset:
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or
-        ``.get_internal_block_refs()``.
+        underlying data, consider using :meth:`Dataset.to_arrow` or
+        :meth:`Dataset.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3672,8 +3681,8 @@ class Dataset:
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or
-        ``.get_internal_block_refs()``.
+        underlying data, consider using :meth:`Dataset.to_arrow` or
+        :meth:`Dataset.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
