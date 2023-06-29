@@ -140,18 +140,18 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
+  // Init KV Manager. This needs to be initialized first here so that
+  // it can be used to retrieve the cluster ID.
+  InitKVManager();
   gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    // Init KV Manager. This needs to be initialized first here so that
-    // it can be used to retrieve the cluster ID.
-    InitKVManager();
-    RetrieveAndCacheClusterId([this, gcs_init_data](ClusterID cluster_id) {
+    GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
       rpc_server_.SetClusterId(cluster_id);
       DoStart(*gcs_init_data);
     });
   });
 }
 
-void GcsServer::RetrieveAndCacheClusterId(
+void GcsServer::GetOrGenerateClusterId(
     std::function<void(ClusterID cluster_id)> &&continuation) {
   static std::string const kTokenNamespace = "cluster";
   kv_manager_->GetInstance().Get(
