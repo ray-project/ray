@@ -31,6 +31,7 @@ import {
 } from "./pages/serve/ServeApplicationDetailPage";
 import { ServeApplicationsListPage } from "./pages/serve/ServeApplicationsListPage";
 import { ServeLayout, ServeSideTabLayout } from "./pages/serve/ServeLayout";
+import { ServeReplicaDetailLayout } from "./pages/serve/ServeReplicaDetailLayout";
 import { ServeReplicaDetailPage } from "./pages/serve/ServeReplicaDetailPage";
 import {
   ServeControllerDetailPage,
@@ -264,9 +265,10 @@ const App = () => {
                   >
                     <Route element={<ServeApplicationDetailPage />} path="" />
                     <Route
-                      element={<ServeReplicaDetailPage />}
+                      element={<ServeReplicaDetailLayout />}
                       path=":deploymentName/:replicaId"
                     >
+                      <Route element={<ServeReplicaDetailPage />} path="" />
                       <Route path="tasks/:taskId" element={<TaskPage />} />
                     </Route>
                   </Route>
