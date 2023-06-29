@@ -172,6 +172,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// \param available A list of available capacities for resource's instances.
   /// \param local_total Local total resource instances.
   /// \param local_available Local available resource instances being updated.
+  /// \param[out] is_idle Pointer to record if the resource are idle after the
+  ///       addition. This is nullptr if not recording idle resources.
   ///
   /// \return Overflow capacities of "local_available" after adding instance
   /// capacities in "available", i.e.,
@@ -179,7 +181,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   std::vector<FixedPoint> AddAvailableResourceInstances(
       const std::vector<FixedPoint> &available,
       const std::vector<FixedPoint> &local_total,
-      std::vector<FixedPoint> &local_available) const;
+      std::vector<FixedPoint> &local_available,
+      bool *is_idle = nullptr) const;
 
   /// Decrease the available capacities of the instances of a given resource.
   ///
@@ -246,14 +249,27 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// added back to the node's local available resources.
   ///
   /// \param task_allocation: Task's resources to be freed.
-  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation);
+  /// \param record_idle_resource: Whether to record the idle resource. This is false
+  ///   when the resource was allocated partially so its idle state is actually not
+  ///   affected.
+  void FreeTaskResourceInstances(std::shared_ptr<TaskResourceInstances> task_allocation,
+                                 bool record_idle_resource = true);
 
   void UpdateAvailableObjectStoreMemResource();
+
+  void SetResourceIdle(const scheduling::ResourceID &resource_id);
+
+  void SetResourceNonIdle(const scheduling::ResourceID &resource_id);
+
+  absl::optional<absl::Time> GetResourceIdleTime() const;
 
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
   NodeResourceInstances local_resources_;
+  /// A map storing when the resource was last idle.
+  absl::flat_hash_map<scheduling::ResourceID, absl::optional<absl::Time>>
+      resources_last_idle_time_;
   /// Cached resources, used to compare with newest one in light heartbeat mode.
   std::unique_ptr<NodeResources> last_report_resources_;
   /// Function to get used object store memory.
@@ -277,6 +293,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   friend class LocalResourceManagerTest;
   FRIEND_TEST(LocalResourceManagerTest, BasicGetResourceUsageMapTest);
+  FRIEND_TEST(LocalResourceManagerTest, IdleResourceTimeTest);
 };
 
 }  // end namespace ray

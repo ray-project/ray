@@ -15,4 +15,8 @@ public interface RayServeReplica {
   default boolean prepareForShutdown() {
     return true;
   }
+
+  default int getNumOngoingRequests() {
+    return 0;
+  }
 }
