@@ -87,7 +87,7 @@ particular model under different shuffling policies:
 
 From the perspective of keeping preprocessing time in check, as long as your data
 loading + shuffling throughput is higher than your training throughput, your GPU should
-be saturated, so we like to recommend users with shuffle-sensitive models to push their
+be saturated. If you have shuffle-sensitive models, push the
 shuffle quality higher until this threshold is hit.
 
 .. _shuffle_performance_tips:
