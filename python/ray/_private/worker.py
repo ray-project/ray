@@ -1137,14 +1137,15 @@ def init(
     This will autodetect an existing Ray cluster or start a new Ray instance if
     no existing cluster is found:
 
-    .. code-block:: python
+    .. testcode::
 
         ray.init()
 
     To explicitly connect to an existing local cluster, use this as follows. A
     ConnectionError will be thrown if no existing local cluster is found.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="auto")
 
@@ -1152,7 +1153,8 @@ def init(
     in the appropriate address). Note the addition of "ray://" at the beginning
     of the address.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="ray://123.45.67.89:10001")
 
