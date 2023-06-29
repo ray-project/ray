@@ -37,6 +37,14 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
             return np_data * self.multiplier
 
 
+def test_batch_predictor_warns_deprecation(shutdown_only):
+    with pytest.warns(DeprecationWarning):
+        BatchPredictor.from_checkpoint(
+            Checkpoint.from_dict({"factor": 2.0}),
+            DummyPredictorFS,
+        )
+
+
 def test_repr(shutdown_only):
     predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0}),
