@@ -140,10 +140,6 @@ You should see the outputs printed token by token.
 
 # Add Batching to Streaming Deployments
 
-:::{warning}
-HuggingFace's support for `Streamers` is still under development and may change in the future. `RawQueue` is compatible with the `Streamers` interface in HuggingFace 4.28.1. However, the `Streamers` interface may change, making the `RawQueue` incompatible with HuggingFace models in the future.
-:::
-
 Improve model utilization and request latency by batching requests together when running the model.
 
 Create a Python file called `batchbot.py`. First add the imports:
@@ -153,6 +149,10 @@ Create a Python file called `batchbot.py`. First add the imports:
 :start-after: __batchbot_setup_start__
 :end-before: __batchbot_setup_end__
 ```
+
+:::{warning}
+HuggingFace's support for `Streamers` is still under development and may change in the future. `RawQueue` is compatible with the `Streamers` interface in HuggingFace 4.28.1. However, the `Streamers` interface may change, making the `RawQueue` incompatible with HuggingFace models in the future.
+:::
 
 Just like the `Textbot` and `Chatbot`, the `Batchbot` needs a streamer to stream outputs from batched requests, but HuggingFace `Streamers` don't support batched requests yet. Add this custom `RawStreamer` to process batches of tokens:
 
