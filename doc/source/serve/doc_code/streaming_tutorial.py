@@ -20,7 +20,7 @@ logger = logging.getLogger("ray.serve")
 fastapi_app = FastAPI()
 
 
-# __textbot_start__
+# __textbot_constructor_start__
 @serve.deployment
 @serve.ingress(fastapi_app)
 class Textbot:
@@ -30,6 +30,7 @@ class Textbot:
         self.model_id = model_id
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+# __textbot_constructor_end__
 
     @fastapi_app.post("/")
     def handle_request(self, prompt: str):
@@ -58,7 +59,6 @@ class Textbot:
 
 
 app = Textbot.bind("microsoft/DialoGPT-small")
-# __textbot_end__
 
 serve.run(app)
 

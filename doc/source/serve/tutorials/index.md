@@ -11,6 +11,7 @@ Ray Serve functionality and how to integrate different modeling frameworks.
 
 serve-ml-models
 batch
+streaming
 rllib
 gradio-integration
 gradio-dag-visualization

@@ -1,3 +1,5 @@
+(serve-streaming-tutorial)=
+
 # Streaming Tutorial
 
 This guide walks you through deploying a chatbot that streams output back to the
@@ -22,5 +24,17 @@ pip install transformers
 
 Open a new Python file called `tutorial_stream.py`. First, add the imports and the Serve logger.
 
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __setup_start__
+:end-before: __setup_end__
+```
 
+Create a FastAPI deployment, and initialize the model and the tokenizer in the
+constructor:
 
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __textbot_constructor_start__
+:end-before: __textbot_constructor_end__
+```
