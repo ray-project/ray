@@ -15,7 +15,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
 
     for file in files:
         native.py_test(
-            name = file,
+            name = file + "[doctest]",
             srcs = ["//bazel:pytest_wrapper.py"] + srcs,
             main = "//bazel:pytest_wrapper.py",
             size = size,
