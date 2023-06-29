@@ -88,12 +88,18 @@ class NoopActorManager(RayActorManager):
     def next(self, timeout: Optional[Union[int, float]] = None) -> None:
         pass
 
+    def set_num_pending(self, num_pending: int):
+        self._pending_actors_to_attrs = {i: None for i in range(num_pending)}
+
 
 class TestingTrial(Trial):
     def get_trainable_cls(self):
         return self.trainable_name
 
     def create_placement_group_factory(self):
+        self.placement_group_factory = self._default_placement_group_factory
+
+    def set_runner(self, runner):
         pass
 
 
