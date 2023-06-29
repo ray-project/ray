@@ -3002,9 +3002,10 @@ class Dataset:
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node. Defaults to 1. You can revert
-                back to the old prefetching behavior that uses `prefetch_blocks` by
-                setting `use_legacy_iter_batches` to True in the DataContext.
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the datasetContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3023,7 +3024,8 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A function to apply to each data batch before returning it.
             _finalize_fn: A function to apply to each data batch after it has been
-                collated. This is executed on a GPU-based threadpool if available.
+                collated. This is executed in a separate threadpool from _collate_fn,
+                which allows for independent parallelization of these steps.
 
         Returns:
             An iterator over record batches.
