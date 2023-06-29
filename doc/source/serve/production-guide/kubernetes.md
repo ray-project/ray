@@ -256,6 +256,26 @@ To enable autoscaling in a KubeRay Cluster, you need to set `enableInTreeAutosca
 In most use cases, it is recommended to enable Kubernetes autoscaling to fully utilize the resources in your cluster. If you are using GKE, you can utilize the AutoPilot Kubernetes cluster. For instructions, see [Create an Autopilot Cluster](https://cloud.google.com/kubernetes-engine/docs/how-to/creating-an-autopilot-cluster). For EKS, you can enable Kubernetes cluster autoscaling by utilizing the Cluster Autoscaler. For detailed information, see [Cluster Autoscaler on AWS](https://github.com/kubernetes/autoscaler/blob/master/cluster-autoscaler/cloudprovider/aws/README.md). To understand the relationship between Kubernetes autoscaling and Ray autoscaling, see [Ray Autoscaler with Kubernetes Cluster Autoscaler](kuberay-autoscaler-with-ray-autoscaler).
 :::
 
+## Load balancer
+Set up ingress to expose your Serve application with a load balancer. See [this configuration](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray_v1alpha1_rayservice-alb-ingress.yaml)
+
+:::{note}
+- Ray Serve runs HTTP proxy on every node, allowing you to use `/-/routes` as the endpoint for node health checks.
+- Ray Serve uses port 8000 as the default HTTP proxy traffic port. You can change the port by setting `http_options` in the Serve config. Learn more details [here](serve-multi-application).
+:::
+
+## Monitoring
+Monitor your Serve application using the Ray Dashboard.
+- Learn more about how to configure and manage Dashboard [here](observability-configure-manage-dashboard).
+- Learn about the Ray Serve Dashboard [here](serve-monitoring).
+- Learn how to set up [Prometheus](prometheus-setup) and [Grafana](grafana) for Dashboard.
+- Learn about the [Ray Serve logs](serve-logging) and how to [persistent logs](kuberay-logging) on Kubernetes.
+
+:::{note}
+- To troubleshoot application deployment failures in Serve, you can check the Kuberay operator logs by running `kubectl logs -f <kuberay-operator-pod-name>` (e.g., `kubectl logs -f kuberay-operator-7447d85d58-lv7pf`). The Kuberay operator logs contain information about the Serve application deployment event and Serve application health checks.
+- You can also check the controller log and deployment log, which are located under `/tmp/ray/session_latest/logs/serve/` in both the head node pod and worker node pod. These logs contain information about specific deployment failure reasons and autoscaling events.
+:::
+
 ## Next Steps
 
 Check out [the end-to-end fault tolerance guide](serve-e2e-ft) to learn more about Serve's failure conditions and how to guard against them.
