@@ -138,6 +138,9 @@ class StreamingExecutor(Executor, threading.Thread):
                     self._outer.shutdown()
                     raise
 
+            def __del__(self):
+                self._outer.shutdown()
+
         return StreamIterator(self)
 
     def shutdown(self):
