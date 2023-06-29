@@ -100,6 +100,14 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
+void GcsAutoscalerStateManager::HandleGetClusterStatus(
+    rpc::autoscaler::GetClusterStatusRequest request,
+    rpc::autoscaler::GetClusterStatusReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // TODO
+  throw std::runtime_error("Unimplemented");
+}
+
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   // Get the gang resource requests from the placement group load.
