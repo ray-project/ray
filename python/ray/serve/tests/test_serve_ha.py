@@ -40,6 +40,8 @@ class Counter:
 serve.start(detached=True)
 
 Counter.options(num_replicas={num_replicas}).deploy()
+
+print(ray.nodes())
 """
 
 check_script = """

@@ -145,6 +145,9 @@ def _start_controller(
         controller_name = SERVE_CONTROLLER_NAME
     else:
         controller_name = format_actor_name(get_random_letters(), SERVE_CONTROLLER_NAME)
+
+    head_node_id = ray.get_runtime_context().get_node_id()
+    logger.info(f"NODE ID FROM API {head_node_id}")
     controller_actor_options = {
         "num_cpus": 1 if dedicated_cpu else 0,
         "name": controller_name,
