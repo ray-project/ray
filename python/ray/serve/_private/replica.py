@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -497,15 +498,25 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
+        self.metrics_pusher = self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
-            self.metrics_pusher = MetricsPusher(
-                process_remote_func,
-                config.metrics_interval_s,
+            self.metrics_pusher.register_task(
                 self.collect_autoscaling_metrics,
+                config.metrics_interval_s,
+                process_remote_func,
             )
-            self.metrics_pusher.start()
+
+        self.metrics_pusher.register_task(
+            self._set_replica_requests_metrics,
+            RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
+        )
+        self.metrics_pusher.start()
+
+    def _set_replica_requests_metrics(self):
+        self.num_processing_items.set(self.get_num_running_requests())
+        self.num_pending_items.set(self.get_num_pending_requests())
 
     async def check_health(self):
         await self.user_health_check()
@@ -527,6 +538,10 @@ class RayServeReplica:
     def get_num_running_requests(self) -> int:
         stats = self._get_handle_request_stats() or {}
         return stats.get("running", 0)
+
+    def get_num_pending_requests(self) -> int:
+        stats = self._get_handle_request_stats() or {}
+        return stats.get("pending", 0)
 
     def get_num_pending_and_running_requests(self) -> int:
         stats = self._get_handle_request_stats() or {}
@@ -682,12 +697,6 @@ class RayServeReplica:
         request_kwargs: Dict[str, Any],
     ) -> Any:
         async with self.rwlock.reader_lock:
-            request_stats = self._get_handle_request_stats()
-            num_running_requests = request_stats["running"]
-            num_pending_requests = request_stats["pending"]
-            self.num_pending_items.set(num_pending_requests)
-            self.num_processing_items.set(num_running_requests)
-
             # Set request context variables for subsequent handle so that
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
