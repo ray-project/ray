@@ -23,7 +23,18 @@ def test_actor_cached(tmpdir):
     assert cls_name == "trainable1"
 
 
-def test_actor_reuse_start(tmpdir):
+def test_actor_reuse_unstaged(tmpdir):
+    """A trial that hasn't been staged can re-use an actor.
+
+    In specific circumstances, this can lead to errors. Notably, when an
+    external source (e.g. a scheduler) directly calls TuneController APIs,
+    we can be in a situation where a trial has not been staged, but there is
+    still an actor available for it to use (because it hasn't been evicted from
+    the cache, yet).
+
+    This test constructs such a situation an asserts that actor re-use does not
+    lead to errors in those cases.
+    """
     tune_controller, actor_manger, resource_manager = create_execution_test_objects(
         tmpdir, max_pending_trials=1
     )
@@ -105,7 +116,14 @@ def test_actor_reuse_start(tmpdir):
 
     # Prior to https://github.com/ray-project/ray/pull/36951, there was a bug here:
     # Because trial A3 was never staged, the unstage ran into an error.
+    # This fails without the line: self._staged_trials.add(start_trial)
     tune_controller._on_trial_reset(trialA3, True)
+
+    # When the actor finally stops, the cache size is adjusted and the actor is
+    # evicted. This test failed without the line:
+    # self._actor_cache.increase_max(start_trial.placement_group_factory)
+    tune_controller._actor_stopped(tracked_actorA1)
+    tune_controller.step()
 
 
 if __name__ == "__main__":
