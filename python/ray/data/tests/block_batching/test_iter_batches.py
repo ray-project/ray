@@ -160,10 +160,7 @@ def test_iter_batches_e2e_async(ray_start_regular_shared):
     )
     start_time = time.time()
     output_batches = iter_batches(
-        block_refs_iter,
-        batch_size=None,
-        collate_fn=collate_fn,
-        prefetch_batches=4,
+        block_refs_iter, batch_size=None, collate_fn=collate_fn, prefetch_batches=4
     )
     batches = []
     for batch in output_batches:

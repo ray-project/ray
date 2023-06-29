@@ -89,7 +89,8 @@ def iter_batches(
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
         finalize_fn: A function to apply to each data batch after it has been collated.
-            This is executed on a GPU-based threadpool if available.
+            This is executed on a separate threadpool from `collate_fn` so that these
+            steps can be independently parallelized.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -154,7 +155,7 @@ def iter_batches(
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 4: Apply the finalize_fn on the GPU-based threadpool,
+        # Step 4: Apply the finalize_fn in a separate threadpool,
         # useful for operations such as host to device transfer.
         batch_iter = _apply_finalize_fn_in_threadpool(
             batch_iter,

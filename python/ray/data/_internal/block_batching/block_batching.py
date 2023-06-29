@@ -11,6 +11,7 @@ from ray.data._internal.block_batching.util import (
     blocks_to_batches,
     collate,
     extract_data_from_batch,
+    finalize_batches,
     format_batches,
     resolve_block_refs,
 )
@@ -33,6 +34,7 @@ def batch_block_refs(
     batch_format: str = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+    finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -62,6 +64,8 @@ def batch_block_refs(
             ``pyarrow.Table``. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
+        finalize_fn: A function to apply to each data batch after it has been collated.
+            This is executed on a GPU-based threadpool if available.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -105,6 +109,7 @@ def batch_block_refs(
         batch_format=batch_format,
         drop_last=drop_last,
         collate_fn=collate_fn,
+        finalize_fn=finalize_fn,
         shuffle_buffer_min_size=shuffle_buffer_min_size,
         shuffle_seed=shuffle_seed,
         ensure_copy=ensure_copy,
@@ -119,6 +124,7 @@ def batch_blocks(
     batch_format: str = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], DataBatch]] = None,
+    finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -147,6 +153,12 @@ def batch_blocks(
 
         if collate_fn is not None:
             batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
+        if finalize_fn is not None:
+            batch_iter = finalize_batches(
+                batch_iter,
+                finalize_fn=finalize_fn,
+                stats=stats,
+            )
 
         batch_iter = extract_data_from_batch(batch_iter)
         yield from batch_iter

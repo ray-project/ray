@@ -80,6 +80,7 @@ class PipelinedDataIterator(DataIterator):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
+            _finalize_fn=_finalize_fn,
             prefetch_blocks=prefetch_blocks,
         )
 

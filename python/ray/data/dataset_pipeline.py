@@ -229,7 +229,6 @@ class DatasetPipeline:
             )
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
-
         yield from batch_block_refs(
             self._iter_blocks(),
             stats=self._stats,

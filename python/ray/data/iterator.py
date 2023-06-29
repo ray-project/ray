@@ -112,9 +112,10 @@ class DataIterator(abc.ABC):
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool will be used
-                to fetch the objects to the local node. Defaults to 1. You can revert
-                back to the old prefetching behavior that uses `prefetch_blocks` by
-                setting `use_legacy_iter_batches` to True in the DataContext.
+                to fetch the objects to the local node, format the batches, and apply
+                the collate_fn. Defaults to 1. You can revert back to the old
+                prefetching behavior that uses `prefetch_blocks` by setting
+                `use_legacy_iter_batches` to True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -175,6 +176,7 @@ class DataIterator(abc.ABC):
                 batch_format=batch_format,
                 drop_last=drop_last,
                 collate_fn=_collate_fn,
+                finalize_fn=_finalize_fn,
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
             )
@@ -295,12 +297,11 @@ class DataIterator(abc.ABC):
             collate_fn: A function to apply to each data batch before returning it.
                 Potential use cases include collating along a dimension other than the
                 first, padding sequences of various lengths, or generally handling
-                batches of different length tensors. If not provided, the default
-                collate function is used which simply converts the batch of numpy
-                arrays to a batch of PyTorch tensors. This API is still experimental
+                batches of different length tensors. This API is still experimental
                 and is subject to change.
             finalize_fn: A function to apply to each data batch after it has been
-                collated. This is executed on a GPU-based threadpool if available.
+                collated. If not provided, the default function is used, which
+                simply converts the batch of numpy arrays to a batch of PyTorch tensors.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the

@@ -3005,12 +3005,6 @@ class Dataset:
                 to fetch the objects to the local node. Defaults to 1. You can revert
                 back to the old prefetching behavior that uses `prefetch_blocks` by
                 setting `use_legacy_iter_batches` to True in the DataContext.
-            gpu_prefetch_batches: The number of batches to fetch ahead of the current
-                batch to fetch on the GPU. If set to greater than 0, a separate
-                threadpool will be used to format batches and apply the collate_fn.
-                Defaults to 1. You can revert back to the old prefetching behavior
-                that uses `prefetch_blocks` by setting `use_legacy_iter_batches` to
-                True in the DataContext.
             batch_size: The number of rows in each batch, or None to use entire blocks
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
