@@ -2,6 +2,8 @@ from typing import Optional, Any
 
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -22,6 +24,10 @@ class SkipConnection(tf.keras.layers.Layer if tf else object):
                 layer taking two inputs: The original input and the output
                 of `layer`.
         """
+        if log_once("skip_connection"):
+            deprecation_warning(
+                old="rllib.models.tf.layers.SkipConnection",
+            )
         super().__init__(**kwargs)
         self._layer = layer
         self._fan_in_layer = fan_in_layer

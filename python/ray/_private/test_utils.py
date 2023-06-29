@@ -98,6 +98,30 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
+def get_redis_cli(port, enable_tls):
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
+
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
+
+    return redis.Redis("localhost", str(port), **params)
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -114,6 +138,7 @@ def start_redis_instance(
     replica_of=None,
     leader_id=None,
     db_dir=None,
+    free_port=0,
 ):
     """Start a single Redis server.
 
@@ -166,11 +191,6 @@ def start_redis_instance(
     if redis_replicas() > 1:
         command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
-        import socket
-
-        with socket.socket() as s:
-            s.bind(("", 0))
-            free_port = s.getsockname()[1]
         command += [
             "--tls-port",
             str(port),
@@ -193,7 +213,9 @@ def start_redis_instance(
             command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
         if Config.REDIS_CLIENT_KEY():
             command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
-        command += ["--tls-replication", "yes"]
+        if replica_of is not None:
+            command += ["--tls-replication", "yes"]
+        command += ["--tls-auth-clients", "no", "--tls-cluster", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
@@ -212,13 +234,13 @@ def start_redis_instance(
 
         while True:
             try:
-                redis_cli = redis.Redis("localhost", str(port))
+                redis_cli = get_redis_cli(port, enable_tls)
                 if replica_of is None:
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
-                    redis_cli.cluster("replicate", leader_id)
+                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    print(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -227,7 +249,7 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e}")
+                print(f"Waiting for redis to be up {e} ")
                 sleep(0.1)
 
     return node_id, process_info
