@@ -839,41 +839,7 @@ class Impala(Algorithm):
         # factories.
         if cf._enable_learner_api:
             # Resources for the Algorithm.
-            if cf.num_learner_workers == 0:
-                # if num_learner_workers is 0, then we need to allocate one gpu if
-                # num_gpus_per_learner_worker is greater than 0.
-                learner_bundles = [
-                    {
-                        "CPU": cf.num_cpus_per_learner_worker,
-                        "GPU": cf.num_gpus_per_learner_worker,
-                    }
-                ]
-            else:
-                # if cf.num_gpus_per_learner_worker:
-                #     trainer_bundle = [
-                #         {
-                #             "GPU": cf.num_gpus_per_learner_worker,
-                #         }
-                #         for _ in range(cf.num_learner_workers)
-                #     ]
-                # elif cf.num_cpus_per_learner_worker:
-                #     trainer_bundle = [
-                #         {
-                #             "CPU": cf.num_cpus_per_learner_worker,
-                #         }
-                #         for _ in range(cf.num_learner_workers)
-                # ]
-                if cf.num_gpus_per_learner_worker:
-                    learner_bundles = [
-                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
-                    ]
-                elif cf.num_cpus_per_learner_worker:
-                    learner_bundles = [
-                        {
-                            "CPU": cf.num_cpus_per_learner_worker
-                            * cf.num_learner_workers,
-                        }
-                    ]
+            learner_bundles = cls._get_learner_bundles(cf)
 
             bundles += learner_bundles
 
