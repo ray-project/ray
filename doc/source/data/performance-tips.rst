@@ -34,7 +34,7 @@ Tuning read resources
 ~~~~~~~~~~~~~~~~~~~~~
 
 By default, Ray requests 1 CPU per read task, which means one read tasks per CPU can execute concurrently.
-For data sources that can benefit from higher degress of I/O parallelism, you can specify a lower ``num_cpus`` value for the read function via the ``ray_remote_args`` parameter.
+For datasources that can benefit from higher degress of IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
 Parquet column pruning
@@ -66,16 +66,16 @@ Optimizing shuffles
 When should I use global per-epoch shuffling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Global per-epoch shuffling should only be used if your model is sensitive to the
-randomness of the training data. There is
-`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ for all
-gradient-descent-based model trainers benefiting from improved (global) shuffle quality,
-and we've found that this is particular pronounced for tabular data/models in practice.
-However, the more global your shuffle is, the expensive the shuffling operation, and
-this compounds when doing distributed data-parallel training on a multi-node cluster due
-to data transfer costs, and this cost can be prohibitive when using very large datasets.
+Use global per-epoch shuffling only if your model is sensitive to the
+randomness of the training data. Based on a
+`theoretical foundation <https://arxiv.org/abs/1709.10432>`__ all
+gradient-descent-based model trainers benefit from improved (global) shuffle quality.
+In practice, the benefit is particularly pronounced for tabular data/models.
+However, the more global the shuffle is, the more expensive the shuffling operation.
+The increase compounds with distributed data-parallel training on a multi-node cluster due
+to data transfer costs. This cost can be prohibitive when using very large datasets.
 
-The best route for determining the best tradeoff between preprocessing time + cost and
+The best route for determining the best tradeoff between preprocessing time and cost and
 per-epoch shuffle quality is to measure the precision gain per training step for your
 particular model under different shuffling policies:
 
@@ -86,7 +86,7 @@ particular model under different shuffling policies:
 * fully global shuffling.
 
 From the perspective of keeping preprocessing time in check, as long as your data
-loading + shuffling throughput is higher than your training throughput, your GPU should
+loading and shuffling throughput is higher than your training throughput, your GPU should
 be saturated. If you have shuffle-sensitive models, push the
 shuffle quality higher until this threshold is hit.
 

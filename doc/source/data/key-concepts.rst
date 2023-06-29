@@ -81,7 +81,7 @@ To learn more about transforming datasets, read
 Consuming data
 --------------
 
-Pass datasets to Ray tasks or actors, and access records with methods like
+Pass datasets to Ray Tasks or Actors, and access records with methods like
 :meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
 
 .. tab-set::
@@ -131,7 +131,7 @@ Pass datasets to Ray tasks or actors, and access records with methods like
             ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
 
-To learn more about consuming datasets, read
+To learn more about consuming datasets, see
 :ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
 
 .. _saving_key_concept:
@@ -155,4 +155,4 @@ or remote filesystems.
     ['..._000000.parquet']
 
 
-To learn more about saving dataset contents, read :ref:`Saving data <saving-data>`.
+To learn more about saving dataset contents, see :ref:`Saving data <saving-data>`.

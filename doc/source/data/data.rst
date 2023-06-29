@@ -20,7 +20,7 @@ To install Ray Data, run:
 
 .. code-block:: console
 
-    $ pip install 'ray[data]'
+    $ pip install -U 'ray[data]'
 
 To learn more about installing Ray and its libraries, see
 :ref:`Installing Ray <installation>`.

@@ -77,9 +77,9 @@ For an in-depth guide on shuffle performance, see :ref:`Performance Tips and Tun
 Scheduling
 ==========
 
-Ray Data uses Ray core for execution, and hence is subject to the same scheduling considerations as normal Ray tasks and actors. Ray Data uses the following custom scheduling settings by default for improved performance:
+Ray Data uses Ray Core for execution, and is subject to the same scheduling considerations as normal Ray Tasks and Actors. Ray Data uses the following custom scheduling settings by default for improved performance:
 
-* The ``SPREAD`` scheduling strategy is ensures that data blocks and map tasks are evenly balanced across the cluster.
+* The ``SPREAD`` scheduling strategy ensures that data blocks and map tasks are evenly balanced across the cluster.
 * Dataset tasks ignore placement groups by default, see :ref:`Ray Data and Placement Groups <datasets_pg>`.
 
 .. _datasets_pg:
@@ -91,7 +91,7 @@ By default, Ray Data configures its tasks and actors to use the cluster-default 
 :class:`ray.data.DataContext.get_current().scheduling_strategy <ray.data.DataContext>`. This scheduling strategy schedules these Tasks and Actors outside any present
 placement group. To force Ray Data to schedule tasks within the current placement group (i.e., to use current placement group resources specifically for Ray Data), set ``ray.data.DataContext.get_current().scheduling_strategy = None``.
 
-This should be considered for advanced use cases to improve performance predictability only. We generally recommend letting Ray Data run outside placement groups.
+Consider this override only for advanced use cases to improve performance predictability. The general recommendation is to let Ray Data run outside placement groups.
 
 .. _datasets_tune:
 
