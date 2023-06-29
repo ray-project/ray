@@ -529,7 +529,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # must have it's Model (if any) defined and ready to output an initial
         # state.
         for pol in self.policy_map.values():
-            if not pol._model_init_state_automatically_added:
+            if not pol._model_init_state_automatically_added and not pol.config.get(
+                "_enable_rl_module_api", False
+            ):
                 pol._update_model_view_requirements_from_init_state()
 
         self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -717,6 +719,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 else batch.agent_steps()
             )
             batches.append(batch)
+
         batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
@@ -733,6 +736,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.config.fake_sampler:
             self.last_batch = batch
+
         return batch
 
     @ray.method(num_returns=2)

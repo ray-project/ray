@@ -10,12 +10,12 @@ Ray Serve functionality and how to integrate different modeling frameworks.
 :name: serve-tutorials
 
 serve-ml-models
-batch
-rllib
-gradio-integration
-gradio-dag-visualization
-java
 stable-diffusion
 text-classification
 object-detection
+rllib
+gradio-integration
+batch
+gradio-dag-visualization
+java
 ```
