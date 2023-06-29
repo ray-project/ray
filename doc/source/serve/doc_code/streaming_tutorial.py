@@ -160,3 +160,29 @@ class Chatbot:
 
 
 app = Chatbot.bind("microsoft/DialoGPT-small")
+
+serve.run(app)
+
+# Test batching code
+from functools import partial
+from concurrent.futures.thread import ThreadPoolExecutor
+
+
+def get_buffered_response(prompt) -> List[str]:
+    response = requests.post(f"http://localhost:8000/?prompt={prompt}", stream=True)
+    chunks = []
+    for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
+        chunks.append(chunk)
+    return chunks
+
+
+with ThreadPoolExecutor() as pool:
+    futs = [
+        pool.submit(partial(get_buffered_response, prompt))
+        for prompt in ["Introduce yourself to me!", "Tell me a story about dogs."]
+    ]
+    responses = [fut.result() for fut in futs]
+    assert responses == [
+        ["I", "'m", " not", " sure", " if", " I", "'m", " ready", " for", " that", "."],
+        ["D", "ogs", " are", " the", " best", "."],
+    ]
