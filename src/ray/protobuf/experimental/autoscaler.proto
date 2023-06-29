@@ -72,7 +72,7 @@ message GangResourceRequest {
   repeated ResourceRequest requests = 1;
   // TODO(rickyx):
   // Strategy of the placement group, e.g. STRICT_PACK.
-  string pg_strategy = 2;
+  string placement_group_strategy = 2;
 }
 
 // Cluster resource constraint represents minimial cluster size requirement,
@@ -86,11 +86,11 @@ message ClusterResourceConstraint {
 // Node status for a ray node.
 enum NodeStatus {
   // Node is alive and running workloads.
-  RUNNING = 0;
+  RUNNING = 1;
   // Node is dead.
-  DEAD = 1;
+  DEAD = 2;
   // Node is idle.
-  IDLE = 2;
+  IDLE = 3;
 }
 
 message NodeState {
