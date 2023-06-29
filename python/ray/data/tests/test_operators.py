@@ -229,30 +229,46 @@ def test_map_operator_streamed(ray_start_regular_shared, use_actors):
 @pytest.mark.parametrize("equal", [False, True])
 @pytest.mark.parametrize("chunk_size", [1, 10])
 def test_split_operator(ray_start_regular_shared, equal, chunk_size):
-    input_op = InputDataBuffer(make_ref_bundles([[i] * chunk_size for i in range(100)]))
-    op = OutputSplitter(input_op, 3, equal=equal)
+    num_input_blocks = 100
+    num_splits = 3
+    # Add this many input blocks each time.
+    # Make sure it is greater than num_splits * 2,
+    # so we can test the output order of `OutputSplitter.get_next`.
+    num_add_input_blocks = 10
+    input_op = InputDataBuffer(
+        make_ref_bundles([[i] * chunk_size for i in range(num_input_blocks)])
+    )
+    op = OutputSplitter(input_op, num_splits, equal=equal)
 
     # Feed data and implement streaming exec.
-    output_splits = collections.defaultdict(list)
+    output_splits = [[] for _ in range(num_splits)]
     op.start(ExecutionOptions())
     while input_op.has_next():
-        op.add_input(input_op.get_next(), 0)
+        for _ in range(num_add_input_blocks):
+            if not input_op.has_next():
+                break
+            op.add_input(input_op.get_next(), 0)
         while op.has_next():
             ref = op.get_next()
             assert ref.owns_blocks, ref
             for block, _ in ref.blocks:
+                assert ref.output_split_idx is not None
                 output_splits[ref.output_split_idx].extend(list(ray.get(block)["id"]))
     op.all_inputs_done()
+
+    expected_splits = [[] for _ in range(num_splits)]
+    for i in range(num_splits):
+        for j in range(i, num_input_blocks, num_splits):
+            expected_splits[i].extend([j] * chunk_size)
     if equal:
-        for i in range(3):
-            assert len(output_splits[i]) == 33 * chunk_size, output_splits
-    else:
-        assert sum(len(output_splits[i]) for i in range(3)) == (100 * chunk_size)
-        for i in range(3):
-            assert len(output_splits[i]) in [
-                33 * chunk_size,
-                34 * chunk_size,
-            ], output_splits
+        min_len = min(len(expected_splits[i]) for i in range(num_splits))
+        for i in range(num_splits):
+            expected_splits[i] = expected_splits[i][:min_len]
+    for i in range(num_splits):
+        assert output_splits[i] == expected_splits[i], (
+            output_splits[i],
+            expected_splits[i],
+        )
 
 
 @pytest.mark.parametrize("equal", [False, True])
