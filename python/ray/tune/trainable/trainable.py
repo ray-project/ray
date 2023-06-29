@@ -52,9 +52,18 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import (
+    Syncer,
+    SyncConfig,
+    get_node_to_storage_syncer,
+    StorageContext,
+)
 from ray.tune.trainable.util import TrainableUtil
-from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
+from ray.tune.utils.util import (
+    Tee,
+    _get_checkpoint_from_remote_node,
+    USE_STORAGE_CONTEXT,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -112,6 +121,7 @@ class Trainable:
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
+        storage: Optional[StorageContext] = None,
         custom_syncer: Optional[Syncer] = None,  # Deprecated (2.6)
         sync_timeout: Optional[int] = None,  # Deprecated (2.6)
         sync_config: Optional[SyncConfig] = None,
@@ -181,7 +191,14 @@ class Trainable:
         log_sys_usage = self.config.get("log_sys_usage", False)
         self._monitor = UtilMonitor(start=log_sys_usage)
 
-        self.remote_checkpoint_dir = remote_checkpoint_dir
+        if USE_STORAGE_CONTEXT:
+            assert storage
+        if storage:
+            self.remote_checkpoint_dir = TrainableUtil.get_remote_storage_path(
+                self.logdir, storage.local_path, storage.storage_prefix
+            )
+        else:
+            self.remote_checkpoint_dir = remote_checkpoint_dir
         # If no sync_config is provided, but we save to a remote_checkpoint_dir,
         # then provide a default syncer. `upload_dir` here is just a dummy directory
         # that tells the SyncConfig to create a default syncer.

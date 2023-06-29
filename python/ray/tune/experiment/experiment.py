@@ -172,7 +172,10 @@ class Experiment:
             _experiment_checkpoint_dir = None
         else:
             local_storage_path, remote_storage_path = _resolve_storage_path(
-                storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
+                storage_path,
+                local_dir,
+                sync_config.upload_dir,
+                error_location="Experiment",
             )
 
         if local_dir:

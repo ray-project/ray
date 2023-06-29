@@ -48,7 +48,7 @@ from ray.tune.result import (
     DEFAULT_EXPERIMENT_NAME,
     _get_defaults_results_dir,
 )
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, StorageContext
 from ray.tune.execution.placement_groups import (
     PlacementGroupFactory,
     resource_dict_to_pg_factory,
@@ -56,7 +56,7 @@ from ray.tune.execution.placement_groups import (
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.util import _split_remote_local_path
+from ray.tune.utils.util import _split_remote_local_path, USE_STORAGE_CONTEXT
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
@@ -226,6 +226,7 @@ def _noop_logger_creator(
 
 def _get_trainable_kwargs(
     trial: "Trial",
+    storage: Optional[StorageContext],
     additional_kwargs: Optional[Dict[str, Any]] = None,
     should_chdir: bool = False,
 ) -> Dict[str, Any]:
@@ -248,7 +249,11 @@ def _get_trainable_kwargs(
         "logger_creator": logger_creator,
     }
 
-    if trial.uses_cloud_checkpointing:
+    if USE_STORAGE_CONTEXT:
+        assert storage
+    if storage:
+        kwargs["storage"] = storage
+    elif trial.uses_cloud_checkpointing:
         # We keep these kwargs separate for backwards compatibility
         # with trainables that don't provide these keyword arguments
         kwargs["remote_checkpoint_dir"] = trial.remote_path

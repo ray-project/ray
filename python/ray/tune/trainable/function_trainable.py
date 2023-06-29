@@ -250,7 +250,8 @@ class _StatusReporter:
             if isinstance(checkpoint, str):
                 if not USE_STORAGE_CONTEXT:
                     raise ValueError(
-                        "new-style checkpoint paths only allowed in storage context mode")
+                        "new-style checkpoint paths only allowed in storage context mode"
+                    )
                 shutil.copytree(checkpoint, checkpoint_dir, dirs_exist_ok=True)
             else:
                 checkpoint.to_directory(checkpoint_dir)

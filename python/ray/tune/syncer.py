@@ -654,14 +654,16 @@ class StorageContext:
             )
             self.storage_prefix = prefix
 
-        self.local_path = os.path.expanduser(os.environ.get(
-            "RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results"
-        ))
+        self.local_path = os.path.expanduser(
+            os.environ.get("RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results")
+        )
         if os.path.expanduser(self.storage_prefix) == self.local_path:
             # No need to sync, it's already local
             sync_config.syncer = None
         else:
-            sync_config.syncer = _SimpleFilesystemSyncer(self.storage_filesystem)
+            sync_config.syncer = _SimpleFilesystemSyncer(
+                self.storage_filesystem, self.storage_prefix
+            )
         self.sync_config = sync_config
 
         print("StorageContext local_path", self.local_path)
@@ -696,8 +698,10 @@ class _SimpleFilesystemSyncer(_BackgroundSyncer):
     def __init__(
         self,
         storage_filesystem: Optional["pyarrow.fs.FileSystem"],
+        storage_prefix: str,
     ):
         self.storage_filesystem = storage_filesystem
+        self.storage_prefix = storage_prefix
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None

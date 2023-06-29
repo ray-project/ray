@@ -32,12 +32,13 @@ from ray.tune.callback import Callback
 from ray.tune.schedulers import TrialScheduler
 from ray.tune.stopper import Stopper
 from ray.tune.search import SearchAlgorithm
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, StorageContext
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow
 from ray.tune.utils.log import _dedup_logs
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -56,6 +57,7 @@ class TuneController(_TuneControllerBase):
         experiment_path: Optional[str] = None,
         experiment_dir_name: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
+        storage: Optional[StorageContext] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
         server_port: Optional[int] = None,
@@ -73,6 +75,10 @@ class TuneController(_TuneControllerBase):
             resource_manager = resource_manager_factory()
         else:
             resource_manager = PlacementGroupResourceManager()
+
+        if USE_STORAGE_CONTEXT:
+            assert storage
+        self._storage = storage
 
         self._actor_manager = RayActorManager(resource_manager=resource_manager)
 
@@ -628,7 +634,7 @@ class TuneController(_TuneControllerBase):
 
         trial.set_location(_Location())
         trainable_kwargs = _get_trainable_kwargs(
-            trial=trial, should_chdir=self._chdir_to_trial_dir
+            trial=trial, storage=self._storage, should_chdir=self._chdir_to_trial_dir
         )
 
         with _change_working_directory(trial):

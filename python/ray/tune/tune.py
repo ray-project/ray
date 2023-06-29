@@ -1021,6 +1021,7 @@ def run(
     trial_executor = trial_executor or RayTrialExecutor(
         reuse_actors=reuse_actors,
         result_buffer_length=result_buffer_length,
+        storage=storage,
         chdir_to_trial_dir=chdir_to_trial_dir,
     )
     runner_kwargs = dict(
@@ -1030,6 +1031,7 @@ def run(
         experiment_path=experiments[0].path,
         experiment_dir_name=experiments[0].dir_name,
         sync_config=sync_config,
+        storage=storage,
         stopper=experiments[0].stopper,
         resume=resume,
         server_port=server_port,

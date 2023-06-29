@@ -36,7 +36,9 @@ from ray.tune.experiment.trial import (
     _change_working_directory,
     _get_trainable_kwargs,
 )
+from ray.tune.syncer import StorageContext
 from ray.tune.utils import warn_if_slow
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.tune.trainable.util import TrainableUtil
@@ -191,6 +193,7 @@ class RayTrialExecutor:
     def __init__(
         self,
         resource_manager: Optional[ResourceManager] = None,
+        storage: Optional[StorageContext] = None,
         reuse_actors: bool = False,
         result_buffer_length: Optional[int] = None,
         refresh_period: Optional[float] = None,
@@ -199,6 +202,10 @@ class RayTrialExecutor:
         # Trial metadata
         self._cached_trial_state = {}
         self._trials_to_cache = set()
+
+        if USE_STORAGE_CONTEXT:
+            assert storage
+        self._storage = storage
 
         # future --> (type, trial/pg)
         self._futures = {}
@@ -385,6 +392,7 @@ class RayTrialExecutor:
 
         trainable_kwargs = _get_trainable_kwargs(
             trial,
+            self.storage,
             additional_kwargs=self._trainable_kwargs,
             should_chdir=self._chdir_to_trial_dir,
         )

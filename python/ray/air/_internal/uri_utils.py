@@ -3,6 +3,8 @@ import urllib.parse
 import os
 from typing import Union
 
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
+
 
 class URI:
     """Represents a URI, supporting path appending and retrieving parent URIs.
@@ -29,8 +31,9 @@ class URI:
 
     def __init__(self, uri: str):
         self._parsed = urllib.parse.urlparse(uri)
-        if not self._parsed.scheme:
-            raise ValueError(f"Invalid URI: {uri}")
+        if not USE_STORAGE_CONTEXT:
+            if not self._parsed.scheme:
+                raise ValueError(f"Invalid URI: {uri}")
         self._path = Path(os.path.normpath(self._parsed.netloc + self._parsed.path))
 
     @property
