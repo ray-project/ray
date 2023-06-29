@@ -36,27 +36,7 @@ The message `Sent deploy request successfully!` means:
 * It will start a new Serve application if one hasn't already started.
 * The Serve application will deploy the deployments from your deployment graph, updated with the configurations from your config file.
 
-It does **not** mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. Check out the [next section](serve-in-production-inspecting) to learn more about how to get the current status.
-
-## Adding a runtime environment
-
-The import path (e.g., `fruit:deployment_graph`) must be importable by Serve at runtime.
-When running locally, this might be in your current working directory.
-However, when running on a cluster you also need to make sure the path is importable.
-You can achieve this either by building the code into the cluster's container image (see [Cluster Configuration](kuberay-config) for more details) or by using a `runtime_env` with a [remote URI](remote-uris) that hosts the code in remote storage.
-
-As an example, we have [pushed a copy of the FruitStand deployment graph to GitHub](https://github.com/ray-project/test_dag/blob/40d61c141b9c37853a7014b8659fc7f23c1d04f6/fruit.py). You can use this config file to deploy the `FruitStand` deployment graph to your own Ray cluster even if you don't have the code locally:
-
-```yaml
-import_path: fruit:deployment_graph
-
-runtime_env:
-    working_dir: "https://github.com/ray-project/serve_config_examples/archive/HEAD.zip"
-```
-
-:::{note}
-As a side note, you could also package your deployment graph into a standalone Python package that can be imported using a [PYTHONPATH](https://docs.python.org/3.10/using/cmdline.html#envvar-PYTHONPATH) to provide location independence on your local machine. However, it's still best practice to use a `runtime_env`, to ensure consistency across all machines in your cluster.
-:::
+It does **not** mean that your Serve application, including your deployments, has already started running successfully. This happens asynchronously as the Ray cluster attempts to update itself to match the settings from your config file. See [Inspect an application](serve-in-production-inspecting) for how to get the current status.
 
 (serve-in-production-remote-cluster)=
 
@@ -74,7 +54,11 @@ As an example, the address for the local cluster started by `ray start --head` i
 $ serve deploy config_file.yaml -a http://127.0.0.1:52365
 ```
 
-The Ray dashboard agent's default port is 52365. You can set it to a different value using the `--dashboard-agent-listen-port` argument when running `ray start`."
+The Ray Dashboard agent's default port is 52365. To set it to a different value, use the `--dashboard-agent-listen-port` argument when running `ray start`.
+
+:::{note}
+When running on a remote cluster, you need to ensure that the import path is accessible. See [Handle Dependencies](serve-handling-dependencies) for how to add a runtime environment.
+:::
 
 :::{note}
 If the port 52365 (or whichever port you specify with `--dashboard-agent-listen-port`) is unavailable when Ray starts, the dashboard agent’s HTTP server will fail. However, the dashboard agent and Ray will continue to run.
@@ -107,84 +91,6 @@ $ unset RAY_AGENT_ADDRESS
 Check for this variable in your environment to make sure you're using your desired Ray agent address.
 :::
 
-(serve-in-production-inspecting)=
+To inspect the status of the Serve application in production, see [Inspect an application](serve-in-production-inspecting).
 
-## Inspecting the application with `serve config` and `serve status`
-
-The Serve CLI also offers two commands to help you inspect your Serve application in production: `serve config` and `serve status`.
-If you're working with a remote cluster, `serve config` and `serve status` also offer an `--address/-a` argument to access your cluster. Check out [the previous section](serve-in-production-remote-cluster) for more info on this argument.
-
-`serve config` gets the latest config file the Ray cluster received. This config file represents the Serve application's goal state. The Ray cluster will constantly attempt to reach and maintain this state by deploying deployments, recovering failed replicas, and more.
-
-Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
-
-```console
-$ ray start --head
-$ serve deploy fruit_config.yaml
-...
-
-$ serve config
-import_path: fruit:deployment_graph
-
-runtime_env: {}
-
-deployments:
-
-- name: MangoStand
-  num_replicas: 2
-  route_prefix: null
-...
-```
-
-`serve status` gets your Serve application's current status. It's divided into two parts: the `app_status` and the `deployment_statuses`.
-
-The `app_status` contains three fields:
-* `status`: a Serve application has four possible statuses:
-    * `"NOT_STARTED"`: no application has been deployed on this cluster.
-    * `"DEPLOYING"`: the application is currently carrying out a `serve deploy` request. It is deploying new deployments or updating existing ones.
-    * `"RUNNING"`: the application is at steady-state. It has finished executing any previous `serve deploy` requests, and it is attempting to maintain the goal state set by the latest `serve deploy` request.
-    * `"DEPLOY_FAILED"`: the latest `serve deploy` request has failed.
-* `message`: provides context on the current status.
-* `deployment_timestamp`: a unix timestamp of when Serve received the last `serve deploy` request. This is calculated using the `ServeController`'s local clock.
-
-The `deployment_statuses` contains a list of dictionaries representing each deployment's status. Each dictionary has three fields:
-* `name`: the deployment's name.
-* `status`: a Serve deployment has three possible statuses:
-    * `"UPDATING"`: the deployment is updating to meet the goal state set by a previous `deploy` request.
-    * `"HEALTHY"`: the deployment is at the latest requests goal state.
-    * `"UNHEALTHY"`: the deployment has either failed to update, or it has updated and has become unhealthy afterwards. This may be due to an error in the deployment's constructor, a crashed replica, or a general system or machine error.
-* `message`: provides context on the current status.
-
-You can use the `serve status` command to inspect your deployments after they are deployed and throughout their lifetime.
-
-Using the `fruit_config.yaml` example from [an earlier section](fruit-config-yaml):
-
-```console
-$ ray start --head
-$ serve deploy fruit_config.yaml
-...
-
-$ serve status
-app_status:
-  status: RUNNING
-  message: ''
-  deployment_timestamp: 1655771534.835145
-deployment_statuses:
-- name: MangoStand
-  status: HEALTHY
-  message: ''
-- name: OrangeStand
-  status: HEALTHY
-  message: ''
-- name: PearStand
-  status: HEALTHY
-  message: ''
-- name: FruitMarket
-  status: HEALTHY
-  message: ''
-- name: DAGDriver
-  status: HEALTHY
-  message: ''
-```
-
-`serve status` can also be used with KubeRay ({ref}`kuberay-index`), a Kubernetes operator for Ray Serve, to help deploy your Serve applications with Kubernetes. There's also work in progress to provide closer integrations between some of the features from this document, like `serve status`, with Kubernetes to provide a clearer Serve deployment story.
+Make heavyweight code updates (like `runtime_env` changes) by starting a new Ray Cluster, updating your Serve config file, and deploying the file with `serve deploy` to the new cluster. Once the new deployment is finished, switch your traffic to the new cluster.

@@ -105,6 +105,7 @@ $ curl -X POST -H 'Content-Type: application/json' localhost:8000 -d '["MANGO", 
 6
 ```
 
+(serve-getting-status-kubernetes)=
 ## Getting the status of the application
 
 As the `RayService` is running, the `KubeRay` controller continually monitors it and writes relevant status updates to the CR.
