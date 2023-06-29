@@ -257,21 +257,6 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:data"],
 )
 
-# --------------------------------------------------------------------
-# Workspace templates tests
-# --------------------------------------------------------------------
-
-# Validate that all the paths and yamls within the templates.yaml file are valid.
-
-py_test(
-    name = "templates_directory_validation",
-    size = "small",
-    main = "source/templates/testing/validate.py",
-    srcs = ["source/templates/testing/validate.py"],
-    data = glob(["source/templates/**/*"]),
-    tags = ["exclusive", "team:ml"]
-)
-
 # --------------
 # Run GPU tests
 # --------------
