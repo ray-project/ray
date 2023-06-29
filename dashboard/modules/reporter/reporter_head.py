@@ -120,29 +120,32 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_state = getTaskState(task_id)
             if task_state != "RUNNING":
                 logger.Error("task is not running and could not fetch traceback info")
-
+            else:
+                ip, pid = task["host"], task["pid"]
+                reporter_stub = self._stubs[ip]
         else:
             if "ip" in req.query:
                 reporter_stub = self._stubs[req.query["ip"]]
             else:
                 reporter_stub = list(self._stubs.values())[0]
             pid = int(req.query["pid"])
-            # Default not using `--native` for profiling
-            native = req.query.get("native", False) == "1"
-            logger.info(
-                "Sending stack trace request to {}:{} with native={}".format(
-                    req.query.get("ip"), pid, native
-                )
+
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
+        logger.info(
+            "Sending stack trace request to {}:{} with native={}".format(
+                ip, pid, native
             )
-            logger.info("reporter_stub is {}".format(reporter_stub))
-            reply = await reporter_stub.GetTraceback(
-                reporter_pb2.GetTracebackRequest(pid=pid, native=native)
-            )
-            if reply.success:
-                logger.info("Returning stack trace, size {}".format(len(reply.output)))
-                return aiohttp.web.Response(text=reply.output)
-            else:
-                return aiohttp.web.HTTPInternalServerError(text=reply.output)
+        )
+        logger.info("reporter_stub is {}".format(reporter_stub))
+        reply = await reporter_stub.GetTraceback(
+            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+        )
+        if reply.success:
+            logger.info("Returning stack trace, size {}".format(len(reply.output)))
+            return aiohttp.web.Response(text=reply.output)
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     @routes.get("/worker/cpu_profile")
     async def cpu_profile(self, req) -> aiohttp.web.Response:

@@ -18,7 +18,6 @@ export const CpuProfilingLink = ({
   if (!pid || !ip || typeof pid === "undefined" || typeof ip === "undefined") {
     return <div></div>;
   }
-  
   return (
     <Link
       href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
