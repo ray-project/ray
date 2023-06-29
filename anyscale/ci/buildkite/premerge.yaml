@@ -1,9 +1,9 @@
 steps:
   - name: "Build wheels"
     command:
-      - source runtime/ci/setup-artifacts-dir.sh
-      - /bin/bash runtime/ci/build-forge.sh
-      - /bin/bash runtime/ci/build-wheels.sh
+      - source anyscale/ci/setup-artifacts-dir.sh
+      - /bin/bash anyscale/ci/build-forge.sh
+      - /bin/bash anyscale/ci/build-wheels.sh
     agents:
       queue: "large"
     artifact_paths:
