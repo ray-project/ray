@@ -7,23 +7,24 @@ import math
 import time
 from collections import deque
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Deque, Tuple, Union
+from typing import Deque, Dict, List, Optional, Tuple, Union
 
 import ray
-from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
-    RefBundle,
-    PhysicalOperator,
-    ExecutionOptions,
-)
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
-
 
 # Holds the full execution state of the streaming topology. It's a dict mapping each
 # operator to tracked streaming exec state.
@@ -121,6 +122,8 @@ class OpState:
         self.progress_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
+        # Tracks whether `input_done` is called for each input op.
+        self.input_done_called = [False] * len(op.input_dependencies)
         self.dependents_completed_called = False
 
     def initialize_progress_bars(self, index: int, verbose_progress: bool) -> int:
@@ -307,7 +310,8 @@ def build_streaming_topology(
 
 
 def process_completed_tasks(topology: Topology) -> None:
-    """Process any newly completed tasks and update operator state."""
+    """Process any newly completed tasks. To update operator
+    states, call `update_operator_states()` afterwards."""
 
     # Update active tasks.
     active_tasks: Dict[ray.ObjectRef, PhysicalOperator] = {}
@@ -333,18 +337,26 @@ def process_completed_tasks(topology: Topology) -> None:
         while op.has_next():
             op_state.add_output(op.get_next())
 
+
+def update_operator_states(topology: Topology) -> None:
+    """Update operator states accordingly for newly completed tasks.
+    Should be called after `process_completed_tasks()`."""
+
     # Call inputs_done() on ops where no more inputs are coming.
     for op, op_state in topology.items():
         if op_state.inputs_done_called:
             continue
-        inputs_done = all(
-            [
-                dep.completed() and not topology[dep].outqueue
-                for dep in op.input_dependencies
-            ]
-        )
-        if inputs_done:
-            op.inputs_done()
+        all_inputs_done = True
+        for idx, dep in enumerate(op.input_dependencies):
+            if dep.completed() and not topology[dep].outqueue:
+                if not op_state.input_done_called[idx]:
+                    op.input_done(idx)
+                    op_state.input_done_called[idx] = True
+            else:
+                all_inputs_done = False
+
+        if all_inputs_done:
+            op.all_inputs_done()
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
@@ -393,6 +405,7 @@ def select_operator_to_run(
             and state.num_queued() > 0
             and op.should_add_input()
             and under_resource_limits
+            and not op.completed()
         ):
             ops.append(op)
         # Update the op in all cases to enable internal autoscaling, etc.
@@ -420,7 +433,7 @@ def select_operator_to_run(
         ops = [
             op
             for op, state in topology.items()
-            if op.need_more_inputs() and state.num_queued() > 0
+            if op.need_more_inputs() and state.num_queued() > 0 and not op.completed()
         ]
 
     # Nothing to run.

@@ -394,6 +394,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Please keep this in sync with the definition kRayInternalNamespacePrefix
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 def gcs_actor_scheduling_enabled():
@@ -429,7 +430,11 @@ RAY_ALLOWED_CACHED_PORTS = {
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
-RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", True)
+# Turn this on if actor task log's offsets are expected to be recorded.
+# With this enabled, actor tasks' log could be queried with task id.
+RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
+    "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
+)
 
 WORKER_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = "RAY_WORKER_SETUP_HOOK_LOAD_TIMEOUT"

@@ -64,7 +64,6 @@ def framework_iterator(
     config: Optional["AlgorithmConfig"] = None,
     frameworks: Sequence[str] = ("tf2", "tf", "torch"),
     session: bool = False,
-    with_eager_tracing: bool = False,
     time_iterations: Optional[dict] = None,
 ) -> Union[str, Tuple[str, Optional["tf1.Session"]]]:
     """An generator that allows for looping through n frameworks for testing.
@@ -81,8 +80,6 @@ def framework_iterator(
             and yield that as second return value (otherwise yield (fw, None)).
             Also sets a seed (42) on the session to make the test
             deterministic.
-        with_eager_tracing: Include `eager_tracing=True` in the returned
-            configs, when framework=tf2.
         time_iterations: If provided, will write to the given dict (by
             framework key) the times in seconds that each (framework's)
             iteration takes.
@@ -135,33 +132,14 @@ def framework_iterator(
         elif fw == "tf":
             assert not tf1.executing_eagerly()
 
-        # Additionally loop through eager_tracing=True + False, if necessary.
-        if fw == "tf2" and with_eager_tracing:
-            for tracing in [True, False]:
-                if isinstance(config, dict):
-                    config["eager_tracing"] = tracing
-                else:
-                    config.framework(eager_tracing=tracing)
-                print(f"framework={fw} (eager-tracing={tracing})")
-                time_started = time.time()
-                yield fw if session is False else (fw, sess)
-                if time_iterations is not None:
-                    time_total = time.time() - time_started
-                    time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                    print(f".. took {time_total}sec")
-                if isinstance(config, dict):
-                    config["eager_tracing"] = False
-                else:
-                    config.framework(eager_tracing=False)
         # Yield current framework + tf-session (if necessary).
-        else:
-            print(f"framework={fw}")
-            time_started = time.time()
-            yield fw if session is False else (fw, sess)
-            if time_iterations is not None:
-                time_total = time.time() - time_started
-                time_iterations[fw + ("+tracing" if tracing else "")] = time_total
-                print(f".. took {time_total}sec")
+        print(f"framework={fw}")
+        time_started = time.time()
+        yield fw if session is False else (fw, sess)
+        if time_iterations is not None:
+            time_total = time.time() - time_started
+            time_iterations[fw] = time_total
+            print(f".. took {time_total}sec")
 
         # Exit any context we may have entered.
         if eager_ctx:
@@ -366,8 +344,11 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                for i, s in enumerate(state_in):
-                    input_dict[f"state_in_{i}"] = s
+                if what.config.get("_enable_rl_module_api", False):
+                    input_dict["state_in"] = state_in
+                else:
+                    for i, s in enumerate(state_in):
+                        input_dict[f"state_in_{i}"] = s
             input_dict_batched = SampleBatch(
                 tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict)
             )
@@ -414,8 +395,15 @@ def check_compute_single_action(
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
         if state_out:
-            for si, so in zip(state_in, state_out):
-                check(list(si.shape), so.shape)
+            for si, so in zip(tree.flatten(state_in), tree.flatten(state_out)):
+                if tf.is_tensor(si):
+                    # If si is a tensor of Dimensions, we need to convert it
+                    # We expect this to be the case for TF RLModules who's initial
+                    # states are Tf Tensors.
+                    si_shape = si.shape.as_list()
+                else:
+                    si_shape = list(si.shape)
+                check(si_shape, so.shape)
 
         if unsquash is None:
             unsquash = what.config["normalize_actions"]
@@ -670,7 +658,7 @@ def check_train_results(train_results: ResultDict):
 
     is_multi_agent = (
         AlgorithmConfig()
-        .update_from_dict(train_results["config"]["multiagent"])
+        .update_from_dict({"policies": train_results["config"]["policies"]})
         .is_multi_agent()
     )
 
@@ -1147,10 +1135,18 @@ def check_reproducibilty(
             check(results1["hist_stats"], results2["hist_stats"])
             # As well as training behavior (minibatch sequence during SGD
             # iterations).
-            check(
-                results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-                results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
-            )
+            # As well as training behavior (minibatch sequence during SGD
+            # iterations).
+            if algo_config._enable_learner_api:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID],
+                )
+            else:
+                check(
+                    results1["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                    results2["info"][LEARNER_INFO][DEFAULT_POLICY_ID]["learner_stats"],
+                )
 
 
 def get_cartpole_dataset_reader(batch_size: int = 1) -> "DatasetReader":
@@ -1206,7 +1202,7 @@ class ModelChecker:
         # We will pass an observation filled with this one random value through
         # all DL networks (after they have been set to fixed-weights) to compare
         # the computed outputs.
-        self.random_fill_input_value = np.random.uniform(-0.1, 0.1)
+        self.random_fill_input_value = np.random.uniform(-0.01, 0.01)
 
         # Dict of models to check against each other.
         self.models = {}
@@ -1259,7 +1255,7 @@ class ModelChecker:
             )
         return outputs
 
-    def check(self, rtol=None):
+    def check(self):
         """Compares all added Models with each other and possibly raises errors."""
 
         main_key = next(iter(self.models.keys()))
@@ -1271,7 +1267,7 @@ class ModelChecker:
         # Compare dummy outputs by exact values given that all nets received the
         # same input and all nets have the same (dummy) weight values.
         for v in self.output_values.values():
-            check(v, self.output_values[main_key], rtol=rtol or 0.002)
+            check(v, self.output_values[main_key], atol=0.0005)
 
 
 def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.ndarray:
@@ -1401,7 +1397,7 @@ def check_supported_spaces(
     config: "AlgorithmConfig",
     train: bool = True,
     check_bounds: bool = False,
-    frameworks: set = None,
+    frameworks: Optional[Tuple[str]] = None,
     use_gpu: bool = False,
 ):
     """Checks whether the given algorithm supports different action and obs spaces.
@@ -1480,8 +1476,7 @@ def check_supported_spaces(
         "dict",
     ]
 
-    # TODO(Artur): Add back tf2 once we CNNs there
-    rlmodule_supported_frameworks = {"torch"}
+    rlmodule_supported_frameworks = ("torch", "tf2")
 
     # The action spaces that we test RLModules with
     rlmodule_supported_action_spaces = ["discrete", "continuous"]
@@ -1575,11 +1570,13 @@ def check_supported_spaces(
         print("Test: {}, ran in {}s".format(stat, time.time() - t0))
 
     if not frameworks:
-        frameworks = {"tf2", "torch", "tf"}
+        frameworks = ("tf2", "tf", "torch")
 
     if config._enable_rl_module_api:
         # Only test the frameworks that are supported by RLModules.
-        frameworks = frameworks.intersection(rlmodule_supported_frameworks)
+        frameworks = tuple(
+            fw for fw in frameworks if fw in rlmodule_supported_frameworks
+        )
 
     _do_check_remote = ray.remote(_do_check)
     _do_check_remote = _do_check_remote.options(num_gpus=1 if use_gpu else 0)

@@ -1,3 +1,27 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            # GPU tests
+            "tensorflow/tensorflow_trainer.py",
+            # FIXME: Failing doctests
+            "xgboost/xgboost_predictor.py",
+            "xgboost/xgboost_checkpoint.py"
+        ]
+    ),
+    tags = ["team:ml"],
+)
+
+doctest(
+    files = ["tensorflow/tensorflow_trainer.py"],
+    tags = ["team:ml"],
+    gpu = True
+)
+
 # --------------------------------------------------------------------
 # Tests from the python/ray/train/examples directory.
 # Please keep these sorted alphabetically.
@@ -404,6 +428,14 @@ py_test(
     name = "test_lightning_predictor",
     size = "medium",
     srcs = ["tests/test_lightning_predictor.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
+    deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_lightning_deepspeed",
+    size = "large",
+    srcs = ["tests/test_lightning_deepspeed.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu", "ptl_v2"],
     deps = [":train_lib"]
 )

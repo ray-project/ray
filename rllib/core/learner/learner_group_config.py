@@ -1,4 +1,4 @@
-from typing import Type, Optional, TYPE_CHECKING, Union, Dict
+from typing import Optional, Type, TYPE_CHECKING, Union
 
 from ray.rllib.core.learner.learner import (
     LearnerSpec,
@@ -40,8 +40,6 @@ class LearnerGroupConfig:
 
         # `self.learner()`
         self.learner_class = None
-        # TODO (Kourosh): Change the optimizer config to a dataclass object.
-        self.optimizer_config = {"lr": 3e-4}
         self.learner_hyperparameters = LearnerHyperparameters()
 
         # `self.resources()`
@@ -57,8 +55,10 @@ class LearnerGroupConfig:
         self.local_gpu_idx = 0
 
         # `self.framework()`
-        self.eager_tracing = False
+        self.eager_tracing = True
+        self.torch_compile = False
         self.torch_compile_cfg = None
+        self.torch_compile_what_to_compile = None
 
     def validate(self) -> None:
 
@@ -71,7 +71,7 @@ class LearnerGroupConfig:
         if self.learner_class is None:
             raise ValueError(
                 "Cannot initialize an Learner without an Learner class. Please provide "
-                "the Learner class with .learner(learner_class=MyTrainerClass)."
+                "the Learner class with .learner(learner_class=MyLearnerClass)."
             )
 
     def build(self) -> LearnerGroup:
@@ -87,12 +87,13 @@ class LearnerGroupConfig:
         framework_hps = FrameworkHyperparameters(
             eager_tracing=self.eager_tracing,
             torch_compile_cfg=self.torch_compile_cfg,
+            torch_compile=self.torch_compile,
+            what_to_compile=self.torch_compile_what_to_compile,
         )
 
         learner_spec = LearnerSpec(
             learner_class=self.learner_class,
             module_spec=self.module_spec,
-            optimizer_config=self.optimizer_config,
             learner_group_scaling_config=scaling_config,
             learner_hyperparameters=self.learner_hyperparameters,
             framework_hyperparameters=framework_hps,
@@ -103,14 +104,22 @@ class LearnerGroupConfig:
     def framework(
         self,
         eager_tracing: Optional[bool] = NotProvided,
+        torch_compile: Optional[bool] = NotProvided,
         torch_compile_cfg: Optional["TorchCompileConfig"] = NotProvided,
+        torch_compile_what_to_compile: Optional[str] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if eager_tracing is not NotProvided:
             self.eager_tracing = eager_tracing
 
+        if torch_compile is not NotProvided:
+            self.torch_compile = torch_compile
+
         if torch_compile_cfg is not NotProvided:
             self.torch_compile_cfg = torch_compile_cfg
+
+        if torch_compile_what_to_compile is not NotProvided:
+            self.torch_compile_what_to_compile = torch_compile_what_to_compile
 
         return self
 
@@ -148,14 +157,11 @@ class LearnerGroupConfig:
         self,
         *,
         learner_class: Optional[Type["Learner"]] = NotProvided,
-        optimizer_config: Optional[Dict] = NotProvided,
         learner_hyperparameters: Optional[LearnerHyperparameters] = NotProvided,
     ) -> "LearnerGroupConfig":
 
         if learner_class is not NotProvided:
             self.learner_class = learner_class
-        if optimizer_config is not NotProvided:
-            self.optimizer_config.update(optimizer_config)
         if learner_hyperparameters is not NotProvided:
             self.learner_hyperparameters = learner_hyperparameters
 

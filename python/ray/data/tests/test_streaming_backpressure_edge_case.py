@@ -1,12 +1,13 @@
-import pytest
 import time
-import pandas as pd
+
 import numpy as np
+import pandas as pd
+import pytest
 
 import ray
 from ray._private.internal_api import memory_summary
-from ray.data.datasource import Datasource, ReadTask
 from ray.data.block import BlockMetadata
+from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 

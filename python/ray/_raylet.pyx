@@ -15,7 +15,7 @@ import msgpack
 import io
 import os
 import pickle
-import setproctitle
+import random
 import signal
 import sys
 import threading
@@ -23,7 +23,7 @@ import time
 import traceback
 import _thread
 import typing
-from typing import Union, Awaitable, Callable, Any
+from typing import Union, Awaitable, Callable, Any, Optional
 
 from libc.stdint cimport (
     int32_t,
@@ -99,10 +99,17 @@ from ray.includes.common cimport (
     PLACEMENT_STRATEGY_SPREAD,
     PLACEMENT_STRATEGY_STRICT_PACK,
     PLACEMENT_STRATEGY_STRICT_SPREAD,
+    CChannelType,
+    RAY_ERROR_INFO_CHANNEL,
+    RAY_LOG_CHANNEL,
+    RAY_PYTHON_FUNCTION_CHANNEL,
+    GCS_ACTOR_CHANNEL,
+    PythonGetLogBatchLines,
     WORKER_EXIT_TYPE_USER_ERROR,
     WORKER_EXIT_TYPE_SYSTEM_ERROR,
     kResourceUnitScaling,
     kWorkerSetupHookKeyName,
+    PythonCheckGcsHealth,
 )
 from ray.includes.unique_ids cimport (
     CActorID,
@@ -213,7 +220,7 @@ class ObjectRefGenerator:
         return len(self._refs)
 
 
-class ObjectRefStreamEneOfStreamError(RayError):
+class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
@@ -227,7 +234,14 @@ class StreamingObjectRefGenerator:
         self._generator_task_exception = None
         # Ray's worker class. ray._private.worker.global_worker
         self.worker = worker
+        self.worker.check_connected()
         assert hasattr(worker, "core_worker")
+
+    def get_next_ref(self) -> ObjectRef:
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return core_worker.peek_object_ref_stream(
+            self._generator_ref)
 
     def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
@@ -253,9 +267,7 @@ class StreamingObjectRefGenerator:
 
     def _next_sync(
             self,
-            timeout_s: float = -1,
-            sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 30) -> ObjectRef:
+            timeout_s: Optional[float] = None) -> ObjectRef:
         """Waits for timeout_s and returns the object ref if available.
 
         If an object is not available within the given timeout, it
@@ -277,150 +289,81 @@ class StreamingObjectRefGenerator:
         Args:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
-            sleep_interval_s: busy waiting interval.
-            unexpected_network_failure_timeout_s: If the
-                task is finished, but the next ref is not
-                available within this time, it will hard fail
-                the generator.
         """
-        obj = self._handle_next_sync()
-        last_time = time.time()
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
 
-        # The generator ref will be None if the task succeeds.
-        # It will contain an exception if the task fails by
-        # a system error.
-        while obj.is_nil():
-            error_ref = self._handle_error(
-                False,
-                last_time,
-                timeout_s,
-                unexpected_network_failure_timeout_s)
-            if error_ref is not None:
-                return error_ref
+        # Wait for the next ObjectRef to become ready.
+        expected_ref = core_worker.peek_object_ref_stream(
+            self._generator_ref)
+        ready, unready = ray.wait(
+            [expected_ref], timeout=timeout_s, fetch_local=False)
+        if len(unready) > 0:
+            return ObjectRef.nil()
 
-            time.sleep(sleep_interval_s)
-            obj = self._handle_next_sync()
+        try:
+            ref = core_worker.try_read_next_object_ref_stream(
+                self._generator_ref)
+            assert not ref.is_nil()
+        except ObjectRefStreamEndOfStreamError:
+            if self._generator_task_exception:
+                # Exception has been returned.
+                raise StopIteration
 
-        return obj
+            try:
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                ray.get(self._generator_ref)
+            except Exception as e:
+                self._generator_task_exception = e
+                return self._generator_ref
+            else:
+                # The task finished without an exception.
+                raise StopIteration
+        return ref
 
     async def _next_async(
             self,
-            timeout_s: float = -1,
-            sleep_interval_s: float = 0.0001,
-            unexpected_network_failure_timeout_s: float = 30):
+            timeout_s: Optional[float] = None,
+            sleep_interval_s: float = 0.0001):
         """Same API as _next_sync, but it is for async context."""
-        obj = await self._handle_next_async()
-        last_time = time.time()
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
 
-        # The generator ref will be None if the task succeeds.
-        # It will contain an exception if the task fails by
-        # a system error.
-        while obj.is_nil():
-            error_ref = self._handle_error(
-                True,
-                last_time,
-                timeout_s,
-                unexpected_network_failure_timeout_s)
-            if error_ref is not None:
-                return error_ref
-
-            await asyncio.sleep(sleep_interval_s)
-            obj = await self._handle_next_async()
-
-        return obj
-
-    async def _handle_next_async(self):
-        try:
-            return self._handle_next()
-        except ObjectRefStreamEneOfStreamError:
-            raise StopAsyncIteration
-
-    def _handle_next_sync(self):
-        try:
-            return self._handle_next()
-        except ObjectRefStreamEneOfStreamError:
-            raise StopIteration
-
-    def _handle_next(self):
-        """Get the next item from the ObjectRefStream.
-
-        This API return immediately all the time. It returns a nil object
-        if it doesn't have the next item ready. It raises
-        ObjectRefStreamEneOfStreamError if there's nothing more to read.
-        If there's a next item, it will return a object ref.
-        """
-        if hasattr(self.worker, "core_worker"):
-            obj = self.worker.core_worker.try_read_next_object_ref_stream(
-                self._generator_ref)
-            return obj
-        else:
-            raise ValueError(
-                "Cannot access the core worker. "
-                "Did you already shutdown Ray via ray.shutdown()?")
-
-    def _handle_error(
-            self,
-            is_async: bool,
-            last_time: int,
-            timeout_s: float,
-            unexpected_network_failure_timeout_s: float):
-        """Handle the error case of next APIs.
-
-        Return None if there's no error. Returns a ref if
-        the ref is supposed to be return.
-        """
-        if self._generator_task_exception:
-            # The generator task has failed already.
-            # We raise StopIteration
-            # to conform the next interface in Python.
-            if is_async:
-                raise StopAsyncIteration
-            else:
-                raise StopIteration
-        else:
-            # Otherwise, we should ray.get on the generator
-            # ref to find if the task has a system failure.
-            # Return the generator ref that contains the system
-            # error as soon as possible.
-            r, _ = ray.wait([self._generator_ref], timeout=0)
-            if len(r) > 0:
-                try:
-                    ray.get(r)
-                except Exception as e:
-                    # If it has failed, return the generator task ref
-                    # so that the ref will raise an exception.
-                    self._generator_task_exception = e
-                    return self._generator_ref
-                finally:
-                    if self._generator_task_completed_time is None:
-                        self._generator_task_completed_time = time.time()
-
-        # Currently, since the ordering of intermediate result report
-        # is not guaranteed, it is possible that althoug the task
-        # has succeeded, all of the object references are not reported
-        # (e.g., when there are network failures).
-        # If all the object refs are not reported to the generator
-        # within 30 seconds, we consider is as an unreconverable error.
-        if self._generator_task_completed_time:
-            if (time.time() - self._generator_task_completed_time
-                    > unexpected_network_failure_timeout_s):
-                # It means the next wasn't reported although the task
-                # has been terminated 30 seconds ago.
-                self._generator_task_exception = AssertionError
-                assert False, (
-                    "Unexpected network failure occured. "
-                    f"Task ID: {self._generator_ref.task_id().hex()}"
-                )
-
-        if timeout_s != -1 and time.time() - last_time > timeout_s:
+        ref = core_worker.peek_object_ref_stream(
+            self._generator_ref)
+        # TODO(swang): Avoid fetching the value.
+        ready, unready = await asyncio.wait([ref], timeout=timeout_s)
+        if len(unready) > 0:
             return ObjectRef.nil()
 
-        return None
+        try:
+            ref = core_worker.try_read_next_object_ref_stream(
+                self._generator_ref)
+            assert not ref.is_nil()
+        except ObjectRefStreamEndOfStreamError:
+            if self._generator_task_exception:
+                # Exception has been returned. raise StopIteration.
+                raise StopAsyncIteration
+
+            try:
+                # The generator ref contains an exception
+                # if there's any failure. It contains nothing otherwise.
+                # In that case, it should raise StopIteration.
+                await self._generator_ref
+            except Exception as e:
+                self._generator_task_exception = e
+                return self._generator_ref
+            else:
+                # meaning the task succeed without failure raise StopIteration.
+                raise StopAsyncIteration
+
+        return ref
 
     def __del__(self):
         if hasattr(self.worker, "core_worker"):
-            # The stream is created when a task is first submitted via
-            # CreateObjectRefStream.
+            # The stream is created when a task is first submitted.
             # NOTE: This can be called multiple times
             # because python doesn't guarantee __del__ is called
             # only once.
@@ -444,7 +387,7 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
     elif status.IsOutOfDisk():
         raise OutOfDiskError(message)
     elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEneOfStreamError(message)
+        raise ObjectRefStreamEndOfStreamError(message)
     elif status.IsInterrupted():
         raise KeyboardInterrupt()
     elif status.IsTimedOut():
@@ -459,6 +402,16 @@ cdef int check_status(const CRayStatus& status) nogil except -1:
         raise RpcError(message, rpc_code=status.rpc_code())
     else:
         raise RaySystemError(message)
+
+
+cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
+    """Return True if the given object is a plasma object."""
+    assert obj.get() != NULL
+    if (obj.get().GetData().get() != NULL
+            and obj.get().GetData().get().IsPlasmaBuffer()):
+        return True
+    return False
+
 
 cdef RayObjectsToDataMetadataPairs(
         const c_vector[shared_ptr[CRayObject]] objects):
@@ -918,6 +871,8 @@ cdef execute_streaming_generator(
         actor_id,
         name_of_concurrency_group_to_execute,
         return_size,
+        uint64_t attempt_number,
+        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error):
     """Execute a given generator and streaming-report the
@@ -951,6 +906,11 @@ cdef execute_streaming_generator(
             It is used to write an error message.
         actor_id: The ID of the actor. It is used to write an error message.
         return_size: The number of static returns.
+        attempt_number: The number of times the current task is retried.
+            0 means it is the first execution of the task.
+        streaming_generator_returns(out): A list of a pair of (ObjectID,
+        is_plasma_object) that are generated by a streaming generator
+        task.
         is_retryable_error(out): It is set to True if the generator
             raises an exception, and the error is retryable.
         application_error(out): It is set if the generator raises an
@@ -1004,12 +964,18 @@ cdef execute_streaming_generator(
                 is_retryable_error,
                 application_error
             )
+
+            streaming_generator_returns[0].push_back(
+                c_pair[CObjectID, c_bool](
+                    return_obj.first,
+                    is_plasma_object(return_obj.second)))
+
             CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
                 return_obj,
                 generator_id,
                 caller_address,
                 generator_index,
-                False)  # finished
+                attempt_number)
             generator_index += 1
             break
         else:
@@ -1028,6 +994,11 @@ cdef execute_streaming_generator(
             # usage asap.
             del output
 
+            streaming_generator_returns[0].push_back(
+                c_pair[CObjectID, c_bool](
+                    return_obj.first,
+                    is_plasma_object(return_obj.second)))
+
             logger.debug(
                 "Writes to a ObjectRefStream of an "
                 "index {}".format(generator_index))
@@ -1036,20 +1007,8 @@ cdef execute_streaming_generator(
                 generator_id,
                 caller_address,
                 generator_index,
-                False)  # finished
+                attempt_number)
             generator_index += 1
-
-    # Report the owner that there's no more objects.
-    logger.debug(
-        "Writes End of stream to a ObjectRefStream "
-        "of an index {}".format(generator_index))
-    CCoreWorkerProcess.GetCoreWorker().ReportGeneratorItemReturns(
-        c_pair[CObjectID, shared_ptr[CRayObject]](
-            CObjectID.Nil(), shared_ptr[CRayObject]()),
-        generator_id,
-        caller_address,
-        generator_index,
-        True)  # finished.
 
 
 cdef create_generator_return_obj(
@@ -1295,6 +1254,7 @@ cdef void execute_task(
         const c_string serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
@@ -1314,6 +1274,7 @@ cdef void execute_task(
         CoreWorker core_worker = worker.core_worker
         JobID job_id = core_worker.get_current_job_id()
         TaskID task_id = core_worker.get_current_task_id()
+        uint64_t attempt_number = core_worker.get_current_task_attempt_number()
         CFiberEvent task_done_event
         c_vector[shared_ptr[CRayObject]] dynamic_return_ptrs
 
@@ -1394,7 +1355,8 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
+    with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
+         ray._private.worker._changeproctitle(title, next_title):
         task_exception = False
         try:
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -1448,60 +1410,61 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    with ray._private.worker._changeproctitle(title, next_title):
-                        if debugger_breakpoint != b"":
-                            ray.util.pdb.set_trace(
-                                breakpoint_uuid=debugger_breakpoint)
-                        outputs = function_executor(*args, **kwargs)
+                    if debugger_breakpoint != b"":
+                        ray.util.pdb.set_trace(
+                            breakpoint_uuid=debugger_breakpoint)
+                    outputs = function_executor(*args, **kwargs)
 
-                        if is_streaming_generator:
-                            # Streaming generator always has a single return value
-                            # which is the generator task return.
-                            assert returns[0].size() == 1
+                    if is_streaming_generator:
+                        # Streaming generator always has a single return value
+                        # which is the generator task return.
+                        assert returns[0].size() == 1
 
-                            if (not inspect.isgenerator(outputs)
-                                    and not inspect.isasyncgen(outputs)):
-                                raise ValueError(
-                                        "Functions with "
-                                        "@ray.remote(num_returns=\"streaming\" "
-                                        "must return a generator")
+                        if (not inspect.isgenerator(outputs)
+                                and not inspect.isasyncgen(outputs)):
+                            raise ValueError(
+                                    "Functions with "
+                                    "@ray.remote(num_returns=\"streaming\" "
+                                    "must return a generator")
 
-                            execute_streaming_generator(
-                                    outputs,
-                                    returns[0][0].first,  # generator object ID.
-                                    task_type,
-                                    caller_address,
-                                    task_id,
-                                    serialized_retry_exception_allowlist,
-                                    function_name,
-                                    function_descriptor,
-                                    title,
-                                    actor,
-                                    actor_id,
-                                    name_of_concurrency_group_to_execute,
-                                    returns[0].size(),
-                                    is_retryable_error,
-                                    application_error)
-                            # Streaming generator output is not used, so set it to None.
-                            outputs = None
+                        execute_streaming_generator(
+                                outputs,
+                                returns[0][0].first,  # generator object ID.
+                                task_type,
+                                caller_address,
+                                task_id,
+                                serialized_retry_exception_allowlist,
+                                function_name,
+                                function_descriptor,
+                                title,
+                                actor,
+                                actor_id,
+                                name_of_concurrency_group_to_execute,
+                                returns[0].size(),
+                                attempt_number,
+                                streaming_generator_returns,
+                                is_retryable_error,
+                                application_error)
+                        # Streaming generator output is not used, so set it to None.
+                        outputs = None
 
-                        next_breakpoint = (
-                            ray._private.worker.global_worker.debugger_breakpoint)
-                        if next_breakpoint != b"":
-                            # If this happens, the user typed "remote" and
-                            # there were no more remote calls left in this
-                            # task. In that case we just exit the debugger.
-                            ray.experimental.internal_kv._internal_kv_put(
-                                "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}",
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            (ray._private.worker.global_worker
-                             .debugger_breakpoint) = b""
+                    next_breakpoint = (
+                        ray._private.worker.global_worker.debugger_breakpoint)
+                    if next_breakpoint != b"":
+                        # If this happens, the user typed "remote" and
+                        # there were no more remote calls left in this
+                        # task. In that case we just exit the debugger.
+                        ray.experimental.internal_kv._internal_kv_put(
+                            "RAY_PDB_{}".format(next_breakpoint),
+                            "{\"exit_debugger\": true}",
+                            namespace=ray_constants.KV_NAMESPACE_PDB
+                        )
+                        ray.experimental.internal_kv._internal_kv_del(
+                            "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                            namespace=ray_constants.KV_NAMESPACE_PDB
+                        )
+                        (ray._private.worker.global_worker
+                         .debugger_breakpoint) = b""
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
@@ -1632,6 +1595,7 @@ cdef execute_task_with_cancellation_handler(
         const c_string serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         c_bool *is_retryable_error,
         c_string *application_error,
         # This parameter is only used for actor creation task to define
@@ -1720,6 +1684,7 @@ cdef execute_task_with_cancellation_handler(
                      serialized_retry_exception_allowlist,
                      returns,
                      dynamic_returns,
+                     streaming_generator_returns,
                      is_retryable_error,
                      application_error,
                      c_defined_concurrency_groups,
@@ -1793,6 +1758,7 @@ cdef CRayStatus task_execution_handler(
         const c_string serialized_retry_exception_allowlist,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *dynamic_returns,
+        c_vector[c_pair[CObjectID, c_bool]] *streaming_generator_returns,
         shared_ptr[LocalMemoryBuffer] &creation_task_exception_pb_bytes,
         c_bool *is_retryable_error,
         c_string *application_error,
@@ -1819,6 +1785,7 @@ cdef CRayStatus task_execution_handler(
                         serialized_retry_exception_allowlist,
                         returns,
                         dynamic_returns,
+                        streaming_generator_returns,
                         is_retryable_error,
                         application_error,
                         defined_concurrency_groups,
@@ -2062,9 +2029,6 @@ def maybe_initialize_job_config():
         # Print on both .out and .err
         print(job_id_magic_token, end="")
         print(job_id_magic_token, file=sys.stderr, end="")
-
-        # Only start import thread after job_config is initialized
-        ray._private.worker.start_import_thread()
 
         job_config_initialized = True
 
@@ -2399,6 +2363,220 @@ cdef class GcsPublisher:
             check_status(self.inner.get().PublishFunctionKey(python_function))
 
 
+cdef class _GcsSubscriber:
+    """Cython wrapper class of C++ `ray::gcs::PythonGcsSubscriber`."""
+    cdef:
+        shared_ptr[CPythonGcsSubscriber] inner
+
+    def _construct(self, address, channel, worker_id):
+        cdef:
+            c_worker_id = worker_id or b""
+        # subscriber_id needs to match the binary format of a random
+        # SubscriberID / UniqueID, which is 28 (kUniqueIDSize) random bytes.
+        subscriber_id = bytes(bytearray(random.getrandbits(8) for _ in range(28)))
+        gcs_address, gcs_port = address.split(":")
+        self.inner.reset(new CPythonGcsSubscriber(
+            gcs_address, int(gcs_port), channel, subscriber_id, c_worker_id))
+
+    def subscribe(self):
+        """Registers a subscription for the subscriber's channel type.
+
+        Before the registration, published messages in the channel will not be
+        saved for the subscriber.
+        """
+        with nogil:
+            check_status(self.inner.get().Subscribe())
+
+    @property
+    def last_batch_size(self):
+        """Batch size of the result from last poll.
+
+        Used to indicate whether the subscriber can keep up.
+        """
+        return self.inner.get().last_batch_size()
+
+    def close(self):
+        """Closes the subscriber and its active subscription."""
+        with nogil:
+            check_status(self.inner.get().Close())
+
+
+cdef class GcsErrorSubscriber(_GcsSubscriber):
+    """Subscriber to error info. Thread safe.
+
+    Usage example:
+        subscriber = GcsErrorSubscriber()
+        # Subscribe to the error channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            error_id, error_data = subscriber.poll()
+            ......
+        # Unsubscribe from the error channels.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, RAY_ERROR_INFO_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new error messages.
+
+        Returns:
+            A tuple of error message ID and dict describing the error,
+            or None, None if polling times out or subscriber closed.
+        """
+        cdef:
+            CErrorTableData error_data
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        with nogil:
+            check_status(self.inner.get().PollError(&key_id, timeout_ms, &error_data))
+
+        if key_id == b"":
+            return None, None
+
+        return (bytes(key_id), {
+            "job_id": error_data.job_id(),
+            "type": error_data.type().decode(),
+            "error_message": error_data.error_message().decode(),
+            "timestamp": error_data.timestamp(),
+        })
+
+
+cdef class GcsLogSubscriber(_GcsSubscriber):
+    """Subscriber to logs. Thread safe.
+
+    Usage example:
+        subscriber = GcsLogSubscriber()
+        # Subscribe to the log channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            log = subscriber.poll()
+            ......
+        # Unsubscribe from the log channel.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, RAY_LOG_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new log messages.
+
+        Returns:
+            A dict containing a batch of log lines and their metadata.
+        """
+        cdef:
+            CLogBatch log_batch
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_string] c_log_lines
+            c_string c_log_line
+
+        with nogil:
+            check_status(self.inner.get().PollLogs(&key_id, timeout_ms, &log_batch))
+
+        c_log_lines = PythonGetLogBatchLines(log_batch)
+
+        log_lines = []
+        for c_log_line in c_log_lines:
+            log_lines.append(c_log_line.decode())
+
+        return {
+            "ip": log_batch.ip().decode(),
+            "pid": log_batch.pid().decode(),
+            "job": log_batch.job_id().decode(),
+            "is_err": log_batch.is_error(),
+            "lines": log_lines,
+            "actor_name": log_batch.actor_name().decode(),
+            "task_name": log_batch.task_name().decode(),
+        }
+
+
+# This class should only be used for tests
+cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
+    """Subscriber to actor updates. Thread safe.
+
+    Usage example:
+        subscriber = GcsActorSubscriber()
+        # Subscribe to the actor channel.
+        subscriber.subscribe()
+        ...
+        while running:
+            actor_data = subscriber.poll()
+            ......
+        # Unsubscribe from the channel.
+        subscriber.close()
+    """
+
+    def __init__(self, address, worker_id=None):
+        self._construct(address, GCS_ACTOR_CHANNEL, worker_id)
+
+    def poll(self, timeout=None):
+        """Polls for new actor messages.
+
+        Returns:
+            A byte string of function key.
+            None if polling times out or subscriber closed.
+        """
+        cdef:
+            CActorTableData actor_data
+            c_string key_id
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+
+        with nogil:
+            check_status(self.inner.get().PollActor(
+                &key_id, timeout_ms, &actor_data))
+
+        from ray.core.generated import gcs_pb2
+
+        info = gcs_pb2.ActorTableData.FromString(
+            actor_data.SerializeAsString())
+
+        return [(key_id, info)]
+
+
+def check_health(address: str, timeout=2, skip_version_check=False):
+    """Checks Ray cluster health, before / without actually connecting to the
+    cluster via ray.init().
+
+    Args:
+        address: Ray cluster / GCS address string, e.g. ip:port.
+        timeout: request timeout.
+        skip_version_check: If True, will skip comparision of GCS Ray version with local
+            Ray version. If False (default), will raise exception on mismatch.
+    Returns:
+        Returns True if the cluster is running and has matching Ray version.
+        Returns False if no service is running.
+        Raises an exception otherwise.
+    """
+
+    gcs_address, gcs_port = address.split(":")
+
+    cdef:
+        c_string c_gcs_address = gcs_address
+        int c_gcs_port = int(gcs_port)
+        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        c_string c_ray_version = ray.__version__
+        c_bool c_skip_version_check = skip_version_check
+        c_bool c_is_healthy = True
+
+    try:
+        with nogil:
+            check_status(PythonCheckGcsHealth(
+                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
+                c_skip_version_check, c_is_healthy))
+    except RpcError:
+        traceback.print_exc()
+    except RaySystemError as e:
+        raise RuntimeError(str(e))
+
+    return c_is_healthy
+
+
 cdef class CoreWorker:
 
     def __cinit__(self, worker_type, store_socket, raylet_socket,
@@ -2668,7 +2846,6 @@ cdef class CoreWorker:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data_buf
             shared_ptr[CBuffer] metadata_buf
-            int64_t put_threshold
             unique_ptr[CAddress] c_owner_address = move(self._convert_python_address(
                     object_ref.owner_address()))
 
@@ -2711,13 +2888,11 @@ cdef class CoreWorker:
             CObjectID c_object_id
             shared_ptr[CBuffer] data
             shared_ptr[CBuffer] metadata
-            int64_t put_threshold
             unique_ptr[CAddress] c_owner_address
             c_vector[CObjectID] contained_object_ids
             c_vector[CObjectReference] contained_object_refs
 
         metadata = string_to_buffer(serialized_object.metadata)
-        put_threshold = RayConfig.instance().max_direct_call_object_size()
         total_bytes = serialized_object.total_bytes
         contained_object_ids = ObjectRefsToVector(
                 serialized_object.contained_object_refs)
@@ -2725,6 +2900,9 @@ cdef class CoreWorker:
             metadata, total_bytes, object_ref,
             contained_object_ids,
             &c_object_id, &data, True, owner_address, inline_small_object)
+
+        logger.debug(
+            f"Serialized object size of {c_object_id.Hex()} is {total_bytes} bytes")
 
         if not object_already_exists:
             if total_bytes > 0:
@@ -2763,12 +2941,29 @@ cdef class CoreWorker:
 
         return c_object_id.Binary()
 
-    def wait(self, object_refs, int num_returns, int64_t timeout_ms,
+    def wait(self, object_refs_or_generators, int num_returns, int64_t timeout_ms,
              TaskID current_task_id, c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
+
+        object_refs = []
+        for ref_or_generator in object_refs_or_generators:
+            if (not isinstance(ref_or_generator, ObjectRef)
+                    and not isinstance(ref_or_generator, StreamingObjectRefGenerator)):
+                raise TypeError(
+                    "wait() expected a list of ray.ObjectRef "
+                    "or StreamingObjectRefGenerator, "
+                    f"got list containing {type(ref_or_generator)}"
+                )
+
+            if isinstance(ref_or_generator, StreamingObjectRefGenerator):
+                # Before calling wait,
+                # get the next reference from a generator.
+                object_refs.append(ref_or_generator.get_next_ref())
+            else:
+                object_refs.append(ref_or_generator)
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
@@ -2779,11 +2974,11 @@ cdef class CoreWorker:
         assert len(results) == len(object_refs)
 
         ready, not_ready = [], []
-        for i, object_ref in enumerate(object_refs):
+        for i, object_ref_or_generator in enumerate(object_refs_or_generators):
             if results[i]:
-                ready.append(object_ref)
+                ready.append(object_ref_or_generator)
             else:
-                not_ready.append(object_ref)
+                not_ready.append(object_ref_or_generator)
 
         return ready, not_ready
 
@@ -2863,6 +3058,8 @@ cdef class CoreWorker:
                 python_scheduling_strategy.soft)
             c_node_affinity_scheduling_strategy[0].set_spill_on_unavailable(
                 python_scheduling_strategy._spill_on_unavailable)
+            c_node_affinity_scheduling_strategy[0].set_fail_on_unavailable(
+                python_scheduling_strategy._fail_on_unavailable)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
@@ -3819,8 +4016,8 @@ cdef class CoreWorker:
             return CCoreWorkerProcess.GetCoreWorker().AllocateDynamicReturnId(
                 owner_address,
                 CTaskID.Nil(),
-                NULL_PUT_INDEX
-            )
+                make_optional[ObjectIDIndexType](
+                    <int>1 + <int>return_size + <int>generator_index))
 
     def delete_object_ref_stream(self, ObjectRef generator_id):
         cdef:
@@ -3842,6 +4039,17 @@ cdef class CoreWorker:
             "",
             # Already added when the ref is updated.
             skip_adding_local_ref=True)
+
+    def peek_object_ref_stream(self, ObjectRef generator_id):
+        cdef:
+            CObjectID c_generator_id = generator_id.native()
+            CObjectReference c_object_ref = (
+                CCoreWorkerProcess.GetCoreWorker().PeekObjectRefStream(
+                    c_generator_id))
+
+        return ObjectRef(
+            c_object_ref.object_id(),
+            c_object_ref.owner_address().SerializeAsString())
 
 cdef void async_callback(shared_ptr[CRayObject] obj,
                          CObjectID object_ref,

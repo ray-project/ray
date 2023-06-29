@@ -24,7 +24,6 @@ from ray.air.constants import (
 from ray.data import Dataset, DatasetPipeline
 from ray.train._internal.accelerator import Accelerator
 from ray.train.constants import (
-    CHECKPOINT_DISTRIBUTED_KEY,
     CHECKPOINT_METADATA_KEY,
     CHECKPOINT_RANK_KEY,
     DETAILED_AUTOFILLED_KEYS,
@@ -396,12 +395,7 @@ class _TrainSession:
             checkpoint = str(checkpoint._local_path)
 
         # Save the rank of the worker that created this checkpoint.
-        metadata.update(
-            {
-                CHECKPOINT_RANK_KEY: self.world_rank,
-                CHECKPOINT_DISTRIBUTED_KEY: upload_from_workers,
-            }
-        )
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
 
         result = TrainingResult(
             type=TrainingResultType.CHECKPOINT,

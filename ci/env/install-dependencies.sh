@@ -28,7 +28,7 @@ install_bazel() {
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
-      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
+      new_version="$(grep 'USE_BAZEL_VERSION=' "${WORKSPACE_DIR}/.bazeliskrc" | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
         export BAZEL_CONFIG_ONLY=1
@@ -82,7 +82,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py37_4.9.2"
+    local miniconda_version="Miniconda3-py38_23.1.0-1"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -94,7 +94,6 @@ install_miniconda() {
       darwin*)
         if [ "$(uname -m)" = "arm64" ]; then
           HOSTTYPE="arm64"
-          miniconda_version="Miniconda3-py38_23.1.0-1"
           miniconda_dir="/opt/homebrew/opt/miniconda"
         else
           HOSTTYPE="x86_64"
@@ -429,16 +428,9 @@ install_pip_packages() {
   if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
       # If we require a custom torch version, use that
       if [ -n "${TORCH_VERSION-}" ]; then
-        case "${TORCH_VERSION-1.9.0}" in
-          1.9.0) TORCHVISION_VERSION=0.10.0;;
-          1.8.1) TORCHVISION_VERSION=0.9.1;;
-          1.6) TORCHVISION_VERSION=0.7.0;;
-          1.5) TORCHVISION_VERSION=0.6.0;;
-          *) TORCHVISION_VERSION=0.5.0;;
-        esac
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
+        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
         # We won't add requirements_dl.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
         TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")

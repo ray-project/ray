@@ -16,17 +16,14 @@ from typing import (
 
 import numpy as np
 
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray._private.utils import _get_pyarrow_version
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
     is_valid_udf_return,
 )
-from ray.data._internal.table_block import (
-    TableBlockAccessor,
-    TableBlockBuilder,
-)
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import _truncated_repr
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
@@ -244,11 +241,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         if columns is None:
             columns = self._table.column_names
-            should_be_single_ndarray = self.is_tensor_wrapper()
+            should_be_single_ndarray = False
         elif isinstance(columns, list):
-            should_be_single_ndarray = (
-                columns == self._table_column_names and self.is_tensor_wrapper()
-            )
+            should_be_single_ndarray = False
         else:
             columns = [columns]
             should_be_single_ndarray = True

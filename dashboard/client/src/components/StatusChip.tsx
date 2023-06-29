@@ -61,6 +61,7 @@ const colorMap = {
     [ServeApplicationStatus.RUNNING]: green,
     [ServeApplicationStatus.DEPLOY_FAILED]: red,
     [ServeApplicationStatus.DELETING]: orange,
+    [ServeApplicationStatus.UNHEALTHY]: red,
   },
   serveDeployment: {
     [ServeDeploymentStatus.UPDATING]: orange,
@@ -78,6 +79,7 @@ const colorMap = {
     [ServeSystemActorStatus.HEALTHY]: green,
     [ServeSystemActorStatus.UNHEALTHY]: red,
     [ServeSystemActorStatus.STARTING]: orange,
+    [ServeSystemActorStatus.DRAINING]: blueGrey,
   },
   serveController: {
     [ServeSystemActorStatus.HEALTHY]: green,
@@ -105,7 +107,6 @@ const useStyles = makeStyles((theme) =>
       border: "solid 1px",
       borderRadius: 4,
       fontSize: 12,
-      margin: 2,
       display: "inline-flex",
       alignItems: "center",
     },
@@ -115,17 +116,14 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-export const StatusChip = ({
-  type,
-  status,
-  suffix,
-  icon,
-}: {
-  type: string;
+export type StatusChipProps = {
+  type: keyof typeof colorMap;
   status: string | ActorEnum | ReactNode;
-  suffix?: string;
+  suffix?: ReactNode;
   icon?: ReactNode;
-}) => {
+};
+
+export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
   const classes = useStyles();
   let color: Color | string = blueGrey;
 

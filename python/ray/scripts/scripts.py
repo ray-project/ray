@@ -21,7 +21,7 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.utils import parse_resources_json
+from ray._private.utils import parse_resources_json, parse_node_labels_json
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib
@@ -524,6 +524,14 @@ def debug(address):
     default=False,
     help="If True, the usage stats collection will be disabled.",
 )
+@click.option(
+    "--labels",
+    required=False,
+    hidden=True,
+    default="{}",
+    type=str,
+    help="a JSON serialized dictionary mapping label name to label value.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -568,6 +576,7 @@ def start(
     tracing_startup_hook,
     ray_debugger_external,
     disable_usage_stats,
+    labels,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -578,7 +587,6 @@ def start(
             cf.bold("--gcs-server-port"),
             cf.bold("--port"),
         )
-
     # Whether the original arguments include node_ip_address.
     include_node_ip_address = False
     if node_ip_address is not None:
@@ -586,6 +594,7 @@ def start(
         node_ip_address = services.resolve_ip_for_localhost(node_ip_address)
 
     resources = parse_resources_json(resources, cli_logger, cf)
+    labels_dict = parse_node_labels_json(labels, cli_logger, cf)
 
     if plasma_store_socket_name is not None:
         warnings.warn(
@@ -627,6 +636,7 @@ def start(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
+        labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
@@ -1793,7 +1803,11 @@ workers=$(
 for worker in $workers; do
     echo "Stack dump for $worker";
     pid=`echo $worker | awk '{print $2}'`;
-    sudo $pyspy dump --pid $pid --native;
+    case "$(uname -s)" in
+        Linux*) native=--native;;
+        *)      native=;;
+    esac
+    sudo $pyspy dump --pid $pid $native;
     echo;
 done
     """
@@ -1892,7 +1906,7 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._private.gcs_utils.check_health(address):
+    if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     time = datetime.now()
@@ -1933,7 +1947,7 @@ def memory(
 def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._private.gcs_utils.check_health(address):
+    if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     gcs_client = ray._raylet.GcsClient(address=address)
@@ -2231,9 +2245,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(
-                address, skip_version_check=skip_version_check
-            ):
+            if ray._raylet.check_health(address, skip_version_check=skip_version_check):
                 sys.exit(0)
         except Exception:
             traceback.print_exc()

@@ -6,12 +6,14 @@ slackclient
 boto3
 google-cloud-storage
 jinja2
+pybuildkite
 PyGithub
 pydantic < 1.10.0
 pyyaml
 typer[all]
 toml
 python-dotenv
+PyGithub
 expiringdict
 requests
 protobuf >= 3.15.3, != 3.19.5
@@ -19,3 +21,4 @@ pytz
 retry
 git+https://github.com/ray-project/xgboost_ray.git#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray.git#lightgbm_ray
+kubernetes

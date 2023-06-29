@@ -76,7 +76,7 @@ struct NodeManagerConfig {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
   /// The soft limit of the number of workers.
-  int num_workers_soft_limit;
+  int64_t num_workers_soft_limit;
   /// Number of initial Python workers to start when raylet starts.
   int num_prestart_python_workers;
   /// The maximum number of workers that can be started concurrently by a
@@ -110,6 +110,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
