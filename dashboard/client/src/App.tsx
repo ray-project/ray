@@ -214,8 +214,9 @@ const App = () => {
                       }
                       path="actors/:actorId"
                     >
-                      <Route element={<ActorDetailPage />} path="" />
-                      <Route element={<TaskPage />} path="tasks/:taskId" />
+                      <Route element={<ActorDetailPage />} path="">
+                        <Route element={<TaskPage />} path="tasks/:taskId" />
+                      </Route>
                     </Route>
                     <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
@@ -265,11 +266,9 @@ const App = () => {
                     <Route
                       element={<ServeReplicaDetailPage />}
                       path=":deploymentName/:replicaId"
-                    />
-                    <Route
-                      element={<TaskPage />}
-                      path=":deploymentName/:replicaId/tasks/:taskId"
-                    />
+                    >
+                      <Route path="tasks/:taskId" element={<TaskPage />} />
+                    </Route>
                   </Route>
                 </Route>
                 <Route element={<LogsLayout />} path="logs">
