@@ -272,7 +272,7 @@ You can install and use Ray C++ API as follows.
 M1 Mac (Apple Silicon) Support
 ------------------------------
 
-Ray has experimental support for machines running Apple Silicon (such as M1 macs).
+Ray supports machines running Apple Silicon (such as M1 macs).
 Multi-node clusters are untested. To get started with local Ray development:
 
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
@@ -292,10 +292,6 @@ Multi-node clusters are untested. To get started with local Ray development:
 #. Install Ray as you normally would.
 
    * ``pip install ray``
-
-.. note::
-
-  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
 
 .. _windows-support:
 
