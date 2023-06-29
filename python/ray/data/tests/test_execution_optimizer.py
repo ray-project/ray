@@ -756,7 +756,9 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
     # Check the case where the upstream map function returns multiple blocks.
-    ray.data.DatasetContext.get_current().target_max_block_size = 100
+    ctx = ray.data.DataContext.get_current()
+    old_target_max_block_size = ctx.target_max_block_size
+    ctx.target_max_block_size = 100
 
     def fn(_):
         return {"data": np.zeros((100, 100))}
@@ -767,6 +769,8 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert "Stage 2 Repartition" in ds.stats()
     assert "Stage 3 Map(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
+
+    ctx.target_max_block_size = old_target_max_block_size
 
 
 @pytest.mark.parametrize("shuffle", (True, False))
