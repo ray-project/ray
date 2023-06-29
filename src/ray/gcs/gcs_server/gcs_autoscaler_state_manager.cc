@@ -42,14 +42,7 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
             last_cluster_resource_state_version_);
   auto state = reply->mutable_cluster_resource_state();
-  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
-  state->set_cluster_resource_state_version(
-      IncrementAndGetNextClusterResourceStateVersion());
-
-  GetNodeStates(state);
-  GetPendingResourceRequests(state);
-  GetPendingGangResourceRequests(state);
-  GetClusterResourceConstraints(state);
+  MakeClusterResourceStateInternal(state);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
@@ -104,8 +97,25 @@ void GcsAutoscalerStateManager::HandleGetClusterStatus(
     rpc::autoscaler::GetClusterStatusRequest request,
     rpc::autoscaler::GetClusterStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // TODO
-  throw std::runtime_error("Unimplemented");
+  auto ray_resource_state = reply->mutable_cluster_resource_state();
+  MakeClusterResourceStateInternal(ray_resource_state);
+
+  if (autoscaling_state_) {
+    reply->mutable_autoscaling_state()->CopyFrom(*autoscaling_state_);
+  }
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
+    rpc::autoscaler::ClusterResourceState *state) {
+  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
+  state->set_cluster_resource_state_version(
+      IncrementAndGetNextClusterResourceStateVersion());
+
+  GetNodeStates(state);
+  GetPendingResourceRequests(state);
+  GetPendingGangResourceRequests(state);
+  GetClusterResourceConstraints(state);
 }
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
