@@ -100,7 +100,6 @@ class ServeControllerClient:
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-        # raise Exception("gene test in client#shutdown")
 
         # Shut down handles
         for k in list(self.handle_cache):
