@@ -74,7 +74,7 @@ const TaskTable = ({
           faiure.
           <br /> Stack Trace: Get a stacktrace of the worker process where the
           task is running.
-          <br />- CPU Flame Graph: Get a flamegraph for the next 5 seconds of
+          <br />- CPU Flame Graph: Get a flame graph for the next 5 seconds of
           the worker process where the task is running.
         </Typography>
       ),
@@ -350,16 +350,13 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
             ip={job?.driver_info?.node_ip_address}
             type=""
           />
+          <br />
+          <CpuStackTraceLink
+            pid={job?.driver_info?.pid}
+            ip={job?.driver_info?.node_ip_address}
+            type=""
+          />
         </React.Fragment>
-      )}
-
-      <br />
-      {isActiveTask && (
-        <CpuStackTraceLink
-          pid={job?.driver_info?.pid}
-          ip={job?.driver_info?.node_ip_address}
-          type=""
-        />
       )}
       <br />
       {errorDetails && (

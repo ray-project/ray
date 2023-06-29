@@ -227,7 +227,7 @@ const TaskPageContents = ({
               <React.Fragment>
                 {isTaskActive && (
                   <React.Fragment>
-                    <CpuProfilingLink
+                    {/* <CpuProfilingLink
                     // pid={job?.driver_info?.pid}
                     // ip={job?.driver_info?.node_ip_address}
                     // type=""
@@ -236,7 +236,7 @@ const TaskPageContents = ({
                     // pid={job?.driver_info?.pid}
                     // ip={job?.driver_info?.node_ip_address}
                     // type=""
-                    />
+                    /> */}
                   </React.Fragment>
                 )}
               </React.Fragment>
