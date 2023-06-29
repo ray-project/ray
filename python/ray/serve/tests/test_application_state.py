@@ -658,5 +658,50 @@ def test_recover_during_update(mocked_application_state_manager):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
+def test_is_shutdown(mocked_application_state_manager):
+    """Test is_shutdown() returns True the correct state
+
+
+    When shutting down applications before deployments are deleted, application state
+    `is_deleted()` should return false and `is_shutdown()` should return false.
+    When shutting down applications after deployments are deleted, application state
+    `is_deleted()` should return true and `is_shutdown()` should return true
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+    app_name = "test_app"
+    deployment_name = "d1"
+
+    # DEPLOY application with deployment "d1"
+    params = deployment_params(deployment_name)
+    app_state_manager.apply_deployment_args(app_name, [params])
+    app_state = app_state_manager._application_states[app_name]
+    assert app_state.status == ApplicationStatus.DEPLOYING
+
+    # Once deployment is healthy, app should be running
+    app_state_manager.update()
+    assert deployment_state_manager.get_deployment(deployment_name)
+    deployment_state_manager.set_deployment_healthy(deployment_name)
+    app_state_manager.update()
+    assert app_state.status == ApplicationStatus.RUNNING
+
+    # When shutting down applications before deployments are deleted, application state
+    # `is_deleted()` should return false and `is_shutdown()` should return false
+    app_state_manager.shutdown()
+    assert not app_state.is_deleted()
+    assert not app_state_manager.is_shutdown()
+
+    # When shutting down applications after deployments are deleted, application state
+    # `is_deleted()` should return true and `is_shutdown()` should return true
+    deployment_state_manager.delete_deployment(deployment_name)
+    deployment_state_manager.set_deployment_deleted(deployment_name)
+    app_state_manager.update()
+    assert app_state.is_deleted()
+    assert app_state_manager.is_shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
