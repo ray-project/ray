@@ -6,7 +6,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.utils import block_until_http_ready
 import ray.util.state as state_api
 from fastapi import FastAPI
@@ -86,6 +86,43 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
         wait_for_condition(verify_metrics, retry_interval_ms=500)
     except RuntimeError:
         verify_metrics(do_assert=True)
+
+
+def test_http_replica_gauge_metrics(serve_start_shutdown):
+    """Test http replica gauge metrics"""
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class A:
+        async def __call__(self):
+            await signal.wait.remote()
+
+    handle = serve.run(A.bind(), name="app1")
+    _ = handle.remote()
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 1,
+        timeout=20,
+    )
+    processing_requests = get_metric_dictionaries("serve_replica_processing_queries")
+    assert len(processing_requests) == 1
+    assert processing_requests[0]["deployment"] == "app1_A"
+    assert processing_requests[0]["application"] == "app1"
+    print("processing_requests working as expected.")
+
+    pending_requests = get_metric_dictionaries("serve_replica_pending_queries")
+    assert len(pending_requests) == 1
+    assert pending_requests[0]["deployment"] == "app1_A"
+    assert pending_requests[0]["application"] == "app1"
+
+    resp = requests.get("http://127.0.0.1:9999").text
+    resp = resp.split("\n")
+    for metrics in resp:
+        if "# HELP" in metrics or "# TYPE" in metrics:
+            continue
+        if "serve_replica_processing_queries" in metrics:
+            assert "1.0" in metrics
+        elif "serve_replica_pending_queries" in metrics:
+            assert "0" in metrics
 
 
 def test_http_metrics(serve_start_shutdown):
