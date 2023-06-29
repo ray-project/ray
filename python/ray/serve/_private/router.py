@@ -7,7 +7,18 @@ import logging
 import math
 import pickle
 import random
-from typing import Any, AsyncGenerator, Dict, List, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    DefaultDict,
+    Deque,
+    Dict,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -85,6 +96,12 @@ class ReplicaWrapper(ABC):
 
     @property
     def replica_id(self) -> str:
+        """Replica ID of this replica."""
+        pass
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        """Set of model IDs on this replica."""
         pass
 
     async def get_queue_state(self) -> Tuple[str, int, bool]:
@@ -94,28 +111,34 @@ class ReplicaWrapper(ABC):
     def send_query(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        """Send query to this replica."""
         pass
 
 
 class ActorReplicaWrapper:
     def __init__(self, replica_info: RunningReplicaInfo):
-        self.replica_info = replica_info
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
 
         if replica_info.is_cross_language:
-            self.actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
+            self._actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
         else:
-            self.actor_handle = replica_info.actor_handle
+            self._actor_handle = replica_info.actor_handle
 
     @property
     def replica_id(self) -> str:
-        return self.replica_info.replica_tag
+        return self._replica_info.replica_tag
+
+    @property
+    def multiplexed_model_ids(self) -> Set[str]:
+        return self._multiplexed_model_ids
 
     async def get_queue_state(self) -> Tuple[str, int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
-        queue_len = await self.actor_handle.get_num_ongoing_requests.remote()
-        accepted = queue_len < self.replica_info.max_concurrent_queries
+        queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
+        accepted = queue_len < self._replica_info.max_concurrent_queries
         return self.replica_id, queue_len, accepted
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
@@ -144,7 +167,7 @@ class ActorReplicaWrapper:
         if call_method == "__call__":
             call_method = "call"
 
-        return self.actor_handle.handle_request.remote(
+        return self._actor_handle.handle_request.remote(
             RequestMetadataProto(
                 request_id=query.metadata.request_id,
                 endpoint=query.metadata.endpoint,
@@ -158,11 +181,11 @@ class ActorReplicaWrapper:
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Send the query to a Python replica."""
         if query.metadata.is_streaming:
-            obj_ref = self.actor_handle.handle_request_streaming.options(
+            obj_ref = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"
             ).remote(pickle.dumps(query.metadata), *query.args, **query.kwargs)
         else:
-            _, obj_ref = self.actor_handle.handle_request.remote(
+            _, obj_ref = self._actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs
             )
 
@@ -171,7 +194,7 @@ class ActorReplicaWrapper:
     def send_query(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
-        if self.replica_info.is_cross_language:
+        if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
             return self._send_query_python(query)
@@ -187,6 +210,12 @@ class ReplicaScheduler(ABC):
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         pass
+
+
+@dataclass
+class PendingRequest:
+    future: asyncio.Future
+    metadata: RequestMetadata
 
 
 class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
@@ -233,14 +262,31 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_id_set: Set[str] = set()
         self._replicas: Dict[str, ReplicaWrapper] = {}
         self._replicas_updated_event = make_asyncio_event_version_compat(event_loop)
+        self._multiplexed_model_id_to_replica_ids: DefaultDict[Set[str]] = defaultdict(
+            set
+        )
 
+        # Tasks running the scheduling loop. The size of this set may vary over time
+        # as new tasks will be scheduled when a request comes in or new replicas are
+        # added, but it will not exceed self.max_num_scheduling_tasks.
         self._scheduling_tasks: Set[asyncio.Task] = set()
-        self._pending_assignment_futures: deque[asyncio.Future] = deque()
+
+        # We keep two separate queues of pending requests:
+        # - self._pending_requests_to_fulfill is a queue that will be used to fulfill
+        # requests in FIFO order by scheduling tasks once they've acquired a replica.
+        # To avoid long tail latencies due to backoff, the scheduling task started by
+        # a given request may not be the one to fulfill it.
+        # - self._pending_requests_to_schedule is a queue that is used for tasks to
+        # best-effort grab the metadata of requests waiting to be fulfilled. This is
+        # currently used for scheduling tasks to know which multiplexed model IDs they
+        # should be trying to get replicas for.
+        self._pending_requests_to_fulfill: Deque[PendingRequest] = deque()
+        self._pending_requests_to_schedule: Deque[PendingRequest] = deque()
 
     @property
-    def num_pending_assignments(self) -> int:
-        """Current number of assignments pending scheduling."""
-        return len(self._pending_assignment_futures)
+    def num_pending_requests(self) -> int:
+        """Current number of requests pending assignment."""
+        return len(self._pending_requests_to_fulfill)
 
     @property
     def curr_num_scheduling_tasks(self) -> int:
@@ -254,28 +300,43 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     @property
     def target_num_scheduling_tasks(self) -> int:
-        """Target number of scheduling tasks to be running based on pending assignments.
+        """Target number of scheduling tasks to be running based on pending requests.
 
         This will never exceed `self.max_num_scheduling_tasks`.
         """
-        return min(self.num_pending_assignments, self.max_num_scheduling_tasks)
+        return min(self.num_pending_requests, self.max_num_scheduling_tasks)
+
+    @property
+    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+        return self._replicas
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
 
         When the set of replicas changes, we may spawn additional scheduling tasks
-        if there are pending assignments.
+        if there are pending requests.
         """
-        self._replicas = {r.replica_id: r for r in replicas}
-        new_replica_id_set = set(self._replicas.keys())
+        new_replicas = {}
+        new_replica_id_set = set()
+        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+        for r in replicas:
+            new_replicas[r.replica_id] = r
+            new_replica_id_set.add(r.replica_id)
+            for model_id in r.multiplexed_model_ids:
+                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
+
         if self._replica_id_set != new_replica_id_set:
-            self._replica_id_set = new_replica_id_set
             logger.info(
                 "Got updated replicas for deployment "
                 f"{self._deployment_name}: {new_replica_id_set}.",
                 extra={"log_to_stderr": False},
             )
 
+        self._replicas = new_replicas
+        self._replica_id_set = new_replica_id_set
+        self._multiplexed_model_id_to_replica_ids = (
+            new_multiplexed_model_id_to_replica_ids
+        )
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
@@ -283,8 +344,32 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
+    def _get_candidate_replica_ids(
+        self,
+        blacklist_replica_ids: Set[str],
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Set[str]:
+        """Get candidates from the current replica set excluding the blacklist.
+
+        If a model ID is present in request_metadata, any replicas that have it are
+        prioritized.
+        """
+        if (
+            request_metadata is not None
+            and request_metadata.multiplexed_model_id
+            in self._multiplexed_model_id_to_replica_ids
+        ):
+            candidates = self._multiplexed_model_id_to_replica_ids[
+                request_metadata.multiplexed_model_id
+            ].difference(blacklist_replica_ids)
+            if len(candidates) > 0:
+                return candidates
+
+        return self._replica_id_set.difference(blacklist_replica_ids)
+
     async def choose_two_replicas_with_backoff(
         self,
+        request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
         """Generator that repeatedly chooses two random replicas from `self._replicas`.
 
@@ -292,7 +377,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
         backoff sleep time.
         """
+
         backoff_index = 0
+        replica_ids_attempted = set()
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
@@ -309,10 +396,21 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     extra={"log_to_stderr": False},
                 )
 
+            # Get candidates to sample from; this will exclude replicas used in a
+            # previous iteration until all replicas have been tried.
+            candidate_replica_ids = self._get_candidate_replica_ids(
+                replica_ids_attempted, request_metadata
+            )
             chosen_ids = random.sample(
-                self._replica_id_set, k=min(2, len(self._replica_id_set))
+                candidate_replica_ids, k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+            # If another iteration occurrs, the chosen replicas did not accept the
+            # request. Blacklist them until we've attempted all replicas.
+            replica_ids_attempted.update(chosen_ids)
+            if replica_ids_attempted.issuperset(self._replica_id_set):
+                replica_ids_attempted.clear()
 
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
@@ -360,21 +458,64 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # In that case, return `None` so a new one is selected.
         return self._replicas.get(chosen_replica_id, None)
 
-    def fulfill_next_pending_assignment(self, replica: ReplicaWrapper):
-        """Assign the replica to the next pending assignment in FIFO order.
+    def _get_pending_request_matching_metadata(
+        self,
+        replica: ReplicaWrapper,
+        request_metadata: Optional[RequestMetadata] = None,
+    ) -> Optional[PendingRequest]:
+        if request_metadata is None or not request_metadata.multiplexed_model_id:
+            return None
 
-        If a pending assignment has been cancelled, it will be popped from the queue
+        for pr in self._pending_requests_to_fulfill:
+            if (
+                not pr.future.done()
+                and pr.metadata.multiplexed_model_id
+                == request_metadata.multiplexed_model_id
+            ):
+                return pr
+
+        return None
+
+    def fulfill_next_pending_request(
+        self,
+        replica: ReplicaWrapper,
+        request_metadata: Optional[RequestMetadata] = None,
+    ):
+        """Assign the replica to the next pending request in FIFO order.
+
+        If a pending request has been cancelled, it will be popped from the queue
         and not assigned.
         """
-        while len(self._pending_assignment_futures) > 0:
-            fut = self._pending_assignment_futures.popleft()
-            # Pass over futures that have been cancelled.
-            if not fut.done():
-                fut.set_result(replica)
+        # First try to match a pending request based on the request metadata (currently
+        # this only looks at the multiplexed model ID).
+        matched_pending_request = self._get_pending_request_matching_metadata(
+            replica, request_metadata
+        )
+        if matched_pending_request is not None:
+            matched_pending_request.future.set_result(replica)
+            self._pending_requests_to_fulfill.remove(matched_pending_request)
+            return
+
+        # If no pending request matches the request metadata, fulfill the next in the
+        # queue in FIFO order, passing over futures that have been cancelled.
+        while len(self._pending_requests_to_fulfill) > 0:
+            pr = self._pending_requests_to_fulfill.popleft()
+            if not pr.future.done():
+                pr.future.set_result(replica)
                 break
 
-    async def fulfill_pending_assignments(self):
-        """Repeatedly tries to fulfill a pending assignment with an available replica.
+    def _get_next_pending_request_metadata_to_schedule(
+        self,
+    ) -> Optional[RequestMetadata]:
+        while len(self._pending_requests_to_schedule) > 0:
+            pr = self._pending_requests_to_schedule.popleft()
+            if not pr.future.done():
+                return pr.metadata
+
+        return None
+
+    async def fulfill_pending_requests(self):
+        """Repeatedly tries to fulfill a pending request with an available replica.
 
         This is expected to be run inside a task in self._scheduling tasks.
 
@@ -384,20 +525,24 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
         try:
             while len(self._scheduling_tasks) <= self.target_num_scheduling_tasks:
-                async for candidates in self.choose_two_replicas_with_backoff():
+                request_metadata = self._get_next_pending_request_metadata_to_schedule()
+                async for candidates in self.choose_two_replicas_with_backoff(
+                    request_metadata
+                ):
                     replica = await self.select_from_candidate_replicas(candidates)
                     if replica is not None:
-                        self.fulfill_next_pending_assignment(replica)
+                        self.fulfill_next_pending_request(replica, request_metadata)
                         break
+
         except Exception:
-            logger.exception("Unexpected error in fulfill_pending_assignments.")
+            logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
             self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
 
     def maybe_start_scheduling_tasks(self):
-        """Start scheduling tasks to fulfill pending assignments if necessary.
+        """Start scheduling tasks to fulfill pending requests if necessary.
 
-        Starts tasks so that there is at least one task per pending assignment
+        Starts tasks so that there is at least one task per pending request
         (respecting the max number of scheduling tasks).
 
         In the common case, this will start a single task when a new request comes
@@ -409,7 +554,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
-                self._loop.create_task(self.fulfill_pending_assignments())
+                self._loop.create_task(self.fulfill_pending_requests())
             )
 
     async def choose_replica_for_query(self, query: Query) -> ReplicaWrapper:
@@ -422,13 +567,16 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
-        fut = asyncio.Future()
-        self._pending_assignment_futures.append(fut)
+        pending_request = PendingRequest(asyncio.Future(), query.metadata)
         try:
+            self._pending_requests_to_fulfill.append(pending_request)
+            self._pending_requests_to_schedule.append(pending_request)
             self.maybe_start_scheduling_tasks()
-            replica = await fut
-        except asyncio.CancelledError:
-            fut.cancel()
+            replica = await pending_request.future
+        except asyncio.CancelledError as e:
+            pending_request.future.cancel()
+
+            raise e from None
 
         return replica
 
@@ -438,7 +586,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
-        request, so it's up to the caller to time out or cancel the assignment.
+        request, so it's up to the caller to time out or cancel the request.
         """
         replica = await self.choose_replica_for_query(query)
         return replica.send_query(query)
@@ -490,8 +638,8 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         # Update the multiplexed_replicas_table
         new_multiplexed_replicas_table = defaultdict(list)
         for replica in replicas:
-            for mdoel_id in replica.multiplexed_model_ids:
-                new_multiplexed_replicas_table[mdoel_id].append(replica)
+            for model_id in replica.multiplexed_model_ids:
+                new_multiplexed_replicas_table[model_id].append(replica)
         self.multiplexed_replicas_table = new_multiplexed_replicas_table
 
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
