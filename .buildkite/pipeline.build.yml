@@ -10,6 +10,12 @@
   commands:
     - ./java/test.sh
 
+- label: ":java: Java (RAY_SERVE_ENABLE_NEW_ROUTING=1)"
+  conditions: ["RAY_CI_JAVA_AFFECTED"]
+  instance_size: medium
+  commands:
+    - export RAY_SERVE_ENABLE_NEW_ROUTING=1 && ./java/test.sh
+
 - label: ":serverless: Dashboard Tests"
   conditions:
     [
