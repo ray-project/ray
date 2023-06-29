@@ -128,7 +128,7 @@ Ray Data execution by default is:
 .. _datasets_lazy_execution:
 
 Lazy Execution
-~~~~~~~~~~~~~~
+--------------
 
 Lazy execution offers opportunities for improved performance and memory stability due
 to stage fusion optimizations and aggressive garbage collection of intermediate results.
@@ -149,7 +149,7 @@ much.
 .. _streaming_execution:
 
 Streaming Execution
-~~~~~~~~~~~~~~~~~~~
+-------------------
 
 The following code is a hello world example which invokes the execution with
 :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. We will also enable verbose progress reporting, which shows per-operator progress in addition to overall progress.
@@ -219,7 +219,7 @@ system failure occurs, Ray Data recreates blocks by re-executing tasks.
 .. _datasets_stage_fusion:
 
 Stage Fusion Optimization
-~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------
 
 In order to reduce memory usage and task overheads, Ray Data will automatically fuse together
 lazy operations that are compatible:
@@ -248,7 +248,7 @@ Memory Management
 This section describes how Ray Data manages execution and object store memory.
 
 Execution Memory
-~~~~~~~~~~~~~~~~
+----------------
 
 During execution, a task can read multiple input blocks, and write multiple output blocks. Input and output blocks consume both worker heap memory and shared memory via Ray's object store.
 
@@ -257,7 +257,7 @@ Ray Data attempts to bound its heap memory usage to `num_execution_slots * max_b
 Large block size can lead to potential out-of-memory situations. To avoid these issues, make sure no single item in your Ray Data is too large, and always call :meth:`ds.map_batches() <ray.data.Dataset.map_batches>` with batch size small enough such that the output batch can comfortably fit into memory.
 
 Object Store Memory
-~~~~~~~~~~~~~~~~~~~
+-------------------
 
 Ray Data uses the Ray object store to store data blocks, which means it inherits the memory management features of the Ray object store. This section discusses the relevant features:
 

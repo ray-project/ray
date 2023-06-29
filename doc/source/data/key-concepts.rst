@@ -143,6 +143,13 @@ Call methods like :meth:`~ray.data.Dataset.write_parquet` to save dataset conten
 or remote filesystems.
 
 .. testcode::
+    :hide:
+
+    # The number of blocks can be non-determinstic. Repartition the dataset beforehand
+    # so that the number of written files is consistent.
+    transformed_ds = transformed_ds.repartition(2)
+
+.. testcode::
 
     import os
 
@@ -152,7 +159,7 @@ or remote filesystems.
 
 .. testoutput::
 
-    ['..._000000.parquet']
+    ['..._000000.parquet', '..._000001.parquet']
 
 
 To learn more about saving dataset contents, see :ref:`Saving data <saving-data>`.
