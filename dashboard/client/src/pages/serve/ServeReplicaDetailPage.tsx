@@ -22,6 +22,9 @@ import { ServeReplicaMetricsSection } from "./ServeDeploymentMetricsSection";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
+    root: {
+      padding: theme.spacing(3),
+    },
     section: {
       marginTop: theme.spacing(4),
     },
@@ -61,7 +64,7 @@ export const ServeReplicaDetailPage = () => {
     start_time_s,
   } = replica;
   return (
-    <div>
+    <div className={classes.root}>
       <MainNavPageInfo
         pageInfo={{
           id: "serveReplicaDetail",

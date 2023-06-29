@@ -23,6 +23,9 @@ from ray.dashboard.datacenter import DataSource
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray.autoscaler._private.commands import debug_status
 
+from ray.util.state.common import (
+    ListApiOptions,
+)
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
@@ -112,6 +115,47 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 cluster_status=debug_status(formatted_status_string, error),
             )
 
+
+    """
+    We don't use pid and ip to get task traceback since ip and pid is bounded to a worker
+    and a worker may run different tasks at different time.
+    Therefore, we may provide wrong traceback info since we don't know which task is running on the worker
+
+    Raises:
+        ValueError: HTTPInternalServerError
+    """
+    @routes.get("/task/traceback")
+    async def get_task_traceback(self, req) -> aiohttp.web.Response:
+        ## Or we could use path instead of query
+        if "task_id" in req.query:
+                self._state_api = StateAPIManager(self._state_api_data_source_client)
+
+                task_id = req.query["task_id"]
+                option = ListApiOptions(
+                    filters=[("task_id", "=", task_id)], 
+                    detail=True,
+                    timeout=10,
+                    attempt=1,
+                )
+              task =  self._state_api.list_tasks(option, detail=True)
+
+            await self._handle_list_api(self._state_api.list_tasks, req)
+        else:
+            raise ValueError("task_id is required")
+
+
+
+    """
+    We don't use pid and ip to get task cpu profile since ip and pid is bounded to a worker
+    and a worker may run different tasks at different time.
+    Therefore, we may provide wrong traceback info since we don't know which task is running on the worker
+
+    Raises:
+        ValueError: HTTPInternalServerError
+    """
+    @routes.get("/task/cpu_profile")
+    async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
+          self._state_api = StateAPIManager(self._state_api_data_source_client)
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
         if "task_id" in req.query:

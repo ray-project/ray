@@ -10,6 +10,46 @@ type CpuProfilingLinkProps = PropsWithChildren<
   } & ClassNameProps
 >;
 
+type TaskCpuProfilingLinkProps = {
+  workerId: string | number | null | undefined;
+};
+
+export const TaskCpuStackTraceLink = ({
+  workerId,
+}: TaskCpuProfilingLinkProps) => {
+  if (!workerId) {
+    return <div></div>;
+  }
+  return (
+    <Link
+      href={`task/traceback?workerId=${workerId}`}
+      target="_blank"
+      title="Sample the current Python stack trace for this worker."
+      rel="noreferrer"
+    >
+      Stack&nbsp;Trace
+    </Link>
+  );
+};
+
+export const TaskCpuProfilingLink = ({
+  workerId,
+}: TaskCpuProfilingLinkProps) => {
+  if (!workerId) {
+    return <div></div>;
+  }
+  return (
+    <Link
+      href={`task/traceback?workerId=${workerId}`}
+      target="_blank"
+      title="Sample the current Python stack trace for this worker."
+      rel="noreferrer"
+    >
+      Stack&nbsp;Trace
+    </Link>
+  );
+};
+
 export const CpuProfilingLink = ({
   pid,
   ip,

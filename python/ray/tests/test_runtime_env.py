@@ -273,11 +273,12 @@ def test_no_spurious_worker_startup(shutdown_only, runtime_env_class):
     start = time.time()
     got_num_workers = False
     while time.time() - start < 10:
-        # Check that no more workers were started.
+        # Check that no more than one extra worker is started. We add one
+        # because Ray will prestart an idle worker for the one available CPU.
         num_workers = get_num_workers()
         if num_workers is not None:
             got_num_workers = True
-            assert num_workers <= 1
+            assert num_workers <= 2
         time.sleep(0.1)
     assert got_num_workers, "failed to read num workers for 10 seconds"
 
