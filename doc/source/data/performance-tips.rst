@@ -185,4 +185,4 @@ Monitoring your application
 ---------------------------
 
 View the Ray dashboard to monitor your application and troubleshoot issues. To learn
-more about the Ray dashboard, read :ref:`Ray Dashboard <observability-getting-started>`.
+more about the Ray dashboard, see :ref:`Ray Dashboard <observability-getting-started>`.
