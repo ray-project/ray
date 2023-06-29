@@ -168,31 +168,40 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
 
 def test_torch_conversion_collate_fn(ray_start_regular_shared):
     def collate_fn(batch: Dict[str, np.ndarray]):
-        return torch.as_tensor(batch["id"] + 5)
+        return batch["id"] + 5
+
+    def finalize_fn(batch: Dict[str, np.ndarray]):
+        return torch.as_tensor(batch)
 
     ds = ray.data.range(5)
     it = ds.iterator()
-    for batch in it.iter_torch_batches(collate_fn=collate_fn):
+    for batch in it.iter_torch_batches(collate_fn=collate_fn, finalize_fn=finalize_fn):
         assert isinstance(batch, torch.Tensor)
         assert batch.tolist() == list(range(5, 10))
 
     # Should fail.
     with pytest.raises(ValueError):
-        for batch in it.iter_torch_batches(collate_fn=collate_fn, dtypes=torch.float32):
+        for batch in it.iter_torch_batches(
+            collate_fn=collate_fn, finalize_fn=finalize_fn, dtypes=torch.float32
+        ):
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
     with pytest.raises(ValueError):
-        for batch in it.iter_torch_batches(collate_fn=collate_fn, device="cpu"):
+        for batch in it.iter_torch_batches(
+            collate_fn=collate_fn, finalize_fn=finalize_fn, device="cpu"
+        ):
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
-    # Test that we don't automatically set device if collate_fn is specified.
+    # Test that we don't automatically set device if finalize_fn is specified.
     with patch(
         "ray.air._internal.torch_utils.get_device", lambda: torch.device("cuda")
     ):
         assert ray.air._internal.torch_utils.get_device().type == "cuda"
-        for batch in it.iter_torch_batches(collate_fn=collate_fn):
+        for batch in it.iter_torch_batches(
+            collate_fn=collate_fn, finalize_fn=finalize_fn
+        ):
             assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
