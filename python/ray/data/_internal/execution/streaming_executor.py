@@ -143,6 +143,9 @@ class StreamingExecutor(Executor, threading.Thread):
 
         return StreamIterator(self)
 
+    def __del__(self):
+        self.shutdown()
+
     def shutdown(self):
         context = DataContext.get_current()
         global _num_shutdown
