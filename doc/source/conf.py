@@ -101,6 +101,7 @@ myst_enable_extensions = [
     "smartquotes",
     "replacements",
 ]
+myst_heading_anchors = 3
 
 
 # Cache notebook outputs in _build/.jupyter_cache

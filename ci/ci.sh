@@ -122,7 +122,7 @@ compile_pip_dependencies() {
   if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
     # Resolution currently does not work on aarch64 as some pinned packages
     # are not available. Once they are reasonably upgraded we should be able
-    # to enable this here.
+    # to enable this here.p
     echo "Skipping for aarch64"
     return 0
   fi
