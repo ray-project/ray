@@ -85,6 +85,8 @@ message ClusterResourceConstraint {
 
 // Node status for a ray node.
 enum NodeStatus {
+  // Unknown state.
+  UNKNOWN = 0;
   // Node is alive and running workloads.
   RUNNING = 1;
   // Node is dead.
