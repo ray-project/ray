@@ -30,8 +30,10 @@ class Textbot:
         self.model_id = model_id
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
-# __textbot_constructor_end__
 
+    # __textbot_constructor_end__
+
+    # __textbot_logic_start__
     @fastapi_app.post("/")
     def handle_request(self, prompt: str):
         logger.info(f'Got prompt: "{prompt}"')
@@ -55,10 +57,18 @@ class Textbot:
                     yield token
                 break
             except Empty:
+                # The streamer raises an Empty exception if the next token
+                # hasn't been generated yet. `await` here to yield control
+                # back to the event loop so other coroutines can run.
                 await asyncio.sleep(0.01)
 
+    # __textbot_logic_end__
 
+
+# __textbot_bind_start__
 app = Textbot.bind("microsoft/DialoGPT-small")
+# __textbot_bind_end__
+
 
 serve.run(app)
 
@@ -72,6 +82,8 @@ response = requests.post(f"http://localhost:8000/?prompt={prompt}", stream=True)
 response.raise_for_status()
 for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
     print(chunk, end="")
+
+    # Dogs are the best.
     # __stream_client_end__
     chunks.append(chunk)
 
