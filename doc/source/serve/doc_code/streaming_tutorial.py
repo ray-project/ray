@@ -1,71 +1,162 @@
-import os
-import json
+# flake8: noqa
+# fmt: off
+
+from typing import List
+
+# __setup_start__
 import asyncio
 import logging
+from queue import Empty
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
-from starlette.requests import Request
+from fastapi import FastAPI
 from starlette.responses import StreamingResponse
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
 
 from ray import serve
 
 logger = logging.getLogger("ray.serve")
+# __setup_end__
 
+fastapi_app = FastAPI()
+
+
+# __basic_chatbot_start__
 @serve.deployment
-class Textbot:
-    def __init__(self, use_gpu: bool):
+@serve.ingress(fastapi_app)
+class Chatbot:
+    def __init__(self, model_id):
         self.loop = asyncio.get_running_loop()
-        self.tokenizer = AutoTokenizer.from_pretrained("EleutherAI/gpt-j-6B")
-        self.use_gpu = use_gpu
-        self.model = self.load_model()
 
-    def load_model(self):
-        if self.use_gpu:
-            logger.info("Loading model onto GPU")
-            model = AutoModelForCausalLM.from_pretrained(
-                "EleutherAI/gpt-j-6B",
-                revision="float16",
-                torch_dtype=torch.float16,
-            ).to("cuda")
-        else:
-            logger.info("Loading model onto CPU")
-            model = AutoModelForCausalLM.from_pretrained(
-                "EleutherAI/gpt-j-6B",
-            )
+        self.model_id = model_id
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
 
-        logger.info("Done loading model")
-        return model
+    @fastapi_app.post("/")
+    def handle_request(self, prompt: str):
+        logger.info(f'Got prompt: "{prompt}"')
+        streamer = TextIteratorStreamer(
+            self.tokenizer, timeout=0, skip_prompt=True, skip_special_tokens=True
+        )
+        self.loop.run_in_executor(None, self.generate_text, prompt, streamer)
+        return StreamingResponse(
+            self.consume_streamer(streamer), media_type="text/plain"
+        )
 
-    def generate_text(self, prompt: str, streamer: TextIteratorStreamer, max_response_length: int):
+    def generate_text(self, prompt: str, streamer: TextIteratorStreamer):
         input_ids = self.tokenizer([prompt], return_tensors="pt").input_ids
-        if self.use_gpu:
-            input_ids = input_ids.to("cuda")
-
-        self.model.generate(input_ids, streamer=streamer, max_length=max_response_length)
+        self.model.generate(input_ids, streamer=streamer, max_length=1000)
 
     async def consume_streamer(self, streamer: TextIteratorStreamer):
-        for tok in streamer:
-            logger.info(f"YIELDING TOK: '{tok}'")
-            yield tok
-            await asyncio.sleep(0.01)
+        while True:
+            try:
+                for token in streamer:
+                    logger.info(f'Yielding token: "{token}"')
+                    yield token
+                break
+            except Empty:
+                await asyncio.sleep(0.01)
 
-    async def __call__(self, request: Request):
-        prompt = (await request.json())["prompt"]
-        max_response_length = int(request.query_params.get("max_response_length", "100"))
-        logger.info(f"Got prompt: {prompt}")
 
-        streamer = TextIteratorStreamer(self.tokenizer, skip_prompt=True)
-        self.loop.run_in_executor(None, self.generate_text, prompt, streamer, max_response_length)
+app = Chatbot.bind("microsoft/DialoGPT-small")
+# __basic_chatbot_end__
 
-        return StreamingResponse(self.consume_streamer(streamer), media_type="text/plain")
+serve.run(app)
 
-def build_app(args):
-    use_gpu = args.get("use_gpu", False) or os.environ.get("USE_GPU", "0") == "1"
+chunks = []
+# __stream_client_start__
+import requests
 
-    if use_gpu:
-        app = Textbot.options(ray_actor_options={"num_gpus": 1}).bind(use_gpu=True)
-    else:
-        app = Textbot.bind(use_gpu=False)
+prompt = "Tell me a story about dogs."
 
-    return app
+response = requests.post(f"http://localhost:8000/?prompt={prompt}", stream=True)
+response.raise_for_status()
+for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
+    print(chunk, end="")
+    # __stream_client_end__
+    chunks.append(chunk)
+
+# Check that streaming is happening.
+assert chunks == ["Dogs ", "are ", "the ", "best."]
+
+
+# __batched_streamer_start__
+from queue import Queue
+
+
+class RawStreamer:
+    def __init__(self, timeout: float = None):
+        self.q = Queue()
+        self.stop_signal = None
+        self.timeout = timeout
+
+    def put(self, values):
+        self.q.put(values)
+
+    def end(self):
+        self.q.put(self.stop_signal)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        result = self.q.get(timeout=self.timeout)
+        if result == self.stop_signal:
+            raise StopIteration()
+        else:
+            return result
+
+
+# __batched_streamer_end__
+
+
+@serve.deployment
+@serve.ingress(fastapi_app)
+class Chatbot:
+    def __init__(self, model_id):
+        self.loop = asyncio.get_running_loop()
+
+        self.model_id = model_id
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+        self.tokenizer.pad_token = self.tokenizer.eos_token
+
+    @fastapi_app.post("/")
+    async def handle_request(self, prompt: str):
+        logger.info(f'Got prompt: "{prompt}"')
+        return StreamingResponse(self.run_model(prompt), media_type="text/plain")
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=15)
+    async def run_model(self, prompts: List[str]):
+        streamer = RawStreamer()
+        self.loop.run_in_executor(None, self.generate_text, prompts, streamer)
+        on_prompt_tokens = True
+        async for decoded_token_batch in self.consume_streamer(streamer):
+            # The first batch of tokens contains the prompts, so we skip it.
+            if not on_prompt_tokens:
+                logger.info(f"Yielding decoded_token_batch: {decoded_token_batch}")
+                yield decoded_token_batch
+            else:
+                logger.info(f"Skipped prompts: {decoded_token_batch}")
+                on_prompt_tokens = False
+
+    def generate_text(self, prompts: str, streamer: RawStreamer):
+        input_ids = self.tokenizer(prompts, return_tensors="pt", padding=True).input_ids
+        self.model.generate(input_ids, streamer=streamer, max_length=1000)
+
+    async def consume_streamer(self, streamer: RawStreamer):
+        while True:
+            try:
+                for token_batch in streamer:
+                    decoded_tokens = []
+                    for token in token_batch:
+                        decoded_tokens.append(
+                            self.tokenizer.decode(token, skip_special_tokens=True)
+                        )
+                    logger.info(f"Yielding decoded tokens: {decoded_tokens}")
+                    yield decoded_tokens
+                break
+            except Empty:
+                await asyncio.sleep(0.01)
+
+
+app = Chatbot.bind("microsoft/DialoGPT-small")
