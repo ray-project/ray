@@ -22,6 +22,8 @@
 
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
+#include <boost/asio.hpp>
+#include <boost/asio/experimental/parallel_group.hpp>
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -1605,46 +1607,60 @@ Status CoreWorker::GetLocationFromOwner(
     return Status::OK();
   }
 
-  auto mutex = std::make_shared<absl::Mutex>();
   auto num_remaining = std::make_shared<size_t>(object_ids.size());
   auto ready_promise = std::make_shared<std::promise<void>>();
   auto location_by_id =
       std::make_shared<absl::flat_hash_map<ObjectID, std::shared_ptr<ObjectLocation>>>();
 
-  for (const auto &object_id : object_ids) {
+  auto get_location = [this](const ObjectID &object_id) -> boost::asio::awaitable<std::pair<Status, rpc::GetObjectLocationsOwnerReply>>{
     rpc::Address owner_address;
-    RAY_RETURN_NOT_OK(GetOwnerAddress(object_id, &owner_address));
-    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
+    auto status = GetOwnerAddress(object_id, &owner_address);
     rpc::GetObjectLocationsOwnerRequest request;
+    rpc::GetObjectLocationsOwnerReply reply;
+    if (!status.ok()) {
+      co_return std::make_pair(status, reply);
+    }
+    auto client = core_worker_client_pool_->GetOrConnect(owner_address);
     auto object_location_request = request.mutable_object_location_request();
     object_location_request->set_intended_worker_id(owner_address.worker_id());
     object_location_request->set_object_id(object_id.Binary());
-    client->GetObjectLocationsOwner(
+    std::tie(status, reply) = co_await client->GetObjectLocationsOwner(
         request,
-        [object_id, mutex, num_remaining, ready_promise, location_by_id](
-            const Status &status, const rpc::GetObjectLocationsOwnerReply &reply) {
-          absl::MutexLock lock(mutex.get());
-          if (status.ok()) {
-            location_by_id->emplace(
-                object_id, std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
-          } else {
-            RAY_LOG(WARNING) << "Failed to query location information for " << object_id
-                             << " with error: " << status.ToString();
-          }
-          (*num_remaining)--;
-          if (*num_remaining == 0) {
-            ready_promise->set_value();
-          }
-        });
+        boost::asio::use_awaitable);
+    co_return std::make_pair(status, std::move(reply));
+  };
+
+  using T = decltype(boost::asio::co_spawn(io_service_, get_location(ObjectID()), boost::asio::deferred));
+
+  std::vector<T> works;
+  for (const auto &object_id : object_ids) {
+    works.push_back(boost::asio::co_spawn(io_service_, get_location(object_id), boost::asio::deferred));
   }
+
+  auto future = boost::asio::experimental::make_parallel_group(std::move(works)).async_wait(
+      boost::asio::experimental::wait_for_all(),
+      boost::asio::use_future);
+
   if (timeout_ms < 0) {
-    ready_promise->get_future().wait();
-  } else if (ready_promise->get_future().wait_for(
+    future.wait();
+  } else if (future.wait_for(
                  std::chrono::microseconds(timeout_ms)) != std::future_status::ready) {
     std::ostringstream stream;
     stream << "Failed querying object locations within " << timeout_ms
            << " milliseconds.";
     return Status::TimedOut(stream.str());
+  }
+
+  auto [_, ex, result]  = std::move(future).get();
+
+  for(size_t i = 0; i < object_ids.size(); i++){
+    auto& [status, reply] = result[i];
+    if (status.ok()) {
+      location_by_id->emplace(
+          object_ids[i], std::make_shared<ObjectLocation>(CreateObjectLocation(reply)));
+    } else {
+      location_by_id->emplace(object_ids[i], nullptr);
+    }
   }
 
   for (size_t i = 0; i < object_ids.size(); i++) {

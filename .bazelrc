@@ -38,9 +38,9 @@ build:windows --enable_runfiles
 #                 for compiling assembly files is fixed on Windows:
 #                 https://github.com/bazelbuild/bazel/issues/8924
 # Warnings should be errors
-build:gcc --cxxopt="-fcoroutines"
-build:gcc --cxxopt="-DBOOST_ASIO_HAS_CO_AWAIT"
-build:gcc --cxxopt="-DBOOST_ASIO_HAS_STD_COROUTINE"
+build:linux --cxxopt="-fcoroutines"
+build:linux --cxxopt="-DBOOST_ASIO_HAS_CO_AWAIT"
+build:linux --cxxopt="-DBOOST_ASIO_HAS_STD_COROUTINE"
 
 build:clang-cl --cxxopt="-fcoroutines-ts"
 build:clang-cl --cxxopt="-DBOOST_ASIO_HAS_CO_AWAIT"
