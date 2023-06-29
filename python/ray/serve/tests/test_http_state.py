@@ -690,7 +690,6 @@ def test_is_shutdown(mock_get_all_node_ids, setup_controller, all_nodes):
     `shutdown()` is called and all proxy actor are killed, `is_shutdown()` should
     return true.
     """
-    worker_node_id = all_nodes[1][0]
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
 
     for node_id, node_ip_address in all_nodes:
