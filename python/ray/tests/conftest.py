@@ -217,7 +217,7 @@ def start_redis(db_dir):
 
         if redis_replicas() > 1:
 
-            redis_cli = get_redis_cli(str(leader_port), True)
+            redis_cli = get_redis_cli(str(leader_port), enable_tls)
             while redis_cli.cluster("info")["cluster_state"] != "ok":
                 pass
 
