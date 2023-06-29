@@ -166,7 +166,7 @@ Locality with output (ML ingest use case)
 
    ctx.execution_options.locality_with_output = True
 
-Setting this to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This can be useful if you know you'll be consuming the output data directly on the consumer node (i.e., for ML training ingest). However, this may incur a performance penalty for other use cases.
+Setting this parameter to True tells Ray Data to prefer placing operator tasks onto the consumer node in the cluster, rather than spreading them evenly across the cluster. This setting can be useful if you know you are consuming the output data directly on the consumer node (i.e., for ML training ingest). However, other use cases may incur a performance penalty with this setting.
 
 Reproducibility
 ---------------
