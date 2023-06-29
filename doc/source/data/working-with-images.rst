@@ -26,7 +26,14 @@ To view the full list of supported file formats, see the
 
     .. tab-item:: Raw images
 
-        To load raw images, call :func:`~ray.data.read_images`.
+        To load raw images like JPEG files, call :func:`~ray.data.read_images`.
+
+        .. note::
+
+            :func:`~ray.data.read_images` uses
+            `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_. For a list of
+            supported file formats, see
+            `Image file formats <https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html>`_.
 
         .. testcode::
 
