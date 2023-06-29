@@ -11,7 +11,7 @@ is a distributed collection of data. Datasets represent data collections that ma
 
 Ray Data provides APIs for :ref:`loading data <loading_key_concept>`,
 :ref:`transforming data <transforming_key_concept>` in parallel,
-:ref:`consuming data <consuming_key_concept>`, and :ref:`saving data <saving_key_concept>.
+:ref:`consuming data <consuming_key_concept>`, and :ref:`saving data <saving_key_concept>`.
 
 .. _loading_key_concept:
 
