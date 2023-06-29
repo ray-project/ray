@@ -199,6 +199,7 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_minimal_install.py",
     "test_numba.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
