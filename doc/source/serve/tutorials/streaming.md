@@ -14,20 +14,20 @@ This tutorial should help you with following use cases:
 * You want to serve a large language model that should stream results back token-by-token.
 * You want to serve a chatbot that must accept a stream of requests from the user.
 
-# Create a Streaming Deployment
-
 This tutorial serves the [DialoGPT](https://huggingface.co/microsoft/DialoGPT-small) language model. Install the HuggingFace library to access it:
 
 ```
 pip install transformers
 ```
 
+# Create a Streaming Deployment
+
 Open a new Python file called `textbot.py`. First, add the imports and the Serve logger.
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
 :language: python
-:start-after: __setup_start__
-:end-before: __setup_end__
+:start-after: __textbot_setup_start__
+:end-before: __textbot_setup_end__
 ```
 
 Create a FastAPI deployment, and initialize the model and the tokenizer in the
@@ -70,3 +70,66 @@ Run the model with `serve run textbot:app`, and query it from another terminal w
 :start-after: __stream_client_start__
 :end-before: __stream_client_end__
 ```
+
+You should see the output printed token by token.
+
+# Add WebSocket Support
+
+WebSockets let you stream input into a deployment and stream output back to the client. You can use this to create a chatbot that stores a conversation with a user.
+
+Create a Python file called `chatbot.py`. First add the imports:
+
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __chatbot_setup_start__
+:end-before: __chatbot_setup_end__
+```
+
+Create a FastAPI deployment, and initialize the model and the tokenizer in the
+constructor:
+
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __chatbot_constructor_start__
+:end-before: __chatbot_constructor_end__
+```
+
+Add the following logic to handle requests sent to the `Chatbot`:
+
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __chatbot_logic_start__
+:end-before: __chatbot_logic_end__
+```
+
+The `generate_text` and `consume_streamer` methods are the same as they were for the `Textbot`. The `handle_request` method has been updated to handle WebSocket requests.
+
+The `handle_request` method is decorated with a `fastapi_app.websocket` decorator, which lets it accept WebSocket requests. First it `awaits` to accept the client's WebSocket request. Then, until the client disconnects, it does the following:
+
+* gets the prompt from the client with `ws.receive_text`
+* starts a new `TextIteratorStreamer` to access generated tokens
+* runs the model in a background thread on the conversation so far
+* streams the model's output back using `ws.send_text`
+* stores the prompt and the response in the `conversation` string
+
+Each time `handle_request` gets a new prompt from a client, it runs the whole conversation– with the new prompt appended– through the model. When it the model is finished generating tokens, `handle_request` sends the `"<<Response Finished>>"` string to inform the client that all tokens have been generated. `handle_request` continues to run until the client explicitly disconnects. This raises a `WebSocketDisconnect` exception, which ends the call.
+
+Read more about WebSockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
+
+Bind the `Chatbot` to a language model. For this tutorial, use the `"microsoft/DialoGPT-small"` model:
+
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __chatbot_bind_start__
+:end-before: __chatbot_bind_end__
+```
+
+Run the model with `serve run chatbot:app`. Query it using the `websockets` package (`pip install websockets`):
+
+```{literalinclude} ../doc_code/streaming_tutorial.py
+:language: python
+:start-after: __ws_client_start__
+:end-before: __ws_client_end__
+```
+
+You should see the outputs printed token by token.

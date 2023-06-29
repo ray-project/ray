@@ -3,7 +3,7 @@
 
 from typing import List
 
-# __setup_start__
+# __textbot_setup_start__
 import asyncio
 import logging
 from queue import Empty
@@ -15,12 +15,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStream
 from ray import serve
 
 logger = logging.getLogger("ray.serve")
-# __setup_end__
-
-fastapi_app = FastAPI()
+# __textbot_setup_end__
 
 
 # __textbot_constructor_start__
+fastapi_app = FastAPI()
+
+
 @serve.deployment
 @serve.ingress(fastapi_app)
 class Textbot:
@@ -91,7 +92,22 @@ for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
 assert chunks == ["Dogs ", "are ", "the ", "best."]
 
 
+# __chatbot_setup_start__
+import asyncio
+import logging
+from queue import Empty
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from transformers import AutoModelForCausalLM, AutoTokenizer, TextIteratorStreamer
+
+from ray import serve
+
+logger = logging.getLogger("ray.serve")
+# __chatbot_setup_end__
+
+
+# __chatbot_constructor_start__
+fastapi_app = FastAPI()
 
 
 @serve.deployment
@@ -104,6 +120,9 @@ class Chatbot:
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
 
+    # __chatbot_constructor_end__
+
+    # __chatbot_logic_start__
     @fastapi_app.websocket("/")
     async def handle_request(self, ws: WebSocket):
         await ws.accept()
@@ -128,7 +147,7 @@ class Chatbot:
                     await ws.send_text(text)
                     response += text
                 await ws.send_text("<<Response Finished>>")
-                conversation += response  # + self.tokenizer.eos_token
+                conversation += response
         except WebSocketDisconnect:
             print("Client disconnected.")
 
@@ -147,7 +166,12 @@ class Chatbot:
                 await asyncio.sleep(0.01)
 
 
+# __chatbot_logic_end__
+
+
+# __chatbot_bind_start__
 app = Chatbot.bind("microsoft/DialoGPT-small")
+# __chatbot_bind_end__
 
 serve.run(app)
 
