@@ -208,6 +208,10 @@ RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
     os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
 )
 
+# Request ID used for logging. Can be provided as a request
+# header and will always be returned as a response header.
+RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
+
 # Feature flag to enable power of two choices routing.
 RAY_SERVE_ENABLE_NEW_ROUTING = (
     os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "0") == "1"
