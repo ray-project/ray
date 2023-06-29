@@ -17,8 +17,7 @@
 namespace ray {
 namespace rpc {
 
-optional<shared_ptr<CoreWorkerClient>> CoreWorkerClientPool::GetByID(
-    ray::WorkerID id) {
+optional<shared_ptr<CoreWorkerClient>> CoreWorkerClientPool::GetByID(ray::WorkerID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {

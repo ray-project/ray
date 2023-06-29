@@ -313,14 +313,15 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
             RAY_LOG(ERROR) << "Failed to connect to node: " << alive_node.first
                            << ". Skip this round of pulling for resource load";
           } else {
-            raylet_client->GetResourceLoad([this](Status status, rpc::GetResourceLoadReply load) {
-              if (status.ok()) {
-                gcs_resource_manager_->UpdateResourceLoads(load.resources());
-              } else {
-                RAY_LOG_EVERY_N(WARNING, 10)
-                    << "Failed to get the resource load: " << status.ToString();
-              }
-            });
+            raylet_client->GetResourceLoad(
+                [this](Status status, rpc::GetResourceLoadReply load) {
+                  if (status.ok()) {
+                    gcs_resource_manager_->UpdateResourceLoads(load.resources());
+                  } else {
+                    RAY_LOG_EVERY_N(WARNING, 10)
+                        << "Failed to get the resource load: " << status.ToString();
+                  }
+                });
           }
         }
       },

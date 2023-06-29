@@ -145,8 +145,7 @@ class OwnershipBasedObjectDirectory : public IObjectDirectory {
   absl::flat_hash_set<WorkerID> in_flight_requests_;
 
   /// Get or create the rpc client in the worker_rpc_clients.
-  std::shared_ptr<rpc::CoreWorkerClient> GetClient(
-      const rpc::Address &owner_address);
+  std::shared_ptr<rpc::CoreWorkerClient> GetClient(const rpc::Address &owner_address);
 
   /// Internal callback function used by object location subscription.
   void ObjectLocationSubscriptionCallback(

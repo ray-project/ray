@@ -792,7 +792,8 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
     pull_manager_->UpdatePullsBasedOnAvailableMemory(available_memory);
   };
 
-  plasma::plasma_store_runner->GetAvailableMemoryAsync(boost::asio::bind_executor(*main_service_, cb));
+  plasma::plasma_store_runner->GetAvailableMemoryAsync(
+      boost::asio::bind_executor(*main_service_, cb));
 
   pull_manager_->Tick();
 
