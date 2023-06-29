@@ -5,7 +5,8 @@ Key Concepts
 
 Learn about :class:`Dataset <ray.data.Dataset>` and the functionality it provides.
 
-This guide shows you how to:
+This guide provides simple examples of how to:
+
 * :ref:`Load data <loading_key_concept>`
 * :ref:`Transform data <transforming_key_concept>`
 * :ref:`Consume data <consuming_key_concept>`
