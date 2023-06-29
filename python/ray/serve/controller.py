@@ -49,7 +49,7 @@ from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
 )
-from ray.serve._private.long_poll import LongPollHost
+from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -186,6 +186,9 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
+        self._head_node_id = head_node_id
+        self._active_nodes = set()
+        self._update_active_nodes()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -279,6 +282,20 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
+    def _update_active_nodes(self):
+        """Update the active nodes set.
+
+        Controller keeps the state of active nodes (head node and nodes with deployment
+        replicas). If the active nodes set changes, it will notify the long poll client.
+        """
+        new_active_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_active_nodes.add(self._head_node_id)
+        if self._active_nodes != new_active_nodes:
+            self._active_nodes = new_active_nodes
+            self.long_poll_host.notify_changed(
+                LongPollNamespace.ACTIVE_NODES, self._active_nodes
+            )
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
@@ -296,12 +313,16 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
+            # Update the active nodes set before updating the HTTP states, so they
+            # are more consistent.
+            self._update_active_nodes()
+
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
             if self.http_state and self.done_recovering_event.is_set():
                 try:
-                    self.http_state.update()
+                    self.http_state.update(active_nodes=self._active_nodes)
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
@@ -813,7 +834,7 @@ def deploy_serve_application(
     route_prefix: str,
     name: str,
     args: Dict,
-):
+) -> Optional[str]:
     """Deploy Serve application from a user-provided config.
 
     Args:
@@ -827,6 +848,8 @@ def deploy_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         route_prefix: route_prefix. Define the route path for the application.
+    Returns:
+        Returns None if no error is raised. Otherwise, returns error message.
     """
     try:
         from ray import serve
@@ -884,6 +907,8 @@ def deploy_serve_application(
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
         logger.debug("Existing config deployment request terminated.")
+    except Exception as e:
+        return repr(e)
 
 
 @ray.remote(num_cpus=0)

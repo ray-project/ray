@@ -17,6 +17,7 @@ show you how achieve several tasks.
     inspecting-data
     iterating-over-data
     saving-data
+    working-with-text
     working-with-tensors
     working-with-images
     data-internals
