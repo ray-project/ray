@@ -114,7 +114,7 @@ Ray has special support to improve the visibility of stdout and stderr produced 
 
 For the following code:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     # Initiate a driver.
