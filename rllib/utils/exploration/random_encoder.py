@@ -2,12 +2,12 @@ from gymnasium.spaces import Box, Discrete, Space
 import numpy as np
 from typing import List, Optional, Union
 
-from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
@@ -79,7 +79,7 @@ class _MovingMeanStd:
         return np.sqrt(self.var)
 
 
-@PublicAPI
+@Deprecated(error=False)
 def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float:
     """Update beta based on schedule and training step.
 
@@ -97,7 +97,7 @@ def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float
     return beta
 
 
-@PublicAPI
+@Deprecated(error=False)
 def compute_states_entropy(
     obs_embeds: np.ndarray, embed_dim: int, k_nn: int
 ) -> np.ndarray:
@@ -117,7 +117,7 @@ def compute_states_entropy(
     return dist.argsort(axis=-1)[:, :k_nn][:, -1].astype(np.float32)
 
 
-@PublicAPI
+@Deprecated(error=False)
 class RE3(Exploration):
     """Random Encoder for Efficient Exploration.
 

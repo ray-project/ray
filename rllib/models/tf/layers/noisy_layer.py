@@ -7,6 +7,8 @@ from ray.rllib.utils.framework import (
     TensorType,
     TensorShape,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -47,6 +49,10 @@ class NoisyLayer(tf.keras.layers.Layer if tf else object):
         self.b = None  # Biases.
         self.sigma_w = None  # Noise for weight matrix
         self.sigma_b = None  # Noise for biases.
+        if log_once("noisy_layer"):
+            deprecation_warning(
+                old="rllib.models.tf.layers.NoisyLayer",
+            )
 
     def build(self, input_shape: TensorShape):
         in_size = int(input_shape[1])

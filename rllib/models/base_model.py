@@ -23,6 +23,8 @@ from ray.rllib.utils.annotations import (
     override,
     ExperimentalAPI,
 )
+from ray.rllib.utils.deprecation import deprecation_warning, Deprecated
+from ray.util import log_once
 
 
 ForwardOutputType = TensorDict
@@ -56,6 +58,10 @@ class RecurrentModel(abc.ABC):
     """
 
     def __init__(self, name: Optional[str] = None):
+        if log_once("recurrent_model_deprecation"):
+            deprecation_warning(
+                old="ray.rllib.models.base_model.RecurrentModel",
+            )
         self._name = name or self.__class__.__name__
 
     @property
@@ -201,6 +207,7 @@ class RecurrentModel(abc.ABC):
         return outputs, next_state
 
 
+@Deprecated(error=False)
 class Model(RecurrentModel):
     """A RecurrentModel made non-recurrent by ignoring
     the input/output states.
@@ -299,6 +306,8 @@ class ModelIO(abc.ABC):
     """
 
     def __init__(self, config: ModelConfig) -> None:
+        if log_once("rllib_base_model_io_deprecation"):
+            deprecation_warning(old="ray.rllib.models.base_model.ModelIO")
         self._config = config
 
     @DeveloperAPI

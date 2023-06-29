@@ -2,13 +2,14 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.torch_policy import TorchPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.schedules import PiecewiseSchedule
 
 torch, nn = try_import_torch()
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class LearningRateSchedule:
     """Mixin for TorchPolicy that adds a learning rate schedule."""
 
@@ -35,7 +36,7 @@ class LearningRateSchedule:
                     p["lr"] = self.cur_lr
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class EntropyCoeffSchedule:
     """Mixin for TorchPolicy that adds entropy coeff decay."""
 
@@ -74,6 +75,7 @@ class EntropyCoeffSchedule:
             )
 
 
+@Deprecated(error=False)
 class KLCoeffMixin:
     """Assigns the `update_kl()` method to a TorchPolicy.
 
@@ -112,6 +114,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
+@Deprecated(error=False)
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TorchPolicy.
 
@@ -171,6 +174,7 @@ class ValueNetworkMixin:
         }
 
 
+@Deprecated(error=False)
 class TargetNetworkMixin:
     """Mixin class adding a method for (soft) target net(s) synchronizations.
 
