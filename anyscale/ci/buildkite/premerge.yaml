@@ -1,12 +1,18 @@
 steps:
-  - name: "Build wheels"
+  - name: "{{matrix}} wheel"
     command:
       - source anyscale/ci/setup-artifacts-dir.sh
       - /bin/bash anyscale/ci/build-forge.sh
-      - /bin/bash anyscale/ci/build-wheels.sh
+      - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
     agents:
       queue: "large"
     artifact_paths:
       - "/artifacts/**/*"
     env:
       BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+    matrix:
+      - "py37"
+      - "py38"
+      - "py39"
+      - "py310"
+      - "py311"
