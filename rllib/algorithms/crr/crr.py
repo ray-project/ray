@@ -7,6 +7,7 @@ from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_TRAINED,
@@ -197,6 +198,12 @@ class CRRConfig(AlgorithmConfig):
 NUM_GRADIENT_UPDATES = "num_grad_updates"
 
 
+@Deprecated(
+    old="rllib/algorithms/crr/",
+    new="rllib_contrib/crr/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class CRR(Algorithm):
 
     # TODO: we have a circular dependency for get
