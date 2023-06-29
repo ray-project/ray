@@ -179,7 +179,7 @@ Deterministic execution
    # By default, this is set to False.
    ctx.execution_options.preserve_order = True
 
-To enable deterministic execution, set the above to True. This may decrease performance, but will ensure block ordering is preserved through execution. This flag defaults to False.
+To enable deterministic execution, set the above to True. This setting may decrease performance, but ensures block ordering is preserved through execution. This flag defaults to False.
 
 Monitoring your application
 ---------------------------
