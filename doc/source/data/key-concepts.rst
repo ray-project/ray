@@ -1,107 +1,165 @@
 .. _data_key_concepts:
 
-============
 Key Concepts
 ============
 
-.. _dataset_concept:
+Datasets
+--------
 
-----------
-Dataset
-----------
+Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
+is a distributed collection of data. Datasets represent data collections that may exceed a single machine's memory.
 
-A :term:`Dataset <Dataset (object)>` operates over a sequence of Ray object references to :term:`blocks <Block>`.
-Each block holds a set of records in an `Arrow table <https://arrow.apache.org/docs/python/data.html#tables>`_ or
-`pandas DataFrame <https://pandas.pydata.org/docs/reference/frame.html>`_.
-Having multiple blocks in a dataset allows for parallel transformation and ingest.
+Ray Data provides APIs for :ref:`loading data <loading_key_concept>`,
+:ref:`transforming data <transforming_key_concept>` in parallel,
+:ref:`consuming data <consuming_key_concept>`, and :ref:`saving data <saving_key_concept>`.
 
-For ML use cases, Dataset natively supports mixing tensors with tabular data. To
-learn more, read :ref:`Working with tensor data <working_with_tensors>`.
+.. _loading_key_concept:
 
-The following figure visualizes a dataset with three blocks, each holding 1000 rows. Note that certain blocks
-may not be computed yet. Normally, callers iterate over dataset blocks in a streaming fashion, so that not all
-blocks need to be materialized in the cluster memory at once.
+Loading data
+------------
 
-.. image:: images/dataset-arch.svg
+Create datasets from on-disk files, Python objects, and cloud storage services like S3.
+Ray Data can read from any `filesystem supported by Arrow
+<http://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html>`__.
 
-..
-  https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
+.. testcode::
 
-Reading Data
-============
+    import ray
 
-Dataset uses Ray tasks to read data from remote storage in parallel. Each read task reads one or more files and produces one or more output blocks:
+    ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+    ds.show(limit=1)
 
-.. image:: images/dataset-read.svg
-   :align: center
+.. testoutput::
 
-..
-  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+    {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 
-You can increase or decrease the number of output blocks by changing the ``parallelism`` parameter.
+To learn more about creating datasets, read :ref:`Loading data <loading_data>`.
 
-For an in-depth guide on creating datasets, read :ref:`Loading Data <loading_data>`.
+.. _transforming_key_concept:
 
-Transforming Data
-=================
+Transforming data
+-----------------
 
-Dataset uses either Ray tasks or Ray actors to transform data blocks. By default, it uses tasks.
+Apply user-defined functions (UDFs) to transform datasets. Ray executes transformations
+in parallel for performance.
 
-To use Actors, pass an :class:`ActorPoolStrategy` to ``compute`` in methods like
-:meth:`~ray.data.Dataset.map_batches`. :class:`ActorPoolStrategy` creates an autoscaling
-pool of Ray actors. This allows you to cache expensive state initialization
-(e.g., model loading for GPU-based tasks).
+.. testcode::
 
-.. image:: images/dataset-map.svg
-   :align: center
-..
-  https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
+    from typing import Dict
+    import numpy as np
 
-For an in-depth guide on transforming datasets, read :ref:`Transforming Data <transforming_data>`.
+    # Compute a "petal area" attribute.
+    def transform_batch(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+        vec_a = batch["petal length (cm)"]
+        vec_b = batch["petal width (cm)"]
+        batch["petal area (cm^2)"] = vec_a * vec_b
+        return batch
 
-Shuffling Data
-==============
+    transformed_ds = ds.map_batches(transform_batch)
+    print(transformed_ds.materialize())
 
-Operations like :meth:`~ray.data.Dataset.sort` and :meth:`~ray.data.Dataset.groupby`
-require blocks to be partitioned by value or *shuffled*. Dataset uses tasks to shuffle blocks in a map-reduce
-style: map tasks partition blocks by value and then reduce tasks merge co-partitioned
-blocks.
+.. testoutput::
 
-Call :meth:`~ray.data.Dataset.repartition` to change the number of blocks in a :class:`~ray.data.Dataset`.
-Repartition has two modes:
+    MaterializedDataset(
+       num_blocks=...,
+       num_rows=150,
+       schema={
+          sepal length (cm): double,
+          sepal width (cm): double,
+          petal length (cm): double,
+          petal width (cm): double,
+          target: int64,
+          petal area (cm^2): double
+       }
+    )
 
-* ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
-* ``shuffle=True`` - performs a full distributed shuffle
+To learn more about transforming datasets, read
+:ref:`Transforming data <transforming_data>`.
 
-.. image:: images/dataset-shuffle.svg
-   :align: center
+.. _consuming_key_concept:
 
-..
-  https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+Consuming data
+--------------
 
-Dataset can shuffle multi-terabyte datasets, leveraging the Ray object store for disk spilling. For an in-depth guide on shuffle performance, read :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
-Note that operations like shuffle materialize the entire Dataset prior to their execution (shuffle execution is not streamed through memory).
+Pass datasets to Ray Tasks or Actors, and access records with methods like
+:meth:`~ray.data.Dataset.take_batch` and :meth:`~ray.data.Dataset.iter_batches`.
 
-Iteration and materialization
-=============================
+.. tab-set::
 
-Most transformations on a dataset are lazy. They don't execute until you iterate over the dataset or call
-:meth:`Dataset.materialize() <ray.data.Dataset.materialize>`. When a Dataset is materialized, its
-type becomes a `MaterializedDataset`, which indicates that all its blocks are materialized in Ray
-object store memory.
+    .. tab-item:: Local
 
-Dataset transformations are executed in a streaming way, incrementally on the data and
-with operators processed in parallel, see :ref:`Streaming Execution <streaming_execution>`.
+        .. testcode::
 
-Datasets and MaterializedDatasets can be freely passed between Ray tasks, actors, and libraries without
-incurring copies of the underlying block data (pass by reference semantics).
+            print(transformed_ds.take_batch(batch_size=3))
 
-Fault tolerance
-===============
+        .. testoutput::
+            :options: +NORMALIZE_WHITESPACE
 
-Dataset performs *lineage reconstruction* to recover data. If an application error or
-system failure occurs, Dataset recreates lost blocks by re-executing tasks. If ``compute=ActorPoolStrategy(size=n)`` is used, then Ray
-restarts the actor used for computing the block prior to re-executing the task.
+            {'sepal length (cm)': array([5.1, 4.9, 4.7]),
+             'sepal width (cm)': array([3.5, 3. , 3.2]),
+             'petal length (cm)': array([1.4, 1.4, 1.3]),
+             'petal width (cm)': array([0.2, 0.2, 0.2]),
+             'target': array([0, 0, 0]),
+             'petal area (cm^2)': array([0.28, 0.28, 0.26])}
 
-Fault tolerance is not supported if the original worker process that created the Dataset dies.
-This is because the creator stores the metadata for the :ref:`objects <object-fault-tolerance>` that comprise the Dataset.
+    .. tab-item:: Tasks
+
+       .. testcode::
+
+            @ray.remote
+            def consume(ds: ray.data.Dataset) -> int:
+                num_batches = 0
+                for batch in ds.iter_batches(batch_size=8):
+                    num_batches += 1
+                return num_batches
+
+            ray.get(consume.remote(transformed_ds))
+
+    .. tab-item:: Actors
+
+        .. testcode::
+
+            @ray.remote
+            class Worker:
+
+                def train(self, data_iterator):
+                    for batch in data_iterator.iter_batches(batch_size=8):
+                        pass
+
+            workers = [Worker.remote() for _ in range(4)]
+            shards = transformed_ds.streaming_split(n=4, equal=True)
+            ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
+
+
+To learn more about consuming datasets, see
+:ref:`Iterating over Data <iterating-over-data>` and :ref:`Saving Data <saving-data>`.
+
+.. _saving_key_concept:
+
+Saving data
+-----------
+
+Call methods like :meth:`~ray.data.Dataset.write_parquet` to save dataset contents to local
+or remote filesystems.
+
+.. testcode::
+    :hide:
+
+    # The number of blocks can be non-determinstic. Repartition the dataset beforehand
+    # so that the number of written files is consistent.
+    transformed_ds = transformed_ds.repartition(2)
+
+.. testcode::
+
+    import os
+
+    transformed_ds.write_parquet("/tmp/iris")
+
+    print(os.listdir("/tmp/iris"))
+
+.. testoutput::
+
+    ['..._000000.parquet', '..._000001.parquet']
+
+
+To learn more about saving dataset contents, see :ref:`Saving data <saving-data>`.
