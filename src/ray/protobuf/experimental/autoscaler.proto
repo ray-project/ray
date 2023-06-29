@@ -70,6 +70,9 @@ message ResourceRequestByCount {
 message GangResourceRequest {
   // a map from bundles to the number of bundles requested.
   repeated ResourceRequest requests = 1;
+  // TODO(rickyx):
+  // Strategy of the placement group, e.g. STRICT_PACK.
+  string pg_strategy = 2;
 }
 
 // Cluster resource constraint represents minimial cluster size requirement,
@@ -125,6 +128,13 @@ message NodeState {
 
   // The time in ms since the node is idle.
   int64 idle_duration_ms = 9;
+
+  // TODO(rickyx): to be populated.
+  // Node ip address.
+  string node_ip_address = 10;
+
+  // The instance type name, e.g. p3.2xlarge
+  string instance_type_name = 11;
 }
 
 // ============= Autoscaling State Service API =======================
@@ -213,6 +223,15 @@ message RequestClusterResourceConstraintRequest {
 
 message RequestClusterResourceConstraintReply {}
 
+message GetClusterStatusRequest {}
+
+message GetClusterStatusReply {
+  // The current autoscaler state.
+  AutoscalingState autoscaling_state = 1;
+  // The current cluster resource state.
+  ClusterResourceState cluster_resource_state = 2;
+}
+
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
@@ -222,4 +241,7 @@ service AutoscalerStateService {
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
       returns (RequestClusterResourceConstraintReply);
+  // Obtain the current cluster state, including the autoscaler state (e.g. pending
+  // requests), and the cluster resource state (e.g. ray node states).
+  rpc GetClusterStatus(GetClusterStatusRequest) returns (GetClusterStatusReply);
 }
