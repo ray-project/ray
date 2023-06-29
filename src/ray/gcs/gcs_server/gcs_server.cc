@@ -83,11 +83,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
 
-  // Init KV Manager. This needs to be initialized first here so that
-  // it can be used to retrieve the cluster ID.
-  InitKVManager();
-  CacheAndSetClusterId();
-
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
     this->main_service_.stop();
@@ -145,28 +140,28 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
   auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
-  // Init KV Manager. This needs to be initialized first here so that
-  // it can be used to retrieve the cluster ID.
-  InitKVManager();
   gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
+    // Init KV Manager. This needs to be initialized first here so that
+    // it can be used to retrieve the cluster ID.
+    InitKVManager();
+    RetrieveAndCacheClusterId([this, gcs_init_data](ClusterID cluster_id) {
       rpc_server_.SetClusterId(cluster_id);
       DoStart(*gcs_init_data);
     });
   });
 }
 
-void GcsServer::GetOrGenerateClusterId(
+void GcsServer::RetrieveAndCacheClusterId(
     std::function<void(ClusterID cluster_id)> &&continuation) {
   static std::string const kTokenNamespace = "cluster";
   kv_manager_->GetInstance().Get(
       kTokenNamespace,
       kClusterIdKey,
-      [this, continuation = std::move(continuation)](
-          std::optional<std::string> provided_cluster_id) mutable {
-        if (!provided_cluster_id.has_value()) {
+      [this,
+       continuation = std::move(continuation)](std::optional<std::string> token) mutable {
+        if (!token.has_value()) {
           ClusterID cluster_id = ClusterID::FromRandom();
-          RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
+          RAY_LOG(INFO) << "No existing server token found. Generating new token: "
                         << cluster_id.Hex();
           kv_manager_->GetInstance().Put(
               kTokenNamespace,
@@ -175,48 +170,15 @@ void GcsServer::GetOrGenerateClusterId(
               false,
               [&cluster_id,
                continuation = std::move(continuation)](bool added_entry) mutable {
-                RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
+                RAY_CHECK(added_entry) << "Failed to persist new token!";
                 continuation(cluster_id);
               });
         } else {
-          ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
+          ClusterID cluster_id = ClusterID::FromBinary(token.value());
           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
           continuation(cluster_id);
         }
       });
-}
-
-void GcsServer::CacheAndSetClusterId() {
-  static std::string const kTokenNamespace = "cluster";
-  kv_manager_->GetInstance().Get(
-      kTokenNamespace, kClusterIdKey, [this](std::optional<std::string> token) mutable {
-        if (!token.has_value()) {
-          ClusterID cluster_id = ClusterID::FromRandom();
-          RAY_LOG(INFO) << "No existing server token found. Generating new token: "
-                        << cluster_id.Hex();
-          kv_manager_->GetInstance().Put(kTokenNamespace,
-                                         kClusterIdKey,
-                                         cluster_id.Binary(),
-                                         false,
-                                         [this, &cluster_id](bool added_entry) mutable {
-                                           RAY_CHECK(added_entry)
-                                               << "Failed to persist new token!";
-                                           rpc_server_.SetClusterId(cluster_id);
-                                           main_service_.stop();
-                                         });
-        } else {
-          ClusterID cluster_id = ClusterID::FromBinary(token.value());
-          RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
-          rpc_server_.SetClusterId(cluster_id);
-          main_service_.stop();
-        }
-      });
-  // This will run the async Get and Put inline.
-  main_service_.run();
-  main_service_.restart();
-
-  // Check the cluster ID exists. There is a RAY_CHECK in here.
-  RAY_UNUSED(rpc_server_.GetClusterId());
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
