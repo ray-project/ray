@@ -2464,6 +2464,7 @@ def test_pg_worker_id_tasks(shutdown_only):
 
         assert tasks[0]["placement_group_id"] == pg.id.hex()
         assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+        assert tasks[0]["worker_pid"] == workers[0]["pid"]
 
         return True
 

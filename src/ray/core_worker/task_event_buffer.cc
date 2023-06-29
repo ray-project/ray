@@ -99,6 +99,10 @@ bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
     dst_state_update->set_actor_repr_name(state_update_->actor_repr_name_);
   }
 
+  if (state_update_->pid_.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  }
+
   return false;
 }
 

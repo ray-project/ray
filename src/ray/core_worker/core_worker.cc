@@ -118,7 +118,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
-      exiting_detail_(std::nullopt) {
+      exiting_detail_(std::nullopt),
+      pid_(getpid()) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -916,7 +917,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
 
   worker_data->set_is_alive(true);
-  worker_data->set_pid(getpid());
+  worker_data->set_pid(pid_);
   worker_data->set_start_time_ms(current_sys_time_ms());
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
@@ -2544,10 +2545,14 @@ Status CoreWorker::ExecuteTask(
           task_spec,
           rpc::TaskStatus::RUNNING,
           /* include_task_info */ false,
-          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name));
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_));
     } else {
       task_manager_->RecordTaskStatusEvent(
-          task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(pid_));
     }
 
     worker_context_.SetCurrentTask(task_spec);

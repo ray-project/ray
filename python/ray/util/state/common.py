@@ -685,6 +685,8 @@ class TaskState(StateSchema):
     node_id: Optional[str] = state_column(filterable=True)
     #: The worker id that's associated with this task.
     worker_id: Optional[str] = state_column(filterable=True)
+    #: The worker's pid that's associated with this task.
+    worker_pid: Optional[int] = state_column(filterable=True)
     #: Task error type.
     error_type: Optional[str] = state_column(filterable=True)
     #: The language of the task. E.g., Python, Java, or Cpp.
@@ -1517,7 +1519,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info", "actor_repr_name"],
+            ["node_id", "worker_id", "task_log_info", "actor_repr_name", "worker_pid"],
         ),
     ]
     for src, keys in mappings:
