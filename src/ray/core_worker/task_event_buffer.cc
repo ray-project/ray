@@ -144,11 +144,7 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
       gcs_client_(std::move(gcs_client)),
       buffer_() {}
 
-TaskEventBufferImpl::~TaskEventBufferImpl() {
-  if (enabled_) {
-    Stop();
-  }
-}
+TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
@@ -212,7 +208,9 @@ void TaskEventBufferImpl::Stop() {
     absl::MutexLock lock(&mutex_);
     // It's now safe to disconnect the GCS client since it will not be used by any
     // callbacks.
-    gcs_client_->Disconnect();
+    if (gcs_client_) {
+      gcs_client_->Disconnect();
+    }
   }
 }
 
