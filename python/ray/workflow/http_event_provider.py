@@ -213,7 +213,8 @@ class HTTPListener(EventListener):
     Example Usage
     =============
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         from ray.workflow.http_event_provider import HTTPEventProvider, HTTPListener
 
