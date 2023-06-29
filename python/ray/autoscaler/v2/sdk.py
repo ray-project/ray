@@ -32,7 +32,4 @@ def request_cluster_resources(
         timeout: Timeout in seconds for the request to be timeout
 
     """
-    if not ray.is_initialized():
-        raise RuntimeError("Ray is not initialized yet")
-
     get_gcs_client().request_cluster_resource_constraint(to_request, timeout=timeout)
