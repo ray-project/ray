@@ -205,7 +205,7 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
 # Turning this FF on also enables RAY_SERVE_ENABLE_NEW_ROUTING.
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "1") == "1"
 )
 
 # Feature flag to enable power of two choices routing.
