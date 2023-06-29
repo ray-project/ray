@@ -23,6 +23,7 @@ PHYSICAL_OPTIMIZER_RULES = [
     OperatorFusionRule,
 ]
 
+
 class LogicalOptimizer(Optimizer):
     """The optimizer for logical operators."""
 
