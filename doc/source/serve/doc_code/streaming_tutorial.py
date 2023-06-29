@@ -20,10 +20,10 @@ logger = logging.getLogger("ray.serve")
 fastapi_app = FastAPI()
 
 
-# __basic_chatbot_start__
+# __textbot_start__
 @serve.deployment
 @serve.ingress(fastapi_app)
-class Chatbot:
+class Textbot:
     def __init__(self, model_id):
         self.loop = asyncio.get_running_loop()
 
@@ -57,8 +57,8 @@ class Chatbot:
                 await asyncio.sleep(0.01)
 
 
-app = Chatbot.bind("microsoft/DialoGPT-small")
-# __basic_chatbot_end__
+app = Textbot.bind("microsoft/DialoGPT-small")
+# __textbot_end__
 
 serve.run(app)
 
@@ -111,7 +111,7 @@ class RawStreamer:
 
 @serve.deployment
 @serve.ingress(fastapi_app)
-class Chatbot:
+class Batchbot:
     def __init__(self, model_id):
         self.loop = asyncio.get_running_loop()
 
@@ -159,7 +159,7 @@ class Chatbot:
                 await asyncio.sleep(0.01)
 
 
-app = Chatbot.bind("microsoft/DialoGPT-small")
+app = Batchbot.bind("microsoft/DialoGPT-small")
 
 serve.run(app)
 
