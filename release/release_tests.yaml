@@ -6752,6 +6752,7 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
     byod: {}
     cluster_env: aws/tests/aws_config.yaml
