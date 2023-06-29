@@ -40,7 +40,7 @@ def test_progress_bar(enable_tqdm_ray):
         pb.update(1)
     pb.close()
 
-    assert pb._position == total
+    assert pb._progress == total
     assert total_at_close == total
 
     # Test if update() exceeds the original total, the total will be updated.
@@ -52,7 +52,7 @@ def test_progress_bar(enable_tqdm_ray):
         pb.update(1)
     pb.close()
 
-    assert pb._position == new_total
+    assert pb._progress == new_total
     assert total_at_close == new_total
 
     # Test that if the bar is not complete at close(), the total will be updated.
@@ -64,5 +64,5 @@ def test_progress_bar(enable_tqdm_ray):
         pb.update(1)
     pb.close()
 
-    assert pb._position == new_total
+    assert pb._progress == new_total
     assert total_at_close == new_total
