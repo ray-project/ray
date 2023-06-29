@@ -44,7 +44,7 @@ class Textbot:
 
     def generate_text(self, prompt: str, streamer: TextIteratorStreamer):
         input_ids = self.tokenizer([prompt], return_tensors="pt").input_ids
-        self.model.generate(input_ids, streamer=streamer, max_length=1000)
+        self.model.generate(input_ids, streamer=streamer, max_length=10000)
 
     async def consume_streamer(self, streamer: TextIteratorStreamer):
         while True:
@@ -78,6 +78,109 @@ for chunk in response.iter_content(chunk_size=None, decode_unicode=True):
 # Check that streaming is happening.
 assert chunks == ["Dogs ", "are ", "the ", "best."]
 
+
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+
+
+@serve.deployment
+@serve.ingress(fastapi_app)
+class Chatbot:
+    def __init__(self, model_id):
+        self.loop = asyncio.get_running_loop()
+
+        self.model_id = model_id
+        self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+
+    @fastapi_app.websocket("/")
+    async def handle_request(self, ws: WebSocket):
+        await ws.accept()
+
+        conversation = ""
+        try:
+            while True:
+                prompt = await ws.receive_text()
+                logger.info(f'Got prompt: "{prompt}"')
+                conversation += prompt
+                streamer = TextIteratorStreamer(
+                    self.tokenizer,
+                    timeout=0,
+                    skip_prompt=True,
+                    skip_special_tokens=True,
+                )
+                self.loop.run_in_executor(
+                    None, self.generate_text, conversation, streamer
+                )
+                response = ""
+                async for text in self.consume_streamer(streamer):
+                    await ws.send_text(text)
+                    response += text
+                await ws.send_text("<<Response Finished>>")
+                conversation += response  # + self.tokenizer.eos_token
+        except WebSocketDisconnect:
+            print("Client disconnected.")
+
+    def generate_text(self, prompt: str, streamer: TextIteratorStreamer):
+        input_ids = self.tokenizer([prompt], return_tensors="pt").input_ids
+        self.model.generate(input_ids, streamer=streamer, max_length=10000)
+
+    async def consume_streamer(self, streamer: TextIteratorStreamer):
+        while True:
+            try:
+                for token in streamer:
+                    logger.info(f'Yielding token: "{token}"')
+                    yield token
+                break
+            except Empty:
+                await asyncio.sleep(0.01)
+
+
+app = Chatbot.bind("microsoft/DialoGPT-small")
+
+serve.run(app)
+
+chunks = []
+# Monkeypatch `print` for testing
+original_print, print = print, (lambda chunk, end=None: chunks.append(chunk))
+
+# __ws_client_start__
+from websockets.sync.client import connect
+
+with connect("ws://localhost:8000") as websocket:
+    websocket.send("Space the final")
+    while True:
+        received = websocket.recv()
+        if received == "<<Response Finished>>":
+            break
+        print(received, end="")
+    print("\n")
+
+    websocket.send(" These are the voyages")
+    while True:
+        received = websocket.recv()
+        if received == "<<Response Finished>>":
+            break
+        print(received, end="")
+    print("\n")
+# __ws_client_end__
+
+assert chunks == [
+    " ",
+    "",
+    "",
+    "frontier.",
+    "\n",
+    " ",
+    "of ",
+    "the ",
+    "starship ",
+    "",
+    "",
+    "Enterprise.",
+    "\n",
+]
+
+print = original_print
 
 # __batched_streamer_start__
 from queue import Queue
