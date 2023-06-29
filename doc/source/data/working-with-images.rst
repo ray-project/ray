@@ -31,7 +31,7 @@ To view the full list of supported file formats, see the
         .. note::
 
             :func:`~ray.data.read_images` uses
-            `Pillow <https://pillow.readthedocs.io/en/stable/index.html>`_. For a list of
+            `PIL <https://pillow.readthedocs.io/en/stable/index.html>`_. For a list of
             supported file formats, see
             `Image file formats <https://pillow.readthedocs.io/en/stable/handbook/image-file-formats.html>`_.
 
