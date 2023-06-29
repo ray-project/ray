@@ -1299,16 +1299,7 @@ class TrialRunner(_TuneControllerBase):
             _trainer_api=_trainer_api,
         )
 
-        self.trial_executor.setup(
-            max_pending_trials=self._max_pending_trials,
-            # TODO(ml-team): Remove these in 2.6.
-            trainable_kwargs={
-                "sync_timeout": self._sync_config.sync_timeout,
-                "custom_syncer": get_node_to_storage_syncer(
-                    self._sync_config, self._remote_experiment_path
-                ),
-            },
-        )
+        self.trial_executor.setup(max_pending_trials=self._max_pending_trials)
 
     def _wrapped(self):
         return TrialRunnerWrapper(
