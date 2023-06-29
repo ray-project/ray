@@ -1,56 +1,90 @@
-
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Any
-from ray.core.generated.experimental.autoscaler_pb2  import NodeState 
+from typing import Dict, List, Optional
+
+NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
 
 
-@dataclass 
+@dataclass
+class ResourceUsage:
+    # Resource name.
+    resource_name: str = ""
+    # Total resource.
+    total: float = 0.0
+    # Resource used.
+    used: float = 0.0
+
+
+@dataclass
+class NodeUsage:
+    # The node resource usage.
+    usage: List[ResourceUsage]
+    # How long the node has been idle.
+    idle_time_ms: int
+
+
+@dataclass
 class NodeInfo:
+
     # The instance type name, e.g. p3.2xlarge
-    instance_type_name : str
+    instance_type_name: str
     # The detailed state of the node/request.
-    # E.g. waiting-for-ssh, launching, idle, running, etc.
+    # E.g. idle, running, etc.
     node_status: str
-    # Ip address of the node if launched.
+    # ray node id.
+    node_id: str
+    # ray node type name.
+    ray_node_type_name: str
+    # Cloud instance id.
+    instance_id: str
+    # Ip address of the node when alive.
+    ip_address: str
+    # Resource usage breakdown.
+    resource_usage: Optional[NodeUsage]
+    # Failure detail if the node failed.
+    failure_detail: Optional[str]
+
+
+@dataclass
+class PendingNode:
+    # The instance type name, e.g. p3.2xlarge
+    instance_type_name: str
+    # ray node type name.
+    ray_node_type_name: str
+    # The current status of the request.
+    # e.g. setting-up-ssh, launching.
+    details: str
+    # IP address if available.
     ip_address: Optional[str]
 
 
 @dataclass
-class FailedNodeInfo(NodeInfo):
-    failure_detail: str
+class ResourceRequestByCount:
+    # Bundles in the demand.
+    bundle: Dict[str, float]
+    # Number of bundles with the same shape.
+    count: int
 
 
 @dataclass
 class ResourceDemand:
-    # Bundles in the demand.
-    bundles: List[Dict[str, float]]
+    # The bundles in the demand with shape and count info.
+    bundles: List[ResourceRequestByCount]
+
 
 @dataclass
 class PlacementGroupResourceDemand(ResourceDemand):
-    # Placement group demand information.
-    placement_group_id: str
     # Placement group strategy.
     strategy: str
 
 
 @dataclass
 class RayTaskActorDemand(ResourceDemand):
-    # Number of tasks/actors that require this bundle shapes.
-    count: int
-
-@dataclass
-class ClusterConstraintDemand(ResourceDemand):
     pass
 
 
 @dataclass
-class NodeUsage:
-    # The node resource usage.
-    usage: Dict[str, float]
-    # How long the node has been idle.
-    idle_time_ms: int
-    # Usage details: what's making the node non-idle.
-    usage_details: Any
+class ClusterConstraintDemand(ResourceDemand):
+    pass
 
 
 @dataclass
@@ -63,23 +97,17 @@ class Stats:
 class ClusterStatus:
     # Healthy nodes information (alive)
     healthy_nodes: List[NodeInfo]
-    # Pending nodes.
-    pending_nodes: List[NodeInfo]
+    # Pending nodes requests.
+    pending_nodes: List[PendingNode]
     # Failures
-    failed_nodes: List[FailedNodeInfo]
+    failed_nodes: List[NodeInfo]
     # Resource usage summary for entire cluster.
-    cluster_resource_usage: Dict[str, float]
+    cluster_resource_usage: List[ResourceUsage]
     # Demand summary.
     resource_demands: List[ResourceDemand]
-    # Node resource usage breakdown
-    node_usages: List[NodeUsage]
     # Query metics
     stats: Stats
-
 
     def format_str(self, verbose_lvl=0):
         # This could be what the `ray status` is getting.
         return "not implemented"
-
-
-
