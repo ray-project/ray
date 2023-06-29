@@ -386,14 +386,17 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
         .. testcode::
 
             import tempfile
+            import boto3
+            from botocore import UNSIGNED
+            from botocore.config import Config
+            
             from torchvision import transforms
             from torch.utils.data import Dataset
-            import boto3
             from PIL import Image
 
             class ImageDataset(Dataset):
                 def __init__(self, bucket_name: str, dir_path: str):
-                    self.s3 = boto3.resource('s3')
+                    self.s3 = boto3.resource("s3", config=Config(signature_version=UNSIGNED))
                     self.bucket = self.s3.Bucket(bucket_name)
                     self.files = [obj.key for obj in self.bucket.objects.filter(Prefix=dir_path)]
                     
