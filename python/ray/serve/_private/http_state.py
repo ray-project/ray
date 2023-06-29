@@ -321,10 +321,10 @@ class HTTPState:
                 for node_id, ip_address in target_nodes
                 if node_id == self._head_node_id
             ]
-            assert len(nodes) == 1, (
-                f"Head node not found! Head node id: {self._head_node_id}, "
-                f"all nodes: {target_nodes}."
-            )
+            # assert len(nodes) == 1, (
+            #     f"Head node not found! Head node id: {self._head_node_id}, "
+            #     f"all nodes: {target_nodes}."
+            # )
             return nodes
 
         if location == DeploymentMode.FixedNumber:

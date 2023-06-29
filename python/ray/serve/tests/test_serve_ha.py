@@ -41,10 +41,14 @@ serve.start(detached=True)
 
 Counter.options(num_replicas={num_replicas}).deploy()
 
-print(ray.nodes())
+print("ray nodes in setup script", ray.nodes())
 """
 
 check_script = """
+import ray
+print("ray nodes in check script", ray.nodes())
+
+
 import requests
 import json
 import time
