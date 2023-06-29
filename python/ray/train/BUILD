@@ -9,9 +9,6 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
-            # FIXME: Failing doctests
-            "xgboost/xgboost_predictor.py",
-            "xgboost/xgboost_checkpoint.py"
         ]
     ),
     size = "large",
