@@ -31,7 +31,7 @@ def build_anyscale_champagne_image(
     ray_version: str,
     python_version: str,
     image_type: str,
-) -> None:
+) -> str:
     """
     Builds the Anyscale champagne image.
     """
@@ -66,6 +66,8 @@ def build_anyscale_champagne_image(
             env=env,
         )
     _validate_and_push(anyscale_image)
+
+    return anyscale_image
 
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
