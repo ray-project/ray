@@ -190,7 +190,8 @@ class GcsServer {
   /// Get cluster id if persisted, otherwise generate
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
-  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
+  void RetrieveAndCacheClusterId(
+      std::function<void(ClusterID cluster_id)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
