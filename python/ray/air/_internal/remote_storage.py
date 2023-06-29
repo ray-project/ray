@@ -412,6 +412,10 @@ def get_fs_and_path(
     return None, None
 
 
+def _pyarrow_fs_delete(uri: str, filesystem):
+    filesystem.delete_dir(uri)
+
+
 def delete_at_uri(uri: str):
     _assert_pyarrow_installed()
 

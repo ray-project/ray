@@ -48,6 +48,9 @@ _pinned_objects = []
 PINNED_OBJECT_PREFIX = "ray.tune.PinnedObject:"
 START_OF_TIME = time.time()
 
+# Whether to enable the new simple persistence mode.
+USE_STORAGE_CONTEXT = bool(int(os.environ.get("TUNE_USE_STORAGE_CONTEXT", "1")))
+
 
 @DeveloperAPI
 class UtilMonitor(Thread):

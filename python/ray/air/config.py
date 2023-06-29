@@ -25,6 +25,7 @@ from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
 
 if TYPE_CHECKING:
+    import pyarrow
     from ray.data import Dataset
     from ray.tune.callback import Callback
     from ray.tune.progress_reporter import ProgressReporter
@@ -715,6 +716,8 @@ class RunConfig:
             a destination on cloud storage. If Ray storage is set up,
             defaults to the storage location. Otherwise, this defaults to
             the local ``~/ray_results`` directory.
+        storage_filesystem: Arrow filesystem to override the detected one for
+            storage_path.
         stop: Stop conditions to consider. Refer to ray.tune.stopper.Stopper
             for more info. Stoppers should be serializable.
         callbacks: Callbacks to invoke.
@@ -749,6 +752,7 @@ class RunConfig:
 
     name: Optional[str] = None
     storage_path: Optional[str] = None
+    storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None
     callbacks: Optional[List["Callback"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     failure_config: Optional[FailureConfig] = None

@@ -38,6 +38,9 @@ from ray.air._internal.remote_storage import (
     download_from_uri,
     delete_at_uri,
     is_non_local_path_uri,
+    _upload_to_uri_with_exclude_fsspec,
+    _pyarrow_fs_copy_files,
+    _pyarrow_fs_delete,
 )
 from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE, TRAINING_ITERATION
 from ray.exceptions import RayActorError
@@ -50,6 +53,7 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
 if TYPE_CHECKING:
+    import pyarrow
     from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
@@ -628,6 +632,100 @@ class _BackgroundSyncer(Syncer):
         state = self.__dict__.copy()
         state["_sync_process"] = None
         return state
+
+
+class StorageContext:
+    """Shared StorageContext, used both on driver and workers."""
+
+    def __init__(self, storage_path, storage_filesystem, sync_config):
+        assert sync_config is not None
+        if sync_config.syncer != "auto":
+            raise DeprecationWarning("The `syncer` arg cannot be used in Ray 2.7")
+
+        import pyarrow
+
+        if storage_filesystem:
+            print("Overriding storage filesystem", storage_filesystem)
+            self.storage_filesystem = storage_filesystem
+            self.storage_prefix = storage_path
+        else:
+            self.storage_filesystem, prefix = pyarrow.fs.FileSystem.from_uri(
+                storage_path
+            )
+            self.storage_prefix = prefix
+
+        self.local_path = os.path.expanduser(os.environ.get(
+            "RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results"
+        ))
+        if os.path.expanduser(self.storage_prefix) == self.local_path:
+            # No need to sync, it's already local
+            sync_config.syncer = None
+        else:
+            sync_config.syncer = _SimpleFilesystemSyncer(self.storage_filesystem)
+        self.sync_config = sync_config
+
+        print("StorageContext local_path", self.local_path)
+        print("StorageContext storage_prefix", self.storage_prefix)
+        print("StorageContext storage_filesystem", self.storage_filesystem)
+        print("StorageContext sync_config", self.sync_config)
+        self.create_valid_file()
+        self.check_valid_file()
+
+    def create_valid_file(self):
+        valid_file = self.storage_prefix + "/_valid"
+        self.storage_filesystem.create_dir(self.storage_prefix)
+        with self.storage_filesystem.open_output_stream(valid_file):
+            pass
+
+    def check_valid_file(self):
+        import pyarrow
+
+        valid_file = self.storage_prefix + "/_valid"
+        valid = self.storage_filesystem.get_file_info([valid_file])[0]
+        if valid.type == pyarrow.fs.FileType.NotFound:
+            raise RuntimeError(
+                "Unable to initialize storage: {} file created during init not found. "
+                "Check that configured cluster storage path is readable from all "
+                "worker nodes of the cluster.".format(valid_file)
+            )
+
+
+class _SimpleFilesystemSyncer(_BackgroundSyncer):
+    """Simple pyarrow based syncer."""
+
+    def __init__(
+        self,
+        storage_filesystem: Optional["pyarrow.fs.FileSystem"],
+    ):
+        self.storage_filesystem = storage_filesystem
+
+    def _sync_up_command(
+        self, local_path: str, uri: str, exclude: Optional[List] = None
+    ) -> Tuple[Callable, Dict]:
+        print("SYNC UP", local_path, uri)
+        return (
+            _upload_to_uri_with_exclude_fsspec,
+            dict(
+                local_path=local_path,
+                fs=self.storage_filesystem,
+                bucket_path=uri,
+                exclude=exclude,
+            ),
+        )
+
+    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        print("SYNC DOWN", local_path, uri)
+        return (
+            _pyarrow_fs_copy_files,
+            dict(
+                bucket_path=uri,
+                local_path=local_path,
+                source_filesystem=self.storage_filesystem,
+            ),
+        )
+
+    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
+        return (_pyarrow_fs_delete, dict(uri=uri, filesystem=self.storage_filesystem))
 
 
 class _DefaultSyncer(_BackgroundSyncer):

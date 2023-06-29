@@ -77,7 +77,7 @@ from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, StorageContext
 from ray.tune.trainable import Trainable
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import TrialRunner
@@ -88,11 +88,12 @@ from ray.tune.utils.log import (
     set_verbosity,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.utils.util import _resolve_storage_path
+from ray.tune.utils.util import _resolve_storage_path, USE_STORAGE_CONTEXT
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
 if TYPE_CHECKING:
+    import pyarrow
     from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
 logger = logging.getLogger(__name__)
@@ -231,8 +232,11 @@ def _ray_auto_init(entrypoint: str):
 
 
 def _resolve_and_validate_storage_path(
-    storage_path: str, local_dir: Optional[str], sync_config: Optional[SyncConfig]
+    storage_path: str,
+    local_dir: Optional[str],
+    sync_config: Optional[SyncConfig],
 ) -> Tuple[str, str, Optional[str], SyncConfig]:
+
     # TODO(ml-team): Simplify/remove this in 2.6 when `local_dir`
     # and `SyncConfig(upload_dir)` are hard-deprecated.
     sync_config = sync_config or SyncConfig()
@@ -304,6 +308,7 @@ def run(
     ] = None,
     num_samples: int = 1,
     storage_path: Optional[str] = None,
+    storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     checkpoint_config: Optional[CheckpointConfig] = None,
@@ -426,6 +431,8 @@ def run(
         storage_path: Path to store results at. Can be a local directory or
             a destination on cloud storage. Defaults to
             the local ``~/ray_results`` directory.
+        storage_filesystem: Arrow FileSystem to override the default uri autodetection
+            for storage_path.
         search_alg: Search algorithm for
             optimization. You can also use the name of the algorithm.
         scheduler: Scheduler for executing
@@ -686,18 +693,26 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    (
-        storage_path,
-        local_path,
-        remote_path,
-        sync_config,
-    ) = _resolve_and_validate_storage_path(
-        storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
-    )
-
-    air_usage.tag_ray_air_storage_config(
-        local_path=local_path, remote_path=remote_path, sync_config=sync_config
-    )
+    if USE_STORAGE_CONTEXT:
+        storage = StorageContext(storage_path, storage_filesystem, sync_config)
+        local_path = storage.local_path
+        remote_path = None
+        sync_config = storage.sync_config
+    else:
+        storage = None
+        (
+            storage_path,
+            local_path,
+            remote_path,
+            sync_config,
+        ) = _resolve_and_validate_storage_path(
+            storage_path=storage_path,
+            local_dir=local_dir,
+            sync_config=sync_config,
+        )
+        air_usage.tag_ray_air_storage_config(
+            local_path=local_path, remote_path=remote_path, sync_config=sync_config
+        )
 
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
@@ -863,6 +878,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 storage_path=storage_path,
+                storage=storage,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,

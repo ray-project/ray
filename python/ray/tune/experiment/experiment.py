@@ -29,9 +29,13 @@ from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import SyncConfig, StorageContext
 from ray.tune.utils import date_str
-from ray.tune.utils.util import _resolve_storage_path, _split_remote_local_path
+from ray.tune.utils.util import (
+    _resolve_storage_path,
+    _split_remote_local_path,
+    USE_STORAGE_CONTEXT,
+)
 from ray.util import log_once
 
 from ray.util.annotations import DeveloperAPI, Deprecated
@@ -138,6 +142,7 @@ class Experiment:
         ] = None,
         num_samples: int = 1,
         storage_path: Optional[str] = None,
+        storage: Optional[StorageContext] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
@@ -156,11 +161,19 @@ class Experiment:
             sync_config = sync_config or SyncConfig()
 
         self.sync_config = sync_config
+        self.storage = storage
+        if USE_STORAGE_CONTEXT:
+            assert self.storage, storage
 
         # Resolve storage_path
-        local_storage_path, remote_storage_path = _resolve_storage_path(
-            storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
-        )
+        if storage:
+            local_storage_path = storage.local_path
+            remote_storage_path = None
+            _experiment_checkpoint_dir = None
+        else:
+            local_storage_path, remote_storage_path = _resolve_storage_path(
+                storage_path, local_dir, sync_config.upload_dir, error_location="Experiment"
+            )
 
         if local_dir:
             if log_once("tune_experiment_local_dir"):

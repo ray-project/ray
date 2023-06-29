@@ -129,6 +129,8 @@ class TunerInternal:
         self._resume_config = None
         self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
+        # TODO(ekl) what is going on here with this, and how can we get this to be
+        # placed in local_path instead the storage_path URI.
         self._experiment_checkpoint_dir = self.setup_create_experiment_checkpoint_dir(
             self.converted_trainable, self._run_config
         )

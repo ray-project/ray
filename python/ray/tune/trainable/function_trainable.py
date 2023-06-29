@@ -34,6 +34,7 @@ from ray.tune.utils import (
     _detect_config_single,
     _detect_reporter,
 )
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -246,7 +247,13 @@ class _StatusReporter:
             training_iteration = self._get_training_iteration()
             checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
             self.set_checkpoint(checkpoint_dir)
-            checkpoint.to_directory(checkpoint_dir)
+            if isinstance(checkpoint, str):
+                if not USE_STORAGE_CONTEXT:
+                    raise ValueError(
+                        "new-style checkpoint paths only allowed in storage context mode")
+                shutil.copytree(checkpoint, checkpoint_dir, dirs_exist_ok=True)
+            else:
+                checkpoint.to_directory(checkpoint_dir)
             # TODO(krfricke): Remove this once support is added in Checkpoint.
             open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         self.__call__(**metrics)
