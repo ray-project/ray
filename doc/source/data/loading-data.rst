@@ -24,7 +24,6 @@ To view the full list of supported file formats, see the
         To read Parquet files, call :func:`~ray.data.read_parquet`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -48,7 +47,6 @@ To view the full list of supported file formats, see the
         images as NumPy ndarrays.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -57,7 +55,6 @@ To view the full list of supported file formats, see the
             print(ds.schema())
 
         .. testoutput::
-            :skipif: True
 
             Column  Type
             ------  ----
@@ -68,7 +65,6 @@ To view the full list of supported file formats, see the
         To read lines of text, call :func:`~ray.data.read_text`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -87,7 +83,6 @@ To view the full list of supported file formats, see the
         To read CSV files, call :func:`~ray.data.read_csv`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -110,7 +105,6 @@ To view the full list of supported file formats, see the
         To read raw binary files, call :func:`~ray.data.read_binary_files`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -129,7 +123,6 @@ To view the full list of supported file formats, see the
         To read TFRecords files, call :func:`~ray.data.read_tfrecords`.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
@@ -224,7 +217,6 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
         Then, create a ``GCSFileSystem`` and specify URIs with the ``gcs://`` scheme.
 
         .. testcode::
-            :skipif: True
 
             import ray
 
