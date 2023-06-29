@@ -236,6 +236,34 @@ def test_ray_task_name_setproctitle(ray_start_2_cpus):
     ray.get(unique_1.options(name=task_name).remote())
 
 
+def test_ray_task_generator_setproctitle(ray_start_2_cpus):
+    @ray.remote
+    def generator_task():
+        for i in range(4):
+            assert setproctitle.getproctitle() == "ray::generator_task"
+            yield i
+
+    ray.get(generator_task.options(num_returns=2).remote()[0])
+    ray.get(generator_task.options(num_returns="dynamic").remote())
+    generator = generator_task.options(num_returns="streaming").remote()
+    for _ in range(4):
+        ray.get(next(generator))
+
+    @ray.remote
+    class UniqueName:
+        def f(self):
+            for i in range(4):
+                assert setproctitle.getproctitle() == "ray::UniqueName.f"
+                yield i
+
+    actor = UniqueName.remote()
+    ray.get(actor.f.options(num_returns=2).remote()[0])
+    ray.get(actor.f.options(num_returns="dynamic").remote())
+    generator = actor.f.options(num_returns="streaming").remote()
+    for _ in range(4):
+        ray.get(next(generator))
+
+
 @pytest.mark.skipif(
     os.getenv("TRAVIS") is None, reason="This test should only be run on Travis."
 )
