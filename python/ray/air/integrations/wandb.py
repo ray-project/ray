@@ -158,27 +158,13 @@ def _setup_wandb(
 ) -> Union[Run, RunDisabled]:
     _config = config.copy() if config else {}
 
-    wandb_config = _config.pop("wandb", {}).copy()
-
-    # TODO(ml-team): Remove in 2.6.
-    if wandb_config:
-        raise DeprecationWarning(
-            "Passing a `wandb` key in the config dict is deprecated."
-            "Please pass the actual arguments to `setup_wandb()` instead."
-        )
-
     # If key file is specified, set
-    api_key_file = api_key_file or wandb_config.pop("api_key_file", None)
     if api_key_file:
         api_key_file = os.path.expanduser(api_key_file)
 
-    _set_api_key(api_key_file, api_key or wandb_config.pop("api_key", None))
-    wandb_config["project"] = _get_wandb_project(wandb_config.get("project"))
-    wandb_config["group"] = (
-        os.environ.get(WANDB_GROUP_ENV_VAR)
-        if (not wandb_config.get("group") and os.environ.get(WANDB_GROUP_ENV_VAR))
-        else wandb_config.get("group")
-    )
+    _set_api_key(api_key_file, api_key)
+    project = _get_wandb_project(kwargs.pop("project", None))
+    group = kwargs.pop("group", os.environ.get(WANDB_GROUP_ENV_VAR))
 
     # remove unpickleable items
     _config = _clean_log(_config)
@@ -190,10 +176,11 @@ def _setup_wandb(
         reinit=True,
         allow_val_change=True,
         config=_config,
+        project=project,
+        group=group,
     )
 
-    # Update config (e.g.g set group, project, override other settings)
-    wandb_init_kwargs.update(wandb_config)
+    # Update config (e.g. set any other parameters in the call to wandb.init)
     wandb_init_kwargs.update(**kwargs)
 
     # On windows, we can't fork
