@@ -149,7 +149,7 @@ You may want to customize these limits in the following scenarios:
 - If you want to fine-tune the memory limit to maximize performance.
 - For data loading into training jobs, you may want to set the object store memory to a low value (e.g., 2GB) to limit resource usage.
 
-Execution options can be configured via the global DataContext. The options will be applied for future jobs launched in the process:
+You can configure execution options with the global DataContext. The options are applied for future jobs launched in the process:
 
 .. code-block::
 
