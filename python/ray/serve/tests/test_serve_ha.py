@@ -53,7 +53,7 @@ import time
 start_time = time.time()
 while time.time() - start_time < 30:
     healthz = requests.get("http://127.0.0.1:8000/-/healthz/").text
-    print(f"HEALTHZ: {healthz}")
+    print(f"HEALTHZ: {{healthz}}")
     if healthz == "success":
         break
 
