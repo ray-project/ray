@@ -173,8 +173,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Raylet client pool.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-  /// Cluster ID.
-  const ClusterID &cluster_id_;
+  /// Cluster ID to be shared with clients when connecting.
+  const ClusterID cluster_id_;
 
   // Debug info.
   enum CountType {

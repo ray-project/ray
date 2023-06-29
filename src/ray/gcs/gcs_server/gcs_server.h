@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <atomic>
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
@@ -187,11 +185,10 @@ class GcsServer {
   /// Collect stats from each module.
   void RecordMetrics() const;
 
-  /// Get server token if persisted, otherwise generate
+  /// Get cluster id if persisted, otherwise generate
   /// a new one and persist as necessary.
   /// Expected to be idempotent while server is up.
-  void RetrieveAndCacheClusterId(
-      std::function<void(ClusterID cluster_id)> &&continuation);
+  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
