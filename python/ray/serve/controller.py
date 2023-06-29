@@ -320,6 +320,10 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
+            # Update the active nodes set before updating the HTTP states, so they
+            # are more consistent.
+            self._update_active_nodes()
+
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
@@ -340,8 +344,6 @@ class ServeController:
                 self.application_state_manager.update()
             except Exception:
                 logger.exception("Exception updating application state.")
-
-            self._update_active_nodes()
 
             try:
                 self._put_serve_snapshot()
@@ -908,7 +910,7 @@ def deploy_serve_application(
     route_prefix: str,
     name: str,
     args: Dict,
-):
+) -> Optional[str]:
     """Deploy Serve application from a user-provided config.
 
     Args:
@@ -922,6 +924,8 @@ def deploy_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         route_prefix: route_prefix. Define the route path for the application.
+    Returns:
+        Returns None if no error is raised. Otherwise, returns error message.
     """
     try:
         from ray import serve
@@ -979,6 +983,8 @@ def deploy_serve_application(
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
         logger.debug("Existing config deployment request terminated.")
+    except Exception as e:
+        return repr(e)
 
 
 @ray.remote(num_cpus=0)

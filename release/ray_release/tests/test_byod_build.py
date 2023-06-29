@@ -26,6 +26,9 @@ def test_build_anyscale_custom_byod_image() -> None:
     ), patch(
         "subprocess.check_call",
         side_effect=_mock_check_call,
+    ), patch(
+        "subprocess.check_output",
+        return_value=b"abc123",
     ):
         test = Test(
             name="name",
