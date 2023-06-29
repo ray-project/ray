@@ -260,6 +260,7 @@ class RawStreamer:
 # __batchbot_constructor_start__
 fastapi_app = FastAPI()
 
+
 @serve.deployment
 @serve.ingress(fastapi_app)
 class Batchbot:
@@ -270,9 +271,10 @@ class Batchbot:
         self.model = AutoModelForCausalLM.from_pretrained(self.model_id)
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         self.tokenizer.pad_token = self.tokenizer.eos_token
-# __batchbot_constructor_end__
 
-# __batchbot_logic_start__
+    # __batchbot_constructor_end__
+
+    # __batchbot_logic_start__
     @fastapi_app.post("/")
     async def handle_request(self, prompt: str):
         logger.info(f'Got prompt: "{prompt}"')
@@ -310,6 +312,8 @@ class Batchbot:
                 break
             except Empty:
                 await asyncio.sleep(0.01)
+
+
 # __batchbot_logic_end__
 
 
