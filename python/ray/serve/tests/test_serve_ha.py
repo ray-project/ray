@@ -46,6 +46,7 @@ print("ray nodes in setup script", ray.nodes())
 
 check_script = """
 import ray
+ray.init(address="auto", namespace="g")
 print("ray nodes in check script", ray.nodes())
 
 
