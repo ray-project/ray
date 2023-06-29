@@ -683,6 +683,40 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     )
 
 
+def test_is_shutdown(mock_get_all_node_ids, setup_controller, all_nodes):
+    """Test `is_shutdown()` returns True the correct state.
+
+    Before `shutdown()` is called, `is_shutdown()` should return false. After
+    `shutdown()` is called and all proxy actor are killed, `is_shutdown()` should
+    return true.
+    """
+    worker_node_id = all_nodes[1][0]
+    state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
+
+    for node_id, node_ip_address in all_nodes:
+        state._proxy_states[node_id] = _create_http_proxy_state(
+            proxy_actor_class=HTTPProxyActor,
+            status=HTTPProxyStatus.HEALTHY,
+            node_id=node_id,
+            host="localhost",
+            port=8000,
+            root_path="/",
+            controller_name=SERVE_CONTROLLER_NAME,
+            node_ip_address=node_ip_address,
+        )
+
+    # Ensure before shutdown, state is not shutdown
+    assert not state.is_shutdown()
+
+    state.shutdown()
+
+    # Ensure after shutdown, state is shutdown and all proxy states are shutdown
+    def check_is_shutdown():
+        return state.is_shutdown()
+
+    wait_for_condition(check_is_shutdown)
+
+
 if __name__ == "__main__":
     import sys
 

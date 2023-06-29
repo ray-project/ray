@@ -659,7 +659,7 @@ def test_recover_during_update(mocked_application_state_manager):
 
 
 def test_is_shutdown(mocked_application_state_manager):
-    """Test is_shutdown() returns True the correct state
+    """Test is_shutdown() returns True the correct state.
 
 
     When shutting down applications before deployments are deleted, application state
