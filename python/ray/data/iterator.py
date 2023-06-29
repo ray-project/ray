@@ -299,7 +299,7 @@ class DataIterator(abc.ABC):
                 collate function is used which simply converts the batch of numpy
                 arrays to a batch of PyTorch tensors. This API is still experimental
                 and is subject to change.
-            _finalize_fn: A function to apply to each data batch after it has been
+            finalize_fn: A function to apply to each data batch after it has been
                 collated. This is executed on a GPU-based threadpool if available.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled

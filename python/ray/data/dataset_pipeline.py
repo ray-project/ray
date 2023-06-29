@@ -175,6 +175,7 @@ class DatasetPipeline:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the data in the pipeline.
 
@@ -228,6 +229,12 @@ class DatasetPipeline:
             )
         else:
             blocks_owned_by_consumer = self._peek()._plan.execute()._owned_by_consumer
+
+        if _finalize_fn is not None:
+            def combined_fn(batch):
+                return _finalize_fn(_collate_fn(batch))
+            _collate_fn = combined_fn
+
         yield from batch_block_refs(
             self._iter_blocks(),
             stats=self._stats,
@@ -1104,6 +1111,9 @@ class DatasetPipeline:
         collate_fn: Optional[
             Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
+        finalize_fn: Optional[
+            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
+        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -1119,6 +1129,7 @@ class DatasetPipeline:
             dtypes=dtypes,
             device=device,
             collate_fn=collate_fn,
+            finalize_fn=finalize_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
