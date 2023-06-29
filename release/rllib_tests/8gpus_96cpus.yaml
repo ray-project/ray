@@ -7,6 +7,8 @@ head_node_type:
     name: head_node
     instance_type: g5.24xlarge
 
+worker_node_types: []
+
 aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
