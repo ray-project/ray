@@ -29,7 +29,6 @@ const useStyles = makeStyles((theme) =>
 
 export const TaskPage = () => {
   const { taskId } = useParams();
-  console.log("taskId: ", taskId);
   const { task, isLoading } = useStateApiTask(taskId);
 
   const classes = useStyles();

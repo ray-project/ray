@@ -215,9 +215,8 @@ const App = () => {
                       }
                       path="actors/:actorId"
                     >
-                      <Route element={<ActorDetailPage />} path="">
-                        <Route element={<TaskPage />} path="tasks/:taskId" />
-                      </Route>
+                      <Route element={<ActorDetailPage />} path="" />
+                      <Route element={<TaskPage />} path="tasks/:taskId" />
                     </Route>
                     <Route element={<TaskPage />} path="tasks/:taskId" />
                   </Route>
