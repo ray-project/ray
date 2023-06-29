@@ -89,7 +89,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         )
 
         trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
-        trial_executor.setup(max_pending_trials=max_num_parallel, trainable_kwargs={})
+        trial_executor.setup(max_pending_trials=max_num_parallel)
 
         this = self
 
