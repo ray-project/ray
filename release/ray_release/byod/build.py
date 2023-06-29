@@ -9,7 +9,12 @@ import time
 
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
-from ray_release.test import Test
+from ray_release.test import (
+    Test,
+    DATAPLANE_ECR,
+    DATAPLANE_ECR_REPO,
+    DATAPLANE_ECR_ML_REPO,
+)
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane_20230622.tgz"
@@ -20,6 +25,47 @@ RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 PYTHON_VERSION = "3.8"
+
+
+def build_anyscale_champagne_image(
+    ray_version: str,
+    python_version: str,
+    image_type: str,
+) -> None:
+    """
+    Builds the Anyscale champagne image.
+    """
+    _download_dataplane_build_file()
+    env = os.environ.copy()
+    env["DOCKER_BUILDKIT"] = "1"
+    if image_type == "cpu":
+        ray_project = "ray"
+        anyscale_repo = DATAPLANE_ECR_REPO
+        image_suffix = ""
+    else:
+        ray_project = "ray-ml"
+        anyscale_repo = DATAPLANE_ECR_ML_REPO
+        image_suffix = f"-{image_type}"
+    ray_image = f"rayproject/{ray_project}:{ray_version}-{python_version}{image_suffix}"
+    anyscale_image = f"{DATAPLANE_ECR}/{anyscale_repo}:champagne-{ray_version}"
+
+    logger.info(f"Building champagne anyscale image from {ray_image}")
+    with open(DATAPLANE_FILENAME, "rb") as build_file:
+        subprocess.check_call(
+            [
+                "docker",
+                "build",
+                "--build-arg",
+                f"BASE_IMAGE={ray_image}",
+                "-t",
+                anyscale_image,
+                "-",
+            ],
+            stdin=build_file,
+            stdout=sys.stderr,
+            env=env,
+        )
+    _validate_and_push(anyscale_image)
 
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
