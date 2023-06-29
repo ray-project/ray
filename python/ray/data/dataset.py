@@ -2225,6 +2225,12 @@ class Dataset:
 
         Time complexity: O(dataset size / parallelism), O(1) for parquet
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> ds.count()
+            10
+
         Returns:
             The number of records in the dataset.
         """
@@ -2254,6 +2260,14 @@ class Dataset:
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> ds.schema()
+            Column  Type
+            ------  ----
+            id      int64
+
         Time complexity: O(1)
 
         Args:
@@ -2262,7 +2276,7 @@ class Dataset:
                 Default is True.
 
         Returns:
-            The ``ray.data.Schema`` class of the records, or None if the
+            The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
 
@@ -2322,6 +2336,16 @@ class Dataset:
         may be dynamically adjusted to respect memory limits, increasing the
         number of blocks at runtime.
 
+        Examples:
+
+        .. testcode::
+            import ray
+            ds = ray.data.range(10)
+            print(ds.num_blocks())
+
+        .. testoutput::
+            ...
+
         Time complexity: O(1)
 
         Returns:
@@ -2332,6 +2356,16 @@ class Dataset:
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            ds = ray.data.range(10)
+            print(ds.size_bytes())
+
+        .. testoutput::
+            ...
 
         Time complexity: O(1)
 
@@ -2347,6 +2381,16 @@ class Dataset:
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            ds = ray.data.read_csv("example://iris.csv")
+            print(ds.input_files())
+
+        .. testoutput::
+            ['.../ray/python/ray/data/examples/data/iris.csv']
 
         Time complexity: O(num input files)
 
@@ -4113,6 +4157,26 @@ class Dataset:
 
         Note that this does not trigger execution, so if the dataset has not yet
         executed, an empty string will be returned.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            ds = ray.data.range(10)
+            assert ds.stats() == ""
+            ds = ds.materialize()
+            print(ds.stats())
+
+        .. testoutput::
+            Stage 0 Read: .../... blocks executed in ...
+            * Remote wall time: ... min, ... max, ... mean, ... total
+            * Remote cpu time: ... min, ... max, ... mean, ... total
+            * Peak heap memory usage (MiB): ... min, ... max, ... mean
+            * Output num rows: ... min, ... max, ... mean, ... total
+            * Output size bytes: ... min, ... max, ... mean, ... total
+            * Tasks per node: ... min, ... max, ... mean; ... nodes used
+            <BLANKLINE>
+
         """
         return self._get_stats_summary().to_string()
 
@@ -4126,6 +4190,16 @@ class Dataset:
 
         This function can be used for zero-copy access to the data. It blocks
         until the underlying blocks are computed.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            ds = ray.data.range(1)
+            print(ds.get_internal_block_refs())
+
+        .. testoutput::
+            [ObjectRef(...)]
 
         Time complexity: O(1)
 
