@@ -105,8 +105,11 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 health_check_remaining_ = manager_->failure_threshold_;
               } else {
                 --health_check_remaining_;
-                RAY_LOG(WARNING) << "Health check failed for node " << node_id_
-                                 << ", remaining checks " << health_check_remaining_;
+                RAY_LOG(WARNING)
+                    << "Health check failed for node " << node_id_
+                    << ", remaining checks " << health_check_remaining_ << ", status "
+                    << status.ToString() << ", response status " << response_.status()
+                    << ", status message " << status.message();
               }
 
               if (health_check_remaining_ == 0) {
