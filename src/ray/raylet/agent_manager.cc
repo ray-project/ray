@@ -157,6 +157,7 @@ void AgentManager::StartAgent() {
 
 void AgentManager::GetOrCreateRuntimeEnv(
     const JobID &job_id,
+    const WorkerID &worker_id,
     const std::string &serialized_runtime_env,
     const rpc::RuntimeEnvConfig &runtime_env_config,
     const std::string &serialized_allocated_resource_instances,
@@ -218,11 +219,13 @@ void AgentManager::GetOrCreateRuntimeEnv(
     delay_executor_(
         [this,
          job_id,
+         worker_id,
          serialized_runtime_env,
          runtime_env_config,
          serialized_allocated_resource_instances,
          callback = std::move(callback)] {
           GetOrCreateRuntimeEnv(job_id,
+                                worker_id,
                                 serialized_runtime_env,
                                 runtime_env_config,
                                 serialized_allocated_resource_instances,
@@ -233,6 +236,9 @@ void AgentManager::GetOrCreateRuntimeEnv(
   }
   rpc::GetOrCreateRuntimeEnvRequest request;
   request.set_job_id(job_id.Hex());
+  if (!worker_id.IsNil()) {
+    request.set_worker_id(worker_id.Hex());
+  }
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
   request.set_serialized_allocated_resource_instances(
@@ -274,6 +280,7 @@ void AgentManager::GetOrCreateRuntimeEnv(
 
 void AgentManager::DeleteRuntimeEnvIfPossible(
     const std::string &serialized_runtime_env,
+    const WorkerID &worker_id,
     DeleteRuntimeEnvIfPossibleCallback callback) {
   if (disable_agent_client_) {
     RAY_LOG(ERROR)
@@ -294,8 +301,8 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
                      "DeleteRuntimeEnvIfPossible later.";
     delay_executor_(
 
-        [this, serialized_runtime_env, callback = std::move(callback)] {
-          DeleteRuntimeEnvIfPossible(serialized_runtime_env, callback);
+        [this, serialized_runtime_env, worker_id, callback = std::move(callback)] {
+          DeleteRuntimeEnvIfPossible(serialized_runtime_env, worker_id, callback);
         },
         RayConfig::instance().agent_manager_retry_interval_ms());
     return;
@@ -303,6 +310,9 @@ void AgentManager::DeleteRuntimeEnvIfPossible(
   rpc::DeleteRuntimeEnvIfPossibleRequest request;
   request.set_serialized_runtime_env(serialized_runtime_env);
   request.set_source_process("raylet");
+  if (!worker_id.IsNil()) {
+    request.set_worker_id(worker_id.Hex());
+  }
   runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
       request,
       [serialized_runtime_env, callback = std::move(callback)](

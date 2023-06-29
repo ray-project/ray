@@ -21,6 +21,7 @@ from ray._private.runtime_env.working_dir import (
     set_pythonpath_in_context,
 )
 from ray._private.utils import get_directory_size_bytes
+from ray._private.test_utils import wait_for_condition
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -567,6 +568,39 @@ def test_override_failure(shutdown_only):
 
     with pytest.raises(ValueError):
         B.options(runtime_env={"working_dir": "."})
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize("disable_working_dir_gc", [True, False])
+def test_id_named_working_dir(start_cluster, tmp_working_dir, disable_working_dir_gc):
+    """Tests the case where we pass an empty directory as the working_dir."""
+    _, address = start_cluster
+    ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+
+    @ray.remote
+    class A:
+        def test_import(self):
+            import test_module
+
+            return test_module.one()
+
+        def get_cwd(self):
+            return os.getcwd()
+
+    a = A.remote()
+    assert ray.get(a.test_import.remote()) == 1
+    actor_cwd = ray.get(a.get_cwd.remote())
+    assert "working_dirs" in actor_cwd
+    assert os.path.exists(actor_cwd) and os.path.isdir(actor_cwd)
+    ray.kill(a, no_restart=True)
+
+    def _check_path_exists(path):
+        return not os.path.exists(path)
+
+    if not disable_working_dir_gc:
+        wait_for_condition(_check_path_exists, path=actor_cwd, timeout=5)
+    else:
+        assert os.path.exists(actor_cwd) and os.path.isdir(actor_cwd)
 
 
 if __name__ == "__main__":

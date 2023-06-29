@@ -236,6 +236,8 @@ class ProxyManager:
             serialized_runtime_env=serialized_runtime_env,
             runtime_env_config=runtime_env_config,
             job_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
+            # TODO(SongGuyang): Improve this worker id.
+            worker_id=f"ray_client_server_{specific_server.port}".encode("utf-8"),
             source_process="client_server",
         )
 

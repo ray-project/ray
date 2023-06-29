@@ -422,6 +422,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const rpc::WorkerType worker_type,
       const JobID &job_id,
       PopWorkerStatus *status /*output*/,
+      const WorkerID &worker_id = WorkerID::Nil(),
       const std::vector<std::string> &dynamic_options = {},
       const int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
@@ -481,6 +482,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
     std::vector<std::string> dynamic_options;
+    // The external worker id which is assigned to the worker process.
+    WorkerID worker_id;
   };
 
   struct TaskWaitingForWorkerInfo {
@@ -668,17 +671,20 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const rpc::RuntimeEnvConfig &runtime_env_config,
       const JobID &job_id,
       const GetOrCreateRuntimeEnvCallback &callback,
-      const std::string &serialized_allocated_resource_instances = "{}");
+      const std::string &serialized_allocated_resource_instances = "{}",
+      const WorkerID &worker_id = WorkerID::Nil());
 
   /// Delete runtime env asynchronously by runtime env agent.
-  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  const WorkerID &worker_id = WorkerID::Nil());
 
   void AddWorkerProcess(State &state,
                         const rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
                         const rpc::RuntimeEnvInfo &runtime_env_info,
-                        const std::vector<std::string> &dynamic_options);
+                        const std::vector<std::string> &dynamic_options,
+                        const WorkerID &worker_id);
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 
@@ -691,6 +697,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       rpc::JobConfig *job_config,
       const rpc::WorkerType worker_type,
       const JobID &job_id,
+      const WorkerID &worker_id,
       const std::vector<std::string> &dynamic_options,
       const int runtime_env_hash,
       const std::string &serialized_runtime_env_context,

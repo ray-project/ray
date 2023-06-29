@@ -72,12 +72,14 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   /// Request agent to increase the runtime env reference. This API is not idempotent.
   /// \param[in] job_id The job id which the runtime env belongs to.
+  /// \param[in] worker_id The worker id which the runtime env is created for.
   /// \param[in] serialized_runtime_env The serialized runtime environment.
   /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
   /// instances.
   /// \param[in] callback The callback function.
   virtual void GetOrCreateRuntimeEnv(
       const JobID &job_id,
+      const WorkerID &worker_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
       const std::string &serialized_allocated_resource_instances,
@@ -85,8 +87,10 @@ class AgentManager : public rpc::AgentManagerServiceHandler {
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent.
   /// \param[in] serialized_runtime_env The serialized runtime environment.
+  /// \param[in] worker_id The worker id which the runtime env is created for.
   /// \param[in] callback The callback function.
   virtual void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                          const WorkerID &worker_id,
                                           DeleteRuntimeEnvIfPossibleCallback callback);
 
  private:

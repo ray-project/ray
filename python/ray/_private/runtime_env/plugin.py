@@ -100,6 +100,34 @@ class RuntimeEnvPlugin(ABC):
         """
         return 0
 
+    async def pre_worker_startup(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        context: RuntimeEnvContext,
+        worker_id: str,
+    ) -> None:
+        """Doing some works previous the worker startup.
+
+        Args:
+            runtime_env: The RuntimeEnv object.
+            context: Auxiliary information supplied by Ray.
+            worker_id: The ID of the worker which will be started.
+        """
+        return
+
+    async def post_worker_exit(
+        self,
+        runtime_env: "RuntimeEnv",  # noqa: F821
+        worker_id: str,
+    ) -> None:
+        """Doing some works post the worker exit.
+
+        Args:
+            runtime_env: The RuntimeEnv object.
+            worker_id: The ID of the worker which will be started.
+        """
+        return
+
 
 class PluginSetupContext:
     def __init__(
