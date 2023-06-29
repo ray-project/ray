@@ -14,8 +14,10 @@ Lightweight config updates modify running deployment replicas without tearing th
 Lightweight config updates are only possible for deployments that are included as entries under `deployments` in the config file. If a deployment is not included in the config file, replicas of that deployment will be torn down and brought up again each time you redeploy with `serve deploy`.
 :::
 
+(serve-updating-user-config)=
+
 ## Updating User Config
-Let's use the `FruitStand` deployment graph [from an earlier section](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. This method allows us to issue lightweight updates to our deployments by updating the `user_config`.
+Let's use the `FruitStand` deployment graph [from the production guide](fruit-config-yaml) as an example. All the individual fruit deployments contain a `reconfigure()` method. This method allows us to issue lightweight updates to our deployments by updating the `user_config`.
 
 First let's deploy the graph. Make sure to stop any previous Ray cluster using the CLI command `ray stop` for this example:
 

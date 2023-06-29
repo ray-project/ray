@@ -183,12 +183,7 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
-    "workflows/api/doc/ray.workflow.*",
-    "serve/api/doc/ray.serve.*",
-    "ray-references/api/ray-observability/state/doc/ray.*",
-    "ray-observability/reference/doc/ray.*",
     "cluster/running-applications/doc/ray.*",
-    "ray-core/runtime_env_auth.md",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

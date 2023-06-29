@@ -15,6 +15,7 @@ from ray.rllib.connectors.connector import (
 from ray import cloudpickle
 from ray.rllib.connectors.registry import register_connector
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.models.base import STATE_OUT
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ActionConnectorDataType, AgentConnectorDataType
 from ray.util.annotations import PublicAPI
@@ -32,6 +33,7 @@ class StateBufferConnector(AgentConnector):
         self._action_space_struct = get_base_struct_from_space(ctx.action_space)
 
         self._states = defaultdict(lambda: defaultdict(lambda: (None, None, None)))
+        self._enable_rl_module_api = ctx.config.get("_enable_rl_module_api", False)
         # TODO(jungong) : we would not need this if policies are never stashed
         # during the rollout of a single episode.
         if states:
@@ -49,7 +51,6 @@ class StateBufferConnector(AgentConnector):
 
     @override(Connector)
     def in_eval(self):
-        self._states.clear()
         super().in_eval()
 
     def reset(self, env_id: str):
@@ -88,8 +89,12 @@ class StateBufferConnector(AgentConnector):
 
         if states is None:
             states = self._initial_states
-        for i, v in enumerate(states):
-            d["state_out_{}".format(i)] = v
+        if self._enable_rl_module_api:
+            if states:
+                d[STATE_OUT] = states
+        else:
+            for i, v in enumerate(states):
+                d["state_out_{}".format(i)] = v
 
         # Also add extra fetches if available.
         if fetches:
