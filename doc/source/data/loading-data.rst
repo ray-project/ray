@@ -10,6 +10,8 @@ Ray Data loads data from various sources. This guide shows you how to:
 * `Load in-memory data <#loading-data-from-other-libraries>`_ like pandas DataFrames
 * `Read databases <#reading-databases>`_ like MySQL
 
+.. _reading-files:
+
 Reading files
 =============
 
