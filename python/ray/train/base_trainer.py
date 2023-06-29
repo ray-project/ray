@@ -560,7 +560,7 @@ class BaseTrainer(abc.ABC):
             class MyTrainer(BaseTrainer):
                 def training_loop(self):
                     for epoch_idx in range(5):
-                        # ...
+                        ...
                         session.report({"epoch": epoch_idx})
 
         """
