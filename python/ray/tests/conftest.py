@@ -187,11 +187,11 @@ def start_redis(db_dir):
             node_id, proc = start_redis_instance(
                 temp_dir,
                 port,
-                free_port,
                 enable_tls=enable_tls,
                 replica_of=leader_port,
                 leader_id=leader_id,
                 db_dir=db_dir,
+                free_port=free_port,
             )
             if leader_port is None:
                 leader_port = port

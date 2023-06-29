@@ -125,7 +125,6 @@ def get_redis_cli(port, enable_tls):
 def start_redis_instance(
     session_dir_path: str,
     port: int,
-    free_port: int,
     redis_max_clients: Optional[int] = None,
     num_retries: int = 20,
     stdout_file: Optional[str] = None,
@@ -139,6 +138,7 @@ def start_redis_instance(
     replica_of=None,
     leader_id=None,
     db_dir=None,
+    free_port=0,
 ):
     """Start a single Redis server.
 
