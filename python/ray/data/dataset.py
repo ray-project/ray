@@ -4251,6 +4251,17 @@ class Dataset:
         deserialization time, e.g. data external to this Ray cluster such as persistent
         cloud object stores, support lineage-based serialization. All of the
         ray.data.read_*() APIs support lineage-based serialization.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            print(ray.data.from_items(list(range(10))).has_serializable_lineage())
+            print(ray.data.read_csv("example://iris.csv").has_serializable_lineage())
+
+        .. testoutput::
+            False
+            True
         """
         return self._plan.has_lazy_input()
 
@@ -4270,6 +4281,27 @@ class Dataset:
         .. note::
             Unioned and zipped datasets, produced by :py:meth`Dataset.union` and
             :py:meth:`Dataset.zip`, are not lineage-serializable.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
+            ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            print(ds)
+
+        .. testoutput::
+            Dataset(
+               num_blocks=...,
+               num_rows=150,
+               schema={
+                  sepal.length: double,
+                  sepal.width: double,
+                  petal.length: double,
+                  petal.width: double,
+                  variety: string
+               }
+            )
 
         Returns:
             Serialized bytes containing the lineage of this dataset.
@@ -4327,6 +4359,27 @@ class Dataset:
 
         This assumes that the provided serialized bytes were serialized using
         :py:meth:`Dataset.serialize_lineage`.
+
+        Examples:
+
+        .. testcode::
+            import ray
+            serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
+            ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+            print(ds)
+
+        .. testoutput::
+            Dataset(
+               num_blocks=...,
+               num_rows=150,
+               schema={
+                  sepal.length: double,
+                  sepal.width: double,
+                  petal.length: double,
+                  petal.width: double,
+                  variety: string
+               }
+            )
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
