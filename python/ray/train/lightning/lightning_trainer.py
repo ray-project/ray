@@ -1,6 +1,7 @@
 import os
 import pytorch_lightning as pl
 
+from copy import copy
 from inspect import isclass
 from typing import Any, Dict, Optional, Type
 from pytorch_lightning.plugins.environments import ClusterEnvironment
@@ -17,6 +18,7 @@ from ray.util import PublicAPI
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
     RayFSDPStrategy,
+    RayDeepSpeedStrategy,
     RayEnvironment,
     RayDataModule,
     RayModelCheckpoint,
@@ -101,10 +103,14 @@ class LightningConfigBuilder:
     def trainer(self, **kwargs) -> "LightningConfigBuilder":
         """Set up the configurations of ``pytorch_lightning.Trainer``.
 
-        Note that you don't have to specify the `strategy` argument here since the
-        ``LightningTrainer`` creates a PyTorch Lightning Strategy object with the
-        configurations specified in the `.strategy()` method. If no configuration
-        is specified, it creates a DDPStrategy by default.
+        Note that you don't have to specify the ``strategy``, ``device`` and
+        ``num_nodes`` arguments here, since the ``LightningTrainer`` creates
+        a PyTorch Lightning Strategy object with the configurations specified
+        in the `.strategy()` method. The ``device`` and ``num_nodes`` are also
+        configured automatically by the LightningTrainer. If no configuration
+        is specified, it creates a ``DDPStrategy`` by default.
+
+        For ``accelerator``, currently only ``"cpu"`` and ``"gpu"`` are supported.
 
         Args:
             kwargs: The initialization arguments for ``pytorch_lightning.Trainer``
@@ -143,16 +149,18 @@ class LightningConfigBuilder:
 
         Args:
             name: The name of your distributed strategy. You can choose
-                from "ddp" and "fsdp". Default: "ddp".
+                from "ddp", "fsdp", and "deepspeed". Default: "ddp".
             kwargs: For valid arguments to pass, please refer to:
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DDPStrategy.html
-                and
+                ,
                 https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+                and
+                https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.DeepSpeedStrategy.html
         """
-        if name not in ["ddp", "fsdp"]:
+        if name not in ["ddp", "fsdp", "deepspeed"]:
             raise ValueError(
-                "LightningTrainer currently supports 'ddp' and 'fsdp' strategy. "
-                "Please choose one of them."
+                "LightningTrainer currently supports 'ddp', 'fsdp', and 'deepspeed'"
+                " strategy. Please choose one of them."
             )
 
         self._strategy_config["_strategy_name"] = name
@@ -220,7 +228,7 @@ class LightningTrainer(TorchTrainer):
     ``pytorch_lightning.LightningModule`` using the arguments provided in
     ``LightningConfigBuilder.module()``.
 
-    For data ingestion, the LightningTrainer will then either convert the Dataset
+    For data ingestion, the LightningTrainer will then either convert the Ray Dataset
     shards to a ``pytorch_lightning.LightningDataModule``, or directly use the
     datamodule or dataloaders if provided by users.
 
@@ -336,19 +344,27 @@ class LightningTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: A dictionary of Datasets to use for training.
+        datasets: A dictionary of Ray Datasets to use for training.
             Use the key "train" to denote which dataset is the training
             dataset and (optionally) key "val" to denote the validation
-            dataset. If a ``preprocessor`` is provided and has not already
-            been fit, it will be fit on the training dataset. All datasets will be
-            transformed by the ``preprocessor`` if one is provided.
-        datasets_iter_config: Configurations for iterating over input Datasets.
-            This configuration is only valid when `datasets` argument is provided to
-            the LightningTrainer. Otherwise, LightningTrainer will use datamodule
-            or dataloaders specified in ``LightningConfig.trainer_init_config``.
-            For valid arguments to pass, please refer to:
+            dataset. Internally, LightningTrainer shards the training dataset
+            across all workers, and creates a PyTorch Dataloader for each shard.
+
+            The datasets will be transformed by ``preprocessor`` if it is provided.
+            If the ``preprocessor`` has not already been fit, it will be fit on the
+            training dataset.
+
+            If ``datasets`` is not specified, ``LightningTrainer`` will use datamodule
+            or dataloaders specified in ``LightningConfigBuilder.fit_params`` instead.
+        datasets_iter_config: Configuration for iterating over the input ray datasets.
+            You can configure the per-device batch size, prefetch batch size, collate
+            function, and more. For valid arguments to pass, please refer to:
             :py:meth:`Dataset.iter_torch_batches
             <ray.data.Dataset.iter_torch_batches>`
+
+            Note that if you provide a ``datasets`` parameter, you must always specify
+            ``datasets_iter_config`` for it.
+
         preprocessor: A ray.data.Preprocessor to preprocess the
             provided datasets.
         resume_from_checkpoint: A checkpoint to resume training from.
@@ -367,10 +383,17 @@ class LightningTrainer(TorchTrainer):
         preprocessor: Optional[Preprocessor] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
-        run_config = run_config or RunConfig()
+        run_config = copy(run_config) or RunConfig()
         lightning_config = lightning_config or LightningConfigBuilder().build()
 
-        self._check_checkpoint_configs(
+        if datasets and not datasets_iter_config:
+            raise RuntimeError(
+                "No `datasets_iter_config` provided for the input `datasets`!"
+                "Please refer to the API of `ray.data.DataIterator.iter_torch_batches`"
+                "for all valid arguments."
+            )
+
+        run_config.checkpoint_config = self._unify_checkpoint_configs(
             ptl_ckpt_config=lightning_config["_model_checkpoint_config"],
             air_ckpt_config=run_config.checkpoint_config,
         )
@@ -399,10 +422,11 @@ class LightningTrainer(TorchTrainer):
             resume_from_checkpoint=resume_from_checkpoint,
         )
 
-    def _check_checkpoint_configs(
+    def _unify_checkpoint_configs(
         self, ptl_ckpt_config: Dict, air_ckpt_config: CheckpointConfig
-    ):
-        """Check if configs are set correctly"""
+    ) -> CheckpointConfig:
+        """Unify the Lightning checkpointing config and the AIR CheckpointConfig."""
+
         ptl_ckpt_metric = ptl_ckpt_config.get("monitor", None)
         air_ckpt_metric = air_ckpt_config.checkpoint_score_attribute
 
@@ -423,6 +447,26 @@ class LightningTrainer(TorchTrainer):
                 "be used in `LightningTrainer`! Please set up checkpoint frequency "
                 "through `LightningConfigBuilder.checkpointing()`."
             )
+
+        # Auto-fill the AIR CheckpointConfig if the user didn't specify it.
+        if air_ckpt_config == CheckpointConfig():
+            # save_tok_k = 1 -> num_to_keep = 1     : Lightning saves 1 ckpt by default
+            # save_top_k = 0 -> num_to_keep = 1     : AIR saves at least 1 ckpt
+            # save_top_k = -1 -> num_to_keep = None : Save all ckpts
+
+            save_top_k = ptl_ckpt_config.get("save_top_k", 1)
+            if save_top_k == -1:
+                num_to_keep = None
+            else:
+                num_to_keep = max(save_top_k, 1)
+
+            return CheckpointConfig(
+                num_to_keep=num_to_keep,
+                checkpoint_score_attribute=ptl_ckpt_config.get("monitor", None),
+                checkpoint_score_order=ptl_ckpt_config.get("mode", "min"),
+            )
+        else:
+            return air_ckpt_config
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -453,6 +497,14 @@ class LightningTrainer(TorchTrainer):
 
 def _lightning_train_loop_per_worker(config):
     """Per-worker training loop for a Lightning Trainer."""
+    # Change the working directory for all workers to the same directory.
+    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+    # each worker will have a different log and checkpoint directory if they are
+    # using relative paths.
+    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+    os.makedirs(working_dir, exist_ok=True)
+    os.chdir(working_dir)
+
     if not config["lightning_config"]:
         raise RuntimeError("'lightning_config' not specified in LightningTrainer!")
 
@@ -522,6 +574,8 @@ def _lightning_train_loop_per_worker(config):
         trainer_config["strategy"] = RayDDPStrategy(**strategy_config)
     if strategy_name == "fsdp":
         trainer_config["strategy"] = RayFSDPStrategy(**strategy_config)
+    if strategy_name == "deepspeed":
+        trainer_config["strategy"] = RayDeepSpeedStrategy(**strategy_config)
 
     # LightningTrainer always requires checkpointing
     trainer_config["enable_checkpointing"] = True

@@ -47,6 +47,10 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
       rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetClusterStatus(rpc::autoscaler::GetClusterStatusRequest request,
+                              rpc::autoscaler::GetClusterStatusReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
@@ -61,15 +65,15 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// \brief Get the current cluster resource state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::node_states for more details.
-  void GetNodeStates(rpc::autoscaler::GetClusterResourceStateReply *reply);
+  /// See rpc::autoscaler::ClusterResourceState::node_states for more details.
+  void GetNodeStates(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the resource requests state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::pending_resource_requests for
+  /// See rpc::autoscaler::ClusterResourceState::pending_resource_requests for
   /// more details.
-  void GetPendingResourceRequests(rpc::autoscaler::GetClusterResourceStateReply *reply);
+  void GetPendingResourceRequests(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the gang resource requests (e.g. from placement group) state.
   /// \param reply The reply to be filled.
@@ -89,18 +93,16 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// get unplaced. In this case, the request corresponding to the placement group will
   /// only include those unplaced bundles.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::pending_gang_resource_requests
+  /// See rpc::autoscaler::ClusterResourceState::pending_gang_resource_requests
   /// for more details.
-  void GetPendingGangResourceRequests(
-      rpc::autoscaler::GetClusterResourceStateReply *reply);
+  void GetPendingGangResourceRequests(rpc::autoscaler::ClusterResourceState *state);
 
   /// \brief Get the cluster resource constraints state.
   /// \param reply The reply to be filled.
   ///
-  /// See rpc::autoscaler::GetClusterResourceStateReply::cluster_resource_constraints for
+  /// See rpc::autoscaler::ClusterResourceState::cluster_resource_constraints for
   /// more details. This is requested through autoscaler SDK for request_resources().
-  void GetClusterResourceConstraints(
-      rpc::autoscaler::GetClusterResourceStateReply *reply);
+  void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
 
   /// Cluster resources manager that provides cluster resources information.
   const ClusterResourceManager &cluster_resource_manager_;
@@ -133,6 +135,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// This is requested through autoscaler SDK from request_resources().
   absl::optional<rpc::ClusterResourceConstraint> cluster_resource_constraint_ =
       absl::nullopt;
+
+  /// Cached autoscaling state.
+  absl::optional<rpc::AutoscalingState> autoscaling_state_ = absl::nullopt;
+
+  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
 
 }  // namespace gcs

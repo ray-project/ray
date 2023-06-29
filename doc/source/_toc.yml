@@ -93,12 +93,11 @@ parts:
         sections:
           - file: data/overview
             title: Overview
-          - file: data/getting-started
           - file: data/key-concepts
           - file: data/user-guide
           - file: data/examples/index
-          - file: data/faq
           - file: data/api/api
+          - file: data/data-internals
 
       - file: train/train
         title: Ray Train
@@ -256,11 +255,13 @@ parts:
         sections:
           - file: serve/getting_started
           - file: serve/key-concepts
+          - file: serve/develop-and-deploy
           - file: serve/model_composition
           - file: serve/deploy-many-models/index
             sections:
             - file: serve/deploy-many-models/multi-app
             - file: serve/deploy-many-models/model-multiplexing
+          - file: serve/configure-serve-deployment
           - file: serve/http-guide
           - file: serve/production-guide/index
             title: Production Guide
@@ -325,7 +326,6 @@ parts:
           - file: ray-more-libs/joblib
           - file: ray-more-libs/multiprocessing
           - file: ray-more-libs/ray-collective
-          - file: ray-more-libs/using-ray-with-pytorch-lightning
           - file: ray-more-libs/dask-on-ray
           - file: ray-more-libs/raydp
           - file: ray-more-libs/mars-on-ray

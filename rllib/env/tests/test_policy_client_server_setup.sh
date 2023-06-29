@@ -17,20 +17,20 @@ if [ "$2" == "cartpole" ]; then
   server_script=cartpole_server.py
   client_script=cartpole_client.py
   stop_criterion="--stop-reward=150.0"
-  trainer_cls="PPO"
+  algo_cls="PPO"
   use_lstm=""
 elif [ "$2" == "cartpole_lstm" ]; then
   server_script=cartpole_server.py
   client_script=cartpole_client.py
   stop_criterion="--stop-reward=150.0"
-  trainer_cls="IMPALA"
+  algo_cls="IMPALA"
   use_lstm="--use-lstm"
 # Unity3D dummy setup.
 elif [ "$2" == "unity3d" ]; then
   server_script=unity3d_server.py
   client_script=unity3d_dummy_client.py
   stop_criterion="--num-episodes=10"
-  trainer_cls="PPO"
+  algo_cls="PPO"
   use_lstm=""
 # CartPole dummy test using 2 simultaneous episodes on the client.
 # One episode has training_enabled=False (its data should NOT arrive at server).
@@ -38,7 +38,7 @@ else
   server_script=cartpole_server.py
   client_script=dummy_client_with_two_episodes.py
   stop_criterion="--dummy-arg=dummy"  # no stop criterion: client script terminates either way
-  trainer_cls="PPO"
+  algo_cls="PPO"
   use_lstm=""
 fi
 
@@ -61,7 +61,7 @@ fi
 # connections).
 # Do not attempt to restore from checkpoint; leads to errors on travis.
 # shellcheck disable=SC2086
-(python $basedir/$server_script --run="$trainer_cls" --num-workers=2 $use_lstm --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
+(python $basedir/$server_script --run="$algo_cls" --num-workers=2 $use_lstm --no-restore --port=$worker_1_port 2>&1 | grep -v 200) &
 server_pid=$!
 
 echo "Waiting for server to start ..."

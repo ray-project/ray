@@ -10,12 +10,14 @@ from ray.rllib.execution.common import (
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_tf
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -37,6 +39,8 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LEARN_ON_BATCH_TIMER timer of the `algorithm` object.
     """
+    if log_once("train_one_step_deprecation_warning"):
+        deprecation_warning(old="ray.rllib.execution.train_ops.train_one_step")
 
     config = algorithm.config
     workers = algorithm.workers
@@ -98,6 +102,10 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     Updates the NUM_ENV_STEPS_TRAINED and NUM_AGENT_STEPS_TRAINED counters as well as
     the LOAD_BATCH_TIMER and LEARN_ON_BATCH_TIMER timers of the Algorithm instance.
     """
+    if log_once("mulit_gpu_train_one_step_deprecation_warning"):
+        deprecation_warning(
+            old=("ray.rllib.execution.train_ops." "multi_gpu_train_one_step")
+        )
     config = algorithm.config
     workers = algorithm.workers
     local_worker = workers.local_worker()
@@ -172,7 +180,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     load_timer.push_units_processed(train_batch.count)
     learn_timer.push_units_processed(train_batch.count)
 
-    # TODO: Move this into Trainer's `training_iteration` method for
+    # TODO: Move this into Algorithm's `training_step` method for
     #  better transparency.
     algorithm._counters[NUM_ENV_STEPS_TRAINED] += train_batch.count
     algorithm._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
