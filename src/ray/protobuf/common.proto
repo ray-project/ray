@@ -764,8 +764,7 @@ message ResourceAllocations {
 
 // Debug info returned from the core worker.
 message CoreWorkerStats {
-  // Debug string of the currently executing task.
-  string current_task_desc = 1;
+  reserved 1;
   // Number of pending normal and actor tasks.
   int32 num_pending_tasks = 2;
   // Number of object refs in local scope.
@@ -808,6 +807,10 @@ message CoreWorkerStats {
   int64 objects_total = 24;
   // Number of objects owned by the worker.
   int64 num_owned_objects = 25;
+  // Number of actors owned by the worker.
+  int64 num_owned_actors = 26;
+  // Number of running tasks
+  int64 num_running_tasks = 27;
 }
 
 // Resource usage reported by the node reporter.

@@ -30,7 +30,7 @@ class PlasmaStoreRunner {
   int64_t GetFallbackAllocated() const;
 
   void GetAvailableMemoryAsync(std::function<void(size_t)> callback) const {
-    main_service_.post([this, callback]() { store_->GetAvailableMemory(callback); },
+    main_service_.post([this, callback]() { callback(store_->GetAvailableMemory()); },
                        "PlasmaStoreRunner.GetAvailableMemory");
   }
 
