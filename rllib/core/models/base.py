@@ -19,7 +19,7 @@ CRITIC: str = "critic"
 
 @ExperimentalAPI
 class Model(abc.ABC):
-    """Framework-agnostic base class for RLlib models.
+    """Framework-agnostic base class for RLlib models
 
     Models are low-level neural network components that offer input- and
     output-specification, a forward method, and a get_initial_state method. Models
