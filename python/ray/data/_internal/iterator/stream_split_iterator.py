@@ -10,7 +10,7 @@ from ray.data._internal.execution.interfaces import NodeIdStr, RefBundle
 from ray.data._internal.execution.legacy_compat import execute_to_legacy_bundle_iterator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
 from ray.data.block import Block, BlockMetadata
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
@@ -65,6 +65,7 @@ class StreamSplitDataIterator(DataIterator):
         self._coord_actor = coord_actor
         self._output_split_idx = output_split_idx
         self._world_size = world_size
+        self._iter_stats = DatasetStats(stages={}, parent=None)
 
     def _to_block_iterator(
         self,
@@ -92,11 +93,15 @@ class StreamSplitDataIterator(DataIterator):
                     )
                     yield block_ref
 
-        return gen_blocks(), None, False
+        return gen_blocks(), self._iter_stats, False
 
     def stats(self) -> str:
         """Implements DataIterator."""
-        return ray.get(self._coord_actor.stats.remote())
+        # Merge the locally recorded iter stats and the remotely recorded
+        # stream execution stats.
+        summary = ray.get(self._coord_actor.stats.remote())
+        summary.iter_stats = self._iter_stats.to_summary().iter_stats
+        return summary.to_string()
 
     def schema(self) -> Union[type, "pyarrow.lib.Schema"]:
         """Implements DataIterator."""
@@ -161,11 +166,11 @@ class SplitCoordinator:
         self._next_epoch = gen_epochs()
         self._output_iterator = None
 
-    def stats(self) -> str:
+    def stats(self) -> DatasetStatsSummary:
         """Returns stats from the base dataset."""
         if self._executor:
-            return self._executor.get_stats().to_summary().to_string()
-        return self._base_dataset.stats()
+            return self._executor.get_stats().to_summary()
+        return self._base_dataset._get_stats_summary()
 
     def start_epoch(self, split_idx: int) -> str:
         """Called to start an epoch.
