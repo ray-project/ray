@@ -93,7 +93,7 @@ def test_ray_serve_basic(docker_cluster):
     #   - Make sure no task can run in the raylet where GCS is deployed.
 
     head, worker = docker_cluster
-    output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
+    output = head.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
     assert b"Adding 1 replica to deployment Counter." in output.output
     print("SERVE SA OUTPUT1", output.output)
