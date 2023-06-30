@@ -261,11 +261,14 @@ def test_running_tasks(ray_start_cluster):
     @ray.remote
     def f(t):
         import time
+
         time.sleep(t)
 
-    tasks = [f.options(resources={"node_0": 1}).remote(0),
-             f.options(resources={"node_1": 1}).remote(100000),
-             f.options(resources={"node_2": 1}).remote(100000)]
+    tasks = [
+        f.options(resources={"node_0": 1}).remote(0),
+        f.options(resources={"node_1": 1}).remote(100000),
+        f.options(resources={"node_2": 1}).remote(100000),
+    ]
 
     ready, pending = ray.wait(tasks)
     assert len(ready) == 1
@@ -275,6 +278,7 @@ def test_running_tasks(ray_start_cluster):
         n["NodeID"]: (n["NodeManagerAddress"], n["NodeManagerPort"])
         for n in ray.nodes()
     }
+
     def check():
         for i in range(NUM_NODES):
             node_stats = ray._private.internal_api.node_stats(
@@ -282,9 +286,25 @@ def test_running_tasks(ray_start_cluster):
             )
 
             if i == 0:
-                assert sum([stats.num_running_tasks for stats in node_stats.core_workers_stats]) == 0
+                assert (
+                    sum(
+                        [
+                            stats.num_running_tasks
+                            for stats in node_stats.core_workers_stats
+                        ]
+                    )
+                    == 0
+                )
             else:
-                assert sum([stats.num_running_tasks for stats in node_stats.core_workers_stats]) == 1
+                assert (
+                    sum(
+                        [
+                            stats.num_running_tasks
+                            for stats in node_stats.core_workers_stats
+                        ]
+                    )
+                    == 1
+                )
         return True
 
     wait_for_condition(check)
