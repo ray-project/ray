@@ -1,4 +1,3 @@
-import { createStyles, makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
 import low from "lowlight";
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
@@ -6,6 +5,7 @@ import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
+import { createStyles, makeStyles } from "@material-ui/core";
 import { MAX_LINES_FOR_LOGS } from "../../service/log";
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
@@ -86,7 +86,7 @@ export type LogVirtualViewProps = {
 const useStyles = makeStyles((theme) =>
   createStyles({
     warningInfo: {
-      color: "red",
+      color: theme.palette.error.main,
     },
   }),
 );
@@ -206,11 +206,11 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
 
   return (
     <div>
-      {logs && logs.length >= MAX_LINES_FOR_LOGS && (
+      {logs && logs.length > MAX_LINES_FOR_LOGS && (
         <p className={classes.warningInfo}>
-          [Truncation warning] This log has been truncated and only the latest{" "}
-          {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
-          above to see the full log
+          [Truncation warning] This log has been truncated and only the latest
+          50,000 lines are displayed. Click "Download" button above to see the
+          full log
         </p>
       )}
       <List
