@@ -47,9 +47,6 @@ from unittest.mock import (
 
 import ray
 from ray.exceptions import RayActorError
-from ray.tune import Trainable
-from ray.tune.integration.wandb import WandbTrainableMixin
-from ray.tune.integration.wandb import wandb_mixin
 from ray.air.integrations.wandb import (
     WandbLoggerCallback,
     _QueueItem,
@@ -451,25 +448,6 @@ class TestWandbLogger:
         gc.collect()
         with pytest.raises(RayActorError):
             ray.get(actor.get_state.remote())
-
-
-class TestWandbClassMixin:
-    def test_wandb_mixin(self):
-        class WandbTestTrainable(WandbTrainableMixin, Trainable):
-            pass
-
-        config = {}
-        with pytest.raises(DeprecationWarning):
-            WandbTestTrainable(config)
-
-
-class TestWandbMixinDecorator:
-    def test_wandb_decorator(self):
-        with pytest.raises(DeprecationWarning):
-
-            @wandb_mixin
-            def train_fn(config):
-                return 1
 
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
