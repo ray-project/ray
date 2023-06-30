@@ -16,7 +16,6 @@ import io
 import os
 import pickle
 import random
-import setproctitle
 import signal
 import sys
 import threading
@@ -1356,7 +1355,8 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
+    with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
+         ray._private.worker._changeproctitle(title, next_title):
         task_exception = False
         try:
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -1410,62 +1410,61 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    with ray._private.worker._changeproctitle(title, next_title):
-                        if debugger_breakpoint != b"":
-                            ray.util.pdb.set_trace(
-                                breakpoint_uuid=debugger_breakpoint)
-                        outputs = function_executor(*args, **kwargs)
+                    if debugger_breakpoint != b"":
+                        ray.util.pdb.set_trace(
+                            breakpoint_uuid=debugger_breakpoint)
+                    outputs = function_executor(*args, **kwargs)
 
-                        if is_streaming_generator:
-                            # Streaming generator always has a single return value
-                            # which is the generator task return.
-                            assert returns[0].size() == 1
+                    if is_streaming_generator:
+                        # Streaming generator always has a single return value
+                        # which is the generator task return.
+                        assert returns[0].size() == 1
 
-                            if (not inspect.isgenerator(outputs)
-                                    and not inspect.isasyncgen(outputs)):
-                                raise ValueError(
-                                        "Functions with "
-                                        "@ray.remote(num_returns=\"streaming\" "
-                                        "must return a generator")
+                        if (not inspect.isgenerator(outputs)
+                                and not inspect.isasyncgen(outputs)):
+                            raise ValueError(
+                                    "Functions with "
+                                    "@ray.remote(num_returns=\"streaming\" "
+                                    "must return a generator")
 
-                            execute_streaming_generator(
-                                    outputs,
-                                    returns[0][0].first,  # generator object ID.
-                                    task_type,
-                                    caller_address,
-                                    task_id,
-                                    serialized_retry_exception_allowlist,
-                                    function_name,
-                                    function_descriptor,
-                                    title,
-                                    actor,
-                                    actor_id,
-                                    name_of_concurrency_group_to_execute,
-                                    returns[0].size(),
-                                    attempt_number,
-                                    streaming_generator_returns,
-                                    is_retryable_error,
-                                    application_error)
-                            # Streaming generator output is not used, so set it to None.
-                            outputs = None
+                        execute_streaming_generator(
+                                outputs,
+                                returns[0][0].first,  # generator object ID.
+                                task_type,
+                                caller_address,
+                                task_id,
+                                serialized_retry_exception_allowlist,
+                                function_name,
+                                function_descriptor,
+                                title,
+                                actor,
+                                actor_id,
+                                name_of_concurrency_group_to_execute,
+                                returns[0].size(),
+                                attempt_number,
+                                streaming_generator_returns,
+                                is_retryable_error,
+                                application_error)
+                        # Streaming generator output is not used, so set it to None.
+                        outputs = None
 
-                        next_breakpoint = (
-                            ray._private.worker.global_worker.debugger_breakpoint)
-                        if next_breakpoint != b"":
-                            # If this happens, the user typed "remote" and
-                            # there were no more remote calls left in this
-                            # task. In that case we just exit the debugger.
-                            ray.experimental.internal_kv._internal_kv_put(
-                                "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}",
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            (ray._private.worker.global_worker
-                             .debugger_breakpoint) = b""
+                    next_breakpoint = (
+                        ray._private.worker.global_worker.debugger_breakpoint)
+                    if next_breakpoint != b"":
+                        # If this happens, the user typed "remote" and
+                        # there were no more remote calls left in this
+                        # task. In that case we just exit the debugger.
+                        ray.experimental.internal_kv._internal_kv_put(
+                            "RAY_PDB_{}".format(next_breakpoint),
+                            "{\"exit_debugger\": true}",
+                            namespace=ray_constants.KV_NAMESPACE_PDB
+                        )
+                        ray.experimental.internal_kv._internal_kv_del(
+                            "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                            namespace=ray_constants.KV_NAMESPACE_PDB
+                        )
+                        (ray._private.worker.global_worker
+                         .debugger_breakpoint) = b""
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
@@ -2304,6 +2303,24 @@ cdef class GcsClient:
             }
         return result
 
+    ########################################################
+    # Interface for rpc::autoscaler::AutoscalerStateService
+    ########################################################
+
+    @_auto_reconnect
+    def request_cluster_resource_constraint(
+            self,
+            bundles: c_vector[unordered_map[c_string, double]],
+            timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        with nogil:
+            check_status(self.inner.get().RequestClusterResourceConstraint(
+                timeout_ms, bundles))
+
+    #############################################################
+    # Interface for rpc::autoscaler::AutoscalerStateService ends
+    #############################################################
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:

@@ -9,6 +9,7 @@ import dask.dataframe as dd
 import numpy as np
 import pandas as pd
 from dask.distributed import Client
+import traceback
 
 
 def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
@@ -61,6 +62,7 @@ def load_dataset(client, data_dir, s3_bucket, nbytes, npartitions):
             df = dd.read_parquet(filenames)
             break
         except FileNotFoundError as e:
+            print(traceback.format_exc())
             print(f"Failed to load a file. {e}")
             # Wait a little bit before retrying.
             time.sleep(30)
