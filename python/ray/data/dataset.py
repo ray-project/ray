@@ -1986,6 +1986,14 @@ class Dataset:
     ) -> Union[Any, Dict[str, Any]]:
         """Compute the standard deviation of one or more columns.
 
+        .. note::
+            This method uses Welford's online method for an accumulator-style
+            computation  of the standard deviation. This method was chosen due to it's
+            numerical stability, and it being computable in a single pass. This may give
+            different (but more accurate) results than NumPy, Pandas, and sklearn, which
+            use a less numerically stable two-pass algorithm.
+            To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
+
         Examples:
             >>> import ray
             >>> round(ray.data.range(100).std("id", ddof=0), 5)
@@ -1995,14 +2003,6 @@ class Dataset:
             ...     for i in range(100)
             ... ]).std(["A", "B"])
             {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
-
-        .. note::
-            This uses Welford's online method for an accumulator-style computation
-            of the standard deviation. This method was chosen due to it's numerical
-            stability, and it being computable in a single pass. This may give different
-            (but more accurate) results than NumPy, Pandas, and sklearn, which use a
-            less numerically stable two-pass algorithm.
-            To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_
 
         Args:
             on: a column name or a list of column names to aggregate.
