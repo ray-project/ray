@@ -26,6 +26,8 @@ from ray.autoscaler._private.commands import debug_status
 from ray.util.state.common import (
     ListApiOptions,
 )
+from ray.dashboard.state_aggregator import StateAPIManager
+
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
@@ -115,7 +117,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 cluster_status=debug_status(formatted_status_string, error),
             )
 
-
     """
     We don't use pid and ip to get task traceback since ip and pid is bounded to a worker
     and a worker may run different tasks at different time.
@@ -124,26 +125,29 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     Raises:
         ValueError: HTTPInternalServerError
     """
-    @routes.get("/task/traceback")
-    async def get_task_traceback(self, req) -> aiohttp.web.Response:
-        ## Or we could use path instead of query
-        if "task_id" in req.query:
-                self._state_api = StateAPIManager(self._state_api_data_source_client)
 
-                task_id = req.query["task_id"]
-                option = ListApiOptions(
-                    filters=[("task_id", "=", task_id)], 
-                    detail=True,
-                    timeout=10,
-                    attempt=1,
-                )
-              task =  self._state_api.list_tasks(option, detail=True)
-
-            await self._handle_list_api(self._state_api.list_tasks, req)
+    @routes.get("/worker/traceback")
+    async def get_traceback(self, req) -> aiohttp.web.Response:
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
         else:
-            raise ValueError("task_id is required")
-
-
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
+        logger.info(
+            "Sending stack trace request to {}:{} with native={}".format(
+                req.query.get("ip"), pid, native
+            )
+        )
+        reply = await reporter_stub.GetTraceback(
+            reporter_pb2.GetTracebackRequest(pid=pid, native=native)
+        )
+        if reply.success:
+            logger.info("Returning stack trace, size {}".format(len(reply.output)))
+            return aiohttp.web.Response(text=reply.output)
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
     """
     We don't use pid and ip to get task cpu profile since ip and pid is bounded to a worker
@@ -153,35 +157,77 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     Raises:
         ValueError: HTTPInternalServerError
     """
+
     @routes.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
-          self._state_api = StateAPIManager(self._state_api_data_source_client)
+        if "task_id" not in req.query:
+            raise ValueError("task_id is required")
+        else:
+            task_id = req.query.get("ip")
+            option = ListApiOptions(
+                filters=[("task_id", "=", task_id)], detail=True, timeout=10, attempt=1
+            )
+            self._state_api = StateAPIManager(self._state_api_data_source_client)
+            tasks = self._state_api.list_tasks(option, detail=True)
+
+            pid = tasks[0]["worker_pid"]
+            node_id = tasks[0]["node_id"]
+
+            ip = DataSource.node_id_to_ip[node_id]
+
+            duration = int(req.query.get("duration", 5))
+            if duration > 60:
+                raise ValueError(f"The max duration allowed is 60: {duration}.")
+            format = req.query.get("format", "flamegraph")
+
+            # Default not using `--native` for profiling
+            native = req.query.get("native", False) == "1"
+            reporter_stub = self._stubs[ip]
+
+            logger.info(
+                "Sending CPU profiling request to {}:{} for {}with native={}".format(
+                    ip, pid, task_id, native
+                )
+            )
+
+            reply = await reporter_stub.CpuProfiling(
+                reporter_pb2.CpuProfilingRequest(
+                    pid=pid, duration=duration, format=format, native=native
+                )
+            )
+            if reply.success:
+                logger.info(
+                    "Returning profiling response, size {}".format(len(reply.output))
+                )
+                return aiohttp.web.Response(
+                    body=reply.output,
+                    headers={
+                        "Content-Type": "image/svg+xml"
+                        if format == "flamegraph"
+                        else "text/plain"
+                    },
+                )
+            else:
+                return aiohttp.web.HTTPInternalServerError(
+                    text="Could not find CPU Flame Graph info for task {}".format(
+                        task_id
+                    )
+                )
+
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
-        if "task_id" in req.query:
-            task_id = req.query["task_id"]
-            task = getTask(task_id)
-            task_state = getTaskState(task_id)
-            if task_state != "RUNNING":
-                logger.Error("task is not running and could not fetch traceback info")
-            else:
-                ip, pid = task["host"], task["pid"]
-                reporter_stub = self._stubs[ip]
+        if "ip" in req.query:
+            reporter_stub = self._stubs[req.query["ip"]]
         else:
-            if "ip" in req.query:
-                reporter_stub = self._stubs[req.query["ip"]]
-            else:
-                reporter_stub = list(self._stubs.values())[0]
-            pid = int(req.query["pid"])
-
+            reporter_stub = list(self._stubs.values())[0]
+        pid = int(req.query["pid"])
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         logger.info(
             "Sending stack trace request to {}:{} with native={}".format(
-                ip, pid, native
+                req.query.get("ip"), pid, native
             )
         )
-        logger.info("reporter_stub is {}".format(reporter_stub))
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
@@ -189,7 +235,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             logger.info("Returning stack trace, size {}".format(len(reply.output)))
             return aiohttp.web.Response(text=reply.output)
         else:
-            return aiohttp.web.HTTPInternalServerError(text=reply.output)
+            return aiohttp.web.HTTPInternalServerError(
+                text="Could not find trackback for task {}".format(task_id)
+            )
 
     @routes.get("/worker/cpu_profile")
     async def cpu_profile(self, req) -> aiohttp.web.Response:
