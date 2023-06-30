@@ -1,6 +1,6 @@
 import { get } from "./requestHandlers";
 
-const MAX_LINES_FOR_LOGS = 50_000;
+export const MAX_LINES_FOR_LOGS = 50_000;
 const getLogUrl = (url: string) => {
   return url === "log_index" ? url : `log_proxy?url=${encodeURIComponent(url)}`;
 };

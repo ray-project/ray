@@ -5,6 +5,8 @@ import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
+import { createStyles, makeStyles } from "@material-ui/core";
+import { MAX_LINES_FOR_LOGS } from "../../service/log";
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
 
@@ -81,6 +83,14 @@ export type LogVirtualViewProps = {
   endTime?: string;
 };
 
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    warningInfo: {
+      color: "red",
+    },
+  }),
+);
+
 const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   content,
   width = "100%",
@@ -102,6 +112,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   const timmer = useRef<ReturnType<typeof setTimeout>>();
   const el = useRef<List>(null);
   const outter = useRef<HTMLDivElement>(null);
+  const classes = useStyles();
   if (listRef) {
     listRef.current = outter.current;
   }
@@ -130,7 +141,12 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   };
 
   useEffect(() => {
-    const originContent = content.split("\n");
+    // const originContent = content.split("\n");
+    const originContent: string[] = [];
+
+    for (let i = 0; i < 50000; i++) {
+      originContent.push(`Log entry ${i}`);
+    }
     if (timmer.current) {
       clearTimeout(timmer.current);
     }
@@ -192,24 +208,37 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       };
     }
   }, [onScrollBottom]);
+  const longLogs = [];
 
+  for (let i = 0; i < 50000; i++) {
+    longLogs.push(`Log entry ${i}`);
+  }
   return (
-    <List
-      height={height || (content.split("\n").length + 1) * 18}
-      width={width}
-      ref={el}
-      outerRef={outter}
-      className={`hljs-${theme}`}
-      style={{
-        fontSize,
-        fontFamily: "menlo, monospace",
-        ...style,
-      }}
-      itemSize={fontSize + 6}
-      itemCount={total}
-    >
-      {itemRenderer}
-    </List>
+    <div>
+      {logs && logs.length >= MAX_LINES_FOR_LOGS && (
+        <p className={classes.warningInfo}>
+          [Truncation warning] This log has been truncated and only the latest{" "}
+          {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
+          above to see the full log
+        </p>
+      )}
+      <List
+        height={height || (content.split("\n").length + 1) * 18}
+        width={width}
+        ref={el}
+        outerRef={outter}
+        className={`hljs-${theme}`}
+        style={{
+          fontSize,
+          fontFamily: "menlo, monospace",
+          ...style,
+        }}
+        itemSize={fontSize + 6}
+        itemCount={total}
+      >
+        {itemRenderer}
+      </List>
+    </div>
   );
 };
 
