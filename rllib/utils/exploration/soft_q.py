@@ -1,7 +1,7 @@
 from gymnasium.spaces import Discrete, MultiDiscrete, Space
 from typing import Union, Optional
 
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.tf.tf_action_dist import Categorical
 from ray.rllib.models.torch.torch_action_dist import TorchCategorical
@@ -10,7 +10,7 @@ from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 from ray.rllib.utils.framework import TensorType
 
 
-@PublicAPI
+@Deprecated(error=False)
 class SoftQ(StochasticSampling):
     """Special case of StochasticSampling w/ Categorical and temperature param.
 
