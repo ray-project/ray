@@ -108,16 +108,16 @@ class PathPartitionEncoder:
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
 
-    Two path partition formats are currently supported - HIVE and DIRECTORY.
+    Two path partition formats are currently supported - ``HIVE`` and ``DIRECTORY``.
 
-    For HIVE Partitioning, all partition directories will be generated using a
-    "{key1}={value1}/{key2}={value2}" naming convention under the base directory.
+    For ``HIVE`` Partitioning, all partition directories will be generated using a
+    ``{key1}={value1}/{key2}={value2}`` naming convention under the base directory.
     An accompanying ordered list of partition key field names must also be
     provided, where the order and length of all partition values must match the
     order and length of field names
 
-    For DIRECTORY Partitioning, all directories will be generated from partition
-    values using a "{value1}/{value2}" naming convention under the base directory.
+    For ``DIRECTORY`` Partitioning, all directories will be generated from partition
+    values using a ``{value1}/{value2}`` naming convention under the base directory.
     """
 
     @staticmethod
@@ -225,28 +225,28 @@ class PathPartitionParser:
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
 
-    Two path partition formats are currently supported - HIVE and DIRECTORY.
+    Two path partition formats are currently supported - ``HIVE`` and ``DIRECTORY``.
 
-    For HIVE Partitioning, all partition directories under the base directory
-    will be discovered based on "{key1}={value1}/{key2}={value2}" naming
+    For ``HIVE`` Partitioning, all partition directories under the base directory
+    will be discovered based on ``{key1}={value1}/{key2}={value2}`` naming
     conventions. Key/value pairs do not need to be presented in the same
     order across all paths. Directory names nested under the base directory that
     don't follow this naming condition will be considered unpartitioned. If a
     partition filter is defined, then it will be called with an empty input
     dictionary for each unpartitioned file.
 
-    For DIRECTORY Partitioning, all directories under the base directory will
-    be interpreted as partition values of the form "{value1}/{value2}". An
+    For ``DIRECTORY`` Partitioning, all directories under the base directory will
+    be interpreted as partition values of the form ``{value1}/{value2}``. An
     accompanying ordered list of partition field names must also be provided,
     where the order and length of all partition values must match the order and
     length of field names. Files stored directly in the base directory will
     be considered unpartitioned. If a partition filter is defined, then it will
     be called with an empty input dictionary for each unpartitioned file. For
-    example, if the base directory is "foo" then "foo.csv" and "foo/bar.csv" would be
-    considered unpartitioned files but "foo/bar/baz.csv" would be associated with
-    partition "bar". If the base directory is undefined, then "foo.csv" would be
-    unpartitioned, "foo/bar.csv" would be associated with partition "foo", and
-    "foo/bar/baz.csv" would be associated with partition ("foo", "bar").
+    example, if the base directory is `"foo"`, then `"foo.csv"` and `"foo/bar.csv"`
+    would be considered unpartitioned files but `"foo/bar/baz.csv"` would be associated
+    with partition `"bar"`. If the base directory is undefined, then `"foo.csv"` would
+    be unpartitioned, `"foo/bar.csv"` would be associated with partition `"foo"`, and
+    "foo/bar/baz.csv" would be associated with partition `("foo", "bar")`.
     """
 
     @staticmethod

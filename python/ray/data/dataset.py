@@ -2826,24 +2826,24 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
     ) -> None:
-        """Write the dataset to a custom datasource.
+        """Write the dataset to a custom :class:`~ray.data.Datasource`.
 
         Examples:
             >>> import ray
             >>> from ray.data.datasource import Datasource
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> class CustomDatasource(Datasource): # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> class CustomDatasource(Datasource):
             ...     # define custom data source
-            ...     pass # doctest: +SKIP
-            >>> ds.write_datasource(CustomDatasource(...)) # doctest: +SKIP
+            ...     pass
+            >>> ds.write_datasource(CustomDatasource())
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            datasource: The datasource to write to.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            write_args: Additional write args to pass to the datasource.
-        """
+            datasource: The :class:`~ray.data.Datasource` to write to.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
+        """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)

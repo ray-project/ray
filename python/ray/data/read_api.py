@@ -270,20 +270,20 @@ def read_datasource(
     ray_remote_args: Dict[str, Any] = None,
     **read_args,
 ) -> Dataset:
-    """Read a stream from a custom data source.
+    """Read a stream from a custom :class:`~ray.data.Datasource`.
 
     Args:
-        datasource: The datasource to read data from.
+        datasource: The :class:`~ray.data.Datasource` to read data from.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the available partitioning of the datasource. If set to -1,
             parallelism will be automatically chosen based on the available cluster
             resources and estimated in-memory data size.
-        read_args: Additional kwargs to pass to the datasource impl.
-        ray_remote_args: kwargs passed to ray.remote in the read tasks.
+        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource` impl.
+        ray_remote_args: kwargs passed to ``ray.remote`` in the read tasks.
 
     Returns:
-        Dataset that reads data from the datasource.
-    """
+        :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`..
+    """  # noqa: E501
     ctx = DataContext.get_current()
 
     if ray_remote_args is None:
