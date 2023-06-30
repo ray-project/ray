@@ -4,6 +4,7 @@ import subprocess
 import sys
 import tempfile
 from copy import deepcopy
+from unittest.mock import patch
 
 import numpy as np
 import pytest
@@ -21,7 +22,10 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     serve_encoders,
     snake_to_camel_case,
+    dict_keys_snake_to_camel_case,
+    get_head_node_id,
 )
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 
 def test_serialize():
@@ -532,6 +536,7 @@ class TestDictKeysSnakeToCamelCase:
         assert camel_dict["nested"]["list2"] is list2
 
 
+<<<<<<< HEAD
 def test_calculate_remaining_timeout():
     # Always return `None` or negative value.
     assert (
@@ -580,6 +585,39 @@ def test_calculate_remaining_timeout():
         )
         == 0
     )
+=======
+def test_get_head_node_id():
+    """Test get_head_node_id() returning the correct head node id.
+
+    When there are woker node, dead head node, and other alive head nodes,
+    get_head_node_id() should return the node id of the first alive head node.
+    When there are no alive head nodes, get_head_node_id() should raise assertion error.
+    """
+    nodes = [
+        {"NodeID": "worker_node1", "Alive": True, "Resources": {"CPU": 1}},
+        {
+            "NodeID": "dead_head_node1",
+            "Alive": False,
+            "Resources": {"CPU": 1, HEAD_NODE_RESOURCE_NAME: 1.0},
+        },
+        {
+            "NodeID": "alive_head_node1",
+            "Alive": True,
+            "Resources": {"CPU": 1, HEAD_NODE_RESOURCE_NAME: 1.0},
+        },
+        {
+            "NodeID": "alive_head_node2",
+            "Alive": True,
+            "Resources": {"CPU": 1, HEAD_NODE_RESOURCE_NAME: 1.0},
+        },
+    ]
+    with patch("ray.nodes", return_value=nodes):
+        assert get_head_node_id() == "alive_head_node1"
+
+    with patch("ray.nodes", return_value=[]):
+        with pytest.raises(AssertionError):
+            get_head_node_id()
+>>>>>>> ed8a79aff556d1b3e338433c28c166e0b714d006
 
 
 if __name__ == "__main__":

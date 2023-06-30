@@ -1,4 +1,4 @@
--r requirements_dl.txt
+-r dl-cpu-requirements.txt
 
 # Environment adapters.
 # ---------------------
@@ -11,7 +11,7 @@ mujoco-py<2.2,>=2.1
 # Kaggle envs.
 kaggle_environments==1.7.11
 # Unity3D testing
-# TODO(sven): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+# TODO(sven): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
 #mlagents==0.28.0
 mlagents_envs==0.28.0
 # For tests on PettingZoo's multi-agent envs.
@@ -30,20 +30,6 @@ tensorflow_estimator==2.11.0
 # DeepMind's OpenSpiel
 open-spiel==1.2
 
-# Other.
-# ------
-# For MAML on PyTorch.
-higher==0.2.1
-# For auto-generating an env-rendering Window.
-pyglet==1.5.15
-imageio-ffmpeg==0.4.5
-# ONNX
-# ONNX 1.13.0 depends on protobuf > 3.20, conflicting with tensorflow.
-# ONNX 1.12.0 is not published for mac arm64, so we exclude it for now.
-onnx==1.12.0; sys_platform != 'darwin' or platform_machine != 'arm64'
-onnxruntime==1.14.1; sys_platform != 'darwin' or platform_machine != 'arm64'
-tf2onnx==1.13.0; sys_platform != 'darwin' or platform_machine != 'arm64'
-rich==12.0.1
-# Msgpack checkpoint stuff.
-msgpack
-msgpack_numpy
+# Requires libtorrent which is unavailable for arm64
+autorom[accept-rom-license]; platform_machine != "arm64"
+h5py==3.7.0
