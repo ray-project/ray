@@ -20,5 +20,7 @@ show you how achieve several tasks.
     working-with-images
     working-with-text
     working-with-tensors
+    working-with-pytorch
     batch_inference
+    data-internals
     performance-tips
