@@ -212,9 +212,10 @@ def start_redis(db_dir):
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
         leader_id = None
-        for port, free_port in redis_ports:
-            print("Start Redis with port: ", port)
+        redis_ports = []
+        while len(redis_ports) != redis_replicas():
             temp_dir = ray._private.utils.get_ray_temp_dir()
+            port, free_port = find_available_port(49159, 55535, 2)
             node_id, proc = start_redis_instance(
                 temp_dir,
                 port,
@@ -231,9 +232,7 @@ def start_redis(db_dir):
             except Exception as e:
                 print(e)
                 continue
-
             redis_ports.append(port)
-
             if leader_port is None:
                 leader_port = port
                 leader_id = node_id
@@ -263,7 +262,7 @@ def start_redis(db_dir):
                 pass
 
         scheme = "rediss://" if enable_tls else ""
-        address_str = f"{scheme}127.0.0.1:{redis_ports[-1][0]}"
+        address_str = f"{scheme}127.0.0.1:{redis_ports[-1]}"
         return address_str, processes
 
 
