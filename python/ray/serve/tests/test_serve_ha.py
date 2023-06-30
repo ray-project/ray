@@ -37,7 +37,7 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True, http_options={"location": "EveryNode"})
+serve.start(detached=True, http_options={{"location": "EveryNode"}})
 
 Counter.options(num_replicas={num_replicas}).deploy()
 """
