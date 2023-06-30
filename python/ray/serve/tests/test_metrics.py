@@ -386,8 +386,10 @@ def test_replica_metrics_fields(serve_start_shutdown):
         verify_metrics(latency_metrics[0], expected_output1)
         verify_metrics(latency_metrics[1], expected_output2)
 
+    wait_for_condition(
+        lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
+    )
     processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
-    assert len(processing_queries) == 2
     expected_output1 = {"deployment": "app1_f", "application": "app1"}
     expected_output2 = {"deployment": "app2_g", "application": "app2"}
     verify_metrics(processing_queries[0], expected_output1)
