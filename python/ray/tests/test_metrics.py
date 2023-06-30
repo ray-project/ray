@@ -135,7 +135,7 @@ def get_owner_info(node_ids):
     return owner_stats, primary_copy_stats
 
 
-def test_node_object_metrics(ray_start_cluster, monkeypatch):
+def test_node_object_metrics(ray_start_cluster):
     NUM_NODES = 3
     cluster = ray_start_cluster
     for i in range(NUM_NODES):
@@ -239,6 +239,55 @@ def test_node_object_metrics(ray_start_cluster, monkeypatch):
     wait_for_condition(
         lambda: get_owner_info(node_ids) == ([(5, 1), (3, 0), (2, 0)], [2, 1, 2])
     )
+
+
+def test_running_tasks(ray_start_cluster):
+    NUM_NODES = 3
+    cluster = ray_start_cluster
+    for i in range(NUM_NODES):
+        cluster.add_node(True, resources={f"node_{i}": 1})
+        if i == 0:
+            ray.init(address=cluster.address)
+    node_ids = []
+
+    for i in range(NUM_NODES):
+
+        @ray.remote(resources={f"node_{i}": 1})
+        def get_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        node_ids.append(ray.get(get_node_id.remote()))
+
+    @ray.remote
+    def f(t):
+        import time
+        time.sleep(t)
+
+    tasks = [f.options(resources={"node_0": 1}).remote(0),
+             f.options(resources={"node_1": 1}).remote(100000),
+             f.options(resources={"node_2": 1}).remote(100000)]
+
+    ready, pending = ray.wait(tasks)
+    assert len(ready) == 1
+    assert len(pending) == 2
+
+    node_addrs = {
+        n["NodeID"]: (n["NodeManagerAddress"], n["NodeManagerPort"])
+        for n in ray.nodes()
+    }
+    def check():
+        for i in range(NUM_NODES):
+            node_stats = ray._private.internal_api.node_stats(
+                node_addrs[node_ids[i]][0], node_addrs[node_ids[i]][1], False
+            )
+
+            if i == 0:
+                assert sum([stats.num_running_tasks for stats in node_stats.core_workers_stats]) == 0
+            else:
+                assert sum([stats.num_running_tasks for stats in node_stats.core_workers_stats]) == 1
+        return True
+
+    wait_for_condition(check)
 
 
 def test_multi_node_metrics_export_port_discovery(ray_start_cluster):
