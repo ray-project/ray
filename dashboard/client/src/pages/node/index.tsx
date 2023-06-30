@@ -43,23 +43,40 @@ const useStyles = makeStyles((theme) => ({
 
 const columns = [
   { label: "" }, // Expand button
-  { label: "Host / Cmd Line" },
+  { label: "Host / Worker Process name" },
   { label: "State" },
   { label: "ID" },
   { label: "IP / PID" },
   { label: "Actions" },
   { label: "CPU Usage" },
-  { label: "Memory" },
+  {
+    label: "Memory",
+    helpInfo: (
+      <Typography>
+        A Node or a Worker Process's RAM usage. <br />
+        <br />
+        For a Node, Object Store holds up to 30% of RAM by default or a custom
+        value configured by users.
+        <br />
+        <br />
+        RAM is not pre-allocated for Object Store. Once memory is used by and
+        allocated to Object Store, it will hold and not release it until the Ray
+        Cluster is terminated.
+      </Typography>
+    ),
+  },
   {
     label: "GPU",
     helpInfo: (
       <Typography>
-        "Usage of each GPU device. \nIf no GPU usage is detected, here are the
-        potential root causes \n\n" + "1. library gpustsat is not installed.
-        Install gpustat and try again.\n" + "2. non-GPU Ray image is used on
-        this node.\n" + " Switch to a GPU Ray image and try again.\n" + "3. AMD
-        GPUs are being used. AMD GPUs are not currently supported by gpustat
-        module.\n" + "4. gpustat module raises an exception."
+        Usage of each GPU device. If no GPU usage is detected, here are the
+        potential root causes: <br />
+        1. library gpustsat is not installed. Install gpustat and try again.
+        <br /> 2. non-GPU Ray image is used on this node. Switch to a GPU Ray
+        image and try again. <br />
+        3. AMD GPUs are being used. AMD GPUs are not currently supported by
+        gpustat module. <br />
+        4. gpustat module raises an exception.
       </Typography>
     ),
   },
