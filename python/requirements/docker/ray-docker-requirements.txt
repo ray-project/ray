@@ -6,7 +6,9 @@ gsutil
 ipython
 
 # Needed for rich visualization for Ray Train and Ray Data.
-ipywidgets>=8
+# Todo: Pin to >=8 when myst-parser is upgraded
+# ipywidgets>=8
+ipywidgets
 
 # Needed for Ray Client error message serialization/deserialization.
 tblib

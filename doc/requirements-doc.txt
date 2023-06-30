@@ -38,7 +38,7 @@ torchvision
 transformers
 
 # Train
-mxnet==1.9.1
+mxnet==1.9.1; sys_platform != "darwin"
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn
@@ -65,7 +65,7 @@ autodoc_pydantic==1.6.1
 sphinx_design==0.4.1
 
 # MyST
-myst-parser==0.18.1
+myst-parser==0.15.2
 myst-nb==0.17.2
 
 # Jupyter conversion
