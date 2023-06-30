@@ -1942,7 +1942,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
@@ -3600,7 +3599,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
-  stats->set_num_owned_objects(reference_counter_->NumObjectOwnedByUs());
+  stats->set_num_owned_objects(reference_counter_->NumObjectsOwnedByUs());
+  stats->set_num_owned_actors(reference_counter_->NumActorsOwnedByUs());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3609,6 +3609,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
+  stats->set_num_running_tasks(current_tasks_.size());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;
