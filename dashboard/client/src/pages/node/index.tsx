@@ -52,7 +52,7 @@ const columns = [
     label: "CPU",
     helpInfo: (
       <Typography>
-        CPU usage of a Node or a Worker Process.
+        Hardware CPU usage of a Node or a Worker Process.
         <br />
         <br />
         Node’s CPU usage is calculated against all CPU cores. Worker Process’s
