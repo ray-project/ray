@@ -1239,7 +1239,11 @@ class DeploymentState:
             ReplicaState.RECOVERING,
             ReplicaState.RUNNING,
         ]
-        return {replica.actor_node_id for replica in self._replicas.get(active_states)}
+        return {
+            replica.actor_node_id
+            for replica in self._replicas.get(active_states)
+            if replica.actor_node_id is not None
+        }
 
     def list_replica_details(self) -> List[ReplicaDetails]:
         return [replica.actor_details for replica in self._replicas.get()]

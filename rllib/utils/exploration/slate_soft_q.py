@@ -1,8 +1,8 @@
 from typing import Union
 
-from ray.rllib.utils.annotations import PublicAPI
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import TensorType
 from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -11,7 +11,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@PublicAPI
+@Deprecated(error=False)
 class SlateSoftQ(SoftQ):
     @override(SoftQ)
     def get_exploration_action(
