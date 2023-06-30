@@ -10,7 +10,7 @@ This guide walks you through deploying a chatbot that streams output back to the
 user. We show
 
 * How to stream outputs from a Serve application
-* How to add WebSockets to your Serve deployments
+* How to use WebSockets in a Serve application
 * How to batch requests when streaming output
 
 This tutorial should help you with following use cases:
