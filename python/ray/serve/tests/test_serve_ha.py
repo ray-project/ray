@@ -37,30 +37,15 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True)
+serve.start(detached=True, location="EveryNode")
 
 Counter.options(num_replicas={num_replicas}).deploy()
-
-print("ray nodes in setup script", ray.nodes())
 """
 
 check_script = """
-import ray
-ray.init(address="auto", namespace="g")
-print("ray nodes in check script", ray.nodes())
-
-
 import requests
 import json
-import time
 
-
-start_time = time.time()
-while time.time() - start_time < 30:
-    healthz = requests.get("http://localhost:8000/-/healthz/").text
-    print(f"HEALTHZ: {{healthz}}")
-    if healthz == "success":
-        break
 
 if {num_replicas} == 1:
     b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
@@ -96,24 +81,12 @@ def test_ray_serve_basic(docker_cluster):
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
     assert b"Adding 1 replica to deployment Counter." in output.output
-    print("SERVE SA OUTPUT1", output.output)
-
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
 
-    output = head.exec_run(cmd="grep -r 'HTTP proxy' /tmp/ray/session_latest/logs/")
-    print("head node logs", output.output)
-    output = worker.exec_run(cmd="grep -r 'HTTP proxy' /tmp/ray/session_latest/logs/")
-    print("worker node logs", output.output)
-
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
 
-    print("SERVE SA OUTPUT2", output.output)
-
-    # test if this works
-    worker_cli = worker.client()
-    print(worker_cli.request("GET", "/api/incr"))
     assert output.exit_code == 0
 
     # Kill the head node
