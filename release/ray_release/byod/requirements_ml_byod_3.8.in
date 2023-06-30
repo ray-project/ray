@@ -18,7 +18,8 @@ pyarrow
 pytest
 tblib
 tensorboardX
-torch 
+torch
+torchtext
 torchvision
 tqdm
 urllib3
