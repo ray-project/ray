@@ -15,8 +15,7 @@ sudo apt-get update \
 pip --no-cache-dir install -U pip pip-tools
 
 # Install requirements
-pip --no-cache-dir install -U \
-           -r requirements.txt
+pip --no-cache-dir install -U -r requirements.txt
 
 
 # Install other requirements. Keep pinned requirements bounds as constraints

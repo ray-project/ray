@@ -102,8 +102,6 @@ myst_enable_extensions = [
     "replacements",
 ]
 
-myst_heading_anchors = 7
-
 
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to "force".
