@@ -34,7 +34,7 @@ class BatchPredictor:
         warnings.warn(
             "`BatchPredictor` is deprecated. Use `Dataset.map_batches`  instead. To "
             "learn more, see http://batchinference.io.",
-            DeprecationWarning
+            DeprecationWarning,
         )
         self._checkpoint = checkpoint
         # Store as object ref so we only serialize it once for all map workers
