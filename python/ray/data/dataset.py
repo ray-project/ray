@@ -2147,7 +2147,7 @@ class Dataset:
 
         Args:
             batch_size: The maximum number of rows to return.
-            batch_format: If ``"default"`` or "numpy"``, batches are
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``.
 
@@ -2174,10 +2174,6 @@ class Dataset:
         """Return up to ``limit`` rows from the :class:`Dataset`.
 
         This method is useful for inspecting data.
-
-        .. note::
-
-            Ray Data represents each row as a ``Dict[str, Any]``.
 
         .. warning::
 
@@ -2258,7 +2254,7 @@ class Dataset:
         self._synchronize_progress_bar()
         return output
 
-    @ConsumptionAPI(pattern="Time complexity:")
+    @ConsumptionAPI
     def show(self, limit: int = 20) -> None:
         """Print up to the given number of rows from the :class:`Dataset`.
 
@@ -2266,18 +2262,12 @@ class Dataset:
 
         Examples:
 
-            .. testcode::
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.show(3)
-
-            .. testoutput::
-
-                {'id': 0}
-                {'id': 1}
-                {'id': 2}
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.show(3)
+            {'id': 0}
+            {'id': 1}
+            {'id': 2}
 
         Time complexity: O(limit specified)
 
@@ -3077,13 +3067,13 @@ class Dataset:
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1
+                to fetch the objects to the local node and format the batches. Defaults
+                to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            batch_format: If ``"default"`` or "numpy"``, batches are
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``.
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -3138,6 +3128,7 @@ class Dataset:
 
                 import ray
 
+                # This dataset contains three images.
                 ds = ray.data.read_images("example://image-datasets/simple")
 
                 for batch in ds.iter_torch_batches(batch_size=2):
@@ -3146,9 +3137,8 @@ class Dataset:
             .. testoutput::
                 :options: +MOCK
 
-                {'image': tensor([[[[...]]]], dtype=torch.uint8)}
-                ...
-                {'image': tensor([[[[...]]]], dtype=torch.uint8)}
+                {'image': <tf.Tensor: shape=(2, 32, 32, 3), dtype=uint8, numpy=array([[[[...]]]], dtype=uint8)>}
+                {'image': <tf.Tensor: shape=(1, 32, 32, 3), dtype=uint8, numpy=array([[[[...]]]], dtype=uint8)>}
 
         Time complexity: O(1)
 
@@ -3156,7 +3146,7 @@ class Dataset:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1
+                the ``collate_fn``. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
@@ -3251,8 +3241,8 @@ class Dataset:
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply
-                the ``collate_fn``. Defaults to 1
+                to fetch the objects to the local node and format the batches. Defaults
+                to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
