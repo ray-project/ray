@@ -513,4 +513,9 @@ ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
     bool requires_object_store_memory);
 
+/// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
+    const absl::flat_hash_map<ResourceID, double> &resource_map,
+    bool requires_object_store_memory);
+
 }  // namespace ray

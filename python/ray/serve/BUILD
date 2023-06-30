@@ -279,6 +279,15 @@ py_test(
     deps = [":serve_lib"],
 )
 
+
+py_test(
+    name = "test_replica_scheduler",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 py_test(
     name = "test_regression",
     size = "medium",
@@ -494,6 +503,7 @@ py_test(
                "tests/test_failure.py",
                "tests/test_fastapi.py",
                "tests/test_http_adapters.py",
+               "tests/test_http_headers.py",
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
@@ -651,6 +661,14 @@ py_test(
 
 py_test(
     name = "test_callback",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_headers",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

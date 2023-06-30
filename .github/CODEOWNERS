@@ -54,11 +54,11 @@
 #!/python/ray/rllib/ @ray-project/ray-core
 
 # Java worker.
-/java/dependencies.bzl @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/pom.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/*/pom_template.xml @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
-/java/api/ @jovany-wang @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/dependencies.bzl @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/pom.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/*/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
+/java/api/ @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic
 
 # C++ worker
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core

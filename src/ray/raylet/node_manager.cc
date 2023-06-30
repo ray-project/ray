@@ -137,7 +137,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           io_service,
           self_node_id_,
           config.node_manager_address,
-          config.num_workers_soft_limit,
+          [this, config]() {
+            // Callback to determine the maximum number of idle workers to keep
+            // around.
+            if (config.num_workers_soft_limit >= 0) {
+              return config.num_workers_soft_limit;
+            }
+            // If no limit is provided, use the available number of CPUs,
+            // assuming that each incoming task will likely require 1 CPU.
+            // We floor the available CPUs to the nearest integer to avoid starting too
+            // many workers when there is less than 1 CPU left. Otherwise, we could end
+            // up repeatedly starting the worker, then killing it because it idles for
+            // too long. The downside is that we will be slower to schedule tasks that
+            // could use a fraction of a CPU.
+            return static_cast<int64_t>(
+                cluster_resource_scheduler_->GetLocalResourceManager()
+                    .GetLocalAvailableCpus());
+          },
           config.num_prestart_python_workers,
           config.maximum_startup_concurrency,
           config.min_worker_port,
@@ -1866,14 +1882,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   }
 
   auto task_spec = task.GetTaskSpecification();
-  // We floor the available CPUs to the nearest integer to avoid starting too
-  // many workers when there is less than 1 CPU left. Otherwise, we could end
-  // up repeatedly starting the worker, then killing it because it idles for
-  // too long. The downside is that we will be slower to schedule tasks that
-  // could use a fraction of a CPU.
-  int64_t available_cpus = static_cast<int64_t>(
-      cluster_resource_scheduler_->GetLocalResourceManager().GetLocalAvailableCpus());
-  worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
+  worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](

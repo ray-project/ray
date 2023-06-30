@@ -1477,5 +1477,25 @@ def test_run_config_request_timeout():
     )
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deployment_contains_utils(ray_start_stop):
+    """Test when deployment contains utils module, it can be deployed successfully.
+
+    When the deployment contains utils module, running serve deploy should successfully
+    deployment the application and return the correct response.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deployment_uses_utils_module.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

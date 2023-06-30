@@ -22,7 +22,7 @@ from ray._private.utils import get_or_create_event_loop
 
 from ray.serve import metrics
 from ray.serve._private.common import (
-    HEALTH_CHECK_CONCURRENCY_GROUP,
+    CONTROL_PLANE_CONCURRENCY_GROUP,
     ReplicaTag,
     ServeComponentType,
 )
@@ -33,6 +33,7 @@ from ray.serve._private.constants import (
     DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
+    RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
 )
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
@@ -206,6 +207,15 @@ def create_replica_wrapper(name: str):
 
             # Used to guard `initialize_replica` so that it isn't called twice.
             self._replica_init_lock = asyncio.Lock()
+
+        @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
+        def get_num_ongoing_requests(self) -> int:
+            """Fetch the number of ongoing requests at this replica (queue length).
+
+            This runs on a separate thread (using a Ray concurrency group) so it will
+            not be blocked by user code.
+            """
+            return self.replica.get_num_pending_and_running_requests()
 
         @ray.method(num_returns=2)
         async def handle_request(
@@ -401,7 +411,7 @@ def create_replica_wrapper(name: str):
             if self.replica is not None:
                 return await self.replica.prepare_for_shutdown()
 
-        @ray.method(concurrency_group=HEALTH_CHECK_CONCURRENCY_GROUP)
+        @ray.method(concurrency_group=CONTROL_PLANE_CONCURRENCY_GROUP)
         async def check_health(self):
             await self.replica.check_health()
 
@@ -488,15 +498,25 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
+        self.metrics_pusher = self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
-            self.metrics_pusher = MetricsPusher(
-                process_remote_func,
+            self.metrics_pusher.register_task(
+                self.collect_autoscaling_metrics,
                 config.metrics_interval_s,
-                self._collect_autoscaling_metrics,
+                process_remote_func,
             )
-            self.metrics_pusher.start()
+
+        self.metrics_pusher.register_task(
+            self._set_replica_requests_metrics,
+            RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S,
+        )
+        self.metrics_pusher.start()
+
+    def _set_replica_requests_metrics(self):
+        self.num_processing_items.set(self.get_num_running_requests())
+        self.num_pending_items.set(self.get_num_pending_requests())
 
     async def check_health(self):
         await self.user_health_check()
@@ -504,25 +524,31 @@ class RayServeReplica:
     def _get_handle_request_stats(self) -> Optional[Dict[str, int]]:
         replica_actor_name = _format_replica_actor_name(self.deployment_name)
         actor_stats = ray.runtime_context.get_runtime_context()._get_actor_call_stats()
-        method_stat = actor_stats.get(f"{replica_actor_name}.handle_request")
-        streaming_method_stat = actor_stats.get(
+        method_stats = actor_stats.get(f"{replica_actor_name}.handle_request")
+        streaming_method_stats = actor_stats.get(
             f"{replica_actor_name}.handle_request_streaming"
         )
-        method_stat_java = actor_stats.get(
+        method_stats_java = actor_stats.get(
             f"{replica_actor_name}.handle_request_from_java"
         )
         return merge_dict(
-            merge_dict(method_stat, streaming_method_stat), method_stat_java
+            merge_dict(method_stats, streaming_method_stats), method_stats_java
         )
 
-    def _collect_autoscaling_metrics(self):
-        method_stat = self._get_handle_request_stats()
+    def get_num_running_requests(self) -> int:
+        stats = self._get_handle_request_stats() or {}
+        return stats.get("running", 0)
 
-        num_inflight_requests = 0
-        if method_stat is not None:
-            num_inflight_requests = method_stat["pending"] + method_stat["running"]
+    def get_num_pending_requests(self) -> int:
+        stats = self._get_handle_request_stats() or {}
+        return stats.get("pending", 0)
 
-        return {self.replica_tag: num_inflight_requests}
+    def get_num_pending_and_running_requests(self) -> int:
+        stats = self._get_handle_request_stats() or {}
+        return stats.get("pending", 0) + stats.get("running", 0)
+
+    def collect_autoscaling_metrics(self):
+        return {self.replica_tag: self.get_num_pending_and_running_requests()}
 
     def get_runner_method(self, request_metadata: RequestMetadata) -> Callable:
         method_name = request_metadata.call_method
@@ -671,12 +697,6 @@ class RayServeReplica:
         request_kwargs: Dict[str, Any],
     ) -> Any:
         async with self.rwlock.reader_lock:
-            request_stats = self._get_handle_request_stats()
-            num_running_requests = request_stats["running"]
-            num_pending_requests = request_stats["pending"]
-            self.num_pending_items.set(num_pending_requests)
-            self.num_processing_items.set(num_running_requests)
-
             # Set request context variables for subsequent handle so that
             # handle can pass the correct request context to subsequent replicas.
             ray.serve.context._serve_request_context.set(
@@ -718,21 +738,21 @@ class RayServeReplica:
             # Sleep first because we want to make sure all the routers receive
             # the notification to remove this replica first.
             await asyncio.sleep(self.deployment_config.graceful_shutdown_wait_loop_s)
-            method_stat = self._get_handle_request_stats()
-            # The handle_request method wasn't even invoked.
-            if method_stat is None:
-                break
-            num_ongoing_requests = method_stat["running"] + method_stat["pending"]
-            # The handle_request method has 0 inflight requests.
-            if num_ongoing_requests == 0:
-                break
-            else:
+
+            num_ongoing_requests = self.get_num_pending_and_running_requests()
+            if num_ongoing_requests > 0:
                 logger.info(
                     "Waiting for an additional "
                     f"{self.deployment_config.graceful_shutdown_wait_loop_s}s to shut "
                     f"down because there are {num_ongoing_requests} ongoing "
                     "requests."
                 )
+            else:
+                logger.info(
+                    "Graceful shutdown complete; replica exiting.",
+                    extra={"log_to_stderr": False},
+                )
+                break
 
         # Explicitly call the del method to trigger clean up.
         # We set the del method to noop after successfully calling it so the
