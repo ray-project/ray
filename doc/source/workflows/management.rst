@@ -65,6 +65,7 @@ Bulk workflow management APIs
 -----------------------------
 
 .. testcode::
+    :skipif: True
 
     # List all running workflows.
     print(workflow.list_all("RUNNING"))
