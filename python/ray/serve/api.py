@@ -578,6 +578,7 @@ def multiplexed(
     Example:
 
     .. code-block:: python
+
             from ray import serve
 
             @serve.deployment
@@ -696,6 +697,7 @@ def get_multiplexed_model_id() -> str:
     to retrieve the model ID for the current request.
 
     .. code-block:: python
+
             import ray
             from ray import serve
             import requests
