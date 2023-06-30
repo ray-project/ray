@@ -64,6 +64,19 @@ Stage N split(N, equal=False): \n"""
         # Workaround to preserve trailing whitespace in the above line without
         # causing linter failures.
         "* Extra metrics: {'num_output_N': N}\n"
+        """
+Dataset iterator time breakdown:
+* Total time user code is blocked: T
+* Total time in user code: T
+* Total time overall: T
+* Num blocks local: Z
+* Num blocks remote: Z
+* Num blocks unknown location: N
+* Batch iteration time breakdown (summed across prefetch threads):
+    * In ray.get(): T min, T max, T avg, T total
+    * In batch creation: T min, T max, T avg, T total
+    * In batch formatting: T min, T max, T avg, T total
+"""
     )
 
 
