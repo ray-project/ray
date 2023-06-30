@@ -61,7 +61,7 @@ class Textbot:
                 # The streamer raises an Empty exception if the next token
                 # hasn't been generated yet. `await` here to yield control
                 # back to the event loop so other coroutines can run.
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.001)
 
     # __textbot_logic_end__
 
@@ -163,7 +163,7 @@ class Chatbot:
                     yield token
                 break
             except Empty:
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.001)
 
 
 # __chatbot_logic_end__
@@ -311,7 +311,7 @@ class Batchbot:
                     yield decoded_tokens
                 break
             except Empty:
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.001)
 
 
 # __batchbot_logic_end__
