@@ -138,6 +138,12 @@ for batch in transformed_ds.iter_batches(batch_size=4):
 transformed_ds.write_parquet("local:///tmp/iris/")
 ```
 
+```{testoutput}
+:hide:
+
+...
+```
+
 ```{button-ref}  ../data/data
 :color: primary
 :outline:
