@@ -1,3 +1,4 @@
+import { createStyles, makeStyles } from "@material-ui/core";
 import dayjs from "dayjs";
 import low from "lowlight";
 import React, { MutableRefObject, useEffect, useRef, useState } from "react";
@@ -5,7 +6,6 @@ import { FixedSizeList as List } from "react-window";
 import "./darcula.css";
 import "./github.css";
 import "./index.css";
-import { createStyles, makeStyles } from "@material-ui/core";
 import { MAX_LINES_FOR_LOGS } from "../../service/log";
 
 const uniqueKeySelector = () => Math.random().toString(16).slice(-8);
