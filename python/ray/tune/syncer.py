@@ -664,7 +664,9 @@ class StorageContext:
         else:
             print("SYNCER ENABLED")
             sync_config.syncer = _SimpleFilesystemSyncer(
-                self.storage_filesystem, self.storage_prefix
+                self.storage_filesystem,
+                self.storage_prefix,
+                sync_config,
             )
         self.sync_config = sync_config
 
@@ -701,9 +703,11 @@ class _SimpleFilesystemSyncer(_BackgroundSyncer):
         self,
         storage_filesystem: Optional["pyarrow.fs.FileSystem"],
         storage_prefix: str,
+        sync_config: SyncConfig,
     ):
         self.storage_filesystem = storage_filesystem
         self.storage_prefix = storage_prefix
+        super().__init__(sync_config.sync_period, sync_config.sync_timeout)
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None

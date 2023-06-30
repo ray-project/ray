@@ -47,12 +47,13 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer, StorageContext
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 from ray.tune.web_server import TuneServer
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
@@ -125,6 +126,7 @@ class _TuneControllerBase:
         scheduler: Optional[TrialScheduler] = None,
         experiment_path: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
+        storage: Optional[StorageContext] = None,
         experiment_dir_name: Optional[str] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
@@ -153,6 +155,19 @@ class _TuneControllerBase:
         local_experiment_path, remote_experiment_path = _split_remote_local_path(
             experiment_path, None
         )
+        # XXX what is the right way to set this
+        if USE_STORAGE_CONTEXT:
+            assert storage
+            if storage.sync_config.syncer:
+                remote_experiment_path = os.path.join(
+                    storage.storage_prefix, os.path.basename(local_experiment_path)
+                )
+                print(
+                    "Force set remote experiment path",
+                    storage.storage_prefix,
+                    remote_experiment_path,
+                    os.path.basename(local_experiment_path),
+                )
 
         # Derive experiment dir name from local path
         if not experiment_dir_name and local_experiment_path:
@@ -1251,6 +1266,7 @@ class TrialRunner(_TuneControllerBase):
         experiment_path: Optional[str] = None,
         experiment_dir_name: Optional[str] = None,
         sync_config: Optional[SyncConfig] = None,
+        storage: Optional[StorageContext] = None,
         stopper: Optional[Stopper] = None,
         resume: Union[str, bool] = False,
         server_port: Optional[int] = None,
@@ -1280,6 +1296,8 @@ class TrialRunner(_TuneControllerBase):
             experiment_path = local_checkpoint_dir
 
         self.trial_executor = trial_executor or RayTrialExecutor()
+        if USE_STORAGE_CONTEXT:
+            assert storage
 
         super().__init__(
             search_alg=search_alg,
@@ -1289,6 +1307,7 @@ class TrialRunner(_TuneControllerBase):
             experiment_dir_name=experiment_dir_name,
             sync_config=sync_config,
             stopper=stopper,
+            storage=storage,
             resume=resume,
             server_port=server_port,
             fail_fast=fail_fast,

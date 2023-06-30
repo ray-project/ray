@@ -126,6 +126,7 @@ class _ExperimentCheckpointManager:
         # Checkpoint directories
         self._local_checkpoint_dir = local_checkpoint_dir
         self._remote_checkpoint_dir = remote_checkpoint_dir
+        print("ZZZZZZZZZZZZ", local_checkpoint_dir, remote_checkpoint_dir)
 
         # Synch to/from cloud
         self._sync_config = sync_config or SyncConfig

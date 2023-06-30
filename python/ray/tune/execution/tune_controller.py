@@ -158,6 +158,7 @@ class TuneController(_TuneControllerBase):
             scheduler=scheduler,
             experiment_path=experiment_path,
             experiment_dir_name=experiment_dir_name,
+            storage=storage,
             sync_config=sync_config,
             stopper=stopper,
             resume=resume,
