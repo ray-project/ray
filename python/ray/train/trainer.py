@@ -54,6 +54,7 @@ class TrainingIterator:
         run_dir: Optional[Path] = None,
         storage_path: Optional[str] = None,
     ):
+        assert storage_path, storage_path
         self._backend_executor = backend_executor
         self._backend = backend_config.backend_cls()
         self._train_func = train_func
@@ -102,7 +103,7 @@ class TrainingIterator:
         )
 
         # Session has started. Set current cloud checkpoint dir if necessary.
-        if self._checkpoint_strategy._checkpoint_upload_from_workers:
+        if self._checkpoint_strategy.checkpoint_upload_from_workers:
             self._backend_executor._set_checkpoint_uri(
                 self.__get_cloud_checkpoint_dir()
             )
@@ -201,7 +202,7 @@ class TrainingIterator:
                 # TODO(jungong) : It would be nicer if we find a cleaner way
                 # to sync the current cloud checkpointing directory between
                 # Tuner, Trainable, and Trainers.
-                if self._checkpoint_strategy._checkpoint_upload_from_workers:
+                if self._checkpoint_strategy.checkpoint_upload_from_workers:
                     self._backend_executor._set_checkpoint_uri(
                         self.__get_cloud_checkpoint_dir()
                     )
@@ -225,7 +226,7 @@ class TrainingIterator:
                 self._checkpoint_manager._process_checkpoints(
                     results, decode_checkpoint_fn=self._backend._decode_data
                 )
-                if self._checkpoint_strategy._checkpoint_upload_from_workers:
+                if self._checkpoint_strategy.checkpoint_upload_from_workers:
                     self._backend_executor._set_checkpoint_uri(
                         self.__get_cloud_checkpoint_dir()
                     )

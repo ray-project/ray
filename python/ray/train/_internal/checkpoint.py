@@ -9,6 +9,7 @@ from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (
@@ -106,16 +107,6 @@ class CheckpointManager(CommonCheckpointManager):
         checkpoint_metadata = checkpoint_result.metadata or {}
         checkpoint_rank = checkpoint_metadata.get(CHECKPOINT_RANK_KEY, 0)
 
-        if isinstance(checkpoint_data, str):
-            checkpoint_class: Type[Checkpoint] = checkpoint_metadata[
-                CHECKPOINT_METADATA_KEY
-            ].checkpoint_type
-            checkpoint_data = checkpoint_class.from_directory(checkpoint_data)
-            checkpoint_data._metadata = checkpoint_metadata[CHECKPOINT_METADATA_KEY]
-        else:
-            # TODO(ml-team): Remove once we remove Backend.decode_data
-            checkpoint_data = decode_checkpoint_fn(checkpoint_data)
-
         score_attr = self._checkpoint_strategy.checkpoint_score_attribute
         if (
             self._checkpoint_strategy.num_to_keep != 0
@@ -128,6 +119,26 @@ class CheckpointManager(CommonCheckpointManager):
                 f"Include this attribute in the call to "
                 f"`session.report()`."
             )
+
+        if USE_STORAGE_CONTEXT:
+            return _TrackedCheckpoint(
+                dir_or_data=checkpoint_data,
+                checkpoint_id=self._latest_checkpoint_id,
+                storage_mode=CheckpointStorage.PERSISTENT,
+                metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
+                rank=checkpoint_rank,
+            )
+
+
+        if isinstance(checkpoint_data, str):
+            checkpoint_class: Type[Checkpoint] = checkpoint_metadata[
+                CHECKPOINT_METADATA_KEY
+            ].checkpoint_type
+            checkpoint_data = checkpoint_class.from_directory(checkpoint_data)
+            checkpoint_data._metadata = checkpoint_metadata[CHECKPOINT_METADATA_KEY]
+        else:
+            # TODO(ml-team): Remove once we remove Backend.decode_data
+            checkpoint_data = decode_checkpoint_fn(checkpoint_data)
 
         return _TrackedCheckpoint(
             dir_or_data=checkpoint_data,
@@ -143,7 +154,7 @@ class CheckpointManager(CommonCheckpointManager):
         decode_checkpoint_fn: Callable,
     ) -> None:
         """Ray Train entrypoint. Perform all processing for a checkpoint."""
-        if self._checkpoint_strategy._checkpoint_keep_all_ranks:
+        if self._checkpoint_strategy.checkpoint_keep_all_ranks:
             tracked_checkpoints = [
                 self._process_checkpoint(checkpoint_result, decode_checkpoint_fn)
                 for checkpoint_result in checkpoint_results
@@ -264,7 +275,7 @@ class TuneCheckpointManager(CheckpointManager):
         setattr(checkpoint, TUNE_CHECKPOINT_ID, self._latest_checkpoint_id)
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        self.add_tune_checkpoint_id(checkpoint.dir_or_data)
+        #self.add_tune_checkpoint_id(checkpoint.dir_or_data)
 
         # Train may choose not to commit a checkpoint, but make sure the
         # checkpoint is always committed for Tuning purpose.

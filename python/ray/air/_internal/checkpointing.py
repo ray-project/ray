@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 from typing import Optional, Union, TYPE_CHECKING
 
+import ray
 import ray.cloudpickle as cpickle
 from ray.air.constants import PREPROCESSOR_KEY
 
@@ -41,6 +42,11 @@ def add_preprocessor_to_checkpoint(
 
     Returns a copy of the Checkpoint if it is not backed by a
     local dir."""
+    from ray.tune.utils.util import USE_STORAGE_CONTEXT
+    if USE_STORAGE_CONTEXT:
+        # TODO: fix this for processing of new checkpoints
+        return checkpoint
+    assert False, checkpoint
     if checkpoint._local_path:
         save_preprocessor_to_dir(preprocessor, checkpoint._local_path)
     else:

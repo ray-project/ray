@@ -20,6 +20,7 @@ from ray.train._internal.session import (
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
+from ray.tune.syncer import StorageContext
 from ray.train.constants import (
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
@@ -66,6 +67,7 @@ class BackendExecutor:
     def __init__(
         self,
         backend_config: BackendConfig,
+        storage: Optional[StorageContext] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         num_workers: int = 1,
@@ -75,6 +77,8 @@ class BackendExecutor:
         max_retries: int = 3,
         checkpoint_config: Optional[CheckpointConfig] = None,
     ):
+        assert storage
+        self._storage = storage
         self._backend_config = backend_config
         self._backend = backend_config.backend_cls()
         self._num_workers = num_workers
@@ -95,10 +99,10 @@ class BackendExecutor:
         self.dataset_shards = None
 
         self._checkpoint_keep_all_ranks = (
-            checkpoint_config and checkpoint_config._checkpoint_keep_all_ranks
+            checkpoint_config and checkpoint_config.checkpoint_keep_all_ranks
         )
         self._checkpoint_upload_from_workers = (
-            checkpoint_config and checkpoint_config._checkpoint_upload_from_workers
+            checkpoint_config and checkpoint_config.checkpoint_upload_from_workers
         )
 
     def start(
@@ -378,6 +382,7 @@ class BackendExecutor:
             encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
+            storage,
         ):
             try:
                 init_session(
@@ -395,6 +400,7 @@ class BackendExecutor:
                     enable_lazy_checkpointing=use_lazy_checkpointing,
                     checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
+                    storage=storage,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -440,6 +446,7 @@ class BackendExecutor:
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
+                    storage=self._storage,
                 )
             )
 

@@ -25,6 +25,8 @@ from ray.air.result import Result
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
+from ray.tune.syncer import StorageContext
 from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
@@ -186,6 +188,17 @@ class BaseTrainer(abc.ABC):
             scaling_config if scaling_config is not None else ScalingConfig()
         )
         self.run_config = run_config if run_config is not None else RunConfig()
+        if USE_STORAGE_CONTEXT:
+            if run_config.storage_path is None:
+                run_config.storage_path = os.path.expanduser(
+                    os.environ.get("RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results")
+                )
+            self.storage = StorageContext(
+                run_config.storage_path,
+                run_config.storage_filesystem,
+                run_config.sync_config)
+        else:
+            self.storage = None
         self.datasets = datasets if datasets is not None else {}
         self.preprocessor = preprocessor
         self.resume_from_checkpoint = resume_from_checkpoint
@@ -745,6 +758,7 @@ class BaseTrainer(abc.ABC):
                 run_config = base_config.pop("run_config", None)
                 self._merged_config = merge_dicts(base_config, self.config)
                 self._merged_config["run_config"] = run_config
+
                 merged_scaling_config = self._merged_config.get("scaling_config")
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)

@@ -449,6 +449,7 @@ class DataParallelTrainer(BaseTrainer):
             additional_resources_per_worker=additional_resources_per_worker,
             max_retries=0,
             checkpoint_config=self.run_config.checkpoint_config,
+            storage=self.storage,
         )
 
         def clear_lazy_checkpoint_marker():

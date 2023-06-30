@@ -72,7 +72,7 @@ class Checkpoint:
         """
 
         path = os.path.join(self.path, _METADATA_FILE_NAME)
-        with self.filesystem.open_output_path(path) as f:
+        with self.filesystem.open_output_stream(path) as f:
             f.write(pickle.dumps(metadata))
 
     @staticmethod

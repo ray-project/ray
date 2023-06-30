@@ -767,17 +767,17 @@ def run(
     if checkpoint_keep_all_ranks:
         warnings.warn(
             "checkpoint_keep_all_ranks is deprecated and will be removed. "
-            "use checkpoint_config._checkpoint_keep_all_ranks instead.",
+            "use checkpoint_config.checkpoint_keep_all_ranks instead.",
             DeprecationWarning,
         )
         checkpoint_config._checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
     if checkpoint_upload_from_workers:
         warnings.warn(
             "checkpoint_upload_from_workers is deprecated and will be removed. "
-            "use checkpoint_config._checkpoint_upload_from_workers instead.",
+            "use checkpoint_config.checkpoint_upload_from_workers instead.",
             DeprecationWarning,
         )
-        checkpoint_config._checkpoint_upload_from_workers = (
+        checkpoint_config.checkpoint_upload_from_workers = (
             checkpoint_upload_from_workers
         )
 

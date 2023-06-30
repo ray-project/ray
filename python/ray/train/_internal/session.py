@@ -38,6 +38,8 @@ from ray.train.error import SessionMisuseError
 from ray.train.session import _TrainSessionImpl
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
+from ray.tune.syncer import StorageContext
 
 
 _INDEX_FILE_EXTENSION = ".files"
@@ -84,6 +86,7 @@ class _TrainSession:
         node_rank: int,
         local_world_size: int,
         world_size: int,
+        storage: Optional[StorageContext] = None,
         # TODO(xwjiang): Legacy Ray Train trainer clean up!
         trial_info: Optional[TrialInfo] = None,
         dataset_shard: Optional[Union[Dataset, DatasetPipeline]] = None,
@@ -101,6 +104,7 @@ class _TrainSession:
     ):
 
         self.dataset_shard = dataset_shard
+        self.storage = storage
 
         self.world_rank = world_rank
         self.local_rank = local_rank
@@ -336,11 +340,66 @@ class _TrainSession:
             elif os.path.isdir(fp):
                 shutil.rmtree(fp)
 
+    def _new_checkpoint(self, checkpoint: Checkpoint):
+        assert isinstance(checkpoint, ray.train.checkpoint.Checkpoint)
+        assert USE_STORAGE_CONTEXT
+        assert self.storage
+        assert self.checkpoint_upload_from_workers
+        assert self.checkpoint_uri
+
+        metadata = self._auto_fill_checkpoint_metrics({})
+        metadata.update({CHECKPOINT_RANK_KEY: self.world_rank})
+        checkpoint.set_metadata(metadata)
+
+        self.loaded_checkpoint = checkpoint
+
+        if self.world_rank == 0 or self.checkpoint_keep_all_ranks:
+            rank_path = os.path.join(self.checkpoint_uri, f"rank_{self.world_rank}")
+            logger.info(
+                f"Uploading checkpoint files from worker rank {self.world_rank} "
+                f"to cloud URI {rank_path}."
+            )
+            import pyarrow
+            print("COPY", checkpoint.path, rank_path)
+            try:
+                self.storage.storage_filesystem.create_dir(rank_path)
+            except Exception:
+                pass
+            pyarrow.fs.copy_files(
+                checkpoint.path,
+                rank_path,
+                source_filesystem=checkpoint.filesystem,
+                destination_filesystem=self.storage.storage_filesystem)
+            logger.info("Done uploading checkpoint files.")
+            shutil.rmtree(checkpoint.path)
+            if self.world_rank == 0:
+                checkpoint_path = self.checkpoint_uri  # Not rank path
+            else:
+                checkpoint_path = None
+        else:
+            checkpoint_path = None
+
+        result = TrainingResult(
+            type=TrainingResultType.CHECKPOINT,
+            data=checkpoint_path,
+            metadata=metadata,
+        )
+
+        # Add result to a thread-safe queue.
+        self.result_queue.put(result, block=True)
+
+        # Acquire lock to stop the training thread until
+        # checkpoint has been processed.
+        self.continue_lock.acquire()
+
     def checkpoint(self, checkpoint: Checkpoint):
         """Adds kwargs to the queue to be consumed by main thread.
 
         Also stores the checkpoint in ``self.loaded_checkpoint``.
         """
+        if USE_STORAGE_CONTEXT:
+            return self._new_checkpoint(checkpoint)
+
         checkpoint_type, _ = checkpoint.get_internal_representation()
 
         if checkpoint_type == "data_dict" and self.checkpoint_keep_all_ranks:
@@ -348,7 +407,7 @@ class _TrainSession:
                 logger.warning(
                     "Saving checkpoints from all ranks does not work with "
                     "dictionary checkpoints. Set `ray.air.CheckpointConfig"
-                    "(_checkpoint_keep_all_ranks=False)`, or write checkpoints "
+                    "(checkpoint_keep_all_ranks=False)`, or write checkpoints "
                     "to a directory and report directory checkpoints that "
                     "contain unique files per worker rank. For example, "
                     "use filenames that contain the unique rank. You can "

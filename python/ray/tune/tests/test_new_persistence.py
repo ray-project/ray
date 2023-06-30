@@ -1,4 +1,5 @@
 from ray import tune
+import random
 import glob
 import shutil
 import pytest
@@ -6,20 +7,24 @@ import time
 from ray.air.config import RunConfig
 from ray.air import session
 from ray.train.checkpoint import Checkpoint
+from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.air.config import ScalingConfig, CheckpointConfig
 import os
 
 NUM_MODELS = 2
 RAY_RESULTS = os.path.expanduser("~/ray_results")
+
+# Just a normal dir != ray results dir. For testing result syncing to storage_path.
 FAKE_NFS_DIR = "/tmp/nfs_storage"
 
 
-def train_model(config):
+def train_model(config, rank_suffix=""):
     time.sleep(1)
     print("Training model woohoo!")
 
     # Import model libraries, etc...
     # Load data and train model code here...
-    with open("random_artifact.txt", "w") as f:
+    with open(f"random_artifact{rank_suffix}.txt", "w") as f:
         f.write("artifact data hi there")
 
     # Return final stats. You can also return intermediate progress
@@ -28,47 +33,18 @@ def train_model(config):
     # URI in this dict, or return it as a Tune Checkpoint:
     # https://docs.ray.io/en/latest/tune/tutorials/tune-checkpoints.html
     for i in range(5):
-        with open("/tmp/data/checkpoint.data", "w") as f:
+        tmp = f"/tmp/data-{random.random()}"
+        os.makedirs(tmp, exist_ok=True)
+        with open(f"{tmp}/checkpoint{rank_suffix}.data", "w") as f:
             f.write(f"Hello world {i}")
         session.report(
             {"score": 2.0, "epoch": i},
-            checkpoint=Checkpoint.from_directory("/tmp/data"),
+            checkpoint=Checkpoint.from_directory(tmp),
         )
 
 
 @pytest.mark.parametrize("storage_path", [None, FAKE_NFS_DIR])
-@pytest.mark.parametrize("save_all_ranks", [False, True])
-def test_multirank_trainer_storage_path(storage_path, save_all_ranks):
-    """Test PyTorch trainer with two workers.
-
-    Test the storage format and rank organization of artifacts and checkpoints."""
-    raise NotImplementedError("TODO")
-
-    # CHECK: artifacts structure written by rank
-    # CHECK: checkpoint structure written by rank
-    # CHECK: restore from checkpoint
-
-
-def test_custom_storage_filesystem(storage_path):
-    """Test that user can pass a custom storage filesystem.
-
-    TODO: how do we check the filesystem is used? Maybe a custom filesystem can write
-    data to a mocked local bucket directory."""
-    raise NotImplementedError("TODO(ml team)")
-
-
-def test_raise_error_if_storage_path_not_readable(storage_path):
-    """Check that if storage path _valid file not readable an error is raised.
-
-    This happens if the user sets a path that isn't a NFS / sets an invalid storage
-    filesystem that isn't readable from workers.
-
-    TODO: How do we test this without a real cluster?"""
-    raise NotImplementedError("TODO(ml team)")
-
-
-@pytest.mark.parametrize("storage_path", [None, FAKE_NFS_DIR])
-def test_tuner_storage_path(storage_path):
+def test_tuner(storage_path):
     """Check that the right files are created and synced in the basic setup.
 
     Test with and without storage path set. We can fully mock this locally by setting
@@ -95,6 +71,7 @@ def test_tuner_storage_path(storage_path):
         assert storage_path in results[0].checkpoint.path
     else:
         assert RAY_RESULTS in results[0].checkpoint.path
+    assert "LocalFileSystem" in str(results[0].checkpoint.filesystem)
 
     # One experiment result dir.
     if storage_path:
@@ -144,6 +121,9 @@ def test_tuner_storage_path(storage_path):
             len(glob.glob(f"{storage_path}/train_model*/*/checkpoint_*/.is_checkpoint"))
             == 10
         )
+
+    # TODO(ekl) checkpoints shouldn't be present in RAY_RESULTS if we enable direct
+    # worker upload for Tuner too.
     assert len(glob.glob(f"{RAY_RESULTS}/train_model*/*/checkpoint_*")) == 10
     assert (
         len(glob.glob(f"{RAY_RESULTS}/train_model*/*/checkpoint_*/checkpoint.data"))
@@ -157,3 +137,66 @@ def test_tuner_storage_path(storage_path):
         len(glob.glob(f"{RAY_RESULTS}/train_model*/*/checkpoint_*/.is_checkpoint"))
         == 10
     )
+
+
+@pytest.mark.parametrize("storage_path", [None, FAKE_NFS_DIR])
+@pytest.mark.parametrize("keep_all_ranks", [False, True])
+def test_multirank_trainer(storage_path, keep_all_ranks):
+    """Test trainer with two workers.
+
+    Test the storage format and rank organization of artifacts and checkpoints."""
+
+    shutil.rmtree(RAY_RESULTS, ignore_errors=True)
+    shutil.rmtree(FAKE_NFS_DIR, ignore_errors=True)
+
+    def train_loop_per_worker(config):
+        rank = session.get_world_rank()
+        print("Worker", rank)
+        train_model({}, rank_suffix=f"_rank{rank}")
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=train_loop_per_worker,
+        scaling_config=ScalingConfig(num_workers=2),
+        run_config=RunConfig(
+            storage_path=storage_path,
+            checkpoint_config=CheckpointConfig(
+                checkpoint_keep_all_ranks=keep_all_ranks,
+            ),
+        ))
+
+    result = trainer.fit()
+    print(result.checkpoint.path)
+    print(result.checkpoint.filesystem)
+
+    # experiment_dir/trial_dir/rank_dir/artifact_data
+    assert len(glob.glob(f"{RAY_RESULTS}/Data*")) == 1
+    assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*")) == 1
+    assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*")) == 5
+    assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/rank*/random_artifact*.txt")) == 2
+
+    # experiment_dir/trial_dir/checkpoint_dir/rank_dir/checkpoint_data
+    if keep_all_ranks:
+        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 10
+        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*/checkpoint_rank*.data")) == 10
+    else:
+        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 5
+        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*/checkpoint_rank*.data")) == 5
+    # TODO: check restore from checkpoint.path
+
+
+def test_custom_storage_filesystem(storage_path):
+    """Test that user can pass a custom storage filesystem.
+
+    TODO: how do we check the filesystem is used? Maybe a custom filesystem can write
+    data to a mocked local bucket directory."""
+    raise NotImplementedError("TODO(ml team)")
+
+
+def test_raise_error_if_storage_path_not_readable(storage_path):
+    """Check that if storage path _valid file not readable an error is raised.
+
+    This happens if the user sets a path that isn't a NFS / sets an invalid storage
+    filesystem that isn't readable from workers.
+
+    TODO: How do we test this without a real cluster?"""
+    raise NotImplementedError("TODO(ml team)")

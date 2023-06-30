@@ -637,10 +637,10 @@ class _BackgroundSyncer(Syncer):
 class StorageContext:
     """Shared StorageContext, used both on driver and workers."""
 
+    # TODO: make into dataclass, and add experiment dir, trial dir, rank dir, checkpoint number
+
     def __init__(self, storage_path, storage_filesystem, sync_config):
         assert sync_config is not None
-        if sync_config.syncer != "auto":
-            raise DeprecationWarning("The `syncer` arg cannot be used in Ray 2.7")
 
         import pyarrow
 
