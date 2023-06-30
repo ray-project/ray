@@ -687,6 +687,8 @@ def call_function_from_import_path(import_path: str) -> Any:
         return callback_func()
     except Exception as e:
         raise RuntimeError(f"The function {import_path} raised an exception: {e}")
+
+
 def get_head_node_id() -> str:
     """Get the head node id.
 
