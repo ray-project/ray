@@ -2386,41 +2386,45 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
     ) -> None:
-        """Write the dataset to parquet.
+        """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call 
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
-        id for the dataset.
+        This method is only supported for datasets with records that are convertible to pyarrow tables.
+
+        By default, the format of the output files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
+        id for the dataset. To modify this behavior, implement a custom :class:`~ray.data.file_based_datasource.BlockWritePathProvider` and pass it in as the ``block_path_provider`` argument.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_parquet("s3://bucket/path") # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.write_parquet("local:///tmp/data/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where Parquet
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            path: The path to the destination root directory, where
+                parquet files will be written to.
+            filesystem: The pyarrow filesystem
+                implementation to write to. These are
+                specified in the `pyarrow docs <https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations>`_. You should specify this if you need to provide specific configurations to the filesystem. By default, the filesystem is automatically selected based on the scheme of the paths. For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+            try_create_dir: Try to create all directories in
+                destination path if True. Does nothing if all directories already exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream>`_, which is used when opening the file to write to.
+            block_path_provider: A :class:`~ray.data.file_based_datasource.BlockWritePathProvider` implementation
+                specifying the filename structure for each output parquet file. By default,  the format of the output files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique id for the dataset.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
-                arguments to use when writing each block to a file. Overrides
-                any duplicate keys from arrow_parquet_args. This should be used
-                instead of arrow_parquet_args if any of your write arguments
+                arguments to that are provided to `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>_ when writing each block to a file. Overrides
+                any duplicate keys from ``arrow_parquet_args``. This should be used
+                instead of ``arrow_parquet_args`` if any of your write arguments
                 cannot be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
-                pyarrow.parquet.write_table(), which is used to write out each
+                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>_, which is used to write out each
                 block to a file.
         """
         self.write_datasource(

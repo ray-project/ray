@@ -228,6 +228,8 @@ Partitioning API
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
 
+.. _metadata_provider:
+
 MetadataProvider API
 --------------------
 
@@ -240,3 +242,16 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+
+.. _block_write_path_provider:
+
+BlockWritePathProvider API
+--------------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   datasource.file_based_datasource.BlockWritePathProvider
+   datasource.file_based_datasource.DefaultBlockWritePathProvider
+   
