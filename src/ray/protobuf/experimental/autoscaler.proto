@@ -86,7 +86,7 @@ message ClusterResourceConstraint {
 // Node status for a ray node.
 enum NodeStatus {
   // Unknown state.
-  UNKNOWN = 0;
+  UNSPECIFIED = 0;
   // Node is alive and running workloads.
   RUNNING = 1;
   // Node is dead.
@@ -193,6 +193,20 @@ message PendingInstanceRequest {
   int32 count = 3;
 }
 
+message PendingInstance {
+  // The instance type name for the cloud, e.g. t1.micro
+  string instance_type_name = 1;
+  // The node type name, e.g. ray-head-node, matching `available_node_types`
+  // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
+  string ray_node_type_name = 2;
+  // The instance id.
+  string instance_id = 3;
+  // The instance ip address.
+  string ip_address = 4;
+  // Detail information about the instance.
+  string details = 5;
+}
+
 // Represents autoscaler state.
 message AutoscalingState {
   int64 last_seen_cluster_resource_state_version = 1;
@@ -211,6 +225,8 @@ message AutoscalingState {
   // the repeated field for future extension where a per-job cluster constraint might
   // be applicable.
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
+  /// Instances that are launched but ray hasn't started.
+  repeated PendingInstance pending_instances = 7;
 }
 
 message ReportAutoscalingStateRequest {
