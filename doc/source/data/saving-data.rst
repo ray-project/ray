@@ -126,6 +126,8 @@ mounted directory.
 To write data to formats other than Parquet, read the
 :ref:`Input/Output reference <input-output>`.
 
+.. _changing-number-output-files:
+
 Changing the number of output files
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
