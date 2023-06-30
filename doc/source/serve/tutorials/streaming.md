@@ -11,7 +11,7 @@ user. We show
 
 * How to stream outputs from a Serve application
 * How to use WebSockets in a Serve application
-* How to batch requests when streaming output
+* How to combine batching requests with streaming outputs
 
 This tutorial should help you with following use cases:
 
