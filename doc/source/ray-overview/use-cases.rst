@@ -134,7 +134,7 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: /data/batch_inference#more-examples
+        .. button-ref:: batch_inference_examples
 
             [Example] Batch Inference Examples
 
