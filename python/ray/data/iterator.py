@@ -132,13 +132,6 @@ class DataIterator(abc.ABC):
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            _collate_fn: A function to apply to each data batch before returning it.
-            _finalize_fn: A function to apply to each data batch after it has been
-                collated. The prefetch depth for finalize_fn is always 1, so it can
-                be used for heavyweight operations such as GPU preloading. This is
-                executed in a separate threadpool from the formatting and collation
-                logic in ``_collate_fn``, which allows for independent parallelization
-                of these steps.
 
         Returns:
             An iterator over record batches.
@@ -325,24 +318,42 @@ class DataIterator(abc.ABC):
 
         if collate_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
-                "collate_fn cannot be used with dtypes and device. The user"
-                "should manually move the output Torch tensors to the"
+                "collate_fn cannot be used with dtypes and device."
+                "You should manually move the output Torch tensors to the"
                 "desired dtype and device, outside of collate_fn."
             )
 
-        finalize_fn = None
         if collate_fn is None:
-
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()
                 if default_device.type != "cpu":
                     device = default_device
 
-            def finalize_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+            # The default collate_fn handles formatting and Tensor creation.
+            # Here, we set device=None to defer host to device data transfer
+            # to the subsequent finalize_fn.
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
                 return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch, dtypes=dtypes, device=device
+                    batch,
+                    dtypes=dtypes,
+                    device=None,
                 )
+
+            # The default finalize_fn handles the host to device data transfer.
+            # This is executed in a 1-thread pool separately from collate_fn
+            # to allow independent parallelism of these steps.
+            def finalize_fn(batch: Union["torch.Tensor", Dict[str, "torch.Tensor"]]):
+                if device is not None:
+                    if isinstance(batch, dict):
+                        for k, t in batch.items():
+                            batch[k] = t.to(device=device)
+                    else:
+                        batch = batch.to(device=device)
+                return batch
+
+        else:
+            finalize_fn = None
 
         yield from self.iter_batches(
             prefetch_batches=prefetch_batches,

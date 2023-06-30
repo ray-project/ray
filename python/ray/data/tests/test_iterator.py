@@ -168,25 +168,22 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
 
 def test_torch_conversion_collate_fn(ray_start_regular_shared):
     def collate_fn(batch: Dict[str, np.ndarray]):
-        return batch["id"] + 5
+        return torch.as_tensor(batch["id"] + 5)
 
     ds = ray.data.range(5)
     it = ds.iterator()
     for batch in it.iter_torch_batches(collate_fn=collate_fn):
-        batch = torch.as_tensor(batch)
         assert isinstance(batch, torch.Tensor)
         assert batch.tolist() == list(range(5, 10))
 
     # Should fail.
     with pytest.raises(ValueError):
         for batch in it.iter_torch_batches(collate_fn=collate_fn, dtypes=torch.float32):
-            batch = torch.as_tensor(batch)
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
     with pytest.raises(ValueError):
         for batch in it.iter_torch_batches(collate_fn=collate_fn, device="cpu"):
-            batch = torch.as_tensor(batch)
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))
 
@@ -196,7 +193,6 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
     ):
         assert ray.air._internal.torch_utils.get_device().type == "cuda"
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
-            batch = torch.as_tensor(batch)
             assert batch.device.type == "cpu"
             assert isinstance(batch, torch.Tensor)
             assert batch.tolist() == list(range(5, 10))

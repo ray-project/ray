@@ -3021,7 +3021,6 @@ class Dataset:
                 buffer in order to yield a batch. When there are no more rows to add to
                 the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
-            _collate_fn: A function to apply to each data batch before returning it.
 
         Returns:
             An iterator over record batches.

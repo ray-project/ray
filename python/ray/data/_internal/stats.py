@@ -814,7 +814,10 @@ class IterStatsSummary:
                     fmt(self.collate_time.get()),
                 )
             if self.finalize_batch_time.get():
-                out += "   * In finalize_fn: {} min, {} max, {} avg, {} total\n".format(
+                format_str = (
+                    "   * In host->device transfer: {} min, {} max, {} avg, {} total\n"
+                )
+                out += format_str.format(
                     fmt(self.finalize_batch_time.min()),
                     fmt(self.finalize_batch_time.max()),
                     fmt(self.finalize_batch_time.avg()),
