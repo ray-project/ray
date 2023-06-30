@@ -49,7 +49,7 @@ const columns = [
   { label: "IP / PID" },
   { label: "Actions" },
   {
-    label: "CPU Usage",
+    label: "CPU",
     helpInfo: (
       <Typography>
         CPU usage of a Node or a Worker Process.
