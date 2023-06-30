@@ -163,6 +163,7 @@ def _start_controller(
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
+            head_node_id=head_node_id,
             detached=detached,
             _disable_http_proxy=True,
         )
@@ -184,6 +185,7 @@ def _start_controller(
         controller = ServeController.options(**controller_actor_options).remote(
             controller_name,
             http_config=http_options,
+            head_node_id=head_node_id,
             detached=detached,
         )
 
