@@ -389,7 +389,7 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
             import boto3
             from botocore import UNSIGNED
             from botocore.config import Config
-            
+
             from torchvision import transforms
             from torch.utils.data import Dataset
             from PIL import Image
@@ -435,11 +435,6 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
 
             dataset = ImageDataset(bucket_name="ray-example-data", dir_path="batoidea/JPEGImages/")
 
-        .. testoutput::
-            :hide:
-
-            ...
-
     .. tab-item:: Ray Data
 
         .. testcode::
@@ -471,11 +466,6 @@ The following example shows a custom PyTorch Dataset, and what the analagous wou
             
             # Map the transformations over the dataset.
             ds = ds.map(extract_label).map(transform_image)
-
-        .. testoutput::
-            :hide:
-
-            ...
 
 PyTorch DataLoader
 ~~~~~~~~~~~~~~~~~~
