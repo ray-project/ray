@@ -66,7 +66,10 @@ def batch_block_refs(
         collate_fn: A function to apply to each data batch before returning it.
         finalize_fn: A function to apply to each data batch after it has been collated.
             The prefetch depth for finalize_fn is always 1, so it can be used for
-            heavyweight operations such as GPU preloading.
+            heavyweight operations such as GPU preloading. This is executed in a
+            separate threadpool from the formatting and collation logic in
+            ``collate_fn``, which allows for independent parallelization
+            of these steps.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -154,7 +157,7 @@ def batch_blocks(
 
         if collate_fn is not None:
             batch_iter = collate(batch_iter, collate_fn=collate_fn, stats=stats)
-        if finalize_fn is not None:
+        elif finalize_fn is not None:
             batch_iter = finalize_batches(
                 batch_iter,
                 finalize_fn=finalize_fn,

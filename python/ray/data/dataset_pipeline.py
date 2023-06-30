@@ -1106,9 +1106,6 @@ class DatasetPipeline:
         collate_fn: Optional[
             Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
-        finalize_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
-        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -1124,7 +1121,6 @@ class DatasetPipeline:
             dtypes=dtypes,
             device=device,
             collate_fn=collate_fn,
-            finalize_fn=finalize_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,

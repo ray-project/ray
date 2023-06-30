@@ -89,8 +89,11 @@ def iter_batches(
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
         finalize_fn: A function to apply to each data batch after it has been collated.
-            This is executed on a separate threadpool from `collate_fn` so that these
-            steps can be independently parallelized.
+            The prefetch depth for finalize_fn is always 1, so it can
+            be used for heavyweight operations such as GPU preloading. This is
+            executed in a separate threadpool from the formatting and collation
+            logic in ``collate_fn``, which allows for independent parallelization
+            of these steps.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -235,10 +238,10 @@ def _apply_finalize_fn_in_threadpool(
     finalize_fn: Optional[Callable[[DataBatch], Any]],
 ) -> Iterator[Batch]:
     """Applies the `finalize_fn` function to each data batch after formatting
-    and collation, useful for operations such as host to device data transfer.
-    This is executed in a separate threadpool (with 1 thread) from the formatting
-    and collation logic in `_format_in_threadpool()`, which allows for independent
-    parallelization of these steps.
+    and collation. The prefetch depth for finalize_fn is always 1, so it can
+    be used for heavyweight operations such as GPU preloading. This is
+    executed in a separate threadpool from the formatting and collation
+    steps, which allows for independent parallelization of these steps.
 
     Args:
         batch_iter: An iterator over data batches.

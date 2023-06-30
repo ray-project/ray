@@ -2986,7 +2986,6 @@ class Dataset:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        _finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -3023,9 +3022,6 @@ class Dataset:
                 the buffer, the remaining rows in the buffer will be drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A function to apply to each data batch before returning it.
-            _finalize_fn: A function to apply to each data batch after it has been
-                collated. This is executed in a separate threadpool from _collate_fn,
-                which allows for independent parallelization of these steps.
 
         Returns:
             An iterator over record batches.
@@ -3042,7 +3038,6 @@ class Dataset:
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
-            _finalize_fn=_finalize_fn,
         )
 
     @ConsumptionAPI
@@ -3054,9 +3049,6 @@ class Dataset:
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
         collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
-        ] = None,
-        finalize_fn: Optional[
             Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
         drop_last: bool = False,
@@ -3128,7 +3120,6 @@ class Dataset:
             dtypes=dtypes,
             device=device,
             collate_fn=collate_fn,
-            finalize_fn=finalize_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,

@@ -190,6 +190,15 @@ def finalize_batches(
 
     Args:
         batch_iter: An iterator over processed batches.
+        finalize_fn: A function to apply to each batch. The prefetch depth for
+            ``finalize_fn`` is always 1, so it can be used for heavyweight
+            operations such as GPU preloading. This is executed in a separate
+            threadpool from the formatting and collation steps, which allows
+            for independent parallelization of these steps.
+        stats: An optional stats object to record formatting times.
+
+    Returns:
+        An iterator over batch index and the finalized batch.
     """
     for batch in batch_iter:
         with stats.iter_finalize_batch_s.timer() if stats else nullcontext():

@@ -134,7 +134,11 @@ class DataIterator(abc.ABC):
             local_shuffle_seed: The seed to use for the local random shuffle.
             _collate_fn: A function to apply to each data batch before returning it.
             _finalize_fn: A function to apply to each data batch after it has been
-                collated. This is executed on a GPU-based threadpool if available.
+                collated. The prefetch depth for finalize_fn is always 1, so it can
+                be used for heavyweight operations such as GPU preloading. This is
+                executed in a separate threadpool from the formatting and collation
+                logic in ``_collate_fn``, which allows for independent parallelization
+                of these steps.
 
         Returns:
             An iterator over record batches.
@@ -254,9 +258,6 @@ class DataIterator(abc.ABC):
         collate_fn: Optional[
             Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
         ] = None,
-        finalize_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
-        ] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -294,14 +295,14 @@ class DataIterator(abc.ABC):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
-            collate_fn: A function to apply to each data batch before returning it.
-                Potential use cases include collating along a dimension other than the
-                first, padding sequences of various lengths, or generally handling
-                batches of different length tensors. This API is still experimental
-                and is subject to change.
-            finalize_fn: A function to apply to each data batch after it has been
-                collated. If not provided, the default function is used, which
-                simply converts the batch of numpy arrays to a batch of PyTorch tensors.
+            collate_fn: A function to apply to each data batch before returning it. When
+                this parameter is specified, the user should manually handle the host
+                to device data transfer outside of collate_fn. Potential use cases
+                include collating along a dimension other than the first, padding
+                sequences of various lengths, or generally handling batches of different
+                length tensors. This API is still experimental and is subject to change.
+                This parameter cannot be used in conjunction with ``dtypes`` or
+                ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -322,14 +323,15 @@ class DataIterator(abc.ABC):
             get_device,
         )
 
-        if finalize_fn is not None and (dtypes is not None or device is not None):
+        if collate_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
-                "finalize_fn cannot be used with dtypes and device. It is expected that"
-                "the provided `finalize_fn` will move the output Torch tensors to the"
-                "appropriate dtype and device."
+                "collate_fn cannot be used with dtypes and device. The user"
+                "should manually move the output Torch tensors to the"
+                "desired dtype and device, and not inside collate_fn."
             )
 
-        if finalize_fn is None:
+        finalize_fn = None
+        if collate_fn is None:
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()
