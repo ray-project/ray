@@ -603,7 +603,8 @@ def test_syncer_wait_or_retry_eventual_success(temp_data_dirs, tmp_path):
     syncer = EventualSuccessSyncer(sync_period=60, sync_timeout=0.5)
 
     syncer.sync_up(local_dir=tmp_source, remote_dir=f"memory://{str(tmp_target)}")
-    syncer.wait_or_retry(max_retries=3, backoff_s=0)
+    # The syncer will retry 2 times, running 3 times in total and eventually succeeding.
+    syncer.wait_or_retry(max_retries=2, backoff_s=0)
     assert success.exists()
 
 

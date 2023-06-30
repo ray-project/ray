@@ -2,6 +2,7 @@ import abc
 import urllib.parse
 from functools import partial
 import threading
+import traceback
 from typing import (
     Any,
     Callable,
@@ -459,13 +460,16 @@ class Syncer(abc.ABC):
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
         last_error = None
-        for _ in range(max_retries):
+        for i in range(max_retries):
             try:
                 self.wait()
             except Exception as e:
+                attempts_remaining = max_retries - i
                 logger.error(
-                    f"Caught sync error: {e}. "
-                    f"Retrying after sleeping for {backoff_s} seconds..."
+                    f"The latest syncing operation failed with the error:\n"
+                    f"{traceback.format_exc()}\n"
+                    f"Retrying {attempts_remaining} more time(s) after sleeping "
+                    f"for {backoff_s} seconds..."
                 )
                 last_error = e
                 time.sleep(backoff_s)
@@ -532,6 +536,20 @@ class _BackgroundSyncer(Syncer):
             and time.time() - self._sync_process.start_time < self.sync_timeout
         )
 
+    def _launch_sync_process(self, sync_command: Tuple[Callable, Dict]):
+        """Waits for the previous sync process to finish,
+        then launches a new process that runs the given command."""
+        if self._sync_process:
+            try:
+                self.wait()
+            except Exception as e:
+                logger.warning(
+                    f"Last sync command failed: {e}\n{traceback.format_exc()}"
+                )
+
+        self._current_cmd = sync_command
+        self.retry()
+
     def sync_up(
         self, local_dir: str, remote_dir: str, exclude: Optional[List] = None
     ) -> bool:
@@ -541,16 +559,11 @@ class _BackgroundSyncer(Syncer):
                 f"skipping sync up of {local_dir} to {remote_dir}"
             )
             return False
-        elif self._sync_process:
-            try:
-                self.wait()
-            except Exception as e:
-                logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = self._sync_up_command(
+        sync_up_cmd = self._sync_up_command(
             local_path=local_dir, uri=remote_dir, exclude=exclude
         )
-        self.retry()
+        self._launch_sync_process(sync_up_cmd)
 
         return True
 
@@ -568,16 +581,9 @@ class _BackgroundSyncer(Syncer):
                 f"skipping sync down of {remote_dir} to {local_dir}"
             )
             return False
-        elif self._sync_process:
-            try:
-                self.wait()
-            except Exception as e:
-                logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = self._sync_down_command(
-            uri=remote_dir, local_path=local_dir
-        )
-        self.retry()
+        sync_down_cmd = self._sync_down_command(uri=remote_dir, local_path=local_dir)
+        self._launch_sync_process(sync_down_cmd)
 
         return True
 
@@ -590,14 +596,9 @@ class _BackgroundSyncer(Syncer):
                 f"Last sync still in progress, skipping deletion of {remote_dir}"
             )
             return False
-        elif self._sync_process:
-            try:
-                self.wait()
-            except Exception as e:
-                logger.warning(f"Last sync command failed: {e}")
 
-        self._current_cmd = self._delete_command(uri=remote_dir)
-        self.retry()
+        delete_cmd = self._delete_command(uri=remote_dir)
+        self._launch_sync_process(delete_cmd)
 
         return True
 
