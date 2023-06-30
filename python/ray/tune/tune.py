@@ -1169,7 +1169,6 @@ def run(
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
-        sync_config=sync_config,
         remote_storage_path=remote_path,
     )
 
