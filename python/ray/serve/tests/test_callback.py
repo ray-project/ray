@@ -171,7 +171,6 @@ def test_callback_fail(ray_instance):
     handle = actor_def.remote(
         "controller",
         http_config={},
-        head_node_id="123",
     )
     with pytest.raises(RayActorError, match="cannot be imported"):
         ray.get(handle.check_alive.remote())
