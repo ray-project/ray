@@ -1,4 +1,4 @@
-import { getStateApiDownloadLogUrl } from "./log";
+import { getStateApiDownloadLogUrl, MAX_LINES_FOR_LOGS } from "./log";
 
 describe("getStateApiDownloadLogUrl", () => {
   it("only uses parameters provided but doesn't fetch when parameters are null", () => {
@@ -10,7 +10,7 @@ describe("getStateApiDownloadLogUrl", () => {
         filename: "file.log",
       }),
     ).toStrictEqual(
-      "api/v0/logs/file?node_id=node-id&filename=file.log&lines=-1",
+      `api/v0/logs/file?node_id=node-id&filename=file.log&lines=${MAX_LINES_FOR_LOGS}`,
     );
 
     expect(
@@ -18,21 +18,27 @@ describe("getStateApiDownloadLogUrl", () => {
         taskId: "task-id",
         suffix: "err",
       }),
-    ).toStrictEqual("api/v0/logs/file?task_id=task-id&suffix=err&lines=-1");
+    ).toStrictEqual(
+      `api/v0/logs/file?task_id=task-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}`,
+    );
 
     expect(
       getStateApiDownloadLogUrl({
         taskId: "task-id",
         suffix: "out",
       }),
-    ).toStrictEqual("api/v0/logs/file?task_id=task-id&suffix=out&lines=-1");
+    ).toStrictEqual(
+      `api/v0/logs/file?task_id=task-id&suffix=out&lines=${MAX_LINES_FOR_LOGS}`,
+    );
 
     expect(
       getStateApiDownloadLogUrl({
         actorId: "actor-id",
         suffix: "err",
       }),
-    ).toStrictEqual("api/v0/logs/file?actor_id=actor-id&suffix=err&lines=-1");
+    ).toStrictEqual(
+      `api/v0/logs/file?actor_id=actor-id&suffix=err&lines=${MAX_LINES_FOR_LOGS}`,
+    );
 
     expect(
       getStateApiDownloadLogUrl({
