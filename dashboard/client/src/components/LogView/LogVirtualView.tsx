@@ -141,12 +141,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
   };
 
   useEffect(() => {
-    // const originContent = content.split("\n");
-    const originContent: string[] = [];
-
-    for (let i = 0; i < 50000; i++) {
-      originContent.push(`Log entry ${i}`);
-    }
+    const originContent = content.split("\n");
     if (timmer.current) {
       clearTimeout(timmer.current);
     }
@@ -208,11 +203,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       };
     }
   }, [onScrollBottom]);
-  const longLogs = [];
 
-  for (let i = 0; i < 50000; i++) {
-    longLogs.push(`Log entry ${i}`);
-  }
   return (
     <div>
       {logs && logs.length >= MAX_LINES_FOR_LOGS && (
