@@ -57,7 +57,6 @@ def setup_controller():
         ).remote(
             SERVE_CONTROLLER_NAME,
             http_config=None,
-            head_node_id=HEAD_NODE_ID,
             detached=True,
             _disable_http_proxy=True,
         )
