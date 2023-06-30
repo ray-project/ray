@@ -78,6 +78,10 @@ def test_np_in_composed_model(serve_instance):
     assert result.json() == 100.0
 
 
+@pytest.mark.skipif(
+    sys.version_info.major >= 3 and sys.version_info.minor <= 7,
+    reason="Failing on Python 3.7 due to different GC behavior.",
+)
 def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
     @serve.deployment
