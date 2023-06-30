@@ -42,6 +42,7 @@ from ray.tune.result import (
 from ray.tune.experiment import Trial
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.trainable.util import TrainableUtil
+from ray.tune.syncer import StorageContext
 from ray.tune.utils.util import unflattened_lookup
 
 from ray.util.annotations import PublicAPI
@@ -87,11 +88,13 @@ class ExperimentAnalysis:
         default_metric: Optional[str] = None,
         default_mode: Optional[str] = None,
         remote_storage_path: Optional[str] = None,
+        storage: Optional[StorageContext] = None,
         # Deprecate: Raise in 2.6, remove in 2.7
         sync_config: Optional[SyncConfig] = None,
     ):
         self._local_experiment_path: str = None
         self._remote_experiment_path: Optional[str] = None
+        self._storage = storage
 
         # If the user passes in a remote checkpoint path,
         # Set the remote experiment path to this path, and set

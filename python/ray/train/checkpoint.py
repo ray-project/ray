@@ -1,28 +1,25 @@
 import contextlib
-import io
 import logging
 import os
 import platform
 import shutil
 import tempfile
 import traceback
-import uuid
-from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Tuple, Type, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional, Union
 
-import ray
 from ray import cloudpickle as pickle
 from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.util import _copy_dir_ignore_conflicts
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI, Deprecated
 
 if TYPE_CHECKING:
     import pyarrow
+    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
 _METADATA_FILE_NAME = ".metadata.pkl"
+_CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 
 @PublicAPI(stability="beta")
@@ -53,10 +50,11 @@ class Checkpoint:
 
         if path and not filesystem:
             import pyarrow
-            self.filesystem = pyarrow.FileSystem.from_uri(path)
+
+            self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(path)
 
     def __repr__(self):
-        return f"Checkpoint({self.path}, filesystem={self.filesystem})"
+        return f"Checkpoint(path={self.path}, filesystem={self.filesystem})"
 
     def get_metadata(self) -> Dict[str, Any]:
         """Return the metadata dict stored with the checkpoint.
@@ -214,3 +212,21 @@ class Checkpoint:
         metadata = self.get_metadata()
         metadata["preprocessor"] = preprocessor
         self.set_metadata(metadata)
+
+
+def _make_dir(path: str, acquire_del_lock: bool = False) -> None:
+    """Create the temporary checkpoint dir in ``path``."""
+    if acquire_del_lock:
+        # Each process drops a deletion lock file it then cleans up.
+        # If there are no lock files left, the last process
+        # will remove the entire directory.
+        del_lock_path = _get_del_lock_path(path)
+        open(del_lock_path, "a").close()
+
+    os.makedirs(path, exist_ok=True)
+
+
+def _get_del_lock_path(path: str, pid: str = None) -> str:
+    """Get the path to the deletion lock file."""
+    pid = pid if pid is not None else os.getpid()
+    return f"{path}.del_lock_{pid}"

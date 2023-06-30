@@ -1193,6 +1193,7 @@ def run(
         default_mode=mode,
         sync_config=sync_config,
         remote_storage_path=remote_path,
+        storage=storage,
     )
 
     return ea

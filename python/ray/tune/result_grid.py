@@ -10,6 +10,7 @@ from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.trainable.util import TrainableUtil
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 from ray.util import PublicAPI
 
 
@@ -279,9 +280,19 @@ class ResultGrid:
             if trial.uses_cloud_checkpointing
             else None
         )
-        checkpoint = trial.checkpoint.to_air_checkpoint(
-            local_to_remote_path_fn,
-        )
+        storage = self._experiment_analysis._storage
+        if USE_STORAGE_CONTEXT:
+            assert storage
+        if storage:
+            from ray.train.checkpoint import Checkpoint
+
+            checkpoint = Checkpoint(
+                path=trial.checkpoint.dir_or_data, filesystem=storage.storage_filesystem
+            )
+        else:
+            checkpoint = trial.checkpoint.to_air_checkpoint(
+                local_to_remote_path_fn,
+            )
         best_checkpoints = [
             (
                 checkpoint.to_air_checkpoint(local_to_remote_path_fn),
