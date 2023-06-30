@@ -3,6 +3,7 @@ import logging
 from typing import Any, Dict, Optional, List, Type, Union, Callable
 import pandas as pd
 import numpy as np
+import warnings
 
 import ray
 from ray.air import Checkpoint
@@ -11,12 +12,12 @@ from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline, Preprocessor
 from ray.data.context import DataContext
 from ray.train.predictor import Predictor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class BatchPredictor:
     """Batch predictor class.
 
@@ -30,6 +31,11 @@ class BatchPredictor:
     def __init__(
         self, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **predictor_kwargs
     ):
+        warnings.warn(
+            "`BatchPredictor` is deprecated. Use `Dataset.map_batches`  instead. To "
+            "learn more, see http://batchinference.io.",
+            DeprecationWarning,
+        )
         self._checkpoint = checkpoint
         # Store as object ref so we only serialize it once for all map workers
         self._checkpoint_ref = ray.put(checkpoint)
