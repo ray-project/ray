@@ -5,6 +5,8 @@ from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 _, nn = try_import_torch()
 
@@ -36,7 +38,11 @@ class TorchModelV2(ModelV2):
                 self._logits = ...
                 self._value_branch = ...
         """
-
+        if log_once("torch_modelv2_deprecation"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.torch_modelv2.TorchModelV2",
+                new="ray.rllib.core.rl_module.rl_module.RLModule",
+            )
         if not isinstance(self, nn.Module):
             raise ValueError(
                 "Subclasses of TorchModelV2 must also inherit from "
