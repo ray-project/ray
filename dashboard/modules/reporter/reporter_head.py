@@ -126,6 +126,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         ValueError: HTTPInternalServerError
     """
 
+    ## 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
         if "ip" in req.query:
