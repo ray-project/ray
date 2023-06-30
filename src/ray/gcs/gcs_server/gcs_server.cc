@@ -157,11 +157,11 @@ void GcsServer::GetOrGenerateClusterId(
   kv_manager_->GetInstance().Get(
       kTokenNamespace,
       kClusterIdKey,
-      [this,
-       continuation = std::move(continuation)](std::optional<std::string> token) mutable {
-        if (!token.has_value()) {
+      [this, continuation = std::move(continuation)](
+          std::optional<std::string> provided_cluster_id) mutable {
+        if (!provided_cluster_id.has_value()) {
           ClusterID cluster_id = ClusterID::FromRandom();
-          RAY_LOG(INFO) << "No existing server token found. Generating new token: "
+          RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
                         << cluster_id.Hex();
           kv_manager_->GetInstance().Put(
               kTokenNamespace,
@@ -170,11 +170,11 @@ void GcsServer::GetOrGenerateClusterId(
               false,
               [&cluster_id,
                continuation = std::move(continuation)](bool added_entry) mutable {
-                RAY_CHECK(added_entry) << "Failed to persist new token!";
+                RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
                 continuation(cluster_id);
               });
         } else {
-          ClusterID cluster_id = ClusterID::FromBinary(token.value());
+          ClusterID cluster_id = ClusterID::FromBinary(cluster_id.value());
           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
           continuation(cluster_id);
         }
