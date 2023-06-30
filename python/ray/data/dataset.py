@@ -3048,9 +3048,7 @@ class Dataset:
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
-        collate_fn: Optional[
-            Callable[[Union[np.ndarray, Dict[str, np.ndarray]]], Any]
-        ] = None,
+        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], Any]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,

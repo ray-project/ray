@@ -9,14 +9,9 @@ a batch of queries and processes them at once. In particular, we show:
 - How to configure the batch size.
 - How to query the model in Python.
 
-This tutorial should help the following use cases:
+This tutorial is a guide for serving online queries when your model can take advantage of batching. For example, linear regressions and neural networks use CPU and GPU's vectorized instructions to perform computation in parallel. Performing inference with batching can increase the *throughput* of the model as well as *utilization* of the hardware.
 
-- You want to perform offline batch inference on a cluster of machines.
-- You want to serve online queries and your model can take advantage of batching.
-  For example, linear regressions and neural networks use CPU and GPU's
-  vectorized instructions to perform computation in parallel. Performing
-  inference with batching can increase the *throughput* of the model as well as
-  *utilization* of the hardware.
+For _offline_ batch inference with large datasets, see [batch inference with Ray Data](batch_inference_home).
 
 
 ## Define the Deployment

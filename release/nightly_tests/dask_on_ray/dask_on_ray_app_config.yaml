@@ -13,6 +13,7 @@ python:
 post_build_cmds:
   # - pip install fastparquet
   - pip3 install boto3 s3fs
+  - pip3 install -U s3fs
   - pip3 uninstall -y ray && pip3 install -U {{ env["RAY_WHEELS"] | default("ray") }}
   - pip3 install -U ray[default]
   - echo {{env["DATESTAMP"]}}

@@ -126,6 +126,22 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
+        .. button-ref:: /data/batch_inference
+
+            [Guide] Batch Prediction using Ray Data
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: batch_inference_examples
+
+            [Example] Batch Inference Examples
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
         .. button-link:: https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker
 
             [Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker
@@ -145,30 +161,6 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         .. button-link:: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
 
             [Blog] Using Ray Data to parallelize LangChain inference
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: /data/batch_inference
-
-            [Guide] Batch Prediction using Ray Data
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: /data/examples/nyc_taxi_basic_processing
-
-            [Example] Batch Inference on NYC taxi data using Ray Data
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: /data/examples/ocr_example
-
-            [Example] Batch OCR processing using Ray Data
 
 
 
