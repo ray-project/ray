@@ -7,7 +7,7 @@ from typing import List
 from ray_release.test import Test
 from ray_release.byod.build import (
     build_anyscale_custom_byod_image,
-    build_anyscale_champagne_image,
+    build_champagne_image,
     DATAPLANE_FILENAME,
 )
 
@@ -37,7 +37,7 @@ def test_build_anyscale_champagne_image() -> None:
     ), open(
         DATAPLANE_FILENAME, "wb"
     ) as _:
-        build_anyscale_champagne_image("2.5.1", "py37", "cpu")
+        build_champagne_image("2.5.1", "py37", "cpu")
         assert "docker build --build-arg BASE_IMAGE=rayproject/ray:2.5.1-py37 -t "
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/"
         "anyscale/ray:champagne-2.5.1 -" == " ".join(cmds[0])
