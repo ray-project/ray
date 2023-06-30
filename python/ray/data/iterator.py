@@ -327,11 +327,12 @@ class DataIterator(abc.ABC):
             raise ValueError(
                 "collate_fn cannot be used with dtypes and device. The user"
                 "should manually move the output Torch tensors to the"
-                "desired dtype and device, and not inside collate_fn."
+                "desired dtype and device, outside of collate_fn."
             )
 
         finalize_fn = None
         if collate_fn is None:
+
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()
