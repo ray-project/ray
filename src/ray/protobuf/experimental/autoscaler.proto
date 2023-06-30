@@ -70,9 +70,9 @@ message ResourceRequestByCount {
 message GangResourceRequest {
   // a map from bundles to the number of bundles requested.
   repeated ResourceRequest requests = 1;
-  // TODO(rickyx):
-  // Strategy of the placement group, e.g. STRICT_PACK.
-  string pg_strategy = 2;
+  // Metadata associated with the request for observability,
+  // e.g. placement group's strategy.
+  string details = 2;
 }
 
 // Cluster resource constraint represents minimial cluster size requirement,
@@ -85,12 +85,14 @@ message ClusterResourceConstraint {
 
 // Node status for a ray node.
 enum NodeStatus {
+  // Unknown state.
+  UNSPECIFIED = 0;
   // Node is alive and running workloads.
-  RUNNING = 0;
+  RUNNING = 1;
   // Node is dead.
-  DEAD = 1;
+  DEAD = 2;
   // Node is idle.
-  IDLE = 2;
+  IDLE = 3;
 }
 
 message NodeState {
@@ -191,6 +193,20 @@ message PendingInstanceRequest {
   int32 count = 3;
 }
 
+message PendingInstance {
+  // The instance type name for the cloud, e.g. t1.micro
+  string instance_type_name = 1;
+  // The node type name, e.g. ray-head-node, matching `available_node_types`
+  // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
+  string ray_node_type_name = 2;
+  // The instance id.
+  string instance_id = 3;
+  // The instance ip address.
+  string ip_address = 4;
+  // Detail information about the instance.
+  string details = 5;
+}
+
 // Represents autoscaler state.
 message AutoscalingState {
   int64 last_seen_cluster_resource_state_version = 1;
@@ -209,6 +225,8 @@ message AutoscalingState {
   // the repeated field for future extension where a per-job cluster constraint might
   // be applicable.
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
+  /// Instances that are launched but ray hasn't started.
+  repeated PendingInstance pending_instances = 7;
 }
 
 message ReportAutoscalingStateRequest {
