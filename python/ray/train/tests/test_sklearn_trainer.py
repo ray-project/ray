@@ -76,7 +76,7 @@ def test_no_auto_cpu_params(ray_start_4_cpus, tmpdir):
             super().__init__()
             self.is_same = True
 
-        def fit(self, dataset):
+        def _fit(self, dataset):
             self.fitted_ = True
 
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
@@ -106,7 +106,7 @@ def test_preprocessor_in_checkpoint(ray_start_4_cpus, tmpdir):
             super().__init__()
             self.is_same = True
 
-        def fit(self, dataset):
+        def _fit(self, dataset):
             self.fitted_ = True
 
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
