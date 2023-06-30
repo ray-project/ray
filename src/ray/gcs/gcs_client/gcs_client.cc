@@ -105,8 +105,9 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
           client_call_manager_->SetClusterId(cluster_id);
           if (do_stop.get()) {
             io_service.stop();
+          } else {
+            wait_sync.set_value(true);
           }
-          wait_sync.set_value(true);
         });
     // Run the IO service here to make the above call synchronous.
     // If it is already running, then wait for our particular callback
