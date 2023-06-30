@@ -37,7 +37,7 @@ class AutoscalingRequester:
 
         self._self_handle = ray.get_runtime_context().current_actor
 
-        # # Start a thread to purge expired requests periodically.
+        # Start a thread to purge expired requests periodically.
         def purge_thread_run():
             while True:
                 time.sleep(PURGE_INTERVAL)
