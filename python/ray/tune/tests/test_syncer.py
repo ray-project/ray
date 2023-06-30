@@ -27,7 +27,7 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal.uri_utils import URI
 from ray.train.torch import TorchTrainer
 from ray.tune import TuneError
-from ray.tune.syncer import _DefaultSyncer, Syncer, SyncConfig
+from ray.tune.syncer import _BackgroundProcess, _DefaultSyncer, Syncer, SyncConfig
 from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
@@ -487,16 +487,16 @@ def test_syncer_not_running_sync_last_failed(propagate_logs, caplog, temp_data_d
 
     tmp_source, tmp_target = temp_data_dirs
 
-    class FakeSyncProcess:
+    class FakeSyncProcess(_BackgroundProcess):
         @property
         def is_running(self):
             return False
 
-        def wait(self):
+        def wait(self, *args, **kwargs):
             raise RuntimeError("Sync failed")
 
     syncer = _DefaultSyncer(sync_period=60)
-    syncer._sync_process = FakeSyncProcess()
+    syncer._sync_process = FakeSyncProcess(lambda: None)
     assert syncer.sync_up_if_needed(
         local_dir=tmp_source,
         remote_dir="memory:///test/test_syncer_not_running_sync",
