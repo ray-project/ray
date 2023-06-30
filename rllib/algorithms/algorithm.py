@@ -138,11 +138,14 @@ except ImportError:
 
     class AlgorithmBase:
         @staticmethod
-        def _get_learner_bundles(cf: AlgorithmConfig):
+        def _get_learner_bundles(cf: AlgorithmConfig) -> List[Dict[str, int]]:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
                 cf: The algorithm config.
+
+            Returns:
+                A list of resource bundles for the learner workers.
             """
             if cf.num_learner_workers > 0:
                 if cf.num_gpus_per_learner_worker:
