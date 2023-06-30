@@ -121,7 +121,7 @@ import ray
 # Create datasets from on-disk files, Python objects, and cloud storage like S3.
 ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
-# Apply functions to transform data. Ray executes transformations in parallel.
+# Apply functions to transform data. Ray Data executes transformations in parallel.
 def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     length = batch["petal length (cm)"]
     width = batch["petal width (cm)"]
