@@ -138,7 +138,7 @@ Run the model with `serve run chatbot:app`. Query it using the `websockets` pack
 
 You should see the outputs printed token by token.
 
-# Add Batching to Streaming Deployments
+# Batch requests and stream the output for each
 
 Improve model utilization and request latency by batching requests together when running the model.
 
