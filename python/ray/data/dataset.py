@@ -2350,9 +2350,9 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100)
+            >>> ds = ray.data.range(100).repartition(10)
             >>> ds.num_blocks()
-            20
+            10
 
         Time complexity: O(1)
 
