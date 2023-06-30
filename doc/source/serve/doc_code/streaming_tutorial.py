@@ -25,7 +25,7 @@ fastapi_app = FastAPI()
 @serve.deployment
 @serve.ingress(fastapi_app)
 class Textbot:
-    def __init__(self, model_id):
+    def __init__(self, model_id: str):
         self.loop = asyncio.get_running_loop()
 
         self.model_id = model_id
@@ -36,7 +36,7 @@ class Textbot:
 
     # __textbot_logic_start__
     @fastapi_app.post("/")
-    def handle_request(self, prompt: str):
+    def handle_request(self, prompt: str) -> StreamingResponse:
         logger.info(f'Got prompt: "{prompt}"')
         streamer = TextIteratorStreamer(
             self.tokenizer, timeout=0, skip_prompt=True, skip_special_tokens=True
@@ -113,7 +113,7 @@ fastapi_app = FastAPI()
 @serve.deployment
 @serve.ingress(fastapi_app)
 class Chatbot:
-    def __init__(self, model_id):
+    def __init__(self, model_id: str):
         self.loop = asyncio.get_running_loop()
 
         self.model_id = model_id
@@ -124,7 +124,7 @@ class Chatbot:
 
     # __chatbot_logic_start__
     @fastapi_app.websocket("/")
-    async def handle_request(self, ws: WebSocket):
+    async def handle_request(self, ws: WebSocket) -> None:
         await ws.accept()
 
         conversation = ""
@@ -264,7 +264,7 @@ fastapi_app = FastAPI()
 @serve.deployment
 @serve.ingress(fastapi_app)
 class Batchbot:
-    def __init__(self, model_id):
+    def __init__(self, model_id: str):
         self.loop = asyncio.get_running_loop()
 
         self.model_id = model_id
@@ -276,7 +276,7 @@ class Batchbot:
 
     # __batchbot_logic_start__
     @fastapi_app.post("/")
-    async def handle_request(self, prompt: str):
+    async def handle_request(self, prompt: str) -> StreamingResponse:
         logger.info(f'Got prompt: "{prompt}"')
         return StreamingResponse(self.run_model(prompt), media_type="text/plain")
 
