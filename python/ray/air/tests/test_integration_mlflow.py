@@ -9,12 +9,7 @@ from mlflow.tracking import MlflowClient
 
 from ray._private.dict import flatten_dict
 from ray.train._internal.session import init_session
-from ray.tune.trainable import wrap_function
 from ray.tune.trainable.session import _shutdown as tune_session_shutdown
-from ray.tune.integration.mlflow import (
-    MLflowTrainableMixin,
-    mlflow_mixin,
-)
 from ray.air.integrations.mlflow import MLflowLoggerCallback, setup_mlflow, _NoopModule
 from ray.air._internal.mlflow import _MLflowLoggerUtil
 
