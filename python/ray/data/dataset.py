@@ -2337,7 +2337,6 @@ class Dataset:
         number of blocks at runtime.
 
         Examples:
-
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.num_blocks()
@@ -2355,7 +2354,6 @@ class Dataset:
         """Return the in-memory size of the dataset.
 
         Examples:
-
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> ds.size_bytes()
@@ -2377,7 +2375,6 @@ class Dataset:
         """Return the list of input files for the dataset.
 
         Examples:
-
             >>> import ray
             >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
             >>> ds.input_files()
@@ -4128,7 +4125,6 @@ class Dataset:
         returned MaterializedDataset class are pinned in memory.
 
         Examples:
-
             >>> import ray
             >>> ds = ray.data.range(10)
             >>> materialized_ds = ds.materialize()
@@ -4189,6 +4185,7 @@ class Dataset:
             ds = ds.materialize()
             print(ds.stats())
 
+        .. testoutput::
 
             Stage 0 Read: .../... blocks executed in ...
             * Remote wall time: ... min, ... max, ... mean, ... total
@@ -4214,7 +4211,6 @@ class Dataset:
         until the underlying blocks are computed.
 
         Examples:
-
             >>> import ray
             >>> ds = ray.data.range(1)
             >>> ds.get_internal_block_refs()
@@ -4289,27 +4285,28 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
+            .. testcode::
 
-            import ray
+                import ray
 
-            serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
-            ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-            print(ds)
+                serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
+                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+                print(ds)
 
-        .. testoutput::
+            .. testoutput::
 
-            Dataset(
-               num_blocks=...,
-               num_rows=150,
-               schema={
-                  sepal.length: double,
-                  sepal.width: double,
-                  petal.length: double,
-                  petal.width: double,
-                  variety: string
-               }
-            )
+                Dataset(
+                   num_blocks=...,
+                   num_rows=150,
+                   schema={
+                      sepal.length: double,
+                      sepal.width: double,
+                      petal.length: double,
+                      petal.width: double,
+                      variety: string
+                   }
+                )
+
 
         Returns:
             Serialized bytes containing the lineage of this dataset.
@@ -4370,27 +4367,27 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
+            .. testcode::
 
-            import ray
+                import ray
 
-            serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
-            ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
-            print(ds)
+                serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
+                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+                print(ds)
 
-        .. testoutput::
+            .. testoutput::
 
-            Dataset(
-               num_blocks=...,
-               num_rows=150,
-               schema={
-                  sepal.length: double,
-                  sepal.width: double,
-                  petal.length: double,
-                  petal.width: double,
-                  variety: string
-               }
-            )
+                Dataset(
+                   num_blocks=...,
+                   num_rows=150,
+                   schema={
+                      sepal.length: double,
+                      sepal.width: double,
+                      petal.length: double,
+                      petal.width: double,
+                      variety: string
+                   }
+                )
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.
