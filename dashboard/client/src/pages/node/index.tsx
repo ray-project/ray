@@ -48,7 +48,19 @@ const columns = [
   { label: "ID" },
   { label: "IP / PID" },
   { label: "Actions" },
-  { label: "CPU Usage" },
+  {
+    label: "CPU Usage",
+    helpInfo: (
+      <Typography>
+        CPU usage of a Node or a Worker Process.
+        <br />
+        <br />
+        Node’s CPU usage is calculated against all CPU cores. Worker Process’s
+        CPU usage is calculated against 1 CPU core. As a result, the sum of CPU
+        usage from all Worker Processes is not equal to the Node’s CPU usage.
+      </Typography>
+    ),
+  },
   {
     label: "Memory",
     helpInfo: (
