@@ -158,7 +158,7 @@ class Tuner:
                     "[output] This uses the legacy output and progress reporter, "
                     "as Ray client is not supported by the new engine. "
                     "For more information, see "
-                    "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                    "https://github.com/ray-project/ray/issues/36949"
                 )
 
         if _tuner_internal:
