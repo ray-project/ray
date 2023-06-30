@@ -2031,7 +2031,7 @@ class Dataset:
 
         Args:
             key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` to generate a sort key.
+                :meth:`Dataset.map` and generate a sort key.
             descending: Whether to sort in descending order.
 
         Returns:
