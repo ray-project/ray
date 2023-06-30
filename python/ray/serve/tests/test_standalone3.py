@@ -541,7 +541,9 @@ def test_controller_shutdown_gracefully(shutdown_ray, call_ray_stop_only):  # no
 
     # Ensure the all resources are shutdown.
     wait_for_condition(
-        lambda: all([actor["State"] == "DEAD" for actor in ray._private.state.actors().values()])
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        )
     )
 
     # Clean up serve.
