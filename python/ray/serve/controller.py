@@ -118,7 +118,7 @@ class ServeController:
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
         logger.info(f"CONTROLLER NODE ID: {self._controller_node_id}")
-        logger.indo(f"PASSED HEAD NODE ID: {head_node_id}")
+        logger.info(f"PASSED HEAD NODE ID: {head_node_id}")
 
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
