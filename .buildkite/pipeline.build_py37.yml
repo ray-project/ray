@@ -142,7 +142,7 @@
       $(cat test_shard.txt)
 
 
-- label: ":cold_face: :python: :serverless: Python 3.7 Serve Tests (RAY_SERVE_ENABLE_NEW_ROUTING=1)"
+- label: ":cold_face: :python: :serverless: Python 3.7 Serve Tests (streaming FF off)"
   parallelism: 3
   conditions:
     [
@@ -173,11 +173,11 @@
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
-      --test_env=RAY_SERVE_ENABLE_NEW_ROUTING=1
+      --test_env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
       $(cat test_shard.txt)
 
 
-- label: ":cold_face: :python: :serverless: Python 3.7 Serve Tests (RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1)"
+- label: ":cold_face: :python: :serverless: Python 3.7 Serve Tests (streaming and routing FFs off)"
   parallelism: 3
   conditions:
     [
@@ -208,5 +208,6 @@
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
-      --test_env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1
+      --test_env=RAY_SERVE_ENABLE_NEW_ROUTING=0
+      --test_env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
       $(cat test_shard.txt)
