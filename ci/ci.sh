@@ -115,6 +115,56 @@ upload_wheels() {
   )
 }
 
+
+compile_pip_dependencies() {
+  # Compile boundaries
+
+  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
+    # Resolution currently does not work on aarch64 as some pinned packages
+    # are not available. Once they are reasonably upgraded we should be able
+    # to enable this here.p
+    echo "Skipping for aarch64"
+    return 0
+  fi
+
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
+  pip install pip-tools
+
+  # Required packages to lookup e.g. dragonfly-opt
+  HAS_TORCH=0
+  python -c "import torch" 2>/dev/null && HAS_TORCH=1
+  pip install --no-cache-dir numpy torch
+
+  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+    echo requirements_compiled already exists
+  else
+    pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
+      "${WORKSPACE_DIR}/python/requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+  fi
+
+  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
+  if [ "$HAS_TORCH" -eq 0 ]; then
+    pip uninstall -y torch
+  fi
+}
+
 test_core() {
   local args=(
     "//:*"

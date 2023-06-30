@@ -96,7 +96,7 @@ If you are running tests for the first time, you can install the required depend
 
 .. code-block:: shell
 
-    pip install -c python/requirements.txt -r python/requirements_test.txt
+    pip install -c python/requirements.txt -r python/requirements/test-requirements.txt
 
 Testing for Python development
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -222,11 +222,11 @@ Lint and Formatting
 
 We also have tests for code formatting and linting that need to pass before merge.
 
-* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements_linters.txt>`_ first with:
+* For Python formatting, install the `required dependencies <https://github.com/ray-project/ray/blob/master/python/requirements/lint-requirements.txt>`_ first with:
 
 .. code-block:: shell
 
-  pip install -r python/requirements_linters.txt
+  pip install -r python/requirements/lint-requirements.txt
 
 * If developing for C++, you will need `clang-format <https://www.kernel.org/doc/html/latest/process/clang-format.html>`_ version ``12`` (download this version of Clang from `here <http://releases.llvm.org/download.html>`_)
 
