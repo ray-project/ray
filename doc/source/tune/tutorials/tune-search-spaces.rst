@@ -140,8 +140,7 @@ How to use Custom and Conditional Search Spaces in Tune?
 You'll often run into awkward search spaces (i.e., when one hyperparameter depends on another).
 Use :meth:`tune.sample_from(func) <ray.tune.sample_from>` to provide a **custom** callable function for generating a search space.
 
-The parameter ``func`` should take in a ``spec`` object, which has a ``config`` namespace
-from which you can access other hyperparameters.
+The parameter ``func`` should take in a ``config`` dict argument, from which you can access other resolved hyperparameters.
 This is useful for conditional distributions:
 
 .. code-block:: python

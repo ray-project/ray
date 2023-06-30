@@ -381,7 +381,7 @@ ray.shutdown()
 
 # __grid_search_start__
 parameters = {
-    "qux": tune.sample_from(lambda spec: 2 + 2),
+    "qux": tune.sample_from(lambda _: 2 + 2),
     "bar": tune.grid_search([True, False]),
     "foo": tune.grid_search([1, 2, 3]),
     "baz": "asd",  # a constant value
