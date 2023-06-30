@@ -10,8 +10,9 @@ import ray
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
 
@@ -120,6 +121,9 @@ def test_handle_in_endpoint(serve_instance):
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
+)
 def test_handle_inject_starlette_request(serve_instance):
     @serve.deployment(name="echo")
     def echo_request_type(request):

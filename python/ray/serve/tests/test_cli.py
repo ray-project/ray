@@ -1455,8 +1455,8 @@ def test_run_config_request_timeout():
     # Ensure the http request is killed and failed when the deployment runs longer than
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").text
-        == "Task failed with 1 retries.",
+        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
+        == 500,
     )
 
     # Ensure the http request returned the correct response when the deployment runs

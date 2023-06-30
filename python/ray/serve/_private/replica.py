@@ -266,14 +266,16 @@ def create_replica_wrapper(name: str):
                     "Only HTTP requests are currently supported over streaming."
                 )
 
-            receiver = None
+            receiver_task = None
             handle_request_task = None
             wait_for_message_task = None
             try:
                 receiver = ASGIReceiveProxy(
-                    self._event_loop, request_metadata.request_id, http_proxy_handle
+                    request_metadata.request_id, http_proxy_handle
                 )
-                receiver.start()
+                receiver_task = self._event_loop.create_task(
+                    receiver.fetch_until_disconnect()
+                )
 
                 scope = pickle.loads(pickled_asgi_scope)
                 asgi_queue_send = ASGIMessageQueue()
@@ -313,8 +315,8 @@ def create_replica_wrapper(name: str):
                 if e is not None:
                     raise e from None
             finally:
-                if receiver is not None:
-                    receiver.stop()
+                if receiver_task is not None:
+                    receiver_task.cancel()
 
                 if handle_request_task is not None and not handle_request_task.done():
                     handle_request_task.cancel()

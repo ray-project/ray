@@ -308,7 +308,14 @@ class ServeControllerClient:
             route_prefix=route_prefix,
         )
 
-        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
+        updating = ray.get(
+            self._controller.deploy.remote(
+                # TODO(edoakes): this is a hack because the deployment_language
+                # doesn't seem to get set properly from Java.
+                is_deployed_from_python=True,
+                **controller_deploy_args,
+            )
+        )
 
         tag = self.log_deployment_update_status(name, version, updating)
 
