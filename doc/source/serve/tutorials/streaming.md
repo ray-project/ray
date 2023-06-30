@@ -77,7 +77,7 @@ Run the model with `serve run textbot:app`, and query it from another terminal w
 
 You should see the output printed token by token.
 
-# Add WebSocket support
+# Stream inputs and outputs using WebSockets
 
 WebSockets let you stream input into the application and stream output back to the client. You can use this to create a chatbot that stores a conversation with a user.
 
