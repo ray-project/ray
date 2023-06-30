@@ -42,7 +42,7 @@ class AutoscalingRequester:
                 time.sleep(PURGE_INTERVAL)
                 # Call purge_expired_requests() as an actor task,
                 # so we don't need to handle multi-threading.
-                self._self_handle.purge_expired_requests.remote()
+                ray.get(self._self_handle.purge_expired_requests.remote())
 
         self._purge_thread = threading.Thread(target=purge_thread_run, daemon=True)
         self._purge_thread.start()
