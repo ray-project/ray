@@ -97,7 +97,7 @@ class LightningCheckpoint(TorchCheckpoint):
         """Retrieve the model stored in this checkpoint.
 
         Example:
-            .. code-block:: python
+            .. testcode::
 
                 import pytorch_lightning as pl
                 from ray.train.lightning import LightningCheckpoint, LightningPredictor
@@ -106,29 +106,37 @@ class LightningCheckpoint(TorchCheckpoint):
                     def __init__(self, input_dim, output_dim) -> None:
                         super().__init__()
                         self.linear = nn.Linear(input_dim, output_dim)
+                        self.save_hyperparameters()
 
                     # ...
 
-                checkpoint = LightningCheckpoint.from_directory(
-                    "path/to/checkpoint_dir"
-                )
+                # After the training is finished, LightningTrainer saves AIR
+                # checkpoints in the result directory, for example:
+                # ckpt_dir = "{storage_path}/LightningTrainer_.*/checkpoint_000000"
 
-                # `get_model()` takes the argument list of
-                # `LightningModule.load_from_checkpoint()` as additional kwargs.
-                # Please refer to PyTorch Lightning API for more details.
+                # You can load model checkpoint with model init arguments
+                def load_checkpoint(ckpt_dir):
+                    ckpt = LightningCheckpoint.from_directory(ckpt_dir)
 
-                # You can manually provide init arguments of your model
-                model = checkpoint.get_model(
-                    model_class=MyLightningModule,
-                    input_dim=32,
-                    output_dim=10,
-                )
+                    # `get_model()` takes the argument list of
+                    # `LightningModule.load_from_checkpoint()` as additional kwargs.
+                    # Please refer to PyTorch Lightning API for more details.
 
-                # Or you can provide a file with hyperparameters
-                model = checkpoint.get_model(
-                    model_class=MyLightningModule,
-                    hparams_file="./hparams.yaml"
-                )
+                    return checkpoint.get_model(
+                        model_class=MyLightningModule,
+                        input_dim=32,
+                        output_dim=10,
+                    )
+
+                # You can also load checkpoint with a hyperparameter file
+                def load_checkpoint_with_hparams(
+                    ckpt_dir, hparam_file="./hparams.yaml"
+                ):
+                    ckpt = LightningCheckpoint.from_directory(ckpt_dir)
+                    return ckpt.get_model(
+                        model_class=MyLightningModule,
+                        hparams_file=hparam_file
+                    )
 
         Args:
             model_class: A subclass of ``pytorch_lightning.LightningModule`` that
