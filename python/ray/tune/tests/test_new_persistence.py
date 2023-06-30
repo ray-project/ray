@@ -44,12 +44,9 @@ def test_multirank_trainer_storage_path(storage_path, save_all_ranks):
     Test the storage format and rank organization of artifacts and checkpoints."""
     raise NotImplementedError("TODO")
 
-
-@pytest.mark.parametrize("storage_path", [None, FAKE_NFS_DIR])
-@pytest.mark.parametrize("save_all_ranks", [False, True])
-def test_multirank_trainer_restore_checkpoint(storage_path, save_all_ranks):
-    """Test you can restore a multi-rank PyTorch trainer from a checkpoint."""
-    raise NotImplementedError("TODO")
+    # CHECK: artifacts structure written by rank
+    # CHECK: checkpoint structure written by rank
+    # CHECK: restore from checkpoint
 
 
 def test_custom_storage_filesystem(storage_path):
@@ -57,7 +54,7 @@ def test_custom_storage_filesystem(storage_path):
 
     TODO: how do we check the filesystem is used? Maybe a custom filesystem can write
     data to a mocked local bucket directory."""
-    raise NotImplementedError("TODO")
+    raise NotImplementedError("TODO(ml team)")
 
 
 def test_raise_error_if_storage_path_not_readable(storage_path):
@@ -67,7 +64,7 @@ def test_raise_error_if_storage_path_not_readable(storage_path):
     filesystem that isn't readable from workers.
 
     TODO: How do we test this without a real cluster?"""
-    raise NotImplementedError("TODO")
+    raise NotImplementedError("TODO(ml team)")
 
 
 @pytest.mark.parametrize("storage_path", [None, FAKE_NFS_DIR])
