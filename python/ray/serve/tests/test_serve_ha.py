@@ -57,7 +57,7 @@ import time
 
 start_time = time.time()
 while time.time() - start_time < 30:
-    healthz = requests.get("http://127.0.0.1:8000/-/healthz/").text
+    healthz = requests.get("http://localhost:8000/-/healthz/").text
     print(f"HEALTHZ: {{healthz}}")
     if healthz == "success":
         break
@@ -102,16 +102,25 @@ def test_ray_serve_basic(docker_cluster):
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
 
-    output = head.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
+    output = head.exec_run(cmd="grep -r 'HTTP proxy' /tmp/ray/session_latest/logs/")
+    print("head node logs", output.output)
+    output = worker.exec_run(cmd="grep -r 'HTTP proxy' /tmp/ray/session_latest/logs/")
+    print("worker node logs", output.output)
+
+    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
 
     print("SERVE SA OUTPUT2", output.output)
+
+    # test if this works
+    worker_cli = worker.client()
+    print(worker_cli.request("GET", "/api/incr"))
     assert output.exit_code == 0
 
     # Kill the head node
     head.kill()
 
     # Make sure serve is still working
-    output = head.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
+    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0
 
     # Script is running on another thread so that it won't block the main thread.
@@ -129,7 +138,7 @@ def test_ray_serve_basic(docker_cluster):
 
     t.join()
 
-    output = head.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
+    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0
 
     # Make sure the serve controller still runs on the head node after restart
