@@ -519,7 +519,8 @@ def test_syncer_delete(temp_data_dirs):
     syncer.sync_down(
         remote_dir="memory:///test/test_syncer_delete", local_dir=tmp_target
     )
-    with pytest.raises(TuneError):
+    # Downloading from the deleted directory will raise some exception.
+    with pytest.raises(Exception):
         syncer.wait()
 
     # Remote storage was deleted, so target should be empty

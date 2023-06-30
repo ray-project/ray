@@ -473,7 +473,8 @@ class Syncer(abc.ABC):
                     break
 
                 logger.error(
-                    f"The latest sync operation failed with the following error: {e}\n"
+                    f"The latest sync operation failed with the following error: "
+                    f"{repr(e)}\n"
                     f"Retrying {attempts_remaining} more time(s) after sleeping "
                     f"for {backoff_s} seconds..."
                 )
@@ -549,9 +550,10 @@ class _BackgroundSyncer(Syncer):
         if self._sync_process:
             try:
                 self.wait()
-            except Exception as e:
+            except Exception:
                 logger.warning(
-                    f"Last sync command failed: {e}\n{traceback.format_exc()}"
+                    f"Last sync command failed with the following error:\n"
+                    f"{traceback.format_exc()}"
                 )
 
         self._current_cmd = sync_command
@@ -617,12 +619,10 @@ class _BackgroundSyncer(Syncer):
             try:
                 self._sync_process.wait(timeout=self.sync_timeout)
             except Exception as e:
-                # Let `TimeoutError` pass through, to be handled separately
-                # from errors thrown by the sync operation
-                if isinstance(e, TimeoutError):
-                    raise e
-                raise TuneError(f"Sync process failed: {e}") from e
+                raise e
             finally:
+                # Regardless of whether the sync process succeeded within the timeout,
+                # clear the sync process so a new one can be created.
                 self._sync_process = None
 
     def retry(self):
