@@ -118,17 +118,17 @@ class GrpcServer {
   grpc::Server &GetServer() { return *server_; }
 
   const ClusterID GetClusterId() {
-    RAY_CHECK(!cluster_id_.load().IsNil()) << "Cannot fetch cluster ID before it is set.";
-    return cluster_id_.load();
+    RAY_CHECK(!cluster_id_.IsNil()) << "Cannot fetch cluster ID before it is set.";
+    return cluster_id_;
   }
 
   void SetClusterId(const ClusterID &cluster_id) {
     RAY_CHECK(!cluster_id.IsNil()) << "Cannot set cluster ID back to Nil!";
-    auto old_id = cluster_id_.exchange(cluster_id);
-    if (!old_id.IsNil() && old_id != cluster_id) {
+    if (!cluster_id_.IsNil() && cluster_id_ != cluster_id) {
       RAY_LOG(FATAL) << "Resetting non-nil cluster ID! Setting to " << cluster_id
-                     << ", but old value is " << old_id;
+                     << ", but old value is " << cluster_id_;
     }
+    cluster_id_ = cluster_id;
   }
 
  protected:
@@ -148,7 +148,7 @@ class GrpcServer {
   /// interfaces (0.0.0.0)
   const bool listen_to_localhost_only_;
   /// Token representing ID of this cluster.
-  SafeClusterID cluster_id_;
+  ClusterID cluster_id_;
   /// Indicates whether this server has been closed.
   bool is_closed_;
   /// The `grpc::Service` objects which should be registered to `ServerBuilder`.
