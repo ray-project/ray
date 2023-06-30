@@ -1701,7 +1701,10 @@ class Dataset:
         )
 
     def groupby(self, key: Optional[str]) -> "GroupedData":
-        """Group the dataset by the key function or column name.
+        """Group rows of a :class:`Dataset` according to a column.
+
+        This method is useful if you want to transform data differently depending on a
+        categorical variable.
 
         Examples:
             >>> import ray
@@ -1715,10 +1718,15 @@ class Dataset:
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A column name. If this is None, the grouping is global.
+            key: A column name. If this is ``None``, place all rows in a single group.
 
         Returns:
-            A lazy GroupedData that can be aggregated later.
+            A lazy :class:`~ray.data.grouped_data.GroupedData`.
+
+        .. seealso::
+
+            :meth:`~ray.data.grouped_data.GroupedData.map_groups`
+                Call this method to transform groups of data.
         """
         from ray.data.grouped_data import GroupedData
 
@@ -1730,7 +1738,7 @@ class Dataset:
         return GroupedData(self, key)
 
     def unique(self, column: str) -> List[Any]:
-        """List of unique elements in the given column.
+        """List the unique elements in a given column.
 
         Examples:
 
@@ -1772,7 +1780,9 @@ class Dataset:
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
-        """Aggregate the entire dataset as one group.
+        """Aggregate values using one or more functions.
+
+        Use this method to compute metrics like the mean of a column.
 
         Examples:
             >>> import ray
@@ -1783,15 +1793,10 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            aggs: Aggregations to do.
+            *aggs: :class:`Aggregations <ray.data.aggregate.AggregateFn>` to perform.
 
         Returns:
-            If the input dataset is a simple dataset then the output is
-            a tuple of ``(agg1, agg2, ...)`` where each tuple element is
-            the corresponding aggregation result.
-            If the input dataset is an Arrow dataset then the output is
-            an dict where each column is the corresponding aggregation result.
-            If the dataset is empty, return ``None``.
+            A ``dict`` where each key corresponds to an aggregation.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
@@ -1800,7 +1805,7 @@ class Dataset:
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute sum over entire dataset.
+        """Compute the sum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1814,9 +1819,9 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the sum; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                values are ignored when computing the sum; if ``False``,
+                if a null value is encountered, the output is ``None``.
+                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1832,7 +1837,7 @@ class Dataset:
               containing the column-wise sum of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
         """
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1841,7 +1846,7 @@ class Dataset:
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute minimum over entire dataset.
+        """Find the minimum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1855,9 +1860,9 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the min; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                values are ignored when computing the min; if ``False``,
+                if a null value is encountered, the output is ``None``.
+                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1873,7 +1878,7 @@ class Dataset:
               containing the column-wise min of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
         """
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1882,7 +1887,7 @@ class Dataset:
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute maximum over entire dataset.
+        """Find the maximum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1896,9 +1901,9 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the max; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                values are ignored when computing the max; if ``False``,
+                if a null value is encountered, the output is ``None``.
+                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1914,7 +1919,7 @@ class Dataset:
               containing the column-wise max of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
         """
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1923,7 +1928,7 @@ class Dataset:
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute mean over entire dataset.
+        """Compute the mean of one or more columns.
 
         Examples:
             >>> import ray
@@ -1937,9 +1942,9 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the mean; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                values are ignored when computing the mean; if ``False``,
+                if a null value is encountered, the output is ``None``.
+                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1955,7 +1960,7 @@ class Dataset:
               containing the column-wise mean of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
         """
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1967,7 +1972,7 @@ class Dataset:
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute standard deviation over entire dataset.
+        """Compute the standard deviation of one or more columns.
 
         Examples:
             >>> import ray
@@ -1978,22 +1983,22 @@ class Dataset:
             ...     for i in range(100)]).std(["A", "B"])
             {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
-        .. note:: This uses Welford's online method for an accumulator-style computation
+        .. note::
+            This uses Welford's online method for an accumulator-style computation
             of the standard deviation. This method was chosen due to it's numerical
             stability, and it being computable in a single pass. This may give different
             (but more accurate) results than NumPy, Pandas, and sklearn, which use a
             less numerically stable two-pass algorithm.
-            See
-            https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+            To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_
 
         Args:
             on: a column name or a list of column names to aggregate.
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the std; if ``False``,
-                if a null value is encountered, the output will be None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                values are ignored when computing the std; if ``False``,
+                if a null value is encountered, the output is ``None``.
+                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -2009,7 +2014,7 @@ class Dataset:
               containing the column-wise std of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
         """
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
