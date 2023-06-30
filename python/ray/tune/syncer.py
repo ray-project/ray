@@ -459,26 +459,33 @@ class Syncer(abc.ABC):
 
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
-        last_error = None
-        for i in range(max_retries):
+        last_error_traceback = None
+        for i in range(max_retries + 1):
             try:
                 self.wait()
             except Exception as e:
                 attempts_remaining = max_retries - i
+
+                # If we're out of retries, then save the full traceback of the last
+                # error and show it when raising an exception.
+                if attempts_remaining == 0:
+                    last_error_traceback = traceback.format_exc()
+                    break
+
                 logger.error(
-                    f"The latest syncing operation failed with the error:\n"
-                    f"{traceback.format_exc()}\n"
+                    f"The latest sync operation failed with the following error: {e}\n"
                     f"Retrying {attempts_remaining} more time(s) after sleeping "
                     f"for {backoff_s} seconds..."
                 )
-                last_error = e
                 time.sleep(backoff_s)
                 self.retry()
                 continue
+            # Succeeded!
             return
         raise TuneError(
-            f"Failed sync even after {max_retries} retries."
-        ) from last_error
+            f"Failed sync even after {max_retries} retries. "
+            f"The latest sync failed with the following error:\n{last_error_traceback}"
+        )
 
     def reset(self):
         self.last_sync_up_time = float("-inf")
