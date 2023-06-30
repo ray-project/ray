@@ -8,17 +8,25 @@ from typing import Callable, List, Optional
 import pytest
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
-from ray.autoscaler.v2.sdk import (
-    _autoscaler_state_service_stub,
-    request_cluster_resources,
-)
+from ray.autoscaler.v2.sdk import request_cluster_resources
 from ray.autoscaler.v2.tests.util import get_cluster_resource_state
 from ray.core.generated.experimental.autoscaler_pb2 import (
     ClusterResourceState,
     NodeStatus,
 )
 from ray.util.state.api import list_nodes
+from ray.core.generated.experimental import autoscaler_pb2_grpc
+
+
+def _autoscaler_state_service_stub():
+    """Get the grpc stub for the autoscaler state service"""
+    gcs_address = ray.get_runtime_context().gcs_address
+    gcs_channel = ray._private.utils.init_grpc_channel(
+        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
+    )
+    return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)
 
 
 def assert_cluster_resource_constraints(
