@@ -1707,13 +1707,21 @@ class Dataset:
         categorical variable.
 
         Examples:
-            >>> import ray
-            >>> # Group by a table column and aggregate.
-            >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count()
-            Aggregate
-            +- Dataset(num_blocks=..., num_rows=100, schema={A: int64, B: int64})
+
+            .. testcode::
+
+                import pandas as pd
+                import ray
+
+                def transform_variety(group: pd.DataFrame) -> pd.DataFrame:
+                    ...  # Separately transform each variety
+                    return group
+
+                ds = (
+                    ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+                    .groupby("variety")
+                    .map_groups(transform_variety, batch_format="pandas")
+                )
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1813,7 +1821,8 @@ class Dataset:
             4950
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).sum(["A", "B"])
+            ...     for i in range(100)
+            ... ]).sum(["A", "B"])
             {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
@@ -1854,7 +1863,8 @@ class Dataset:
             0
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).min(["A", "B"])
+            ...     for i in range(100)
+            ... ]).min(["A", "B"])
             {'min(A)': 0, 'min(B)': 0}
 
         Args:
@@ -1895,7 +1905,8 @@ class Dataset:
             99
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).max(["A", "B"])
+            ...     for i in range(100)
+            ... ]).max(["A", "B"])
             {'max(A)': 99, 'max(B)': 9801}
 
         Args:
@@ -1936,7 +1947,8 @@ class Dataset:
             49.5
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).mean(["A", "B"])
+            ...     for i in range(100)
+            ... ]).mean(["A", "B"])
             {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
@@ -1980,7 +1992,8 @@ class Dataset:
             28.86607
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).std(["A", "B"])
+            ...     for i in range(100)
+            ... ]).std(["A", "B"])
             {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
 
         .. note::
