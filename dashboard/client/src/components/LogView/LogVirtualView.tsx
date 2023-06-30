@@ -208,9 +208,9 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
     <div>
       {logs && logs.length > MAX_LINES_FOR_LOGS && (
         <p className={classes.warningInfo}>
-          [Truncation warning] This log has been truncated and only the latest
-          50,000 lines are displayed. Click "Download" button above to see the
-          full log
+          [Truncation warning] This log has been truncated and only the latest{" "}
+          {MAX_LINES_FOR_LOGS} lines are displayed. Click "Download" button
+          above to see the full log
         </p>
       )}
       <List
