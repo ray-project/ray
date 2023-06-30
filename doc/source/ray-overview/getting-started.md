@@ -135,7 +135,7 @@ for batch in transformed_ds.iter_batches(batch_size=4):
     print(batch)
 
 # Save dataset contents to on-disk files or cloud storage.
-transformed_ds.write_parquet("/tmp/iris/")
+transformed_ds.write_parquet("local:///tmp/iris/")
 ```
 
 ```{button-ref}  ../data/data
