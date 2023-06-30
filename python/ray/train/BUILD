@@ -8,16 +8,18 @@ doctest(
             "tests/**",
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
-            # FIXME: Failing doctests
-            "xgboost/xgboost_predictor.py",
-            "xgboost/xgboost_checkpoint.py"
+            "huggingface/transformers/transformers_trainer.py",
         ]
     ),
+    size = "large",
     tags = ["team:ml"],
 )
 
 doctest(
-    files = ["tensorflow/tensorflow_trainer.py"],
+    files = [
+        "tensorflow/tensorflow_trainer.py",
+        "huggingface/transformers/transformers_trainer.py",
+    ],
     tags = ["team:ml"],
     gpu = True
 )

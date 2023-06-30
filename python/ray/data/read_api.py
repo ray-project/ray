@@ -603,10 +603,9 @@ def read_parquet(
             which automatically determines the optimal parallelism for your configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance on how to tune it, see the :ref:`Tuning read parallelism guide <read_parallelism>`. Parallelism is upper bounded by the total number of records in all the parquet files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        tensor_column_schema: A dict of column name to tensor dtype and shape
+        tensor_column_schema: A dict of column name to pyarrow dtype and shape
             mappings for converting a Parquet column containing serialized
-            tensors (ndarrays) as their elements to our tensor column extension
-            type. This assumes that the tensors were serialized in the raw
+            tensors (ndarrays) as their elements to Pyarrow tensors. This assumes that the tensors were serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
@@ -790,24 +789,22 @@ def read_parquet_bulk(
             the dataset. Defaults to -1 which automatically determines the optimal parallelism for your configuration. You should not need to manually set this value in most cases. For details on how the parallelism is automatically determined and guidance on how to tune it, see the :ref:`Tuning read parallelism guide <read_parallelism>`. Parallelism is upper bounded by the total number of records in all the parquet files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_file>`_. when opening input files to read.
-        tensor_column_schema: A dict of column name --> tensor dtype and shape
+        tensor_column_schema: A dict of column name to pyarrow dtype and shape
             mappings for converting a Parquet column containing serialized
-            tensors (ndarrays) as their elements to our tensor column extension
-            type. This assumes that the tensors were serialized in the raw
+            tensors (ndarrays) as their elements to Pyarrow tensors. This assumes that the tensors were serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
-            ``arr.tobytes()``).
-        meta_provider: File metadata provider. Defaults to a fast file metadata
-            provider that skips file size collection and requires all input paths to be
-            files. Change to ``DefaultFileMetadataProvider`` or a custom metadata
-            provider if directory expansion and/or file metadata resolution is required.
-        partition_filter: Path-based partition filter, if any. Can be used
+            `arr.tobytes()`).
+        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
+            metadata providers may be able to resolve file metadata more quickly and/or accurately. In most cases you do not need to set this.
+        partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Can be used
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
-        arrow_parquet_args: Other parquet read options to pass to pyarrow.
+        arrow_parquet_args: Other parquet read options to pass to pyarrow. For the full
+            set of arguments, see `the pyarrow API https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment`_
 
     Returns:
-        Dataset producing Arrow records read from the specified paths.
+       :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,

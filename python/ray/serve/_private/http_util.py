@@ -207,25 +207,15 @@ class ASGIReceiveProxy:
 
     def __init__(
         self,
-        event_loop: asyncio.AbstractEventLoop,
         request_id: str,
         actor_handle: ActorHandle,
     ):
-        self._task = None
         self._queue = asyncio.Queue()
-        self._event_loop = event_loop
         self._request_id = request_id
         self._actor_handle = actor_handle
         self._disconnect_message = None
 
-    def start(self):
-        self._task = self._event_loop.create_task(self._fetch_until_disconnect())
-
-    def stop(self):
-        if self._task is not None and not self._task.done():
-            self._task.cancel()
-
-    async def _fetch_until_disconnect(self):
+    async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
 
         If a disconnect message is received, this function exits and returns it.
@@ -255,8 +245,6 @@ class ASGIReceiveProxy:
 
         This will repeatedly return a disconnect message once it's been received.
         """
-        assert self._task is not None, "Must call `start` before receiving messages."
-
         if self._queue.empty() and self._disconnect_message is not None:
             return self._disconnect_message
 
