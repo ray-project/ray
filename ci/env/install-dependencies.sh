@@ -457,6 +457,11 @@ install_pip_packages() {
 
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
+
+  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
+  fi
+
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
