@@ -2876,7 +2876,7 @@ class Dataset:
             collection=collection,
         )
 
-    @ConsumptionAPI
+    @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
         self,
         datasource: Datasource,
