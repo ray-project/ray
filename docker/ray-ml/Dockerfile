@@ -1,6 +1,5 @@
 ARG BASE_IMAGE
 FROM rayproject/ray:nightly"$BASE_IMAGE"
-ARG PYTHON_MINOR_VERSION=7
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
@@ -49,11 +48,7 @@ RUN $HOME/anaconda3/bin/pip --no-cache-dir install -U \
            -c requirements.txt \
            -r dl-gpu-requirements.txt
 
-# Remove dataclasses & typing because they are included in Python > 3.6
-RUN if [ $(python -c 'import sys; print(sys.version_info.minor)') != "6" ]; then \
-        $HOME/anaconda3/bin/pip uninstall dataclasses typing -y; fi  \
-    && sudo rm \
-        *requirements.txt \
+RUN sudo rm requirements.txt \
     && sudo apt-get clean
 
 # Export installed packages
