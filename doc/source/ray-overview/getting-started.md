@@ -99,7 +99,7 @@ Use individual libraries for single ML workloads, without having to install the 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
 
-Scale offline inference and ingest for model training with [Ray Data](data_key_concepts) --
+Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
 a data processing library designed for ML.
 
 To learn more, see [Offline batch inference](batch_inference_overview) and
