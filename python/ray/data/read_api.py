@@ -1251,8 +1251,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from
-        `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+    """Create a :class:`~ray.data.Dataset` from `WebDataset`_ files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1278,7 +1277,10 @@ def read_webdataset(
         A :class:`~ray.data.Dataset` that contains the example features.
 
     Raises:
-        ValueError: If a file contains a message that isn't a ``tf.train.Example``.
+        ValueError: If a file contains a message that isn't a `tf.train.Example`_.
+
+    .. _WebDataset: https://webdataset.github.io/webdataset/
+    .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
     return read_datasource(
         WebDatasetDatasource(),
@@ -1450,15 +1452,16 @@ def read_sql(
 
 @PublicAPI
 def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-        `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Dask DataFrame`_.
 
     Args:
-        df: A `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/>`_.
+        df: A `Dask DataFrame`_.
 
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
+
+    .. _Dask DataFrame: https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/
     """  # noqa: E501
     import dask
 
@@ -1487,16 +1490,16 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-        `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Mars DataFrame`_.
 
     Args:
-        df: A `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html/>`_,
-        which must be executed by Mars-on-Ray.
+        df: A `Mars DataFrame`_, which must be executed by Mars-on-Ray.
 
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
+
+    .. _Mars DataFrame: https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html
     """  # noqa: E501
     import mars.dataframe as md
 
@@ -1506,16 +1509,16 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-        `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Modin DataFrame`_.
 
     Args:
-        df: A `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html/>`_,
-            which must be using the Ray backend.
+        df: A `Modin DataFrame`_, which must be using the Ray backend.
 
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
+
+    .. _Modin DataFrame: https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html
     """  # noqa: E501
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
@@ -1736,12 +1739,10 @@ def from_arrow_refs(
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Spark DataFrame`_.
 
     Args:
-        df: A `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html/>`_,
-            which must be created by RayDP (Spark-on-Ray).
+        df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
         parallelism: The amount of parallelism to use for the dataset. If
             not provided, it will be equal to the number of partitions of
             the original Spark DataFrame.
@@ -1749,6 +1750,8 @@ def from_spark(
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
+
+    .. _Spark DataFrame: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html
     """  # noqa: E501
     import raydp
 
@@ -1759,8 +1762,7 @@ def from_spark(
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
 ) -> Union[MaterializedDataset, Dict[str, MaterializedDataset]]:
-    """Create a :class:`~ray.data.Dataset` from a `Hugging Face Datasets Dataset
-    <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Hugging Face Datasets Dataset`_.
 
     This function is not parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
@@ -1773,7 +1775,6 @@ def from_huggingface(
         >>> import ray
         >>> import datasets
         >>> hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-        Downloading ...
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
@@ -1798,17 +1799,15 @@ def from_huggingface(
         )
 
     Args:
-        dataset: A `Hugging Face Dataset
-            <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
-            or `DatasetDict
-            <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_.
+        dataset: A `Hugging Face Datasets Dataset`_ or `DatasetDict`_.
             :class:`~ray.data.IterableDataset` is not supported.
 
     Returns:
-        :class:`~ray.data.Dataset` holding Arrow records from the `Hugging Face Dataset
-            <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_,
-            or a dict of :class:`~ray.data.Dataset`s in case ``dataset`` is a `DatasetDict
-            <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_.
+        A :class:`~ray.data.Dataset` holding Arrow records from the `Hugging Face Datasets Dataset`_,
+        or a dict of :class:`~ray.data.Dataset` s in case ``dataset`` is a `DatasetDict`_.
+
+    .. _Hugging Face Datasets Dataset: https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/
+    .. _DatasetDict: https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/
     """  # noqa: E501
     import datasets
 
@@ -1846,8 +1845,7 @@ def from_huggingface(
 def from_tf(
     dataset: "tf.data.Dataset",
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-        `TensorFlow dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `TensorFlow Dataset`_.
 
     This function is inefficient. Use it to read small datasets or prototype.
 
@@ -1866,7 +1864,15 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])
         >>> ds = ray.data.from_tf(dataset)
         >>> ds
-        Dataset(num_blocks=..., num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+        MaterializedDataset(
+            num_blocks=200,
+            num_rows=50000,
+            schema={
+                id: binary,
+                image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8),
+                label: int64
+            }
+        )
         >>> ds.take(1)
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
@@ -1887,11 +1893,12 @@ def from_tf(
         [221, 187, 157]]], dtype=uint8), 'label': 7}]
 
     Args:
-        dataset: A `TensorFlow dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_.
+        dataset: A `TensorFlow Dataset`_.
 
     Returns:
-        A :class:`MaterializedDataset` that contains the samples stored in the
-            `TensorFlow dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_.
+        A :class:`MaterializedDataset` that contains the samples stored in the `TensorFlow Dataset`_.
+
+    .. _TensorFlow Dataset: https://www.tensorflow.org/api_docs/python/tf/data/Dataset/
     """  # noqa: E501
     # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
     return from_items(list(dataset.as_numpy_iterator()))
@@ -1901,8 +1908,7 @@ def from_tf(
 def from_torch(
     dataset: "torch.utils.data.Dataset",
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a
-        `Torch dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
+    """Create a :class:`~ray.data.Dataset` from a `Torch Dataset`_.
 
     This function is inefficient. Use it to read small datasets or prototype.
 
@@ -1921,15 +1927,17 @@ def from_torch(
         >>> dataset = datasets.MNIST("data", download=True)
         >>> ds = ray.data.from_torch(dataset)
         >>> ds
-        Dataset(num_blocks=..., num_rows=60000, schema={item: object})
+        MaterializedDataset(num_blocks=200, num_rows=60000, schema={item: object})
         >>> ds.take(1)
         {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)}
 
     Args:
-        dataset: A `Torch dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
+        dataset: A `Torch Dataset`_.
 
     Returns:
         A :class:`MaterializedDataset` containing the Torch dataset samples.
+
+    .. _Torch Dataset: https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/
     """  # noqa: E501
     return from_items(list(dataset))
 

@@ -3217,14 +3217,14 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
-        """Return a Torch IterableDataset over this dataset.
+        """Return a `Torch IterableDataset`_ over this :class:`~ray.data.Dataset`.
 
         This is only supported for datasets convertible to Arrow records.
 
         It is recommended to use the returned ``IterableDataset`` directly
         instead of passing it into a torch ``DataLoader``.
 
-        Each element in IterableDataset will be a tuple consisting of 2
+        Each element in ``IterableDataset`` will be a tuple consisting of 2
         elements. The first item contains the feature tensor(s), and the
         second item is the label tensor. Those can take on different
         forms, depending on the specified arguments.
@@ -3306,8 +3306,10 @@ class Dataset:
                 (N, ). Defaults to True.
 
         Returns:
-            A torch IterableDataset.
-        """
+            A `Torch IterableDataset`_.
+
+        .. _Torch IterableDataset : https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset
+        """  # noqa: E501
 
         return self.iterator().to_torch(
             label_column=label_column,
@@ -3338,11 +3340,11 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
-        """Return a TF Dataset over this dataset.
+        """Return a `TensorFlow Dataset`_ over this :class:`~ray.data.Dataset`.
 
         .. warning::
-            If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_tensors>`.
+            If your :class:`~ray.data.Dataset` contains ragged tensors, this method errors.
+            To prevent errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -3362,12 +3364,12 @@ class Dataset:
 
             If your model accepts a single tensor as input, specify a single feature column.
 
-            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
+            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts a dictionary as input, specify a list of feature columns.
 
-            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
             <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
@@ -3390,7 +3392,7 @@ class Dataset:
                      target: int64
                   }
                )
-            >>> ds.to_tf("features", "target")  # doctest: +SKIP
+            >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
@@ -3405,7 +3407,7 @@ class Dataset:
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the datasetContext.
+                `use_legacy_iter_batches` to True in the :class:`~ray.data.DataContext`.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -3422,12 +3424,14 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            A ``tf.data.Dataset`` that yields inputs and targets.
+            A `TensorFlow Dataset`_ that yields inputs and targets.
 
         .. seealso::
 
             :meth:`~ray.data.Dataset.iter_tf_batches`
                 Call this method if you need more flexibility.
+
+        .. _TensorFlow Dataset: https://www.tensorflow.org/api_docs/python/tf/data/Dataset/
 
         """  # noqa: E501
 
@@ -3454,8 +3458,7 @@ class Dataset:
             None,
         ] = None,
     ) -> "dask.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a
-            `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/>`_.
+        """Convert this :class:`~ray.data.Dataset` into a `Dask DataFrame`_.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -3465,10 +3468,9 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            meta: An empty `pandas DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html/>`_
-                or `Series <https://pandas.pydata.org/docs/reference/api/pandas.Series.html/>`_
-                that matches the dtypes and column names of the stream. This metadata is necessary
-                for many algorithms in dask DataFrame to work. For ease of use, some alternative inputs are
+            meta: An empty `pandas DataFrame`_ or `Series`_ that matches the dtypes and column
+                names of the stream. This metadata is necessary for many algorithms in
+                dask dataframe to work. For ease of use, some alternative inputs are
                 also available. Instead of a DataFrame, a dict of ``{name: dtype}`` or
                 iterable of ``(name, dtype)`` can be provided (note that the order of
                 the names should match the order of the columns). Instead of a series, a
@@ -3477,8 +3479,11 @@ class Dataset:
                 with this argument supplying an optional override.
 
         Returns:
-            A `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/>`_
-                created from this dataset.
+            A `Dask DataFrame`_ created from this dataset.
+
+        .. _Dask DataFrame: https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/
+        .. _pandas DataFrame: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
+        .. _Series: https://pandas.pydata.org/docs/reference/api/pandas.Series.html
         """  # noqa: E501
         import dask
         import dask.dataframe as dd
@@ -3550,13 +3555,14 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_mars(self) -> "mars.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a
-            `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html/>`_.
+        """Convert this :class:`~ray.data.Dataset` into a `Mars DataFrame`_.
 
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html/>`_ created from this dataset.
+            A `Mars DataFrame`_ created from this dataset.
+
+        .. _Mars DataFrame: https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html
         """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
@@ -3583,13 +3589,12 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_modin(self) -> "modin.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a
-            `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html/>`_.
+        """Convert this :class:`~ray.data.Dataset` into a `Modin DataFrame`_.
 
         This works by first converting this dataset into a distributed set of
-        Pandas DataFrames (using ``.to_pandas_refs()``). Please see caveats
-        there. Then the individual DataFrames are used to create the modin
-        DataFrame using
+        Pandas DataFrames (using :meth:`~ray.data.Dataset.to_pandas_refs`).
+        Please see caveats there. Then the individual DataFrames are used to
+        create the modin DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
@@ -3600,8 +3605,9 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html/>`_
-                created from this dataset.
+            A `Modin DataFrame`_ created from this dataset.
+
+        .. _Modin DataFrame: https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html
         """  # noqa: E501
 
         from modin.distributed.dataframe.pandas.partitions import from_partitions
@@ -3611,18 +3617,18 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a
-        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html/>`_.
+        """Convert this :class:`~ray.data.Dataset` into a `Spark DataFrame`_.
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            spark: A `SparkSession <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html/>`_,
-                which must be created by RayDP (Spark-on-Ray).
+            spark: A `SparkSession`_, which must be created by RayDP (Spark-on-Ray).
 
         Returns:
-            A `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html/>`_
-                created from this dataset.
+            A `Spark DataFrame`_ created from this dataset.
+
+        .. _Spark DataFrame: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html
+        .. _SparkSession: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html
         """  # noqa: E501
         import raydp
 
