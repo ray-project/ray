@@ -8,7 +8,7 @@ aioboto3==11.2.0; python_version >= '3.8'
 crc32c==2.3
 flask_cors
 s3fs==2023.1.0; python_version < '3.8'
-s3fs==2023.5.0; python_version >= '3.8'
+s3fs==2023.6.0; python_version >= '3.8'
 modin==0.12.1; python_version < '3.8'
 modin==0.22.2; python_version >= '3.8'
 pytest-repeat
