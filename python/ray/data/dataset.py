@@ -4299,7 +4299,8 @@ class Dataset:
 
                 import ray
 
-                serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
+                ds = ray.data.read_csv("example://iris.csv")
+                serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
 
@@ -4381,7 +4382,8 @@ class Dataset:
 
                 import ray
 
-                serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
+                ds = ray.data.read_csv("example://iris.csv")
+                serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
 
