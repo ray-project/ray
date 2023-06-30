@@ -1,7 +1,9 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from ray.autoscaler._private.node_provider_availability_tracker import NodeAvailabilitySummary
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
 
 NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
 
@@ -26,11 +28,10 @@ class NodeUsage:
 
 @dataclass
 class NodeInfo:
-
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # The detailed state of the node/request.
-    # E.g. idle, running, etc.
+    # E.g. idle, running, setting-up, etc.
     node_status: str
     # ray node id.
     node_id: str
@@ -47,16 +48,13 @@ class NodeInfo:
 
 
 @dataclass
-class PendingNode:
+class PendingLaunchRequest:
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # ray node type name.
     ray_node_type_name: str
-    # The current status of the request.
-    # e.g. setting-up-ssh, launching.
-    details: str
-    # IP address if available.
-    ip_address: Optional[str]
+    # count.
+    count: int
 
 
 @dataclass
@@ -92,15 +90,21 @@ class ClusterConstraintDemand(ResourceDemand):
 @dataclass
 class Stats:
     # How long it took to get the GCS request.
-    gcs_request_time_s: float
+    gcs_request_time_s: Optional[float] = None
+    # How long it took to get all live instances from node provider.
+    none_terminated_node_request_time_s: Optional[float] = None
+    # How long for autoscaler to process the scaling decision.
+    autoscaler_iteration_time_s: Optional[float] = None
 
 
 @dataclass
 class ClusterStatus:
     # Healthy nodes information (alive)
     healthy_nodes: List[NodeInfo]
-    # Pending nodes requests.
-    pending_nodes: List[PendingNode]
+    # Pending launches.
+    pending_launches: List[PendingLaunchRequest]
+    # Pending nodes.
+    pending_nodes: List[NodeInfo]
     # Failures
     failed_nodes: List[NodeInfo]
     # Resource usage summary for entire cluster.
@@ -109,12 +113,11 @@ class ClusterStatus:
     resource_demands: List[ResourceDemand]
     # Query metics
     stats: Stats
-    # TODO(rickyx): Not sure if this is actually used. 
+    # TODO(rickyx): Not sure if this is actually used.
     # We don't have any tests that cover this is actually
     # being produced. And I have not seen this either.
-    # Node availability info. 
+    # Node availability info.
     node_availability: Optional[NodeAvailabilitySummary]
-
 
     def to_str(self, verbose_lvl=0):
         # This could be what the `ray status` is getting.
