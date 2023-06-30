@@ -595,7 +595,7 @@ def run(
                 "[output] This uses the legacy output and progress reporter, "
                 "as Ray client is not supported by the new engine. "
                 "For more information, see "
-                "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                "https://github.com/ray-project/ray/issues/36949"
             )
 
         remote_run = ray.remote(num_cpus=0)(run)
@@ -658,7 +658,7 @@ def run(
             "[output] This uses the legacy output and progress reporter, "
             "as Jupyter notebooks are not supported by the new engine, yet. "
             "For more information, please see "
-            "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+            "https://github.com/ray-project/ray/issues/36949"
         )
         air_verbosity = None
 
@@ -668,7 +668,7 @@ def run(
             f"{air_verbosity}. To disable the new output and use the legacy "
             f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
             f"For more information, please see "
-            f"https://docs.ray.io/en/master/ray-air/experimental-features.html"
+            f"https://github.com/ray-project/ray/issues/36949"
         )
         # Disable old output engine
         set_verbosity(0)
@@ -1225,7 +1225,7 @@ def run_experiments(
                 "[output] This uses the legacy output and progress reporter, "
                 "as Ray client is not supported by the new engine. "
                 "For more information, see "
-                "https://docs.ray.io/en/master/ray-air/experimental-features.html"
+                "https://github.com/ray-project/ray/issues/36949"
             )
         remote_run = ray.remote(num_cpus=0)(run_experiments)
 
