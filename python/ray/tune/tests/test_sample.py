@@ -1998,8 +1998,8 @@ class SearchSpaceTest(unittest.TestCase):
         config = {
             "grid": tune.grid_search([1, 2, 3]),
             "rand": tune.uniform(0, 1000),
-            "dependent_rand": tune.sample_from(lambda spec: config["rand"] / 10),
-            "dependent_grid": tune.sample_from(lambda spec: config["grid"] / 10),
+            "dependent_rand": tune.sample_from(lambda config: config["rand"] / 10),
+            "dependent_grid": tune.sample_from(lambda config: config["grid"] / 10),
         }
 
         num_samples = 6
