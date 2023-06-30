@@ -137,11 +137,10 @@ try:
 except ImportError:
 
     class AlgorithmBase:
-
         @staticmethod
         def _get_learner_bundles(cf: AlgorithmConfig):
             """Selects the right resource bundles for learner workers based off of cf.
-            
+
             Args:
                 cf: The algorithm config.
             """
@@ -153,19 +152,23 @@ except ImportError:
                 elif cf.num_cpus_per_learner_worker:
                     learner_bundles = [
                         {
-                            "CPU": cf.num_cpus_per_learner_worker * cf.num_learner_workers,
+                            "CPU": cf.num_cpus_per_learner_worker
+                            * cf.num_learner_workers,
                         }
                     ]
             else:
-                    learner_bundles = {
-                    # sampling and training is not done concurrently when local is
-                    # used, so pick the max.
-                    "CPU": max(
-                        cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
-                    ),
-                    "GPU": cf.num_gpus_per_learner_worker,
-                }
+                learner_bundles = [
+                    {
+                        # sampling and training is not done concurrently when local is
+                        # used, so pick the max.
+                        "CPU": max(
+                            cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
+                        ),
+                        "GPU": cf.num_gpus_per_learner_worker,
+                    }
+                ]
             return learner_bundles
+
 
 tf1, tf, tfv = try_import_tf()
 
@@ -2193,26 +2196,20 @@ class Algorithm(Trainable, AlgorithmBase):
         eval_cf.freeze()
 
         # resources for the driver of this trainable
-        # if cf._enable_learner_api:
-        #     if cf.num_learner_workers == 0:
-        #         # in this case local_worker only does sampling and training is done on
-        #         # local learner worker
-                # driver = {
-                #     # sampling and training is not done concurrently when local is
-                #     # used, so pick the max.
-                #     "CPU": max(
-                #         cf.num_cpus_per_learner_worker, cf.num_cpus_for_local_worker
-                #     ),
-                #     "GPU": cf.num_gpus_per_learner_worker,
-                # }
-        #     else:
-        #         # in this case local_worker only does sampling and training is done on
-        #         # remote learner workers
-        #         driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
-        driver = {
-            "CPU": cf.num_cpus_for_local_worker,
-            "GPU": 0 if cf._fake_gpus else cf.num_gpus,
-        }
+        if cf._enable_learner_api:
+            if cf.num_learner_workers == 0:
+                # in this case local_worker only does sampling and training is done on
+                # local learner worker
+                driver = cls._get_learner_bundles(cf)[0]
+            else:
+                # in this case local_worker only does sampling and training is done on
+                # remote learner workers
+                driver = {"CPU": cf.num_cpus_for_local_worker, "GPU": 0}
+        else:
+            driver = {
+                "CPU": cf.num_cpus_for_local_worker,
+                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+            }
 
         # resources for remote rollout env samplers
         rollout_bundles = [
@@ -2254,7 +2251,7 @@ class Algorithm(Trainable, AlgorithmBase):
 
         # resources for remote learner workers
         learner_bundles = []
-        if cf._enable_learner_api:
+        if cf._enable_learner_api and cf.num_learner_workers > 0:
             learner_bundles = cls._get_learner_bundles(cf)
 
         bundles = [driver] + rollout_bundles + evaluation_bundles + learner_bundles
