@@ -601,7 +601,7 @@ def read_parquet(
             read during the file scan.
         parallelism: The amount of parallelism to use for the dataset. Defaults to -1
             which automatically determines the optimal parallelism for your configuration. You should not need to manually set this value in most cases.
-            For details on how the parallelism is automatically determined and guidance on how to tune it, see the :ref:`Tuning read parallelism guide <read_parallelism>`. Parallelism is upper bounded by the total number of records in all the parquet files..
+            For details on how the parallelism is automatically determined and guidance on how to tune it, see the :ref:`Tuning read parallelism guide <read_parallelism>`. Parallelism is upper bounded by the total number of records in all the parquet files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to tensor dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -760,25 +760,18 @@ def read_parquet_bulk(
     ),
     **arrow_parquet_args,
 ) -> Dataset:
-    """Create :class:`~ray.data.Dataset` from a large number (such as >1K) of parquet files.
+    """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
 
-    Unlike :meth:`~ray.data.read_parquet`, this method 
+    You should use :meth:`~ray.data.read_parquet` in most cases.
+    
+    Use :meth:`~ray.data.read_parquet_bulk` if all the provided paths point to files and metadata fetching using :meth:`~ray.data.read_parquet` takes too long or the parquet files do not all have a unified schema.
 
-    By default, ONLY file paths should be provided as input (i.e. no directory paths),
-    and an OSError will be raised if one or more paths point to directories. If your
-    use-case requires directory paths, then the metadata provider should be changed to
-    one that supports directory expansion (e.g. ``DefaultFileMetadataProvider``).
+    There may be performance slowdowns when using this method with parquet files that are very large.
 
-    Offers improved performance vs. :func:`read_parquet` due to not using PyArrow's
-    ``ParquetDataset`` abstraction, whose latency scales linearly with the number of
-    input files due to collecting all file metadata on a single node.
+    .. warning::
 
-    Also supports a wider variety of input Parquet file types than :func:`read_parquet`
-    due to not trying to merge and resolve a unified schema for all files.
-
-    However, unlike :func:`read_parquet`, this does not offer file metadata resolution
-    by default, so a custom metadata provider should be provided if your use-case
-    requires a unified schema, block sizes, row counts, etc.
+        Only file paths should be provided as input (i.e. no directory paths). An OSError will be raised if one or more paths point to directories. If your
+        use-case requires directory paths, then use :meth:`~ray.data.read_parquet` instead.
 
     Examples:
         >>> # Read multiple local files. You should always provide only input file
@@ -786,25 +779,17 @@ def read_parquet_bulk(
         >>> ray.data.read_parquet_bulk( # doctest: +SKIP
         ...     ["/path/to/file1", "/path/to/file2"])
 
-        >>> # Read a directory of files in remote storage. Caution should be taken
-        >>> # when providing directory paths, since the time to both check each path
-        >>> # type and expand its contents may result in greatly increased latency
-        >>> # and/or request rate throttling from cloud storage service providers.
-        >>> ray.data.read_parquet_bulk( # doctest: +SKIP
-        ...     "s3://bucket/path",
-        ...     meta_provider=DefaultFileMetadataProvider())
-
     Args:
-        paths: A single file path or a list of file paths. If one or more directories
-            are provided, then ``meta_provider`` should also be set to an implementation
-            that supports directory expansion (e.g. ``DefaultFileMetadataProvider``).
-        filesystem: The filesystem implementation to read from.
-        columns: A list of column names to read.
-        parallelism: The requested parallelism of the read. Parallelism may be
-            limited by the number of files of the dataset.
-        ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        arrow_open_file_args: kwargs passed to
-            ``pyarrow.fs.FileSystem.open_input_file``.
+        paths: A single file path or a list of file paths.
+        filesystem: The pyarrow filesystem
+            implementation to read from. These are
+            specified in the `pyarrow docs <https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations>`_. You should specify this if you need to provide specific configurations to the filesystem. By default, the filesystem is automatically selected based on the scheme of the paths. For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+        columns: A list of column names to read. Only the
+            specified columns will be read during the file scan.
+       parallelism: The amount of parallelism to use for
+            the dataset. Defaults to -1 which automatically determines the optimal parallelism for your configuration. You should not need to manually set this value in most cases. For details on how the parallelism is automatically determined and guidance on how to tune it, see the :ref:`Tuning read parallelism guide <read_parallelism>`. Parallelism is upper bounded by the total number of records in all the parquet files.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        arrow_open_file_args: kwargs passed to `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_input_file>`_. when opening input files to read.
         tensor_column_schema: A dict of column name --> tensor dtype and shape
             mappings for converting a Parquet column containing serialized
             tensors (ndarrays) as their elements to our tensor column extension
