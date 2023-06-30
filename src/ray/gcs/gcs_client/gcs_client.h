@@ -31,6 +31,7 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
 
 namespace ray {
 
@@ -224,12 +225,18 @@ class RAY_EXPORT PythonGcsClient {
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
   Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData> &result);
 
+  // For rpc::autoscaler::AutoscalerStateService
+  Status RequestClusterResourceConstraint(
+      int64_t timeout_ms,
+      const std::vector<std::unordered_map<std::string, double>> &bundles);
+
  private:
   GcsClientOptions options_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
+  std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;
 };
 
