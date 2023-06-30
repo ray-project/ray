@@ -2537,9 +2537,6 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
 
     deployment_state_manager.shutdown()
 
-    # After shutdown, `is_shutdown()` should return True
-    assert not deployment_state_manager.is_shutdown()
-
     timer.advance(grace_period_s + 0.1)
     deployment_state_manager.update()
 
@@ -2553,6 +2550,9 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     deployment_state_manager.update()
     check_counts(deployment_state, total=0)
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
+
+    # After all deployments shutdown, `is_shutdown()` should return True
+    assert deployment_state_manager.is_shutdown()
 
 
 def test_stopping_replicas_ranking():

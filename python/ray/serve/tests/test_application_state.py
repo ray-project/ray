@@ -659,13 +659,12 @@ def test_recover_during_update(mocked_application_state_manager):
 
 
 def test_is_shutdown(mocked_application_state_manager):
-    """Test is_shutdown() returns True the correct state.
-
+    """Test `is_shutdown()` returns the correct state.
 
     When shutting down applications before deployments are deleted, application state
-    `is_deleted()` should return false and `is_shutdown()` should return false.
+    `is_deleted()` should return False and `is_shutdown()` should return False.
     When shutting down applications after deployments are deleted, application state
-    `is_deleted()` should return true and `is_shutdown()` should return true
+    `is_deleted()` should return True and `is_shutdown()` should return True
     """
     (
         app_state_manager,
@@ -689,13 +688,13 @@ def test_is_shutdown(mocked_application_state_manager):
     assert app_state.status == ApplicationStatus.RUNNING
 
     # When shutting down applications before deployments are deleted, application state
-    # `is_deleted()` should return false and `is_shutdown()` should return false
+    # `is_deleted()` should return False and `is_shutdown()` should return False
     app_state_manager.shutdown()
     assert not app_state.is_deleted()
     assert not app_state_manager.is_shutdown()
 
     # When shutting down applications after deployments are deleted, application state
-    # `is_deleted()` should return true and `is_shutdown()` should return true
+    # `is_deleted()` should return True and `is_shutdown()` should return True
     deployment_state_manager.delete_deployment(deployment_name)
     deployment_state_manager.set_deployment_deleted(deployment_name)
     app_state_manager.update()
