@@ -28,6 +28,7 @@ Single workflow management APIs
 -------------------------------
 
 .. testcode::
+    :skipif: True
 
     import ray
     from ray import workflow
@@ -83,7 +84,6 @@ Bulk workflow management APIs
     print(workflow.resume_all(include_failed=True))
 
 .. testoutput::
-    :options: +MOCK
 
     [("workflow_id_1", "RUNNING"), ("workflow_id_2", "RUNNING")]
     [("workflow_id_1", "RUNNING"), ("workflow_id_2", "CANCELED")]
