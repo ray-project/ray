@@ -93,7 +93,7 @@ def test_ray_serve_basic(docker_cluster):
     #   - Make sure no task can run in the raylet where GCS is deployed.
 
     head, worker = docker_cluster
-    output = head.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
+    output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
     assert b"Adding 1 replica to deployment Counter." in output.output
     print("SERVE SA OUTPUT1", output.output)
@@ -102,7 +102,7 @@ def test_ray_serve_basic(docker_cluster):
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
 
-    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
+    output = head.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
 
     print("SERVE SA OUTPUT2", output.output)
     assert output.exit_code == 0
@@ -111,7 +111,7 @@ def test_ray_serve_basic(docker_cluster):
     head.kill()
 
     # Make sure serve is still working
-    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
+    output = head.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0
 
     # Script is running on another thread so that it won't block the main thread.
@@ -129,7 +129,7 @@ def test_ray_serve_basic(docker_cluster):
 
     t.join()
 
-    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
+    output = head.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0
 
     # Make sure the serve controller still runs on the head node after restart
