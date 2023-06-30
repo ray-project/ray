@@ -14,6 +14,16 @@ Workflow metadata can be retrieved with ``workflow.get_metadata(workflow_id)``.
 For example:
 
 .. testcode::
+    :hide:
+
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+.. testcode::
 
     import ray
     from ray import workflow

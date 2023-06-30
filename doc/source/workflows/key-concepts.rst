@@ -22,6 +22,16 @@ DAG nodes. Instead, the DAG needs to be *executed* in order to compute a result.
 Composing functions together into a DAG:
 
 .. testcode::
+    :hide:
+
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+.. testcode::
 
     import ray
 

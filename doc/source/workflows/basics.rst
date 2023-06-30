@@ -14,6 +14,16 @@ Here is a single three-node DAG (note the use of ``.bind(...)`` instead of
 taken on it:
 
 .. testcode::
+    :hide:
+
+    import tempfile
+    import ray
+
+    temp_dir = tempfile.TemporaryDirectory()
+
+    ray.init(storage=f"file://{temp_dir.name}")
+
+.. testcode::
 
     from typing import List
     import ray
@@ -45,11 +55,6 @@ We can plot this DAG by using ``ray.dag.vis_utils.plot(output, "output.jpg")``:
    :align: center
 
 Next, let's execute the DAG we defined and inspect the result:
-
-.. testcode::
-    :hide:
-
-    ray.shutdown()
 
 .. testcode::
 
