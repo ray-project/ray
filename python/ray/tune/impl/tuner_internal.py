@@ -130,8 +130,6 @@ class TunerInternal:
         self._resume_config = None
         self._is_restored = False
         self._tuner_kwargs = copy.deepcopy(_tuner_kwargs) or {}
-        # TODO(ekl) what is going on here with this, and how can we get this to be
-        # placed in local_path instead the storage_path URI.
         self._experiment_checkpoint_dir = self.setup_create_experiment_checkpoint_dir(
             self.converted_trainable, self._run_config
         )
@@ -143,10 +141,9 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        if not USE_STORAGE_CONTEXT:
-            experiment_checkpoint_path = Path(self._experiment_checkpoint_dir)
-            with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
-                pickle.dump(self.__getstate__(), fp)
+        experiment_checkpoint_path = Path(self._experiment_checkpoint_dir)
+        with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
+            pickle.dump(self.__getstate__(), fp)
 
         self._maybe_warn_resource_contention()
 
@@ -525,14 +522,21 @@ class TunerInternal:
         cls, trainable: TrainableType, run_config: Optional[RunConfig]
     ) -> str:
         """Sets up experiment checkpoint dir before actually running the experiment."""
+        if USE_STORAGE_CONTEXT:
+            # TODO: how do we get this properly from config
+            path = os.path.expanduser(
+                os.environ.get("RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results")
+            )
+        else:
+            # ??? this doesn't make sense to have in remote storage
+            path = run_config.storage_path
         path = Experiment.get_experiment_checkpoint_dir(
             trainable,
-            run_config.storage_path,
+            path,
             run_config.name,
         )
-        if not USE_STORAGE_CONTEXT:
-            if not os.path.exists(path):
-                os.makedirs(path, exist_ok=True)
+        if not os.path.exists(path):
+            os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).

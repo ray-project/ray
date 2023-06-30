@@ -116,11 +116,9 @@ def test_tuner_storage_path(storage_path):
     assert len(glob.glob(f"{RAY_RESULTS}/train_model*/basic-variant-state*.json")) == 1
     assert len(glob.glob(f"{RAY_RESULTS}/train_model*/experiment_state*.json")) == 1
 
-    # TODO: the tuner.pkl file is saved in totally the wrong place right now. This seems
-    # to be an existing issue. Why isn't that managed by experiment_state.py anyways?
-    # if storage_path:
-    #     assert len(glob.glob(f"{storage_path}/train_model*/tuner.pkl")) == 1
-    # assert len(glob.glob(f"{RAY_RESULTS}/train_model*/tuner.pkl")) == 1
+    if storage_path:
+        assert len(glob.glob(f"{storage_path}/train_model*/tuner.pkl")) == 1
+    assert len(glob.glob(f"{RAY_RESULTS}/train_model*/tuner.pkl")) == 1
 
     # Artifact and metrics sync.
     if storage_path:

@@ -169,7 +169,6 @@ class Experiment:
         if storage:
             local_storage_path = storage.local_path
             remote_storage_path = None
-            _experiment_checkpoint_dir = None
         else:
             local_storage_path, remote_storage_path = _resolve_storage_path(
                 storage_path,
