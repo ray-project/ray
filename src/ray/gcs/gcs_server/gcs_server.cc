@@ -174,7 +174,7 @@ void GcsServer::GetOrGenerateClusterId(
                 continuation(cluster_id);
               });
         } else {
-          ClusterID cluster_id = ClusterID::FromBinary(cluster_id.value());
+          ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
           continuation(cluster_id);
         }
