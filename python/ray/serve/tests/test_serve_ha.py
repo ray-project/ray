@@ -37,7 +37,7 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True, location="EveryNode")
+serve.start(detached=True, http_options={"location": "EveryNode"})
 
 Counter.options(num_replicas={num_replicas}).deploy()
 """
@@ -45,8 +45,6 @@ Counter.options(num_replicas={num_replicas}).deploy()
 check_script = """
 import requests
 import json
-
-
 if {num_replicas} == 1:
     b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
     for i in range(5):
