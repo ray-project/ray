@@ -2303,6 +2303,38 @@ cdef class GcsClient:
             }
         return result
 
+    ########################################################
+    # Interface for rpc::autoscaler::AutoscalerStateService
+    ########################################################
+
+    @_auto_reconnect
+    def request_cluster_resource_constraint(
+            self,
+            bundles: c_vector[unordered_map[c_string, double]],
+            timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        with nogil:
+            check_status(self.inner.get().RequestClusterResourceConstraint(
+                timeout_ms, bundles))
+
+
+    @_auto_reconnect
+    def get_cluster_status(
+            self,
+            timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string serialized_reply 
+        with nogil:
+            check_status(self.inner.get().GetClusterStatus(timeout_ms,
+                serialized_reply))
+
+        return serialized_reply 
+
+    #############################################################
+    # Interface for rpc::autoscaler::AutoscalerStateService ends
+    #############################################################
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:

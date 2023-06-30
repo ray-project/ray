@@ -3,15 +3,21 @@
 Key Concepts
 ============
 
+Learn about :class:`Dataset <ray.data.Dataset>` and the functionality it provides.
+
+This guide provides a lightweight introduction to:
+
+* :ref:`Loading data <loading_key_concept>`
+* :ref:`Transforming data <transforming_key_concept>`
+* :ref:`Consuming data <consuming_key_concept>`
+* :ref:`Saving data <saving_key_concept>`
+
 Datasets
 --------
 
 Ray Data's main abstraction is a :class:`Dataset <ray.data.Dataset>`, which
-is a distributed collection of data. Datasets represent data collections that may exceed a single machine's memory.
-
-Ray Data provides APIs for :ref:`loading data <loading_key_concept>`,
-:ref:`transforming data <transforming_key_concept>` in parallel,
-:ref:`consuming data <consuming_key_concept>`, and :ref:`saving data <saving_key_concept>`.
+is a distributed data collection. Datasets are designed for machine learning, and they
+can represent data collections that exceed a single machine's memory.
 
 .. _loading_key_concept:
 

@@ -1,6 +1,9 @@
+import datetime
+from base64 import b64decode
 from collections import defaultdict
 from typing import Dict, List, Tuple
 
+from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.schema import (
     NODE_DEATH_CAUSE_RAYLET_DIED,
     ClusterConstraintDemand,
@@ -25,6 +28,43 @@ from ray.core.generated.experimental.autoscaler_pb2 import (
 )
 
 
+def binary_id_to_hex(binary_id: bytes) -> str:
+    """A util routine to parse binary repr of id (e.g. node id) to hex repr.)"""
+    return binary_to_hex(binary_id)
+
+
+class ClusterStatusFormatter:
+
+    HEADER = """
+    ======== Autoscaler status : {time} ========\n
+    --------------------------------------------\n
+    """
+
+    # Basic autoscaler info.
+    VERBOSE_BASIC = 0
+
+    # Include per node info.
+    VERBOSE_MORE = 1
+
+
+    @classmethod
+    def format(cls, data: ClusterStatus, verbose_lvl: int) -> str:
+        r = ""
+        r += cls.HEADER.format(time=datetime.now())
+
+        r += cls._format_stats(data, verbose_lvl)
+
+        r += cls._format_nodes(data, verbose_lvl)
+
+        r += cls._format_usage(data, verbose_lvl)
+
+        r += cls._format_demand(data, verbose_lvl)
+
+        if verbose_lvl >= cls.VERBOSE_MORE:
+            r += cls._format_node_usage(data, verbose_lvl)
+
+        return r
+
 class ClusterStatusParser:
     @classmethod
     def from_get_cluster_status_reply(
@@ -44,12 +84,7 @@ class ClusterStatusParser:
         # parse resource demands
         resource_demands = cls._parse_resource_demands(proto.cluster_resource_state)
 
-        # modify the states
-        stats = cls._parse_stats(
-            proto.cluster_resource_state, proto.autoscaling_state, stats
-        )
-
-        return cls(
+        return ClusterStatus(
             healthy_nodes=healthy_nodes,
             pending_nodes=pending_nodes,
             failed_nodes=failed_nodes,
@@ -73,7 +108,7 @@ class ClusterStatusParser:
         """
         resource_demands = []
 
-        for request_count in state.pending_resource_request:
+        for request_count in state.pending_resource_requests:
             # TODO(rickyx): constraints?
             demand = RayTaskActorDemand(
                 bundles=[
@@ -93,7 +128,7 @@ class ClusterStatusParser:
             )
             resource_demands.append(demand)
 
-        for constraint_request in state.pending_cluster_resource_constraints:
+        for constraint_request in state.cluster_resource_constraints:
             demand = ClusterConstraintDemand(
                 bundles=cls._aggregate_resource_requests_by_shape(
                     constraint_request.min_bundles
@@ -130,9 +165,10 @@ class ClusterStatusParser:
 
     @classmethod
     def _parse_node_resource_usage(
-        node_state: NodeState, usage: Dict[str, ResourceUsage]
+        cls, node_state: NodeState, usage: Dict[str, ResourceUsage]
     ):
         for resource_name, resource_total in node_state.total_resources.items():
+            usage[resource_name].resource_name = resource_name
             usage[resource_name].total += resource_total
             # Will be subtracted from available later.
             usage[resource_name].used += resource_total
@@ -186,8 +222,8 @@ class ClusterStatusParser:
             # Basic node info.
             node_info = NodeInfo(
                 instance_type_name=node_state.instance_type_name,
-                node_status=NodeStatus.Value(node_state.status),
-                node_id=node_state.node_id,
+                node_status=NodeStatus.Name(node_state.status),
+                node_id=binary_id_to_hex(node_state.node_id),
                 ip_address=node_state.node_ip_address,
                 ray_node_type_name=node_state.ray_node_type_name,
                 instance_id=node_state.instance_id,
@@ -197,7 +233,7 @@ class ClusterStatusParser:
             usage = defaultdict(ResourceUsage)
             cls._parse_node_resource_usage(node_state, usage)
             node_resource_usage = NodeUsage(
-                usage=usage.values(),
+                usage=list(usage.values()),
                 idle_time_ms=node_state.time_since_last_status_change_ms
                 if node_state.status == NodeStatus.IDLE
                 else 0,

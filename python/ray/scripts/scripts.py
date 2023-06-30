@@ -1954,7 +1954,7 @@ def status(address: str, redis_password: str, verbose: bool):
     if ray._config.enable_autoscaler_v2():
         from ray.autoscaler.v2.sdk import get_cluster_status
 
-        print(get_cluster_status(address=address).to_str(verbose=verbose))
+        print(get_cluster_status(address=address).to_str(verbose_lvl=int(verbose)))
         return
 
     gcs_client = ray._raylet.GcsClient(address=address)

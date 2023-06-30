@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from ray.autoscaler._private.node_provider_availability_tracker import NodeAvailabilitySummary
+
 NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
 
 
@@ -38,10 +40,10 @@ class NodeInfo:
     instance_id: str
     # Ip address of the node when alive.
     ip_address: str
-    # Resource usage breakdown.
-    resource_usage: Optional[NodeUsage]
+    # Resource usage breakdown if node alive.
+    resource_usage: Optional[NodeUsage] = None
     # Failure detail if the node failed.
-    failure_detail: Optional[str]
+    failure_detail: Optional[str] = None
 
 
 @dataclass
@@ -107,7 +109,13 @@ class ClusterStatus:
     resource_demands: List[ResourceDemand]
     # Query metics
     stats: Stats
+    # TODO(rickyx): Not sure if this is actually used. 
+    # We don't have any tests that cover this is actually
+    # being produced. And I have not seen this either.
+    # Node availability info. 
+    node_availability: Optional[NodeAvailabilitySummary]
 
-    def format_str(self, verbose_lvl=0):
+
+    def to_str(self, verbose_lvl=0):
         # This could be what the `ray status` is getting.
         return "not implemented"
