@@ -208,6 +208,12 @@ As a result, Python loggers need to be set up for both driver and worker process
 ::::{tab-set}
 
 :::{tab-item} Ray Core
+
+```{admonition} Caution
+:class: caution
+This is an experimental feature. It doesn't support [Ray Client](ray-client-ref) yet.
+```
+
 Set up the Python logger for driver and worker processes separately:
 1. Set up the logger for the driver process after importing `ray`.
 2. Use `worker_process_setup_hook` to configure the Python logger for all worker processes.
@@ -375,6 +381,12 @@ ray.get(f.remote("A log message for a task."))
 :::
 
 :::{tab-item} Ray Core: all worker processes of a job
+
+```{admonition} Caution
+:class: caution
+This is an experimental feature. It doesn't support [Ray Client](ray-client-ref) yet.
+```
+
 Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
 ```python
 # driver.py
