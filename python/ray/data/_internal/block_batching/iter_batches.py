@@ -155,7 +155,7 @@ def iter_batches(
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 4: Apply the finalize_fn in a separate threadpool,
+        # Step 4: Apply the finalize_fn in a 1-thread pool,
         # useful for operations such as host to device transfer.
         batch_iter = _apply_finalize_fn_in_threadpool(
             batch_iter,
