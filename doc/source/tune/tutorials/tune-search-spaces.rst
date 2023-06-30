@@ -184,6 +184,6 @@ This lets you specify conditional parameter distributions.
     and :ref:`Optuna <tune-optuna>`, handle conditional search spaces at all.
 
     In order to use conditional search spaces with :ref:`HyperOpt <tune-hyperopt>`,
-    a `Hyperopt search space <http://hyperopt.github.io/hyperopt/getting-started/search_spaces/>`_ isnecessary.
+    a `Hyperopt search space <http://hyperopt.github.io/hyperopt/getting-started/search_spaces/>`_ is necessary.
     :ref:`Optuna <tune-optuna>` supports conditional search spaces through its define-by-run
     interface (:doc:`/tune/examples/optuna_example`).
