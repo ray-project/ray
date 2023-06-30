@@ -509,32 +509,49 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     serve.shutdown()
 
 
-# def test_controller_shutdown_gracefully(
-#     shutdown_ray, call_ray_stop_only  # noqa: F811
-# ):
-#     """TODO
-#     """
-#     # Setup a cluster with 2 nodes
-#     cluster = Cluster()
-#     cluster.add_node()
-#     cluster.add_node()
-#     cluster.wait_for_nodes()
-#     ray.init(address=cluster.address)
-#
-#     # Deploy 2 replicas
-#     @serve.deployment(num_replicas=2)
-#     class HelloModel:
-#         def __call__(self):
-#             return "hello"
-#
-#     model = HelloModel.bind()
-#     serve.run(target=model)
-#
-#     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
-#     wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
-#     assert len(ray.nodes()) == 2
-#
-#     serve.shutdown()
+def test_controller_shutdown_gracefully(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test controller shutdown gracefully when shutting_down flag is set.
+
+
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Set shutting_down flag to the controller, so it will shut down gracefully.
+    client = get_global_client()
+    controller_actor_id = client._controller._actor_id.hex()
+    ray.get(client._controller.set_shutting_down_flag.remote())
+
+    # Ensure the controller is shutdown.
+    def check_controller_is_shutdown():
+        for _actor in ray._private.state.actors().values():
+            if _actor["ActorID"] == controller_actor_id:
+                return _actor["State"] == "DEAD"
+        return False
+
+    wait_for_condition(check_controller_is_shutdown)
+
+    # Clean up serve.
+    serve.shutdown()
 
 
 if __name__ == "__main__":

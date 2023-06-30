@@ -1264,7 +1264,10 @@ class DeploymentState:
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
-        logger.info(f"Deleting deployment {self._name}.")
+        logger.info(
+            f"Deleting deployment {self._name}.",
+            extra={"log_to_stderr": False},
+        )
 
     def _set_target_state(self, target_info: DeploymentInfo) -> None:
         """Set the target state for the deployment to the provided info."""
