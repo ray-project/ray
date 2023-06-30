@@ -35,6 +35,7 @@ from ray.tune.trainable import Trainable
 from ray.tune.tune import run
 from ray.tune.tune_config import TuneConfig
 from ray.tune.utils import flatten_dict
+from ray.tune.utils.util import USE_STORAGE_CONTEXT
 
 if TYPE_CHECKING:
     from ray.train.trainer import BaseTrainer
@@ -142,9 +143,10 @@ class TunerInternal:
         # without allowing for checkpointing tuner and trainable.
         # Thus this has to happen before tune.run() so that we can have something
         # to restore from.
-        experiment_checkpoint_path = Path(self._experiment_checkpoint_dir)
-        with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
-            pickle.dump(self.__getstate__(), fp)
+        if not USE_STORAGE_CONTEXT:
+            experiment_checkpoint_path = Path(self._experiment_checkpoint_dir)
+            with open(experiment_checkpoint_path / _TUNER_PKL, "wb") as fp:
+                pickle.dump(self.__getstate__(), fp)
 
         self._maybe_warn_resource_contention()
 
@@ -528,8 +530,9 @@ class TunerInternal:
             run_config.storage_path,
             run_config.name,
         )
-        if not os.path.exists(path):
-            os.makedirs(path, exist_ok=True)
+        if not USE_STORAGE_CONTEXT:
+            if not os.path.exists(path):
+                os.makedirs(path, exist_ok=True)
         return path
 
     # This has to be done through a function signature (@property won't do).
