@@ -49,7 +49,8 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
 
     num_runs = 5
 
-    # Test that when an interator is fully consumed, the executor should be shut down.
+    # Test that when an interator is fully consumed,
+    # the executor should be shut down.
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         ds = ray.data.range(100).repartition(10)
@@ -61,7 +62,8 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
                 break
     assert streaming_executor._num_shutdown - initial == num_runs
 
-    # Test that when an partially-consumed iterator is deleted, the executor should be shut down.
+    # Test that when an partially-consumed iterator is deleted,
+    # the executor should be shut down.
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         ds = ray.data.range(100).repartition(10)
