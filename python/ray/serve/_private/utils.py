@@ -703,3 +703,23 @@ def get_head_node_id() -> str:
     assert head_node_id is not None, "Cannot find alive head node."
 
     return head_node_id
+
+
+def calculate_remaining_timeout(
+    *,
+    timeout_s: Optional[float],
+    start_time_s: float,
+    curr_time_s: float,
+) -> Optional[float]:
+    """Get the timeout remaining given an overall timeout, start time, and curr time.
+
+    If the timeout passed in was `None` or negative, will always return that timeout
+    directly.
+
+    If the timeout is >= 0, the returned remaining timeout always be >= 0.
+    """
+    if timeout_s is None or timeout_s < 0:
+        return timeout_s
+
+    time_since_start_s = curr_time_s - start_time_s
+    return max(0, timeout_s - time_since_start_s)
