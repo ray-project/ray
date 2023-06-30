@@ -1887,6 +1887,7 @@
   team: ml
 
   cluster:
+    byod: {}
     cluster_env: app_config.yaml
     cluster_compute: tpl_aws_1x4.yaml
 
