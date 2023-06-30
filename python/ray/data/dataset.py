@@ -2023,22 +2023,19 @@ class Dataset:
 
         Examples:
             >>> import ray
-            >>> # Sort by a single column in descending order.
-            >>> ds = ray.data.from_items(
-            ...     [{"value": i} for i in range(1000)])
-            >>> ds.sort("value", descending=True)
-            Sort
-            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+            >>> ds = ray.data.range(100)
+            >>> ds.sort("id", descending=True).take(3)
+            [{'id': 99}, {'id': 98}, {'id': 97}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: The column to sort by. To sort by multiple columns, use a map function
-                to generate the sort column beforehand.
+            key: The column to sort by. To sort by multiple columns, call
+                :meth:`Dataset.map` to generate a sort key.
             descending: Whether to sort in descending order.
 
         Returns:
-            A new, sorted dataset.
+            A new, sorted :class:`Dataset`.
         """
 
         plan = self._plan.with_stage(SortStage(self, key, descending))
