@@ -15,7 +15,7 @@ user. We show
 
 This tutorial should help you with following use cases:
 
-* You want to serve a large language model that should stream results back token-by-token.
+* You want to serve a large language model and stream results back token-by-token.
 * You want to serve a chatbot that must accept a stream of requests from the user.
 
 This tutorial serves the [DialoGPT](https://huggingface.co/microsoft/DialoGPT-small) language model. Install the HuggingFace library to access it:
