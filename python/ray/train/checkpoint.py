@@ -75,6 +75,20 @@ class Checkpoint:
         with self.filesystem.open_output_path(path) as f:
             f.write(pickle.dumps(metadata))
 
+    @staticmethod
+    def from_directory(path: Union[str, os.PathLike]) -> "Checkpoint":
+        """Create checkpoint object from a local directory.
+
+        Args:
+            path: Directory containing checkpoint data. The caller promises to
+                not delete the directory (gifts ownership of the directory to this
+                Checkpoint).
+
+        Returns:
+            Checkpoint: checkpoint object.
+        """
+        return Checkpoint(path)
+
     def to_directory(self, path: Optional[str] = None) -> str:
         """Write checkpoint data to directory.
 
