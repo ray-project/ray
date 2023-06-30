@@ -2338,13 +2338,10 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            import ray
-            ds = ray.data.range(10)
-            print(ds.num_blocks())
-
-        .. testoutput::
-            ...
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.num_blocks()
+            20
 
         Time complexity: O(1)
 
@@ -2359,13 +2356,10 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            import ray
-            ds = ray.data.range(10)
-            print(ds.size_bytes())
-
-        .. testoutput::
-            ...
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> ds.size_bytes()
+            80
 
         Time complexity: O(1)
 
@@ -2384,13 +2378,10 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            import ray
-            ds = ray.data.read_csv("example://iris.csv")
-            print(ds.input_files())
-
-        .. testoutput::
-            ['.../ray/python/ray/data/examples/data/iris.csv']
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> ds.input_files()
+            ['ray-example-data/iris.csv']
 
         Time complexity: O(num input files)
 
@@ -2428,9 +2419,14 @@ class Dataset:
         id for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_parquet("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_parquet("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2491,9 +2487,14 @@ class Dataset:
         unique id for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_json("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_json("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2555,9 +2556,14 @@ class Dataset:
         for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_csv("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_csv("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2625,12 +2631,14 @@ class Dataset:
         for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.from_items([
-            ...     { "name": "foo", "score": 42 },
-            ...     { "name": "bar", "score": 43 },
-            ... ])
-            >>> ds.write_tfrecords("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_tfrecords("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2693,12 +2701,14 @@ class Dataset:
         for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.from_items([
-            ...     { "name": "foo", "score": 42 },
-            ...     { "name": "bar", "score": 43 },
-            ... ])
-            >>> ds.write_webdataset("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2753,9 +2763,14 @@ class Dataset:
         id for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_numpy("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_numpy("s3://bucket/folder/", column="id")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2819,16 +2834,18 @@ class Dataset:
             auto generate one at insertion.
 
         Examples:
-            >>> import ray
-            >>> import pandas as pd
-            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
-            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
-            >>> ds.write_mongo( # doctest: +SKIP
-            >>>     MongoDatasource(), # doctest: +SKIP
-            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501 # doctest: +SKIP
-            >>>     database="my_db", # doctest: +SKIP
-            >>>     collection="my_collection", # doctest: +SKIP
-            >>> ) # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_mongo(
+                    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+                    database="my_db",
+                    collection="my_collection"
+                )
 
         Args:
             uri: The URI to the destination MongoDB where the dataset will be
@@ -2860,14 +2877,8 @@ class Dataset:
     ) -> None:
         """Write the dataset to a custom datasource.
 
-        Examples:
-            >>> import ray
-            >>> from ray.data.datasource import Datasource
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> class CustomDatasource(Datasource): # doctest: +SKIP
-            ...     # define custom data source
-            ...     pass # doctest: +SKIP
-            >>> ds.write_datasource(CustomDatasource(...)) # doctest: +SKIP
+        For an example of how to use this method, see
+        :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4118,13 +4129,10 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            import ray
-            ds = ray.data.range(10)
-            materialized_ds = ds.materialize()
-            print(materialized_ds)
-
-        .. testoutput::
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> materialized_ds = ds.materialize()
+            >>> materialized_ds
             MaterializedDataset(num_blocks=..., num_rows=10, schema={id: int64})
 
         Returns:
@@ -4172,13 +4180,16 @@ class Dataset:
         Examples:
 
         .. testcode::
+
             import ray
+
             ds = ray.data.range(10)
             assert ds.stats() == ""
+
             ds = ds.materialize()
             print(ds.stats())
 
-        .. testoutput::
+
             Stage 0 Read: .../... blocks executed in ...
             * Remote wall time: ... min, ... max, ... mean, ... total
             * Remote cpu time: ... min, ... max, ... mean, ... total
@@ -4204,12 +4215,9 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            import ray
-            ds = ray.data.range(1)
-            print(ds.get_internal_block_refs())
-
-        .. testoutput::
+            >>> import ray
+            >>> ds = ray.data.range(1)
+            >>> ds.get_internal_block_refs()
             [ObjectRef(...)]
 
         Time complexity: O(1)
@@ -4254,13 +4262,10 @@ class Dataset:
 
         Examples:
 
-        .. testcode::
-            import ray
-            print(ray.data.from_items(list(range(10))).has_serializable_lineage())
-            print(ray.data.read_csv("example://iris.csv").has_serializable_lineage())
-
-        .. testoutput::
+            >>> import ray
+            >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
             False
+            >>> ray.data.read_csv("example://iris.csv").has_serializable_lineage()
             True
         """
         return self._plan.has_lazy_input()
@@ -4285,12 +4290,15 @@ class Dataset:
         Examples:
 
         .. testcode::
+
             import ray
+
             serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
             ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
             print(ds)
 
         .. testoutput::
+
             Dataset(
                num_blocks=...,
                num_rows=150,
@@ -4363,12 +4371,15 @@ class Dataset:
         Examples:
 
         .. testcode::
+
             import ray
+
             serialized_ds = ray.data.read_csv("example://iris.csv").serialize_lineage()
             ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
             print(ds)
 
         .. testoutput::
+
             Dataset(
                num_blocks=...,
                num_rows=150,
