@@ -3456,7 +3456,8 @@ class Dataset:
             None,
         ] = None,
     ) -> "dask.DataFrame":
-        """Convert this dataset into a Dask DataFrame.
+        """Convert this :class:`~ray.data.Dataset` into a
+            `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/>`_.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -3466,9 +3467,10 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            meta: An empty pandas DataFrame or Series that matches the dtypes and column
-                names of the stream. This metadata is necessary for many algorithms in
-                dask dataframe to work. For ease of use, some alternative inputs are
+            meta: An empty `pandas DataFrame <https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html/>`_
+                or `Series <https://pandas.pydata.org/docs/reference/api/pandas.Series.html/>`_
+                that matches the dtypes and column names of the stream. This metadata is necessary
+                for many algorithms in dask DataFrame to work. For ease of use, some alternative inputs are
                 also available. Instead of a DataFrame, a dict of ``{name: dtype}`` or
                 iterable of ``(name, dtype)`` can be provided (note that the order of
                 the names should match the order of the columns). Instead of a series, a
@@ -3477,8 +3479,9 @@ class Dataset:
                 with this argument supplying an optional override.
 
         Returns:
-            A Dask DataFrame created from this dataset.
-        """
+            A `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/>`_
+                created from this dataset.
+        """  # noqa: E501
         import dask
         import dask.dataframe as dd
         import pandas as pd
@@ -3549,13 +3552,14 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_mars(self) -> "mars.DataFrame":
-        """Convert this dataset into a MARS dataframe.
+        """Convert this :class:`~ray.data.Dataset` into a
+            `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html/>`_.
 
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A MARS dataframe created from this dataset.
-        """
+            A `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html/>`_ created from this dataset.
+        """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
         from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
@@ -3581,11 +3585,12 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_modin(self) -> "modin.DataFrame":
-        """Convert this dataset into a Modin dataframe.
+        """Convert this :class:`~ray.data.Dataset` into a
+            `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html/>`_.
 
         This works by first converting this dataset into a distributed set of
-        Pandas dataframes (using ``.to_pandas_refs()``). Please see caveats
-        there. Then the individual dataframes are used to create the modin
+        Pandas DataFrames (using ``.to_pandas_refs()``). Please see caveats
+        there. Then the individual DataFrames are used to create the modin
         DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
@@ -3597,8 +3602,9 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A Modin dataframe created from this dataset.
-        """
+            A `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html/>`_
+                created from this dataset.
+        """  # noqa: E501
 
         from modin.distributed.dataframe.pandas.partitions import from_partitions
 
@@ -3607,13 +3613,19 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
-        """Convert this dataset into a Spark dataframe.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html/>`_.
 
         Time complexity: O(dataset size / parallelism)
 
+        Args:
+            spark: A `SparkSession <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html/>`_,
+                which must be created by RayDP (Spark-on-Ray).
+
         Returns:
-            A Spark dataframe created from this dataset.
-        """
+            A `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html/>`_
+                created from this dataset.
+        """  # noqa: E501
         import raydp
 
         schema = self.schema()
