@@ -114,7 +114,7 @@ Ray has special support to improve the visibility of stdout and stderr produced 
 
 For the following code:
 
-.. code-block:: python
+.. testcode::
 
     import ray
     # Initiate a driver.
@@ -124,7 +124,12 @@ For the following code:
     def task_foo():
         print("task!")
 
-    ray.get(task.remote())
+    ray.get(task_foo.remote())
+
+.. testoutput::
+    :options: +MOCK
+
+    (task_foo pid=12854) task!
 
 #. Ray Task ``task_foo`` runs on a Ray Worker process. String ``task!`` is saved into the corresponding Worker ``stdout`` log file.
 #. The Driver reads the Worker log file and sends it to its ``stdout`` (terminal) where you should be able to see the string ``task!``.

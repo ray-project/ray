@@ -1,5 +1,7 @@
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType, TensorShape
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -8,6 +10,10 @@ class GRUGate(tf.keras.layers.Layer if tf else object):
     def __init__(self, init_bias: float = 0.0, **kwargs):
         super().__init__(**kwargs)
         self._init_bias = init_bias
+        if log_once("gru_gate"):
+            deprecation_warning(
+                old="rllib.models.tf.layers.GRUGate",
+            )
 
     def build(self, input_shape: TensorShape):
         h_shape, x_shape = input_shape
