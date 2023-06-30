@@ -188,6 +188,10 @@ Add the following logic to handle requests sent to the `Batchbot`:
 * `generate_text`: the method that runs the model. It's the mostly the same as `generate_text` in `Textbot`, with two differences. First, it takes in and process a batch of prompts instead of a single prompt. Second, it sets `padding=True`, so prompts with different lengths can be batched together.
 * `consume_streamer`: a generator method that consumes the streamer constructed by `handle_request`. It's the mostly the same as `consume_streamer` in `Textbot`, with one difference. It uses the `tokenizer` to decode the generated tokens. Usually, this is handled by the HuggingFace streamer. Since this implementation uses the custom `RawStreamer`, `consume_streamer` must handle the decoding.
 
+:::{tip}
+Some inputs within a batch may generate fewer outputs than others. When a particular input has nothing left to yield, pass a `StopIteration` object into the output iterable to terminate that input's request. See [this section](serve-streaming-batched-requests-guide) for more info.
+:::
+
 Bind the `Batchbot` to a language model. For this tutorial, use the `"microsoft/DialoGPT-small"` model:
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
