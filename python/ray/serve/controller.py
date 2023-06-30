@@ -454,6 +454,9 @@ class ServeController:
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
         app_name: str = None,
+        # TODO(edoakes): this is a hack because the deployment_language doesn't seem
+        # to get set properly from Java.
+        is_deployed_from_python: bool = False,
     ) -> bool:
         """Deploys a deployment."""
         if route_prefix is not None:
@@ -482,7 +485,11 @@ class ServeController:
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix, app_name=app_name)
+            endpoint_info = EndpointInfo(
+                route=route_prefix,
+                app_name=app_name,
+                app_is_cross_language=not is_deployed_from_python,
+            )
             self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
             self.endpoint_state.delete_endpoint(name)

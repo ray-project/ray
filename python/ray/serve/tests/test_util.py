@@ -12,14 +12,15 @@ from fastapi.encoders import jsonable_encoder
 import ray
 from ray import serve
 from ray.serve._private.utils import (
+    calculate_remaining_timeout,
+    dict_keys_snake_to_camel_case,
     get_deployment_import_path,
-    override_runtime_envs_except_env_vars,
-    serve_encoders,
     merge_dict,
     msgpack_serialize,
     msgpack_deserialize,
+    override_runtime_envs_except_env_vars,
+    serve_encoders,
     snake_to_camel_case,
-    dict_keys_snake_to_camel_case,
 )
 
 
@@ -529,6 +530,56 @@ class TestDictKeysSnakeToCamelCase:
         camel_dict = dict_keys_snake_to_camel_case(snake_dict)
         assert camel_dict["list"] is list1
         assert camel_dict["nested"]["list2"] is list2
+
+
+def test_calculate_remaining_timeout():
+    # Always return `None` or negative value.
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=None,
+            start_time_s=100,
+            curr_time_s=101,
+        )
+        is None
+    )
+
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=-1,
+            start_time_s=100,
+            curr_time_s=101,
+        )
+        == -1
+    )
+
+    # Return delta from start.
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=10,
+            start_time_s=100,
+            curr_time_s=101,
+        )
+        == 9
+    )
+
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=100,
+            start_time_s=100,
+            curr_time_s=101.1,
+        )
+        == 98.9
+    )
+
+    # Never return a negative timeout once it has elapsed.
+    assert (
+        calculate_remaining_timeout(
+            timeout_s=10,
+            start_time_s=100,
+            curr_time_s=111,
+        )
+        == 0
+    )
 
 
 if __name__ == "__main__":

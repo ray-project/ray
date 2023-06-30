@@ -80,26 +80,31 @@ def test_np_in_composed_model(serve_instance):
 
 def test_replica_memory_growth(serve_instance):
     # https://github.com/ray-project/ray/issues/12395
-    @serve.deployment(name="model")
+    @serve.deployment
     def gc_unreachable_objects(*args):
         gc.set_debug(gc.DEBUG_SAVEALL)
         gc.collect()
-        return len(gc.garbage)
+        gc_garbage_len = len(gc.garbage)
+        if gc_garbage_len > 0:
+            print(gc.garbage)
+        return gc_garbage_len
 
     handle = serve.run(gc_unreachable_objects.bind())
 
-    # We are checking that there's constant number of object in gc.
-    known_num_objects = ray.get(handle.remote())
-
-    for _ in range(10):
-        result = requests.get("http://127.0.0.1:8000/model")
+    def get_gc_garbage_len_http():
+        result = requests.get("http://127.0.0.1:8000")
         assert result.status_code == 200
-        num_unreachable_objects = result.json()
-        assert num_unreachable_objects == known_num_objects
+        return result.json()
+
+    # We are checking that there's constant number of object in gc.
+    known_num_objects_from_http = get_gc_garbage_len_http()
 
     for _ in range(10):
-        num_unreachable_objects = ray.get(handle.remote())
-        assert num_unreachable_objects == known_num_objects
+        assert get_gc_garbage_len_http() == known_num_objects_from_http
+
+    known_num_objects_from_handle = ray.get(handle.remote())
+    for _ in range(10):
+        assert ray.get(handle.remote()) == known_num_objects_from_handle
 
 
 def test_ref_in_handle_input(serve_instance):
