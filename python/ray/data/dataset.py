@@ -2421,13 +2421,17 @@ class Dataset:
         """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
         The number of files is determined by the number of blocks in the dataset.
-        To control the number of number of blocks, call 
+        To control the number of number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
-        This method is only supported for datasets with records that are convertible to pyarrow tables.
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
 
-        By default, the format of the output files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
-        id for the dataset. To modify this behavior, implement a custom :class:`~ray.data.file_based_datasource.BlockWritePathProvider` and pass it in as the ``block_path_provider`` argument.
+        By default, the format of the output files will be {uuid}_{block_idx}.parquet,
+        where ``uuid`` is an unique
+        id for the dataset. To modify this behavior, implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
             >>> import ray
@@ -2439,24 +2443,41 @@ class Dataset:
         Args:
             path: The path to the destination root directory, where
                 parquet files will be written to.
-            filesystem: The pyarrow filesystem
-                implementation to write to. These are
-                specified in the `pyarrow docs <https://arrow.apache.org/docs/python/api/filesystems.html#filesystem-implementations>`_. You should specify this if you need to provide specific configurations to the filesystem. By default, the filesystem is automatically selected based on the scheme of the paths. For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These are specified in the `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_. You should
+                specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the `S3FileSystem` is used.
             try_create_dir: Try to create all directories in
-                destination path if True. Does nothing if all directories already exist. Defaults to True.
+                destination path if True. Does nothing if all directories already
+                exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
-                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream>`_, which is used when opening the file to write to.
-            block_path_provider: A :class:`~ray.data.file_based_datasource.BlockWritePathProvider` implementation
-                specifying the filename structure for each output parquet file. By default,  the format of the output files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique id for the dataset.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files will be
+                {uuid}_{block_idx} parquet, where ``uuid`` is an unique id for the
+                dataset.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
-                arguments to that are provided to `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>_ when writing each block to a file. Overrides
+                arguments that are provided to `pyarrow.parquet.write_table() <https:/\
+                    /arrow.apache.org/docs/python/generated/\
+                        pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>`_
+                when writing each block to a file. Overrides
                 any duplicate keys from ``arrow_parquet_args``. This should be used
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 cannot be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
-                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python/generated/pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>_, which is used to write out each
+                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
+                    /generated/pyarrow.parquet.write_table.html\
+                        #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """
         self.write_datasource(
@@ -2485,47 +2506,67 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
-        """Write the dataset to json.
+        """Writes the :class:`~ray.data.Dataset` to a json files.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {self._uuid}_{block_idx}.json, where ``uuid`` is an
-        unique id for the dataset.
+        This method is only supported for datasets with records that are convertible to
+        pandas dataframes.
+
+        By default, the format of the output files will be {uuid}_{block_idx}.json,
+        where ``uuid`` is an unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.file_based_datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_json("s3://bucket/folder/")
+            >>> # Write the dataset as JSON files to a local directory.
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_json("local:///tmp/data")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where json
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            path: The path to the destination root directory, where
+                the json files will be written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These are specified in the `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_. You should
+                specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the `S3FileSystem` is used.
+            try_create_dir: Try to create all directories in
+                destination path if True. Does nothing if all directories already
+                exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files will be
+                {uuid}_{block_idx} parquet, where ``uuid`` is an unique id for the
+                dataset.
             pandas_json_args_fn: Callable that returns a dictionary of write
-                arguments to use when writing each block to a file. Overrides
-                any duplicate keys from pandas_json_args. This should be used
-                instead of pandas_json_args if any of your write arguments
+                arguments that are provided to
+                `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
+                    api/pandas.DataFrame.to_json.html>`_
+                when writing each block to a file. Overrides
+                any duplicate keys from ``pandas_json_args``. This should be used
+                instead of ``pandas_json_args`` if any of your write arguments
                 cannot be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             pandas_json_args: These args will be passed to
-                pandas.DataFrame.to_json(), which we use under the hood to
-                write out each Dataset block. These
+                `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
+                    api/pandas.DataFrame.to_json.html>`_,
+                which we use under the hood to write out each Dataset block. These
                 are dict(orient="records", lines=True) by default.
         """
         self.write_datasource(
@@ -2554,45 +2595,71 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
-        """Write the dataset to csv.
+        """Writes the :class:`~ray.data.Dataset` to a CSV files.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
-        for the dataset.
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files will be {uuid}_{block_idx}.csv,
+        where ``uuid`` is an unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
+            >>> # Write the dataset as CSV files to a local directory.
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_csv("local:///tmp/data")
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_csv("s3://bucket/folder/")
+            >>> # Write the dataset as CSV files to S3.
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_csv("s3://bucket/folder/)  # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where csv
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            path: The path to the destination root directory, where
+                the csv files will be written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These are specified in the `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_. You should
+                specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the `S3FileSystem` is used.
+            try_create_dir: Try to create all directories in
+                destination path if True. Does nothing if all directories already
+                exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files will be
+                {uuid}_{block_idx} parquet, where ``uuid`` is an unique id for the
+                dataset.
             arrow_csv_args_fn: Callable that returns a dictionary of write
-                arguments to use when writing each block to a file. Overrides
-                any duplicate keys from arrow_csv_args. This should be used
-                instead of arrow_csv_args if any of your write arguments
-                cannot be pickled, or if you'd like to lazily resolve the write
-                arguments for each dataset block.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            arrow_csv_args: Other CSV write options to pass to pyarrow.
+                arguments that are provided to `pyarrow.write.write_csv <https://\
+                arrow.apache.org/docs/python/generated/\
+                pyarrow.csv.write_csv.html#pyarrow.csv.write_csv>`_ when writing each
+                block to a file. Overrides any duplicate keys from ``arrow_csv_args``.
+                This should be used instead of ``arrow_csv_args`` if any of your write
+                arguments cannot be pickled, or if you'd like to lazily resolve the
+                write arguments for each dataset block.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
+                arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
+                    #pyarrow.csv.write_csv>`_
+                when writing each block to a file.
         """
         self.write_datasource(
             CSVDatasource(),
@@ -2619,11 +2686,12 @@ class Dataset:
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """Write the dataset to TFRecord files.
+        """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/\
+            Example>`_
         records, with one Example record for each row in the dataset.
 
         .. warning::
@@ -2631,36 +2699,51 @@ class Dataset:
             so this function only supports datasets with these data types,
             and will error if the dataset contains unsupported types.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
-        for the dataset.
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files will be {uuid}_{block_idx}.tfrecords,
+        where ``uuid`` is an unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.file_based_datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_tfrecords("s3://bucket/folder/")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_tfrecords("local:///tmp/data/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             path: The path to the destination root directory, where tfrecords
                 files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These are specified in the `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_. You should
+                specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the `S3FileSystem` is used.
+            try_create_dir: Try to create all directories in
+                destination path if True. Does nothing if all directories already
+                exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files will be
+                {uuid}_{block_idx} parquet, where ``uuid`` is an unique id for the
+                dataset.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
 
@@ -2753,54 +2836,62 @@ class Dataset:
         self,
         path: str,
         *,
-        column: Optional[str] = None,
+        column: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """Write a tensor column of the dataset to npy files.
+        """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
 
-        This is only supported for datasets convertible to Arrow records that
-        contain a TensorArray column. To control the number of files, use
-        :meth:`Dataset.repartition`.
+        This is only supported for columns in the datasets that can be converted to NumPy arrays. 
+        
+         The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {self._uuid}_{block_idx}.npy, where ``uuid`` is an unique
-        id for the dataset.
+         By default, the format of the output files will be {uuid}_{block_idx}.npy,
+        where ``uuid`` is an unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_numpy("s3://bucket/folder/", column="id")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_numpy("local:///tmp/data/", column="id")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where npy
-                files will be written to.
-            column: The name of the table column that contains the tensor to
+            path: The path to the destination root directory, where
+                the npy files will be written to.
+            column: The name of the column that contains the data to
                 be written.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These are specified in the `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_. You should
+                specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the `S3FileSystem` is used.
+            try_create_dir: Try to create all directories in
+                destination path if True. Does nothing if all directories already
+                exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files will be
+                {uuid}_{block_idx} parquet, where ``uuid`` is an unique id for the
+                dataset.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
-        if column is None:
-            raise ValueError(
-                "In Ray 2.5, the column must be specified "
-                "(e.g., `write_numpy(column='data')`)."
-            )
 
         self.write_datasource(
             NumpyDatasource(),
@@ -3674,11 +3765,10 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
-        """Convert this dataset into a single Pandas DataFrame.
+        """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow or Pandas
-        records. An error is raised if the number of records exceeds the
-        provided limit. Note that you can use :meth:`.limit` on the dataset
+        An error is raised if the number of records exceeds the
+        provided ``limit``. You can use :meth:`.limit` on the dataset
         beforehand to truncate the dataset manually.
 
         Examples:
@@ -3694,11 +3784,14 @@ class Dataset:
 
         Args:
             limit: The maximum number of records to return. An error will be
-                raised if the limit is exceeded.
+                raised if the dataset has more rows than this limit.
 
         Returns:
-            A Pandas DataFrame created from this dataset, containing a limited
+            A pandas DataFrame created from this dataset, containing a limited
             number of records.
+
+        Raises:
+            ValueError: if the number of rows in the Dataset exceeds ``limit``.
         """
         count = self.count()
         if count > limit:
@@ -3718,17 +3811,25 @@ class Dataset:
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
-        """Convert this dataset into a distributed set of Pandas dataframes.
+        """Converts this :class:`~ray.data.Dataset` into a distributed set of Pandas dataframes.
 
-        This is only supported for datasets convertible to Arrow records.
+        One DataFrame is created for each block in this Dataset.
+
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow` or
         :meth:`Dataset.get_internal_block_refs`.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10, parallelism=2)
+            >>> refs = ds.to_pandas_refs()
+            >>> len(refs)
+            2
+
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A list of remote Pandas dataframes created from this dataset.
+            A list of remote pandas DataFrames created from this dataset.
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
@@ -3738,19 +3839,26 @@ class Dataset:
     def to_numpy_refs(
         self, *, column: Optional[str] = None
     ) -> List[ObjectRef[np.ndarray]]:
-        """Convert this dataset into a distributed set of NumPy ndarrays.
+        """Converts this :class:`~ray.data.Dataset` into a distributed set of NumPy ndarrays or dictionary of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow` or
         :meth:`Dataset.get_internal_block_refs`.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10, parallelism=2)
+            >>> refs = ds.to_numpy_refs()
+            >>> len(refs)
+            2
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            column: The name of the column to convert to numpy, or None to specify the
-            entire row. If not specified for Arrow or Pandas blocks, each returned
-            future will represent a dict of column ndarrays.
+            column: The name of the column to convert to numpy. If None, all columns
+                are used. If multiple columns are specified, each returned
+            future will represent a dict of ndarrays. Defaults to None.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.

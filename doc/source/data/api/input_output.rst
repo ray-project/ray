@@ -227,6 +227,7 @@ Partitioning API
    datasource.PathPartitionEncoder
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
+   datasource.FileExtensionFilter
 
 .. _metadata_provider:
 
@@ -252,6 +253,6 @@ BlockWritePathProvider API
 .. autosummary::
    :toctree: doc/
 
-   datasource.file_based_datasource.BlockWritePathProvider
-   datasource.file_based_datasource.DefaultBlockWritePathProvider
+   datasource.BlockWritePathProvider
+   datasource.DefaultBlockWritePathProvider
    
