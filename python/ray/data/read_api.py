@@ -1251,7 +1251,8 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+    """Create a :class:`~ray.data.Dataset` from
+    `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1758,7 +1759,8 @@ def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
 ) -> Union[MaterializedDataset, Dict[str, MaterializedDataset]]:
     """Create a :class:`~ray.data.Dataset` from a
-    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
+    or `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_.
 
     This function is not parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
@@ -1767,11 +1769,11 @@ def from_huggingface(
     Example:
 
     .. doctest::
-        :skipif: True
 
         >>> import ray
         >>> import datasets
         >>> hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
+        Downloading ...
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
@@ -1802,8 +1804,6 @@ def from_huggingface(
     Returns:
         A :class:`~ray.data.Dataset` holding Arrow records from the `Hugging Face Datasets Dataset`_,
         or a dict of :class:`~ray.data.Dataset` s in case ``dataset`` is a `DatasetDict`_.
-
-    .. _DatasetDict: https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/
     """  # noqa: E501
     import datasets
 
