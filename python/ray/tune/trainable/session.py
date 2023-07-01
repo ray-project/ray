@@ -7,10 +7,7 @@ from contextlib import contextmanager
 from typing import TYPE_CHECKING, Dict, Optional, Set
 
 import ray
-from ray.air._internal.session import Session
-from ray.air.checkpoint import Checkpoint
 from ray.tune.error import TuneError
-from ray.tune.trainable.function_trainable import _StatusReporter
 from ray.tune.trainable.util import TrainableUtil
 from ray.util.annotations import PublicAPI, Deprecated
 from ray.util.debug import log_once
@@ -20,12 +17,9 @@ from ray.util.scheduling_strategies import (
     SchedulingStrategyT,
 )
 
-if TYPE_CHECKING:
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
-
 logger = logging.getLogger(__name__)
 
-_session: Optional[_StatusReporter] = None
+_session = None # Optional[_StatusReporter]
 
 _deprecation_msg = (
     "`tune.report` and `tune.checkpoint_dir` APIs are deprecated in Ray "

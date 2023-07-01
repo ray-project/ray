@@ -1,16 +1,10 @@
-import abc
 import logging
-from typing import TYPE_CHECKING, Dict, Optional
 
-from ray.air.checkpoint import Checkpoint
-
-if TYPE_CHECKING:
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 logger = logging.getLogger(__name__)
 
 
-def _get_session(warn: bool = True) -> Optional[Session]:
+def _get_session(warn: bool = True):
     from ray.train._internal.session import _session as train_session
     from ray.tune.trainable.session import _session as tune_session
 
