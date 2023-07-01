@@ -101,7 +101,8 @@ class HuggingFacePredictor:
     # Logic for inference on 1 batch of data.
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
         # Get the predictions from the input batch.
-        predictions = self.model(list(batch["data"]), max_length=20, num_return_sequences=1)
+        predictions = self.model(
+            list(batch["data"]), max_length=20, num_return_sequences=1)
         # `predictions` is a list of length-one lists. For example:
         # [[{'generated_text': 'output_1'}], ..., [{'generated_text': 'output_2'}]]
         # Modify the output to get it into the following format instead:
@@ -181,8 +182,7 @@ trainer = LightGBMTrainer(
 tuner = tune.Tuner(
     trainer=trainer,
     param_space=hyper_param_space,
-    tune_config=tune.TuneConfig(num_sa
-    les=1000),
+    tune_config=tune.TuneConfig(num_samples=1000),
 )
 
 # Step 3: run distributed HPO with 1000 trials; each trial runs on 64 CPUs
