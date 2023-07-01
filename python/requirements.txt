@@ -60,5 +60,5 @@ starlette
 typer
 fsspec
 pandas>=1.3
-pydantic
+pydantic<2
 py-spy>=0.2.0
