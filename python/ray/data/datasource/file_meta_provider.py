@@ -21,8 +21,8 @@ class FileMetadataProvider:
     """Abstract callable that provides metadata for the files of a single dataset block.
 
     Current subclasses:
-        BaseFileMetadataProvider
-        ParquetMetadataProvider
+        - :class:`~ray.data.datasource.file_meta_provider.BaseFileMetadataProvider`
+        - :class:`~ray.data.datasource.file_meta_provider.ParquetMetadataProvider`
     """
 
     def _get_block_metadata(
@@ -56,13 +56,14 @@ class FileMetadataProvider:
 
 @DeveloperAPI
 class BaseFileMetadataProvider(FileMetadataProvider):
-    """Abstract callable that provides metadata for FileBasedDatasource
-     implementations that reuse the base `prepare_read` method.
+    """Abstract callable that provides metadata for
+    :class:`~ray.data.datasource.FileBasedDatasource`
+    implementations that reuse the base `prepare_read` method.
 
     Also supports file and file size discovery in input directory paths.
 
-     Current subclasses:
-         DefaultFileMetadataProvider
+    Current subclasses:
+        - :class:`~ray.data.datasource.file_meta_provider.DefaultFileMetadataProvider`
     """
 
     def _get_block_metadata(
@@ -123,8 +124,9 @@ class BaseFileMetadataProvider(FileMetadataProvider):
 
 @DeveloperAPI
 class DefaultFileMetadataProvider(BaseFileMetadataProvider):
-    """Default metadata provider for FileBasedDatasource implementations that
-    reuse the base `prepare_read` method.
+    """Default metadata provider for
+    :class:`~ray.data.datasource.file_based_datasource.FileBasedDatasource`
+    implementations that reuse the base `prepare_read` method.
 
     Calculates block size in bytes as the sum of its constituent file sizes,
     and assumes a fixed number of rows per file.
@@ -162,12 +164,15 @@ class DefaultFileMetadataProvider(BaseFileMetadataProvider):
 
 @DeveloperAPI
 class FastFileMetadataProvider(DefaultFileMetadataProvider):
-    """Fast Metadata provider for FileBasedDatasource implementations.
+    """Fast Metadata provider for
+    :class:`~ray.data.datasource.file_based_datasource.FileBasedDatasource`
+    implementations.
 
-    Offers improved performance vs. DefaultFileMetadataProvider by skipping directory
-    path expansion and file size collection. While this performance improvement may be
-    negligible for local filesystems, it can be substantial for cloud storage service
-    providers.
+    Offers improved performance vs.
+    :class:`~ray.data.datasource.file_meta_provider.DefaultFileMetadataProvider`
+    by skipping directory path expansion and file size collection.
+    While this performance improvement may be negligible for local filesystems,
+    it can be substantial for cloud storage service providers.
 
     This should only be used when all input paths exist and are known to be files.
     """
@@ -205,8 +210,8 @@ class ParquetMetadataProvider(FileMetadataProvider):
     a single batch to help optimize metadata resolution.
 
     Current subclasses:
-        DefaultParquetMetadataProvider
-    """
+        - :class:`~ray.data.datasource.file_meta_provider.DefaultParquetMetadataProvider`
+    """  # noqa: E501
 
     def _get_block_metadata(
         self,

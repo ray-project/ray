@@ -1251,7 +1251,7 @@ def read_webdataset(
     suffixes: Optional[Union[list, callable]] = None,
     verbose_open: bool = False,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from `WebDataset`_ files.
+    """Create a :class:`~ray.data.Dataset` from `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1279,7 +1279,6 @@ def read_webdataset(
     Raises:
         ValueError: If a file contains a message that isn't a `tf.train.Example`_.
 
-    .. _WebDataset: https://webdataset.github.io/webdataset/
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
     return read_datasource(
@@ -1452,7 +1451,8 @@ def read_sql(
 
 @PublicAPI
 def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a `Dask DataFrame`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
     Args:
         df: A `Dask DataFrame`_.
@@ -1460,8 +1460,6 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
-
-    .. _Dask DataFrame: https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/
     """  # noqa: E501
     import dask
 
@@ -1490,7 +1488,8 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a `Mars DataFrame`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
     Args:
         df: A `Mars DataFrame`_, which must be executed by Mars-on-Ray.
@@ -1498,8 +1497,6 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
-
-    .. _Mars DataFrame: https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html
     """  # noqa: E501
     import mars.dataframe as md
 
@@ -1509,7 +1506,8 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
 
 @PublicAPI
 def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a `Modin DataFrame`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
     Args:
         df: A `Modin DataFrame`_, which must be using the Ray backend.
@@ -1517,8 +1515,6 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
-
-    .. _Modin DataFrame: https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html
     """  # noqa: E501
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
@@ -1739,7 +1735,8 @@ def from_arrow_refs(
 def from_spark(
     df: "pyspark.sql.DataFrame", *, parallelism: Optional[int] = None
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a `Spark DataFrame`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
 
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
@@ -1750,8 +1747,6 @@ def from_spark(
     Returns:
         A :class:`~ray.data.MaterializedDataset` holding Arrow records
         read from the DataFrame.
-
-    .. _Spark DataFrame: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html
     """  # noqa: E501
     import raydp
 
@@ -1845,7 +1840,8 @@ def from_huggingface(
 def from_tf(
     dataset: "tf.data.Dataset",
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a `TensorFlow Dataset`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_.
 
     This function is inefficient. Use it to read small datasets or prototype.
 
@@ -1861,9 +1857,9 @@ def from_tf(
     Examples:
         >>> import ray
         >>> import tensorflow_datasets as tfds
-        >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])
-        >>> ds = ray.data.from_tf(dataset)
-        >>> ds
+        >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
+        >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
         MaterializedDataset(
             num_blocks=200,
             num_rows=50000,
@@ -1873,7 +1869,7 @@ def from_tf(
                 label: int64
             }
         )
-        >>> ds.take(1)
+        >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
         [135,  93,  72],
@@ -1897,8 +1893,6 @@ def from_tf(
 
     Returns:
         A :class:`MaterializedDataset` that contains the samples stored in the `TensorFlow Dataset`_.
-
-    .. _TensorFlow Dataset: https://www.tensorflow.org/api_docs/python/tf/data/Dataset/
     """  # noqa: E501
     # FIXME: `as_numpy_iterator` errors if `dataset` contains ragged tensors.
     return from_items(list(dataset.as_numpy_iterator()))
@@ -1908,7 +1902,8 @@ def from_tf(
 def from_torch(
     dataset: "torch.utils.data.Dataset",
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a `Torch Dataset`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `Torch Dataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/>`_.
 
     This function is inefficient. Use it to read small datasets or prototype.
 
@@ -1924,11 +1919,11 @@ def from_torch(
     Examples:
         >>> import ray
         >>> from torchvision import datasets
-        >>> dataset = datasets.MNIST("data", download=True)
-        >>> ds = ray.data.from_torch(dataset)
-        >>> ds
+        >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
+        >>> ds = ray.data.from_torch(dataset)  # doctest: +SKIP
+        >>> ds  # doctest: +SKIP
         MaterializedDataset(num_blocks=200, num_rows=60000, schema={item: object})
-        >>> ds.take(1)
+        >>> ds.take(1)  # doctest: +SKIP
         {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)}
 
     Args:
@@ -1936,8 +1931,6 @@ def from_torch(
 
     Returns:
         A :class:`MaterializedDataset` containing the Torch dataset samples.
-
-    .. _Torch Dataset: https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset/
     """  # noqa: E501
     return from_items(list(dataset))
 

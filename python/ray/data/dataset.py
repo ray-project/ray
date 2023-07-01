@@ -182,20 +182,25 @@ class Dataset:
     via the ``write_*()`` APIs.
 
     Examples:
-        >>> import ray
-        >>> # Create dataset from synthetic data.
-        >>> ds = ray.data.range(1000)
-        >>> # Create dataset from in-memory data.
-        >>> ds = ray.data.from_items(
-        ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
-        >>> # Create dataset from external storage system.
-        >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
-        >>> # Save dataset back to external storage system.
-        >>> ds.write_csv("s3://bucket/output") # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import ray
+            # Create dataset from synthetic data.
+            ds = ray.data.range(1000)
+            # Create dataset from in-memory data.
+            ds = ray.data.from_items(
+                [{"col1": i, "col2": i * 2} for i in range(1000)]
+            )
+            # Create dataset from external storage system.
+            ds = ray.data.read_parquet("s3://bucket/path")
+            # Save dataset back to external storage system.
+            ds.write_csv("s3://bucket/output")
 
     Dataset has two kinds of operations: transformation, which takes in Dataset
     and outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption,
-    which produces values (not Datatream) as output (e.g. :py:meth:`.iter_batches()`).
+    which produces values (not a data stream) as output
+    (e.g. :py:meth:`.iter_batches()`).
 
     Dataset transformations are lazy, with execution of the transformations being
     triggered by downstream consumption.
@@ -2641,7 +2646,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
-        """Write the dataset to WebDataset files.
+        """Write the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
@@ -2657,7 +2662,7 @@ class Dataset:
         To control the number of files, use ``.repartition()``.
 
         Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
+        files will be ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is an unique id
         for the dataset.
 
         Examples:
@@ -2677,10 +2682,10 @@ class Dataset:
             try_create_dir: Try to create all directories in destination path
                 if True. Does nothing if all directories already exist.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                ``pyarrow.fs.FileSystem.open_output_stream``
+            block_path_provider: :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation to write each dataset block to a custom output path.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
 
@@ -2833,8 +2838,9 @@ class Dataset:
             >>> from ray.data.datasource import Datasource
             >>> ds = ray.data.range(100)
             >>> class CustomDatasource(Datasource):
-            ...     # define custom data source
-            ...     pass
+            ...     # Define custom dummy data source
+            ...     def write(self, blocks, ctx, **write_args):
+            ...         return "ok"
             >>> ds.write_datasource(CustomDatasource())
 
         Time complexity: O(dataset size / parallelism)
@@ -3217,7 +3223,9 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
-        """Return a `Torch IterableDataset`_ over this :class:`~ray.data.Dataset`.
+        """Return a
+        `Torch IterableDataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset>`_
+        over this :class:`~ray.data.Dataset`.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -3307,8 +3315,6 @@ class Dataset:
 
         Returns:
             A `Torch IterableDataset`_.
-
-        .. _Torch IterableDataset : https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset
         """  # noqa: E501
 
         return self.iterator().to_torch(
@@ -3340,7 +3346,8 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
-        """Return a `TensorFlow Dataset`_ over this :class:`~ray.data.Dataset`.
+        """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
+        over this :class:`~ray.data.Dataset`.
 
         .. warning::
             If your :class:`~ray.data.Dataset` contains ragged tensors, this method errors.
@@ -3430,9 +3437,6 @@ class Dataset:
 
             :meth:`~ray.data.Dataset.iter_tf_batches`
                 Call this method if you need more flexibility.
-
-        .. _TensorFlow Dataset: https://www.tensorflow.org/api_docs/python/tf/data/Dataset/
-
         """  # noqa: E501
 
         return self.iterator().to_tf(
@@ -3458,7 +3462,8 @@ class Dataset:
             None,
         ] = None,
     ) -> "dask.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a `Dask DataFrame`_.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -3481,7 +3486,6 @@ class Dataset:
         Returns:
             A `Dask DataFrame`_ created from this dataset.
 
-        .. _Dask DataFrame: https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame/
         .. _pandas DataFrame: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
         .. _Series: https://pandas.pydata.org/docs/reference/api/pandas.Series.html
         """  # noqa: E501
@@ -3555,14 +3559,13 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_mars(self) -> "mars.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a `Mars DataFrame`_.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
         Time complexity: O(dataset size / parallelism)
 
         Returns:
             A `Mars DataFrame`_ created from this dataset.
-
-        .. _Mars DataFrame: https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html
         """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
@@ -3589,7 +3592,8 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_modin(self) -> "modin.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a `Modin DataFrame`_.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
         This works by first converting this dataset into a distributed set of
         Pandas DataFrames (using :meth:`~ray.data.Dataset.to_pandas_refs`).
@@ -3606,8 +3610,6 @@ class Dataset:
 
         Returns:
             A `Modin DataFrame`_ created from this dataset.
-
-        .. _Modin DataFrame: https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html
         """  # noqa: E501
 
         from modin.distributed.dataframe.pandas.partitions import from_partitions
