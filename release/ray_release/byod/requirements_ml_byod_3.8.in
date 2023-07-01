@@ -19,6 +19,7 @@ pytest
 tblib
 tensorboardX
 torch 
+torchtext
 torchvision
 tqdm
 urllib3
