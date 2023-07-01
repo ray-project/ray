@@ -1,8 +1,15 @@
 import threading
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ray.air import Checkpoint
 from ray.train._internal import session
+from ray.util.annotations import PublicAPI
+
+
+if TYPE_CHECKING:
+    from ray.data import DataIterator
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
+
 
 # The context singleton on this process.
 _default_context: "Optional[Context]" = None
@@ -18,6 +25,7 @@ def _copy_doc(copy_func):
     return wrapped
 
 
+@PublicAPI(stability="beta")
 class Context:
     """Context for Ray Train and Tune executions.
     """
@@ -73,7 +81,12 @@ class Context:
         return session.get_dataset_shard(dataset_name)
 
 
+@PublicAPI(stability="beta")
 def get_context() -> Context:
+    """Get or create a singleton training context.
+
+    The context is only available in a training or tuning loop.
+    """
     global _default_context
 
     with _context_lock:

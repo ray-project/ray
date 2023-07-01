@@ -6,6 +6,7 @@ from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train._internal.session import report
 from ray.train.trainer import TrainingIterator
 
+from ray.air import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 
@@ -15,6 +16,7 @@ __all__ = [
     "get_context",
     "report",
     "BackendConfig",
+    "Checkpoint",
     "DataConfig",
     "RunConfig",
     "ScalingConfig",
