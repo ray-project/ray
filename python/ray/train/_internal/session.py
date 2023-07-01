@@ -438,6 +438,28 @@ class _TrainSession:
             self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
+    def get_dataset_shard(
+        self,
+        dataset_name: Optional[str] = None,
+    ) -> Optional["DataIterator"]:
+        shard = self.dataset_shard
+        if shard is None:
+            warnings.warn(
+                "No dataset passed in. Returning None. Make sure to "
+                "pass in a Dataset to Trainer.run to use this "
+                "function."
+            )
+        elif isinstance(shard, dict):
+            if not dataset_name:
+                raise RuntimeError(
+                    "Multiple datasets were passed into ``Trainer``, "
+                    "but no ``dataset_name`` is passed into "
+                    "``get_dataset_shard``. Please specify which "
+                    "dataset shard to retrieve."
+                )
+            return shard.get(dataset_name)
+        return shard
+
 
 _session: Optional[_TrainSession] = None
 
