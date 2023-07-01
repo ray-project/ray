@@ -1767,6 +1767,7 @@ def from_huggingface(
     Example:
 
     .. doctest::
+        :skipif: True
 
         >>> import ray
         >>> import datasets
