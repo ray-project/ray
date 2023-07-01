@@ -346,7 +346,7 @@ class VariantGeneratorTest(unittest.TestCase):
             list(
                 self.generate_trials(
                     {
-                        "run": "PPO",
+                        "run": "__fake",
                         "config": {
                             "foo": tune.sample_from(lambda config: config["foo"]),
                         },

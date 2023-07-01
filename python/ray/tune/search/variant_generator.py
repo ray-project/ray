@@ -387,7 +387,7 @@ def _resolve_domain_vars(
                 continue
             try:
                 value = domain.sample(
-                    _UnresolvedAccessGuard(spec), random_state=random_state
+                    _UnresolvedAccessGuard(spec["config"]), random_state=random_state
                 )
             except RecursiveDependencyError as e:
                 error = e
@@ -501,9 +501,39 @@ def _has_unresolved_values(spec: Dict) -> bool:
 
 
 class _UnresolvedAccessGuard(dict):
+    """This class wraps a config dict and checks for recursive, unresolved dependencies.
+
+    For example, the following config has a cyclical dependency between
+    parameters `a` and `b`.
+
+    config = {"a": lambda _config: _config["b"], "b": lambda _config: _config["a"]}
+
+    Every time we try to resolve the config, it'll invoke `_config["b"]` when trying
+    to resolve `a`, which points to an unresolved lambda function, and this
+    class raises an error. The same thing happens for trying to resolve `b`.
+    Tune will run out of resolution attempts. (See ``_MAX_RESOLUTION_PASSES``.)
+
+    This class also allows accessing a dict's keys as attributes (see __getattribute__).
+    That's why we override both `__getitem__` and `__getattribute__` when
+    detecting recursive dependencies.
+
+    For example: `_UnresolvedAccessGuard({"a": 1}).a == 1`
+    """
+
     def __init__(self, *args, **kwds):
         super(_UnresolvedAccessGuard, self).__init__(*args, **kwds)
         self.__dict__ = self
+
+    def __getitem__(self, key):
+        value = dict.__getitem__(self, key)
+        if not _is_resolved(value):
+            raise RecursiveDependencyError(
+                "`{}` recursively depends on {}".format(key, value)
+            )
+        elif isinstance(value, dict):
+            return _UnresolvedAccessGuard(value)
+        else:
+            return value
 
     def __getattribute__(self, item):
         value = dict.__getattribute__(self, item)
