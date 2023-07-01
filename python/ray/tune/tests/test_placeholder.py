@@ -120,13 +120,13 @@ class PlaceholderTest(unittest.TestCase):
         config = {
             "param1": "ok",
             "param2": ["not ok", tune.sample_from(lambda: "not ok")],
-            # Both lambdas, either taking spec or config, should work.
-            # NOTE: spec.config.param is deprecated.
-            "param3": {
-                "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
-            },
             "param4": {
                 "param4": tune.sample_from(lambda config: config["param1"]),
+            },
+            # Both lambdas, either taking spec or config, should work.
+            # NOTE: spec.config.* is deprecated. Remove cases below after deprecating.
+            "param3": {
+                "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
             },
             # Make sure dot notation also works with spec passed in.
             "param5": {
@@ -217,7 +217,7 @@ class PlaceholderTest(unittest.TestCase):
             "param1": "ok",
             "param2": ["not ok", tune.choice([Dummy("ok"), "not ok"])],
             "param3": {
-                "param4": tune.sample_from(lambda spec: spec["config"]["param1"]),
+                "param4": tune.sample_from(lambda config: config["param1"]),
             },
         }
 

@@ -36,7 +36,7 @@ def generate_variants(
         into the `random` or `np` module).
 
             "cpu": lambda config: config["num_workers"]
-            "batch_size": lambda spec: random.uniform(1, 1000)
+            "batch_size": lambda _: random.uniform(1, 1000)
 
     Finally, to support defining specs in plain JSON / YAML, grid search
     and lambda functions can also be defined alternatively as follows:

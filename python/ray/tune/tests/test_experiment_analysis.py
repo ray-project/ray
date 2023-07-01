@@ -48,8 +48,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             num_samples=self.num_samples,
             config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+                "width": tune.sample_from(lambda _: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda _: int(100 * random.random())),
             },
         )
 
@@ -61,8 +61,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=self.num_samples,
             config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+                "width": tune.sample_from(lambda _: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda _: int(100 * random.random())),
             },
         )
         return nan_ea
@@ -204,8 +204,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 2},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+                "width": tune.sample_from(lambda _: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda _: int(100 * random.random())),
             },
         )
 
@@ -223,8 +223,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 3},
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+                "width": tune.sample_from(lambda _: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda _: int(100 * random.random())),
             },
         )
 
@@ -244,8 +244,8 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=1,
             config={
-                "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
-                "height": tune.sample_from(lambda spec: int(100 * random.random())),
+                "width": tune.sample_from(lambda _: 10 + int(90 * random.random())),
+                "height": tune.sample_from(lambda _: int(100 * random.random())),
             },
         )
         df = analysis.dataframe(self.metric, mode="max")

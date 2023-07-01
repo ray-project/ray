@@ -191,7 +191,7 @@ class VariantGeneratorTest(unittest.TestCase):
             {
                 "run": "PPO",
                 "config": {
-                    "qux": tune.sample_from(lambda spec: 2 + 2),
+                    "qux": tune.sample_from(lambda _: 2 + 2),
                     "bar": grid_search([True, False]),
                     "foo": grid_search([1, 2, 3]),
                     "baz": "asd",

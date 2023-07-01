@@ -126,10 +126,10 @@ if __name__ == "__main__":
             },
             "num_sgd_iter": 10,
             "sgd_minibatch_size": 128,
-            "lambda": sample_from(lambda spec: random.uniform(0.9, 1.0)),
-            "clip_param": sample_from(lambda spec: random.uniform(0.1, 0.5)),
-            "lr": sample_from(lambda spec: random.uniform(1e-3, 1e-5)),
-            "train_batch_size": sample_from(lambda spec: random.randint(1000, 60000)),
+            "lambda": sample_from(lambda _: random.uniform(0.9, 1.0)),
+            "clip_param": sample_from(lambda _: random.uniform(0.1, 0.5)),
+            "lr": sample_from(lambda _: random.uniform(1e-3, 1e-5)),
+            "train_batch_size": sample_from(lambda _: random.randint(1000, 60000)),
         },
     )
 

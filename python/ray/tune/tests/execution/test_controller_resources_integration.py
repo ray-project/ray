@@ -225,8 +225,8 @@ def test_queue_filling(ray_start_4_cpus_2_gpus_extra, resource_manager_cls):
                 "run": "f1",
                 "num_samples": 100,
                 "config": {
-                    "a": tune.sample_from(lambda spec: 5.0 / 7),
-                    "b": tune.sample_from(lambda spec: "long" * 40),
+                    "a": tune.sample_from(lambda _: 5.0 / 7),
+                    "b": tune.sample_from(lambda _: "long" * 40),
                 },
                 "resources_per_trial": {"cpu": 2},
             }
