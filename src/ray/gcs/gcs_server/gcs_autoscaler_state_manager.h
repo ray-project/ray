@@ -47,6 +47,10 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
       rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetClusterStatus(rpc::autoscaler::GetClusterStatusRequest request,
+                              rpc::autoscaler::GetClusterStatusReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
@@ -131,6 +135,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// This is requested through autoscaler SDK from request_resources().
   absl::optional<rpc::ClusterResourceConstraint> cluster_resource_constraint_ =
       absl::nullopt;
+
+  /// Cached autoscaling state.
+  absl::optional<rpc::AutoscalingState> autoscaling_state_ = absl::nullopt;
+
+  FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);
 };
 
 }  // namespace gcs

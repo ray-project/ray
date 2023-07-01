@@ -16,7 +16,6 @@ import io
 import os
 import pickle
 import random
-import setproctitle
 import signal
 import sys
 import threading
@@ -235,7 +234,14 @@ class StreamingObjectRefGenerator:
         self._generator_task_exception = None
         # Ray's worker class. ray._private.worker.global_worker
         self.worker = worker
+        self.worker.check_connected()
         assert hasattr(worker, "core_worker")
+
+    def get_next_ref(self) -> ObjectRef:
+        self.worker.check_connected()
+        core_worker = self.worker.core_worker
+        return core_worker.peek_object_ref_stream(
+            self._generator_ref)
 
     def __iter__(self) -> "StreamingObjectRefGenerator":
         return self
@@ -284,10 +290,7 @@ class StreamingObjectRefGenerator:
             timeout_s: If the next object is not ready within
                 this timeout, it returns the nil object ref.
         """
-        if not hasattr(self.worker, "core_worker"):
-            raise ValueError(
-                "Cannot access the core worker. "
-                "Did you already shutdown Ray via ray.shutdown()?")
+        self.worker.check_connected()
         core_worker = self.worker.core_worker
 
         # Wait for the next ObjectRef to become ready.
@@ -325,10 +328,7 @@ class StreamingObjectRefGenerator:
             timeout_s: Optional[float] = None,
             sleep_interval_s: float = 0.0001):
         """Same API as _next_sync, but it is for async context."""
-        if not hasattr(self.worker, "core_worker"):
-            raise ValueError(
-                "Cannot access the core worker. "
-                "Did you already shutdown Ray via ray.shutdown()?")
+        self.worker.check_connected()
         core_worker = self.worker.core_worker
 
         ref = core_worker.peek_object_ref_stream(
@@ -1355,7 +1355,8 @@ cdef void execute_task(
 
             return function(actor, *arguments, **kwarguments)
 
-    with core_worker.profile_event(b"task::" + name, extra_data=extra_data):
+    with core_worker.profile_event(b"task::" + name, extra_data=extra_data), \
+         ray._private.worker._changeproctitle(title, next_title):
         task_exception = False
         try:
             with core_worker.profile_event(b"task:deserialize_arguments"):
@@ -1409,62 +1410,61 @@ cdef void execute_task(
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
                 try:
-                    with ray._private.worker._changeproctitle(title, next_title):
-                        if debugger_breakpoint != b"":
-                            ray.util.pdb.set_trace(
-                                breakpoint_uuid=debugger_breakpoint)
-                        outputs = function_executor(*args, **kwargs)
+                    if debugger_breakpoint != b"":
+                        ray.util.pdb.set_trace(
+                            breakpoint_uuid=debugger_breakpoint)
+                    outputs = function_executor(*args, **kwargs)
 
-                        if is_streaming_generator:
-                            # Streaming generator always has a single return value
-                            # which is the generator task return.
-                            assert returns[0].size() == 1
+                    if is_streaming_generator:
+                        # Streaming generator always has a single return value
+                        # which is the generator task return.
+                        assert returns[0].size() == 1
 
-                            if (not inspect.isgenerator(outputs)
-                                    and not inspect.isasyncgen(outputs)):
-                                raise ValueError(
-                                        "Functions with "
-                                        "@ray.remote(num_returns=\"streaming\" "
-                                        "must return a generator")
+                        if (not inspect.isgenerator(outputs)
+                                and not inspect.isasyncgen(outputs)):
+                            raise ValueError(
+                                    "Functions with "
+                                    "@ray.remote(num_returns=\"streaming\" "
+                                    "must return a generator")
 
-                            execute_streaming_generator(
-                                    outputs,
-                                    returns[0][0].first,  # generator object ID.
-                                    task_type,
-                                    caller_address,
-                                    task_id,
-                                    serialized_retry_exception_allowlist,
-                                    function_name,
-                                    function_descriptor,
-                                    title,
-                                    actor,
-                                    actor_id,
-                                    name_of_concurrency_group_to_execute,
-                                    returns[0].size(),
-                                    attempt_number,
-                                    streaming_generator_returns,
-                                    is_retryable_error,
-                                    application_error)
-                            # Streaming generator output is not used, so set it to None.
-                            outputs = None
+                        execute_streaming_generator(
+                                outputs,
+                                returns[0][0].first,  # generator object ID.
+                                task_type,
+                                caller_address,
+                                task_id,
+                                serialized_retry_exception_allowlist,
+                                function_name,
+                                function_descriptor,
+                                title,
+                                actor,
+                                actor_id,
+                                name_of_concurrency_group_to_execute,
+                                returns[0].size(),
+                                attempt_number,
+                                streaming_generator_returns,
+                                is_retryable_error,
+                                application_error)
+                        # Streaming generator output is not used, so set it to None.
+                        outputs = None
 
-                        next_breakpoint = (
-                            ray._private.worker.global_worker.debugger_breakpoint)
-                        if next_breakpoint != b"":
-                            # If this happens, the user typed "remote" and
-                            # there were no more remote calls left in this
-                            # task. In that case we just exit the debugger.
-                            ray.experimental.internal_kv._internal_kv_put(
-                                "RAY_PDB_{}".format(next_breakpoint),
-                                "{\"exit_debugger\": true}",
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            ray.experimental.internal_kv._internal_kv_del(
-                                "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
-                                namespace=ray_constants.KV_NAMESPACE_PDB
-                            )
-                            (ray._private.worker.global_worker
-                             .debugger_breakpoint) = b""
+                    next_breakpoint = (
+                        ray._private.worker.global_worker.debugger_breakpoint)
+                    if next_breakpoint != b"":
+                        # If this happens, the user typed "remote" and
+                        # there were no more remote calls left in this
+                        # task. In that case we just exit the debugger.
+                        ray.experimental.internal_kv._internal_kv_put(
+                            "RAY_PDB_{}".format(next_breakpoint),
+                            "{\"exit_debugger\": true}",
+                            namespace=ray_constants.KV_NAMESPACE_PDB
+                        )
+                        ray.experimental.internal_kv._internal_kv_del(
+                            "RAY_PDB_CONTINUE_{}".format(next_breakpoint),
+                            namespace=ray_constants.KV_NAMESPACE_PDB
+                        )
+                        (ray._private.worker.global_worker
+                         .debugger_breakpoint) = b""
                     task_exception = False
                 except AsyncioActorExit as e:
                     exit_current_actor_if_asyncio()
@@ -2303,6 +2303,24 @@ cdef class GcsClient:
             }
         return result
 
+    ########################################################
+    # Interface for rpc::autoscaler::AutoscalerStateService
+    ########################################################
+
+    @_auto_reconnect
+    def request_cluster_resource_constraint(
+            self,
+            bundles: c_vector[unordered_map[c_string, double]],
+            timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        with nogil:
+            check_status(self.inner.get().RequestClusterResourceConstraint(
+                timeout_ms, bundles))
+
+    #############################################################
+    # Interface for rpc::autoscaler::AutoscalerStateService ends
+    #############################################################
 cdef class GcsPublisher:
     """Cython wrapper class of C++ `ray::gcs::PythonGcsPublisher`."""
     cdef:
@@ -2941,12 +2959,29 @@ cdef class CoreWorker:
 
         return c_object_id.Binary()
 
-    def wait(self, object_refs, int num_returns, int64_t timeout_ms,
+    def wait(self, object_refs_or_generators, int num_returns, int64_t timeout_ms,
              TaskID current_task_id, c_bool fetch_local):
         cdef:
             c_vector[CObjectID] wait_ids
             c_vector[c_bool] results
             CTaskID c_task_id = current_task_id.native()
+
+        object_refs = []
+        for ref_or_generator in object_refs_or_generators:
+            if (not isinstance(ref_or_generator, ObjectRef)
+                    and not isinstance(ref_or_generator, StreamingObjectRefGenerator)):
+                raise TypeError(
+                    "wait() expected a list of ray.ObjectRef "
+                    "or StreamingObjectRefGenerator, "
+                    f"got list containing {type(ref_or_generator)}"
+                )
+
+            if isinstance(ref_or_generator, StreamingObjectRefGenerator):
+                # Before calling wait,
+                # get the next reference from a generator.
+                object_refs.append(ref_or_generator.get_next_ref())
+            else:
+                object_refs.append(ref_or_generator)
 
         wait_ids = ObjectRefsToVector(object_refs)
         with nogil:
@@ -2957,11 +2992,11 @@ cdef class CoreWorker:
         assert len(results) == len(object_refs)
 
         ready, not_ready = [], []
-        for i, object_ref in enumerate(object_refs):
+        for i, object_ref_or_generator in enumerate(object_refs_or_generators):
             if results[i]:
-                ready.append(object_ref)
+                ready.append(object_ref_or_generator)
             else:
-                not_ready.append(object_ref)
+                not_ready.append(object_ref_or_generator)
 
         return ready, not_ready
 
@@ -3041,6 +3076,8 @@ cdef class CoreWorker:
                 python_scheduling_strategy.soft)
             c_node_affinity_scheduling_strategy[0].set_spill_on_unavailable(
                 python_scheduling_strategy._spill_on_unavailable)
+            c_node_affinity_scheduling_strategy[0].set_fail_on_unavailable(
+                python_scheduling_strategy._fail_on_unavailable)
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "

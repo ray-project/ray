@@ -660,7 +660,7 @@ def test_csv_read_partitioned_with_filter_multikey(
             data_path,
             partition_filter=partition_path_filter,
             filesystem=fs,
-            parallelism=100,
+            parallelism=6,
         )
         assert_base_partitioned_ds(ds, num_input_files=6, num_computed=6)
         assert ray.get(kept_file_counter.get.remote()) == 6

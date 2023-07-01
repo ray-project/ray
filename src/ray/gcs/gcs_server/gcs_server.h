@@ -154,6 +154,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Initialize KV service.
+  void InitKVService();
+
   /// Initialize function manager.
   void InitFunctionManager();
 
@@ -181,6 +184,11 @@ class GcsServer {
 
   /// Collect stats from each module.
   void RecordMetrics() const;
+
+  /// Get cluster id if persisted, otherwise generate
+  /// a new one and persist as necessary.
+  /// Expected to be idempotent while server is up.
+  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -213,7 +221,7 @@ class GcsServer {
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// The gcs node manager.
-  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.

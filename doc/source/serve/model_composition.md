@@ -1,6 +1,6 @@
 (serve-model-composition)=
 
-# Deploy a Composition of Models
+# Deploy Compositions of Models
 
 This section helps you:
 

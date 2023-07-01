@@ -436,6 +436,9 @@ class NodeResources {
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
+  // The idle duration of the node from resources.
+  int64_t idle_resource_duration_ms = 0;
+
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
   /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
   /// upload is latest.
@@ -511,6 +514,11 @@ NodeResources ResourceMapToNodeResources(
 /// Convert a map of resources to a ResourceRequest data structure.
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<std::string, double> &resource_map,
+    bool requires_object_store_memory);
+
+/// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
+    const absl::flat_hash_map<ResourceID, double> &resource_map,
     bool requires_object_store_memory);
 
 }  // namespace ray

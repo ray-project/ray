@@ -1,3 +1,5 @@
+#ci:group=MacOS
+
 common: &common
   env:
     BUILDKITE: "true"
