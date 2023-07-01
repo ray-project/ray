@@ -122,8 +122,8 @@ def test_tuner(storage_path):
             == 10
         )
 
-    # TODO(ekl) checkpoints shouldn't be present in RAY_RESULTS if we enable direct
-    # worker upload for Tuner too.
+    # TODO(ekl) should we enable direct upload for Tuner as well? In that case,
+    # checkpoints won't need to be put in both local_dir and the storage_path.
     assert len(glob.glob(f"{RAY_RESULTS}/train_model*/*/checkpoint_*")) == 10
     assert (
         len(glob.glob(f"{RAY_RESULTS}/train_model*/*/checkpoint_*/checkpoint.data"))
@@ -162,29 +162,99 @@ def test_multirank_trainer(storage_path, keep_all_ranks):
             checkpoint_config=CheckpointConfig(
                 checkpoint_keep_all_ranks=keep_all_ranks,
             ),
-        ))
+        ),
+    )
 
     result = trainer.fit()
-    print(result.checkpoint.path)
-    print(result.checkpoint.filesystem)
+    if storage_path:
+        assert storage_path in result.checkpoint.path
+    else:
+        assert RAY_RESULTS in result.checkpoint.path
+    # Should point to the root checkpoint dir, not in the rank_0 dir.
+    assert "rank" not in result.checkpoint.path
+    assert "LocalFileSystem" in str(result.checkpoint.filesystem)
 
     # experiment_dir/trial_dir/rank_dir/artifact_data
     assert len(glob.glob(f"{RAY_RESULTS}/Data*")) == 1
     assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*")) == 1
     assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*")) == 5
     assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/rank*/random_artifact*.txt")) == 2
+    if storage_path:
+        assert len(glob.glob(f"{storage_path}/Data*")) == 1
+        assert len(glob.glob(f"{storage_path}/Data*/Data*")) == 1
+        assert len(glob.glob(f"{storage_path}/Data*/Data*/checkpoint*")) == 5
+        assert (
+            len(glob.glob(f"{storage_path}/Data*/Data*/rank*/random_artifact*.txt"))
+            == 2
+        )
 
     # experiment_dir/trial_dir/checkpoint_dir/rank_dir/checkpoint_data
-    if keep_all_ranks:
-        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 10
-        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*/checkpoint_rank*.data")) == 10
+    if storage_path:
+        if keep_all_ranks:
+            assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 0
+            assert (
+                len(glob.glob(f"{storage_path}/Data*/Data*/" "checkpoint*/rank*")) == 10
+            )
+            assert (
+                len(
+                    glob.glob(
+                        f"{storage_path}/Data*/Data*/checkpoint*/"
+                        "rank*/checkpoint_rank*.data"
+                    )
+                )
+                == 10
+            )
+        else:
+            assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 0
+            assert len(glob.glob(f"{storage_path}/Data*/Data*/checkpoint*/rank*")) == 5
+            assert (
+                len(
+                    glob.glob(
+                        f"{storage_path}/Data*/Data*/checkpoint*/"
+                        "rank*/checkpoint_rank*.data"
+                    )
+                )
+                == 5
+            )
     else:
-        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 5
-        assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*/checkpoint_rank*.data")) == 5
-    # TODO: check restore from checkpoint.path
+        if keep_all_ranks:
+            assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 10
+            assert (
+                len(
+                    glob.glob(
+                        f"{RAY_RESULTS}/Data*/Data*/checkpoint*/"
+                        "rank*/checkpoint_rank*.data"
+                    )
+                )
+                == 10
+            )
+        else:
+            assert len(glob.glob(f"{RAY_RESULTS}/Data*/Data*/checkpoint*/rank*")) == 5
+            assert (
+                len(
+                    glob.glob(
+                        f"{RAY_RESULTS}/Data*/Data*/checkpoint*/"
+                        "rank*/checkpoint_rank*.data"
+                    )
+                )
+                == 5
+            )
+
+    def check_restore(config):
+        chkpt = session.get_checkpoint()
+        print("Restored checkpoint", chkpt)
+        assert chkpt is not None
+        assert "/checkpoint_000004" in chkpt.path
+
+    trainer = DataParallelTrainer(
+        train_loop_per_worker=check_restore,
+        scaling_config=ScalingConfig(num_workers=1),
+        resume_from_checkpoint=result.checkpoint,
+    )
+    trainer.fit()
 
 
-def test_custom_storage_filesystem(storage_path):
+def test_custom_storage_filesystem():
     """Test that user can pass a custom storage filesystem.
 
     TODO: how do we check the filesystem is used? Maybe a custom filesystem can write
@@ -192,7 +262,7 @@ def test_custom_storage_filesystem(storage_path):
     raise NotImplementedError("TODO(ml team)")
 
 
-def test_raise_error_if_storage_path_not_readable(storage_path):
+def test_raise_error_if_storage_path_not_readable():
     """Check that if storage path _valid file not readable an error is raised.
 
     This happens if the user sets a path that isn't a NFS / sets an invalid storage

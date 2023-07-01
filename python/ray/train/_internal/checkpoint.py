@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
 
+import ray
 from ray.air import Checkpoint, CheckpointConfig, session
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air._internal.checkpoint_manager import (
@@ -94,6 +95,8 @@ class CheckpointManager(CommonCheckpointManager):
             return Checkpoint.from_dict(checkpoint_to_load)
         if isinstance(checkpoint_to_load, Checkpoint):
             return checkpoint_to_load
+        elif isinstance(checkpoint_to_load, ray.train.checkpoint.Checkpoint):
+            return checkpoint_to_load
         else:
             # Load checkpoint from path.
             return load_checkpoint_from_path(checkpoint_to_load)
@@ -128,7 +131,6 @@ class CheckpointManager(CommonCheckpointManager):
                 metrics={score_attr: checkpoint_metadata.get(score_attr, 0.0)},
                 rank=checkpoint_rank,
             )
-
 
         if isinstance(checkpoint_data, str):
             checkpoint_class: Type[Checkpoint] = checkpoint_metadata[
@@ -260,7 +262,11 @@ class TuneCheckpointManager(CheckpointManager):
         self, checkpoint_to_load: Optional[Union[Dict, str, Path, Checkpoint]]
     ) -> Optional[Union[Dict, Checkpoint]]:
         loaded_checkpoint = super()._load_checkpoint(checkpoint_to_load)
-        assert not loaded_checkpoint or isinstance(loaded_checkpoint, Checkpoint)
+        assert (
+            not loaded_checkpoint
+            or isinstance(loaded_checkpoint, Checkpoint)
+            or isinstance(loaded_checkpoint, ray.train.checkpoint.Checkpoint)
+        )
         # `latest_checkpoint_id` will be the id assigned to the next checkpoint,
         # which should be one more than the loaded checkpoint's id
         # If no checkpoint is loaded, initialize this to 0
@@ -275,7 +281,7 @@ class TuneCheckpointManager(CheckpointManager):
         setattr(checkpoint, TUNE_CHECKPOINT_ID, self._latest_checkpoint_id)
 
     def _process_persistent_checkpoint(self, checkpoint: _TrackedCheckpoint):
-        #self.add_tune_checkpoint_id(checkpoint.dir_or_data)
+        # self.add_tune_checkpoint_id(checkpoint.dir_or_data)
 
         # Train may choose not to commit a checkpoint, but make sure the
         # checkpoint is always committed for Tuning purpose.

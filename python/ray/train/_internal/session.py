@@ -360,6 +360,7 @@ class _TrainSession:
                 f"to cloud URI {rank_path}."
             )
             import pyarrow
+
             print("COPY", checkpoint.path, rank_path)
             try:
                 self.storage.storage_filesystem.create_dir(rank_path)
@@ -369,7 +370,8 @@ class _TrainSession:
                 checkpoint.path,
                 rank_path,
                 source_filesystem=checkpoint.filesystem,
-                destination_filesystem=self.storage.storage_filesystem)
+                destination_filesystem=self.storage.storage_filesystem,
+            )
             logger.info("Done uploading checkpoint files.")
             shutil.rmtree(checkpoint.path)
             if self.world_rank == 0:

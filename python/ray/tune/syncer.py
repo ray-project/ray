@@ -637,7 +637,7 @@ class _BackgroundSyncer(Syncer):
 class StorageContext:
     """Shared StorageContext, used both on driver and workers."""
 
-    # TODO: make into dataclass, and add experiment dir, trial dir, rank dir, checkpoint number
+    # TODO: make into dataclass, and add experiment dir, trial dir, rank dir, chkpt no
 
     def __init__(self, storage_path, storage_filesystem, sync_config):
         assert sync_config is not None

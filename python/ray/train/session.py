@@ -1,6 +1,7 @@
 import warnings
 from typing import TYPE_CHECKING, Dict, Optional
 
+import ray
 from ray.air._internal.session import Session
 from ray.air.checkpoint import Checkpoint
 
@@ -30,7 +31,9 @@ class _TrainSessionImpl(Session):
         ckpt = self._session.loaded_checkpoint
         if ckpt:
             # The new API should only interact with Checkpoint object.
-            assert isinstance(ckpt, Checkpoint)
+            assert isinstance(ckpt, Checkpoint) or isinstance(
+                ckpt, ray.train.checkpoint.Checkpoint
+            )
         return ckpt
 
     @property

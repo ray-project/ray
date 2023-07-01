@@ -189,14 +189,15 @@ class BaseTrainer(abc.ABC):
         )
         self.run_config = run_config if run_config is not None else RunConfig()
         if USE_STORAGE_CONTEXT:
-            if run_config.storage_path is None:
-                run_config.storage_path = os.path.expanduser(
+            if self.run_config.storage_path is None:
+                self.run_config.storage_path = os.path.expanduser(
                     os.environ.get("RAY_AIR_LOCAL_CACHE_DIR", "~/ray_results")
                 )
             self.storage = StorageContext(
-                run_config.storage_path,
-                run_config.storage_filesystem,
-                run_config.sync_config)
+                self.run_config.storage_path,
+                self.run_config.storage_filesystem,
+                self.run_config.sync_config,
+            )
         else:
             self.storage = None
         self.datasets = datasets if datasets is not None else {}
@@ -456,8 +457,12 @@ class BaseTrainer(abc.ABC):
                 f"found {type(self.preprocessor)} with value `{self.preprocessor}`."
             )
 
-        if self.resume_from_checkpoint is not None and not isinstance(
-            self.resume_from_checkpoint, ray.air.Checkpoint
+        if (
+            self.resume_from_checkpoint is not None
+            and not isinstance(self.resume_from_checkpoint, ray.air.Checkpoint)
+            and not isinstance(
+                self.resume_from_checkpoint, ray.train.checkpoint.Checkpoint
+            )
         ):
             raise ValueError(
                 f"`resume_from_checkpoint` should be an instance of "
