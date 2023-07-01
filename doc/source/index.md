@@ -101,8 +101,8 @@ class HuggingFacePredictor:
     # Logic for inference on 1 batch of data.
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, list]:
         # Get the predictions from the input batch.
-        predictions = self.model(list(batch["data"]), max_length=20, 
-        num_return_sequences=1)
+        predictions = self.model(
+            list(batch["data"]), max_length=20, num_return_sequences=1)
         # `predictions` is a list of length-one lists. For example:
         # [[{'generated_text': 'output_1'}], ..., [{'generated_text': 'output_2'}]]
         # Modify the output to get it into the following format instead:
