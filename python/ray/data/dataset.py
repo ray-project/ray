@@ -2845,9 +2845,10 @@ class Dataset:
     ) -> None:
         """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
 
-        This is only supported for columns in the datasets that can be converted to NumPy arrays. 
-        
-         The number of files is determined by the number of blocks in the dataset.
+        This is only supported for columns in the datasets that can be converted to
+        NumPy arrays.
+
+        The number of files is determined by the number of blocks in the dataset.
         To control the number of number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
@@ -2913,13 +2914,15 @@ class Dataset:
         collection: str,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """Write the dataset to a MongoDB datasource.
+        """Write the :class:`~ray.data.Dataset` to a MongoDB datbase.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of parallel write tasks, use :meth:`Dataset.repartition``
-        before calling this method.
+        This is only supported for datasets convertible to PyArrow tables.
 
-        .. note::
+        The number of parallel writes is determined by the number of blocks in the
+        dataset. To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        .. warning::
             Currently, this supports only a subset of the pyarrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
             types will fail on type checking. See all the supported types at:
@@ -2948,13 +2951,18 @@ class Dataset:
 
         Args:
             uri: The URI to the destination MongoDB where the dataset will be
-                written to. For the URI format, see details in
-                https://www.mongodb.com/docs/manual/reference/connection-string/.
+                written to. For the URI format, see details in the
+                `MongoDB docs <https://www.mongodb.com/docs/manual/reference\
+                    connection-string/>`_.
             database: The name of the database. This database must exist otherwise
                 ValueError will be raised.
             collection: The name of the collection in the database. This collection
                 must exist otherwise ValueError will be raised.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+
+        Raises:
+            ValueError: if ``database`` does not exist.
+            ValueError: if ``collection`` does not exist.
         """
         from ray.data.datasource import MongoDatasource
 
@@ -3811,7 +3819,8 @@ class Dataset:
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
-        """Converts this :class:`~ray.data.Dataset` into a distributed set of Pandas dataframes.
+        """Converts this :class:`~ray.data.Dataset` into a distributed set of Pandas
+        dataframes.
 
         One DataFrame is created for each block in this Dataset.
 
@@ -3839,7 +3848,8 @@ class Dataset:
     def to_numpy_refs(
         self, *, column: Optional[str] = None
     ) -> List[ObjectRef[np.ndarray]]:
-        """Converts this :class:`~ray.data.Dataset` into a distributed set of NumPy ndarrays or dictionary of NumPy ndarrays.
+        """Converts this :class:`~ray.data.Dataset` into a distributed set of NumPy
+        ndarrays or dictionary of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
@@ -3872,16 +3882,26 @@ class Dataset:
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
-        """Convert this dataset into a distributed set of Arrow tables.
+        """Convert this :class:`~ray.data.Dataset` into a distributed set of PyArrow
+        tables.
 
-        This is only supported for datasets convertible to Arrow records.
-        This function is zero-copy if the existing data is already in Arrow
-        format. Otherwise, the data will be converted to Arrow format.
+        One PyArrow table is created for each block in this Dataset.
+
+        This is only supported for datasets convertible to PyArrow tables..
+        This function is zero-copy if the existing data is already in PyArrow
+        format. Otherwise, the data will be converted to PyArrow format.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10, parallelism=2)
+            >>> refs = ds.to_arrow_refs()
+            >>> len(refs)
+            2
 
         Time complexity: O(1) unless conversion is required.
 
         Returns:
-            A list of remote Arrow tables created from this dataset.
+            A list of remote PyArrow tables created from this dataset.
         """
         import pyarrow as pa
 

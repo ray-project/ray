@@ -460,17 +460,19 @@ def read_mongo(
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
 ) -> Dataset:
-    """Create an Arrow dataset from MongoDB.
+    """Create a :class:`~ray.data.Dataset` from MongoDB database.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
     of the MongoDB. The dataset is created from the results of executing
     ``pipeline`` against the ``collection``. If ``pipeline`` is None, the entire
     ``collection`` will be read.
 
-    You can check out more details here about these MongoDB concepts:
-    - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
-    - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
-    - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
+    .. tip::
+
+        See the following more details about these MongoDB concepts:
+        - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
+        - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
+        - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
 
     To read the MongoDB in parallel, the execution of the pipeline is run on partitions
     of the collection, with a Ray read task to handle a partition. Partitions are
@@ -493,27 +495,36 @@ def read_mongo(
 
     Args:
         uri: The URI of the source MongoDB where the dataset will be
-            read from. For the URI format, see details in
-            https://www.mongodb.com/docs/manual/reference/connection-string/.
+            read from. For the URI format, see details in the `MongoDB docs <https:/\
+                www.mongodb.com/docs/manual/reference/connection-string/>`_.
         database: The name of the database hosted in the MongoDB. This database
             must exist otherwise ValueError will be raised.
         collection: The name of the collection in the database. This collection
             must exist otherwise ValueError will be raised.
-        pipeline: A MongoDB pipeline, which will be executed on the given collection
+        pipeline: A `MongoDB pipeline <https://www.mongodb.com/docs/manual/core\
+            aggregation-pipeline/>`_, which will be executed on the given collection
             with results used to create Dataset. If None, the entire collection will
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
-        parallelism: The requested parallelism of the read. If -1, it will be
-            automatically chosen based on the available cluster resources and estimated
-            in-memory data size.
-        ray_remote_args: kwargs passed to ray.remote in the read tasks.
-        mongo_args: kwargs passed to aggregate_arrow_all() in pymongoarrow in producing
+        parallelism: The requested parallelism of the read. Defaults to -1
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see the :ref:`Tuning read parallelism guide
+            <read_parallelism>`.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
+            readthedocs.io/en/pymongoarrow-0.1.1/api/api.html#pymongoarrow.api\
+            aggregate_arrow_all>`_ in pymongoarrow in producing
             Arrow-formatted results.
 
     Returns:
-        Dataset producing Arrow records from the results of executing the pipeline
-        on the specified MongoDB collection.
+        :class:`~ray.data.Dataset` producing records from the results of executing the pipeline on the specified MongoDB collection.
+
+    Raises:
+        ValueError: if ``database`` does not exist.
+        ValueError: if ``collection`` does not exist.
     """
     return read_datasource(
         MongoDatasource(),
@@ -1344,7 +1355,8 @@ def read_tfrecords(
         label         binary
 
         We can also read compressed TFRecord files which uses one of the
-        `compression types supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
+        `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
+            generated/pyarrow.CompressedInputStream.html>`_:
 
         >>> ds = ray.data.read_tfrecords(
         ...     "example://iris.tfrecords.gz",
@@ -1379,15 +1391,15 @@ def read_tfrecords(
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
-                    #pyarrow.fs.FileSystem.open_input_stream>`_. 
+                    #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``), use
             ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases you do not need to set this.
-        partition_filter: A 
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. 
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Can be used with a custom callback to read only selected partitions of a
             dataset.
             By default, this filters out any file paths whose file extension does not
@@ -1538,8 +1550,8 @@ def read_binary_files(
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases you do not need to set this.
-        partition_filter: A 
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. 
+        partition_filter: A
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Can be used with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             By default, this does not filter out any files.
@@ -1636,8 +1648,13 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
-        parallelism: The requested parallelism of the read.
-        ray_remote_args: Keyword arguments passed to :func:`ray.remote` in read tasks.
+        parallelism: The requested parallelism of the read. Defaults to -1
+            which automatically determines the optimal parallelism for your
+            configuration. You should not need to manually set this value in most cases.
+            For details on how the parallelism is automatically determined and guidance
+            on how to tune it, see the :ref:`Tuning read parallelism guide
+            <read_parallelism>`.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
     Returns:
         A :class:`Dataset` containing the queried data.
@@ -1761,7 +1778,8 @@ def from_pandas(
 def from_pandas_refs(
     dfs: Union[ObjectRef["pandas.DataFrame"], List[ObjectRef["pandas.DataFrame"]]],
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a list of Ray object references to pandas dataframes.
+    """Create a :class:`~ray.data.Dataset` from a list of Ray object references to
+    pandas dataframes.
 
     Examples:
         >>> import pandas as pd
@@ -1860,7 +1878,8 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
 def from_numpy_refs(
     ndarrays: Union[ObjectRef[np.ndarray], List[ObjectRef[np.ndarray]]],
 ) -> MaterializedDataset:
-    """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to NumPy arrays.
+    """Creates a :class:`~ray.data.Dataset` from a list of Ray object references to
+    NumPy ndarrays.
 
     Examples:
         >>> import numpy as np
@@ -1954,7 +1973,8 @@ def from_arrow_refs(
         List[ObjectRef[Union["pyarrow.Table", bytes]]],
     ],
 ) -> MaterializedDataset:
-    """Create a :class:`~ray.data.Dataset` from a list of Ray object references to PyArrow tables.
+    """Create a :class:`~ray.data.Dataset` from a list of Ray object references to
+    PyArrow tables.
 
     Examples:
         >>> import pyarrow as pa
