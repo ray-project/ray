@@ -2,7 +2,9 @@ import itertools
 import sys
 from typing import List, Optional
 
+import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 
 import ray
@@ -753,6 +755,23 @@ def test_read_map_batches_operator_fusion_with_random_shuffle_operator(
     assert "Stage 2 MapBatches(fn)->RandomShuffle" in ds.stats()
     _check_usage_record(["ReadRange", "RandomShuffle", "MapBatches"])
 
+    # Check the case where the upstream map function returns multiple blocks.
+    ctx = ray.data.DataContext.get_current()
+    old_target_max_block_size = ctx.target_max_block_size
+    ctx.target_max_block_size = 100
+
+    def fn(_):
+        return {"data": np.zeros((100, 100))}
+
+    ds = ray.data.range(10)
+    ds = ds.repartition(2).map(fn).random_shuffle().materialize()
+    assert "Stage 1 ReadRange" in ds.stats()
+    assert "Stage 2 Repartition" in ds.stats()
+    assert "Stage 3 Map(fn)->RandomShuffle" in ds.stats()
+    _check_usage_record(["ReadRange", "RandomShuffle", "Map"])
+
+    ctx.target_max_block_size = old_target_max_block_size
+
 
 @pytest.mark.parametrize("shuffle", (True, False))
 def test_read_map_batches_operator_fusion_with_repartition_operator(
@@ -1272,6 +1291,10 @@ def test_from_torch_e2e(ray_start_regular_shared, enable_optimizer, tmp_path):
     _check_usage_record(["FromItems"])
 
 
+@pytest.mark.skip(
+    reason="Limit pushdown currently disabled, see "
+    "https://github.com/ray-project/ray/issues/36295"
+)
 def test_limit_pushdown(ray_start_regular_shared, enable_optimizer):
     def f1(x):
         return x
@@ -1418,6 +1441,33 @@ def test_streaming_executor(
         result.extend(batch)
     assert sorted(result) == list(range(1, 100)), result
     _check_usage_record(["ReadRange", "MapBatches", "Filter", "RandomShuffle"])
+
+
+def test_schema_partial_execution(
+    ray_start_regular_shared,
+    enable_optimizer,
+    enable_streaming_executor,
+):
+    fields = [
+        ("sepal.length", pa.float64()),
+        ("sepal.width", pa.float64()),
+        ("petal.length", pa.float64()),
+        ("petal.width", pa.float64()),
+        ("variety", pa.string()),
+    ]
+    ds = ray.data.read_parquet(
+        "example://iris.parquet",
+        schema=pa.schema(fields),
+    ).map_batches(lambda x: x)
+
+    iris_schema = ds.schema()
+    assert iris_schema == ray.data.dataset.Schema(pa.schema(fields))
+    # Verify that ds.schema() executes only the first block, and not the
+    # entire Dataset.
+    assert ds._plan._in_blocks._num_blocks == 1
+    assert str(ds._plan._logical_plan.dag) == (
+        "Read[ReadParquet->SplitBlocks(2)] -> MapBatches[MapBatches(<lambda>)]"
+    )
 
 
 if __name__ == "__main__":

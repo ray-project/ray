@@ -33,6 +33,7 @@ from ray._private.test_utils import (
     teardown_tls,
     enable_external_redis,
     redis_replicas,
+    get_redis_cli,
     start_redis_instance,
     find_available_port,
     wait_for_condition,
@@ -202,16 +203,19 @@ def start_redis(db_dir):
     retry_num = 0
     while True:
         is_need_restart = False
-        # Setup external Redis and env var for initialization
+        # Setup external Redis and env var for initialization.
+        redis_ports = find_available_port(49159, 55535, redis_replicas() * 2)
+        redis_ports = list(
+            zip(redis_ports[0 : redis_replicas()], redis_ports[redis_replicas() :])
+        )
         processes = []
         enable_tls = "RAY_REDIS_CA_CERT" in os.environ
         leader_port = None
         leader_id = None
         redis_ports = []
         while len(redis_ports) != redis_replicas():
-            port = find_available_port(49159, 55536, 1)[0]
-            print("Start Redis with port: ", port)
             temp_dir = ray._private.utils.get_ray_temp_dir()
+            port, free_port = find_available_port(49159, 55535, 2)
             node_id, proc = start_redis_instance(
                 temp_dir,
                 port,
@@ -219,6 +223,7 @@ def start_redis(db_dir):
                 replica_of=leader_port,
                 leader_id=leader_id,
                 db_dir=db_dir,
+                free_port=free_port,
             )
             try:
                 wait_for_condition(
@@ -227,9 +232,7 @@ def start_redis(db_dir):
             except Exception as e:
                 print(e)
                 continue
-
             redis_ports.append(port)
-
             if leader_port is None:
                 leader_port = port
                 leader_id = node_id
@@ -253,9 +256,8 @@ def start_redis(db_dir):
             continue
 
         if redis_replicas() > 1:
-            import redis
 
-            redis_cli = redis.Redis("localhost", str(leader_port))
+            redis_cli = get_redis_cli(str(leader_port), enable_tls)
             while redis_cli.cluster("info")["cluster_state"] != "ok":
                 pass
 
@@ -270,10 +272,7 @@ def kill_all_redis_server():
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
-        if (
-            proc.info["name"] == "redis-server"
-            and "redis-server" in proc.info["cmdline"]
-        ):
+        if proc.name() == "redis-server":
             redis_procs.append(proc)
 
     # Kill Redis server processes

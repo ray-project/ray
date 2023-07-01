@@ -175,7 +175,7 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.LightWeight
     )
 
-    # This flag is used to let replica know they are deplyed from
+    # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
 

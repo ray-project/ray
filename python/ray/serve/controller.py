@@ -64,6 +64,7 @@ from ray.serve._private.utils import (
     DEFAULT,
     override_runtime_envs_except_env_vars,
     call_function_from_import_path,
+    get_head_node_id,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -108,10 +109,14 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        head_node_id: str,
         detached: bool = False,
         _disable_http_proxy: bool = False,
     ):
+        self._controller_node_id = ray.get_runtime_context().get_node_id()
+        assert (
+            self._controller_node_id == get_head_node_id()
+        ), "Controller must be on the head node."
+
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
@@ -143,7 +148,7 @@ class ServeController:
                 controller_name,
                 detached,
                 http_config,
-                head_node_id,
+                self._controller_node_id,
                 gcs_client,
             )
 
@@ -186,7 +191,6 @@ class ServeController:
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
-        self._head_node_id = head_node_id
         self._active_nodes = set()
         self._update_active_nodes()
 
@@ -289,7 +293,7 @@ class ServeController:
         replicas). If the active nodes set changes, it will notify the long poll client.
         """
         new_active_nodes = self.deployment_state_manager.get_active_node_ids()
-        new_active_nodes.add(self._head_node_id)
+        new_active_nodes.add(self._controller_node_id)
         if self._active_nodes != new_active_nodes:
             self._active_nodes = new_active_nodes
             self.long_poll_host.notify_changed(
@@ -313,6 +317,10 @@ class ServeController:
                 )
                 self.done_recovering_event.set()
 
+            # Update the active nodes set before updating the HTTP states, so they
+            # are more consistent.
+            self._update_active_nodes()
+
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
@@ -333,8 +341,6 @@ class ServeController:
                 self.application_state_manager.update()
             except Exception:
                 logger.exception("Exception updating application state.")
-
-            self._update_active_nodes()
 
             try:
                 self._put_serve_snapshot()
@@ -452,6 +458,9 @@ class ServeController:
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
         app_name: str = None,
+        # TODO(edoakes): this is a hack because the deployment_language doesn't seem
+        # to get set properly from Java.
+        is_deployed_from_python: bool = False,
     ) -> bool:
         """Deploys a deployment."""
         if route_prefix is not None:
@@ -480,7 +489,11 @@ class ServeController:
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix, app_name=app_name)
+            endpoint_info = EndpointInfo(
+                route=route_prefix,
+                app_name=app_name,
+                app_is_cross_language=not is_deployed_from_python,
+            )
             self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
             self.endpoint_state.delete_endpoint(name)
@@ -832,7 +845,7 @@ def deploy_serve_application(
     route_prefix: str,
     name: str,
     args: Dict,
-):
+) -> Optional[str]:
     """Deploy Serve application from a user-provided config.
 
     Args:
@@ -846,6 +859,8 @@ def deploy_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         route_prefix: route_prefix. Define the route path for the application.
+    Returns:
+        Returns None if no error is raised. Otherwise, returns error message.
     """
     try:
         from ray import serve
@@ -903,6 +918,8 @@ def deploy_serve_application(
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
         logger.debug("Existing config deployment request terminated.")
+    except Exception as e:
+        return repr(e)
 
 
 @ray.remote(num_cpus=0)
@@ -930,8 +947,6 @@ class ServeControllerAvatar:
         except ValueError:
             self._controller = None
         if self._controller is None:
-            # Used for scheduling things to the head node explicitly.
-            head_node_id = ray.get_runtime_context().get_node_id()
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
@@ -946,7 +961,6 @@ class ServeControllerAvatar:
             ).remote(
                 controller_name,
                 http_config=http_config,
-                head_node_id=head_node_id,
                 detached=detached,
             )
 

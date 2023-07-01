@@ -17,6 +17,7 @@ petastorm
 protobuf
 pyarrow
 pytest
+requests>=2.31.0
 semidbm
 scikit-learn
 scipy

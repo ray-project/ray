@@ -46,6 +46,7 @@ To learn more about the Serve controller actor, the HTTP proxy actor(s), the dep
 
 For a detailed overview of the Ray dashboard, see the [dashboard documentation](observability-getting-started).
 
+(serve-logging)=
 ## Ray logging
 
 To understand system-level behavior and to surface application-level details during runtime, you can leverage Ray logging.
