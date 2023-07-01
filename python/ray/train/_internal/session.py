@@ -35,7 +35,6 @@ from ray.train.constants import (
 )
 
 from ray.train.error import SessionMisuseError
-from ray.train.session import _TrainSessionImpl
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -441,20 +440,16 @@ class _TrainSession:
 
 
 _session: Optional[_TrainSession] = None
-# V2 Session API
-_session_v2: Optional[_TrainSessionImpl] = None
 
 
 def init_session(*args, **kwargs) -> None:
     global _session
-    global _session_v2
     if _session:
         raise ValueError(
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
     _session = _TrainSession(*args, **kwargs)
-    _session_v2 = _TrainSessionImpl(session=_session)
 
 
 def get_session() -> Optional[_TrainSession]:
@@ -464,9 +459,7 @@ def get_session() -> Optional[_TrainSession]:
 def shutdown_session():
     """Shuts down the initialized session."""
     global _session
-    global _session_v2
     _session = None
-    _session_v2 = None
 
 
 def _raise_accelerator_session_misuse():

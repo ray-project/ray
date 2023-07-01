@@ -26,8 +26,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _session: Optional[_StatusReporter] = None
-# V2 Session API.
-_session_v2: Optional["_TuneSessionImpl"] = None
 
 _deprecation_msg = (
     "`tune.report` and `tune.checkpoint_dir` APIs are deprecated in Ray "
@@ -35,40 +33,6 @@ _deprecation_msg = (
     "to-use API across Tune session and Data parallel worker sessions."
     "The old APIs will be removed in the future. "
 )
-
-
-class _TuneSessionImpl(Session):
-    """Session client that function trainable can interact with."""
-
-    def __init__(self, status_reporter: _StatusReporter):
-        self._status_reporter = status_reporter
-
-    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        self._status_reporter.report(metrics, checkpoint=checkpoint)
-
-    @property
-    def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        return self._status_reporter.loaded_checkpoint
-
-    @property
-    def experiment_name(self) -> str:
-        return self._status_reporter.experiment_name
-
-    @property
-    def trial_name(self) -> str:
-        return self._status_reporter.trial_name
-
-    @property
-    def trial_id(self) -> str:
-        return self._status_reporter.trial_id
-
-    @property
-    def trial_resources(self) -> "PlacementGroupFactory":
-        return self._status_reporter.trial_resources
-
-    @property
-    def trial_dir(self) -> str:
-        return self._status_reporter.logdir
 
 
 @Deprecated(message=_deprecation_msg)
@@ -101,7 +65,6 @@ def get_session():
 def _init(reporter, ignore_reinit_error=True):
     """Initializes the global trial context for this process."""
     global _session
-    global _session_v2
 
     if _session is not None:
         # TODO(ng): would be nice to stack crawl at creation time to report
@@ -135,7 +98,6 @@ def _init(reporter, ignore_reinit_error=True):
         remote_function._task_launch_hook = _tune_task_and_actor_launch_hook
 
     _session = reporter
-    _session_v2 = _TuneSessionImpl(status_reporter=reporter)
 
 
 # Cache of resource dicts that have been checked by the launch hook already.
@@ -210,9 +172,7 @@ def _shutdown():
     """Cleans up the trial and removes it from the global context."""
 
     global _session
-    global _session_v2
     _session = None
-    _session_v2 = None
 
 
 @Deprecated(message=_deprecation_msg)
