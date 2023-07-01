@@ -886,7 +886,7 @@ def get_local_rank() -> int:
 @PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=0)
 def get_local_world_size() -> int:
-    """Get the local rank of this worker (rank of the worker on its node).
+    """Get the local world size of this node (i.e. number of workers on this node).
 
     Example:
         >>> import ray
@@ -917,7 +917,7 @@ def get_local_world_size() -> int:
 @PublicAPI(stability="beta")
 @_warn_session_misuse(default_value=0)
 def get_node_rank() -> int:
-    """Get the local rank of this worker (rank of the worker on its node).
+    """Get the rank of this node.
 
     Example:
         >>> import ray
