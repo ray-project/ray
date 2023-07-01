@@ -104,7 +104,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
           RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
           client_call_manager_->SetClusterId(cluster_id);
           if (do_stop.get()) {
-            io_service.stop();
+            io_service.stop_if_solo();
           } else {
             wait_sync.set_value(true);
           }
