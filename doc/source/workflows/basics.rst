@@ -19,6 +19,8 @@ taken on it:
     import tempfile
     import ray
 
+    ray.shutdown()
+
     temp_dir = tempfile.TemporaryDirectory()
 
     ray.init(storage=f"file://{temp_dir.name}")
