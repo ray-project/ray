@@ -112,9 +112,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
     // Run the IO service here to make the above call synchronous.
     // If it is already running, then wait for our particular callback
     // to be processed.
-    if (!io_service.running()) {
-      temporary_start.set_value(true);
-      io_service.run();
+    if (io_service.run_if_stopped(
+            [&temporary_start]() { temporary_start.set_value(true); })) {
       io_service.restart();
     } else {
       temporary_start.set_value(false);

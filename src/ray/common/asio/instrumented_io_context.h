@@ -33,6 +33,15 @@ class instrumented_io_context : public boost::asio::io_context {
 
   bool running() { return is_running_.load(); }
 
+  bool run_if_stopped(std::function<void()> callback) {
+    if (!is_running_.exchange(true)) {
+      callback();
+      boost::asio::io_context::run();
+      return true;
+    }
+    return false;
+  }
+
   void run() {
     is_running_.store(true);
     boost::asio::io_context::run();
