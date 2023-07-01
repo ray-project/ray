@@ -64,15 +64,16 @@ class VariantGeneratorTest(unittest.TestCase):
                 "run": "PPO",
                 "config": {
                     "foo": {"eval": "2 + 2"},
+                    "bar": {"eval": "config['foo']"},
                 },
             },
             "eval",
         )
         trials = list(trials)
         self.assertEqual(len(trials), 1)
-        self.assertEqual(trials[0].config, {"foo": 4})
-        self.assertEqual(trials[0].evaluated_params, {"foo": 4})
-        self.assertEqual(trials[0].experiment_tag, "0_foo=4")
+        self.assertEqual(trials[0].config, {"foo": 4, "bar": 4})
+        self.assertEqual(trials[0].evaluated_params, {"foo": 4, "bar": 4})
+        self.assertEqual(trials[0].experiment_tag, "0_bar=4,foo=4")
 
     def testGridSearch(self):
         trials = self.generate_trials(

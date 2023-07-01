@@ -448,7 +448,7 @@ def _try_resolve(v) -> Tuple[bool, Any]:
     elif isinstance(v, dict) and len(v) == 1 and "eval" in v:
         # Lambda function in eval syntax
         return False, Function(
-            lambda spec: eval(v["eval"], _STANDARD_IMPORTS, {"spec": spec})
+            lambda config: eval(v["eval"], _STANDARD_IMPORTS, {"config": config})
         )
     elif isinstance(v, dict) and len(v) == 1 and "grid_search" in v:
         # Grid search values
