@@ -124,7 +124,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     ):
         # shallow dict
         self._data = dict()  # type: Dict[str, Union[T, NestedDict[T]]]
-        x = x or {}
+        x = x if x is not None else {}
         if isinstance(x, NestedDict):
             self._data = x._data
         elif isinstance(x, abc.Mapping):
