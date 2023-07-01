@@ -41,6 +41,11 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<PushTaskReply> &callback),
               (override));
   MOCK_METHOD(void,
+              NumPendingTasks,
+              (std::unique_ptr<NumPendingTasksRequest> request,
+               const ClientCallback<NumPendingTasksReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               DirectActorCallArgWaitComplete,
               (const DirectActorCallArgWaitCompleteRequest &request,
                const ClientCallback<DirectActorCallArgWaitCompleteReply> &callback),
@@ -130,6 +135,23 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<AssignObjectOwnerReply> &callback),
               (override));
   MOCK_METHOD(int64_t, ClientProcessedUpToSeqno, (), (override));
+};
+
+class MockCoreWorkerClientConfigurableRunningTasks
+    : public MockCoreWorkerClientInterface {
+ public:
+  explicit MockCoreWorkerClientConfigurableRunningTasks(int num_running_tasks)
+      : num_running_tasks_(num_running_tasks) {}
+
+  void NumPendingTasks(std::unique_ptr<NumPendingTasksRequest> request,
+                       const ClientCallback<NumPendingTasksReply> &callback) override {
+    NumPendingTasksReply reply;
+    reply.set_num_pending_tasks(num_running_tasks_);
+    callback(Status::OK(), reply);
+  }
+
+ private:
+  int num_running_tasks_;
 };
 
 }  // namespace rpc

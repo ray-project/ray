@@ -845,6 +845,45 @@ class BOHBSuite(unittest.TestCase):
         assert 32 in counter
         assert counter[32] > 1
 
+    def testBOHBProcessing(self):
+        trials = [Trial("foo", stub=True) for i in range(5)]
+        bohb = HyperBandForBOHB(max_t=10, metric="metric", mode="max")
+
+        for trial in trials:
+            bohb.on_trial_add(None, trial)
+            trial.status = Trial.RUNNING
+
+        mock = MagicMock()
+
+        bohb.on_trial_result(mock, trials[0], {"training_iteration": 10, "metric": 40})
+        trials[0].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[1], {"training_iteration": 10, "metric": 30})
+        trials[1].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[2], {"training_iteration": 10, "metric": 20})
+        trials[2].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[3], {"training_iteration": 10, "metric": 10})
+        trials[3].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[4], {"training_iteration": 10, "metric": 0})
+        trials[4].status = Trial.PAUSED
+
+        def set_status(trial, status):
+            trial.status = status
+            return None
+
+        def stop_trial(trial):
+            # See TrialRunner.stop_trial()
+            if trial.status in [Trial.PENDING, Trial.PAUSED]:
+                bohb.on_trial_remove(mock, trial)
+                trial.status = Trial.TERMINATED
+            return None
+
+        mock._set_trial_status.side_effect = set_status
+        mock.stop_trial.side_effect = stop_trial
+
+        assert not bohb._hyperbands[0][0].is_being_processed
+        bohb.choose_trial_to_run(mock, allow_recurse=False)
+        assert bohb._hyperbands[0][0].is_being_processed
+
 
 class _MockTrial(Trial):
     def __init__(self, i, config):

@@ -1,3 +1,4 @@
+import time
 import pytest
 import asyncio
 import requests
@@ -39,6 +40,40 @@ def test_batching(serve_instance):
     # If there atleast one __call__ fn call with batch size greater than 1
     # counter result will always be less than 20
     assert max(counter_result) < 20
+
+
+@pytest.mark.asyncio
+async def test_batching_magic_attributes():
+    class BatchingExample:
+        def __init__(self):
+            self.count = 0
+            self.batch_sizes = set()
+
+        @property
+        def _ray_serve_max_batch_size(self):
+            return self.count + 1
+
+        @property
+        def _ray_serve_batch_wait_timeout_s(self):
+            return 0.1
+
+        @serve.batch
+        async def handle_batch(self, requests):
+            self.count += 1
+            batch_size = len(requests)
+            self.batch_sizes.add(batch_size)
+            return [batch_size] * batch_size
+
+    batching_example = BatchingExample()
+
+    for batch_size in range(1, 7):
+        future_list = []
+        for _ in range(batch_size):
+            f = batching_example.handle_batch(1)
+            future_list.append(f)
+        done, _ = await asyncio.wait(future_list, return_when="ALL_COMPLETED")
+        assert set({task.result() for task in done}) == {batch_size}
+        time.sleep(0.05)
 
 
 def test_batching_exception(serve_instance):
@@ -215,6 +250,39 @@ async def test_batch_size_multiple_zero_timeout(use_class):
 
 
 @pytest.mark.asyncio
+async def test_batch_timeout_empty_queue():
+    """Check that Serve waits when creating batches.
+
+    Serve should wait a full batch_wait_timeout_s after receiving the first
+    request in the next batch before processing the batch.
+    """
+
+    @serve.batch(max_batch_size=10, batch_wait_timeout_s=0.25)
+    async def no_op(requests):
+        return ["No-op"] * len(requests)
+
+    num_iterations = 2
+    for iteration in range(num_iterations):
+        tasks = [get_or_create_event_loop().create_task(no_op(None)) for _ in range(9)]
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
+
+        # Due to the long timeout, none of the tasks should finish until a tenth
+        # request is submitted
+        assert len(done) == 0
+
+        tasks.append(get_or_create_event_loop().create_task(no_op(None)))
+        done, _ = await asyncio.wait(tasks, timeout=0.05)
+
+        # All the timeout tasks should be finished
+        assert set(tasks) == set(done)
+        assert all(t.result() == "No-op" for t in tasks)
+
+        if iteration < num_iterations - 1:
+            # Leave queue empty for batch_wait_timeout_s between batches
+            time.sleep(0.25)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("use_class", [True, False])
 async def test_batch_size_multiple_long_timeout(use_class):
     @serve.batch(max_batch_size=3, batch_wait_timeout_s=1000)
@@ -294,6 +362,111 @@ async def test_batch_args_kwargs(mode, use_class):
 
     result = await asyncio.gather(*coros)
     assert result == [("hi1", "hi2"), ("hi3", "hi4")]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("use_class", [True, False])
+async def test_batch_setters(use_class):
+    if use_class:
+
+        class C:
+            @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+            async def method(self, key1, key2):
+                return [(key1[i], key2[i]) for i in range(len(key1))]
+
+        instance = C()
+        func = instance.method
+
+    else:
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def func(key1, key2):
+            return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    assert func._get_max_batch_size() == 2
+    assert func._get_batch_wait_timeout_s() == 1000
+
+    # @serve.batch should create batches of size 2
+    coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
+    assert len(pending) == 0
+    assert {task.result() for task in done} == {("hi1", "hi2"), ("hi3", "hi4")}
+
+    # Set new values
+    func.set_max_batch_size(3)
+    func.set_batch_wait_timeout_s(15000)
+
+    assert func._get_max_batch_size() == 3
+    assert func._get_batch_wait_timeout_s() == 15000
+
+    # @serve.batch should create batches of size 3
+    coros = [func("hi1", "hi2"), func("hi3", "hi4"), func("hi5", "hi6")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
+    assert len(pending) == 0
+    assert {task.result() for task in done} == {
+        ("hi1", "hi2"),
+        ("hi3", "hi4"),
+        ("hi5", "hi6"),
+    }
+
+
+@pytest.mark.asyncio
+async def test_batch_use_earliest_setters():
+    """@serve.batch should use the right settings when constructing a batch.
+
+    When the @serve.batch setters get called before a batch has started
+    accumulating, the next batch should use the setters' values. When they
+    get called while a batch is accumulating, the previous values should be
+    used.
+    """
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def func(key1, key2):
+        return [(key1[i], key2[i]) for i in range(len(key1))]
+
+    assert func._get_max_batch_size() == 2
+    assert func._get_batch_wait_timeout_s() == 1000
+
+    # Set new values
+    func.set_max_batch_size(3)
+    func.set_batch_wait_timeout_s(15000)
+
+    assert func._get_max_batch_size() == 3
+    assert func._get_batch_wait_timeout_s() == 15000
+
+    # Should create batches of size 3, even if setters are called while
+    # batch is accumulated
+    coros = [func("hi1", "hi2"), func("hi3", "hi4")]
+
+    # Batch should be waiting for last request
+    done, pending = await asyncio.wait(coros, timeout=0.1)
+    assert len(done) == 0 and len(pending) == 2
+
+    func.set_max_batch_size(1)
+    func.set_batch_wait_timeout_s(0)
+
+    assert func._get_max_batch_size() == 1
+    assert func._get_batch_wait_timeout_s() == 0
+
+    # Batch should still be waiting for last request
+    done, pending = await asyncio.wait(pending, timeout=0.1)
+    assert len(done) == 0 and len(pending) == 2
+
+    # Batch should execute after last request
+    pending.add(func("hi5", "hi6"))
+    done, pending = await asyncio.wait(pending, timeout=0.1)
+    assert len(pending) == 0
+    assert {task.result() for task in done} == {
+        ("hi1", "hi2"),
+        ("hi3", "hi4"),
+        ("hi5", "hi6"),
+    }
+
+    # Next batch should use updated values
+    coros = [func("hi1", "hi2")]
+    done, pending = await asyncio.wait(coros, timeout=0.1)
+    assert len(done) == 1 and len(pending) == 0
+    assert done.pop().result() == ("hi1", "hi2")
 
 
 @pytest.mark.asyncio
@@ -401,6 +574,51 @@ async def test_batch_generator_early_termination(stop_token):
         # Each terminated caller frees the sequential_terminator to process
         # another iteration.
         event.set()
+
+
+@pytest.mark.asyncio
+async def test_batch_generator_setters():
+    """@serve.batch setters should succeed while the current batch streams."""
+
+    @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+    async def yield_three_times(key1, key2):
+        for _ in range(3):
+            yield [(key1[i], key2[i]) for i in range(len(key1))]
+
+    assert yield_three_times._get_max_batch_size() == 2
+    assert yield_three_times._get_batch_wait_timeout_s() == 1000
+
+    args_list = [("hi1", "hi2"), ("hi3", "hi4")]
+    coros = [yield_three_times(*args) for args in args_list]
+
+    # Partially consume generators
+    for coro, expected_result in zip(coros, args_list):
+        for _ in range(2):
+            await coro.__anext__() == expected_result
+
+    # Set new values
+    yield_three_times.set_max_batch_size(3)
+    yield_three_times.set_batch_wait_timeout_s(15000)
+
+    assert yield_three_times._get_max_batch_size() == 3
+    assert yield_three_times._get_batch_wait_timeout_s() == 15000
+
+    # Execute three more requests
+    args_list_2 = [("hi1", "hi2"), ("hi3", "hi4"), ("hi5", "hi6")]
+    coros_2 = [yield_three_times(*args) for args in args_list_2]
+
+    # Finish consuming original requests
+    for coro, expected_result in zip(coros, args_list):
+        await coro.__anext__() == expected_result
+        with pytest.raises(StopAsyncIteration):
+            await coro.__anext__()
+
+    # Consume new requests
+    for coro, expected_result in zip(coros_2, args_list_2):
+        for _ in range(3):
+            await coro.__anext__() == expected_result
+        with pytest.raises(StopAsyncIteration):
+            await coro.__anext__()
 
 
 @pytest.mark.asyncio
