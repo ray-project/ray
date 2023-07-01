@@ -554,8 +554,8 @@ def delete(name: str, _blocking: bool = True):
 def multiplexed(
     func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
 ):
-    """[EXPERIMENTAL] Defines a function or method used to load multiplexed
-    models in a replica.
+    """Defines a function or method used to load multiplexed
+    models in a replica (experimental).
 
     The function can be standalone function or a method of a class. The
     function must have exactly one argument, the model id of type `str` for the
@@ -578,6 +578,7 @@ def multiplexed(
     Example:
 
     .. code-block:: python
+
             from ray import serve
 
             @serve.deployment
@@ -690,12 +691,13 @@ def multiplexed(
 
 @PublicAPI(stability="alpha")
 def get_multiplexed_model_id() -> str:
-    """[EXPERIMENTAL] Get the multiplexed model ID for the current request.
+    """Get the multiplexed model ID for the current request (experimental).
 
     This is used with a function decorated with `@serve.multiplexed`
     to retrieve the model ID for the current request.
 
     .. code-block:: python
+
             import ray
             from ray import serve
             import requests
