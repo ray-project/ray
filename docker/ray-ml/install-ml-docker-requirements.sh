@@ -22,7 +22,7 @@ export MUJOCO_GL=osmesa
 wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
 mkdir ~/.mujoco
 mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
-cd ~/.mujoco
+cd ~/.mujoco || exit
 tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
 
 pip --no-cache-dir install -U pip pip-tools
