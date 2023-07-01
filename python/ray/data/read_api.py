@@ -1757,7 +1757,8 @@ def from_spark(
 def from_huggingface(
     dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
 ) -> Union[MaterializedDataset, Dict[str, MaterializedDataset]]:
-    """Create a :class:`~ray.data.Dataset` from a `Hugging Face Datasets Dataset`_.
+    """Create a :class:`~ray.data.Dataset` from a
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
 
     This function is not parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
@@ -1801,7 +1802,6 @@ def from_huggingface(
         A :class:`~ray.data.Dataset` holding Arrow records from the `Hugging Face Datasets Dataset`_,
         or a dict of :class:`~ray.data.Dataset` s in case ``dataset`` is a `DatasetDict`_.
 
-    .. _Hugging Face Datasets Dataset: https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/
     .. _DatasetDict: https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/
     """  # noqa: E501
     import datasets
@@ -1861,7 +1861,7 @@ def from_tf(
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
         MaterializedDataset(
-            num_blocks=200,
+            num_blocks=...,
             num_rows=50000,
             schema={
                 id: binary,
@@ -1922,7 +1922,7 @@ def from_torch(
         >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
         >>> ds = ray.data.from_torch(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        MaterializedDataset(num_blocks=200, num_rows=60000, schema={item: object})
+        MaterializedDataset(num_blocks=..., num_rows=60000, schema={item: object})
         >>> ds.take(1)  # doctest: +SKIP
         {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)}
 

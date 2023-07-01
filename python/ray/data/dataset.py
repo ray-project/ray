@@ -3670,7 +3670,8 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a `Spark DataFrame`_.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3680,7 +3681,6 @@ class Dataset:
         Returns:
             A `Spark DataFrame`_ created from this dataset.
 
-        .. _Spark DataFrame: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html
         .. _SparkSession: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html
         """  # noqa: E501
         import raydp
