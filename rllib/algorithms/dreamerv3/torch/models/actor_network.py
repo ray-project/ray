@@ -5,18 +5,18 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import gymnasium as gym
-from gymnasium.spaces import Box, Discrete
+import gym
+from gym.spaces import Box, Discrete
 import numpy as np
 
-from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
-from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-
-_, tf, _ = try_import_tf()
-tfp = try_import_tfp()
+from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
+from ray.rllib.utils.framework import try_import_torch
 
 
-class ActorNetwork(tf.keras.Model):
+torch, nn = try_import_torch()
+
+
+class ActorNetwork(nn.Module):
     """The `actor` (policy net) of DreamerV3.
 
     Consists of a simple MLP for Discrete actions and two MLPs for cont. actions (mean
@@ -30,58 +30,60 @@ class ActorNetwork(tf.keras.Model):
     def __init__(
         self,
         *,
-        model_size: Optional[str] = "XS",
+        input_size: int,
+        model_size: str = "XS",
         action_space: gym.Space,
     ):
         """Initializes an ActorNetwork instance.
 
         Args:
+            input_size: The input size of the actor network.
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the different network sizes.
             action_space: The action space the our environment used.
         """
-        super().__init__(name="actor")
+        super().__init__()
 
+        self.input_size = input_size
         self.model_size = model_size
         self.action_space = action_space
 
         # The EMA decay variables used for the [Percentile(R, 95%) - Percentile(R, 5%)]
         # diff to scale value targets for the actor loss.
-        self.ema_value_target_pct5 = tf.Variable(
-            np.nan, dtype=tf.float32, trainable=False, name="value_target_pct5"
+        self.ema_value_target_pct5 = nn.Parameter(
+            torch.tensor(float("nan")), requires_grad=False
         )
-        self.ema_value_target_pct95 = tf.Variable(
-            np.nan, dtype=tf.float32, trainable=False, name="value_target_pct95"
+        self.ema_value_target_pct95 = nn.Parameter(
+            torch.tensor(float("nan")), requires_grad=False
         )
 
         # For discrete actions, use a single MLP that computes logits.
         if isinstance(self.action_space, Discrete):
             self.mlp = MLP(
+                input_size=self.input_size,
                 model_size=self.model_size,
                 output_layer_size=self.action_space.n,
-                name="actor_mlp",
             )
         # For cont. actions, use separate MLPs for Gaussian mean and stddev.
         # TODO (sven): In the author's original code repo, this is NOT the case,
         #  inputs are pushed through a shared MLP, then only the two output linear
         #  layers are separate for std- and mean logits.
         elif isinstance(action_space, Box):
-            output_layer_size = np.prod(action_space.shape)
+            output_size = np.prod(action_space.shape)
             self.mlp = MLP(
+                input_size=self.input_size,
                 model_size=self.model_size,
-                output_layer_size=output_layer_size,
-                name="actor_mlp_mean",
+                output_layer_size=output_size,
             )
             self.std_mlp = MLP(
+                input_size=self.input_size,
                 model_size=self.model_size,
-                output_layer_size=output_layer_size,
-                name="actor_mlp_std",
+                output_layer_size=output_size,
             )
         else:
             raise ValueError(f"Invalid action space: {action_space}")
 
-    @tf.function
-    def call(self, h, z, return_distr_params=False):
+    def forward(self, h, z, return_distr_params=False):
         """Performs a forward pass through this policy network.
 
         Args:
@@ -93,15 +95,15 @@ class ActorNetwork(tf.keras.Model):
         """
         # Flatten last two dims of z.
         assert len(z.shape) == 3
-        z_shape = tf.shape(z)
-        z = tf.reshape(tf.cast(z, tf.float32), shape=(z_shape[0], -1))
+        z_shape = z.shape
+        z = z.view(z_shape[0], -1)
         assert len(z.shape) == 2
-        out = tf.concat([h, z], axis=-1)
+        out = torch.cat([h, z], dim=-1)
         # Send h-cat-z through MLP.
         action_logits = self.mlp(out)
 
         if isinstance(self.action_space, Discrete):
-            action_probs = tf.nn.softmax(action_logits)
+            action_probs = nn.functional.softmax(action_logits, dim=-1)
 
             # Add the unimix weighting (1% uniform) to the probs.
             # See [1]: "Unimix categoricals: We parameterize the categorical
@@ -113,14 +115,14 @@ class ActorNetwork(tf.keras.Model):
 
             # Danijar's code does: distr = [Distr class](logits=tf.log(probs)).
             # Not sure why we don't directly use the already available probs instead.
-            action_logits = tf.math.log(action_probs)
+            action_logits = torch.log(action_probs)
 
             # Distribution parameters are the log(probs) directly.
             distr_params = action_logits
             distr = self.get_action_dist_object(distr_params)
 
-            action = tf.cast(tf.stop_gradient(distr.sample()), tf.float32) + (
-                action_probs - tf.stop_gradient(action_probs)
+            action = distr.sample().float().detach() + (
+                action_probs - action_probs.detach()
             )
 
         elif isinstance(self.action_space, Box):
@@ -133,10 +135,10 @@ class ActorNetwork(tf.keras.Model):
             # Distribution parameters are the squashed std_logits and the tanh'd
             # mean logits.
             # squash std_logits from (-inf, inf) to (minstd, maxstd)
-            std_logits = (maxstd - minstd) * tf.sigmoid(std_logits + 2.0) + minstd
-            mean_logits = tf.tanh(action_logits)
+            std_logits = (maxstd - minstd) * torch.sigmoid(std_logits + 2.0) + minstd
+            mean_logits = torch.tanh(action_logits)
 
-            distr_params = tf.concat([mean_logits, std_logits], axis=-1)
+            distr_params = torch.cat([mean_logits, std_logits], dim=-1)
             distr = self.get_action_dist_object(distr_params)
 
             action = distr.sample()
@@ -154,21 +156,21 @@ class ActorNetwork(tf.keras.Model):
                 tensor for mean and stddev (continuous).
 
         Returns:
-            The tfp action distribution object, from which one can sample, compute
+            The torch action distribution object, from which one can sample, compute
             log probs, entropy, etc..
         """
-        if isinstance(self.action_space, gym.spaces.Discrete):
+        if isinstance(self.action_space, Discrete):
             # Create the distribution object using the unimix'd logits.
-            distr = tfp.distributions.OneHotCategorical(logits=action_dist_params_T_B)
+            distr = torch.distributions.OneHotCategorical(logits=action_dist_params_T_B)
 
-        elif isinstance(self.action_space, gym.spaces.Box):
+        elif isinstance(self.action_space, Box):
             # Compute Normal distribution from action_logits and std_logits
-            loc, scale = tf.split(action_dist_params_T_B, 2, axis=-1)
-            distr = tfp.distributions.Normal(loc=loc, scale=scale)
+            loc, scale = torch.split(action_dist_params_T_B, 2, dim=-1)
+            distr = torch.distributions.Normal(loc=loc, scale=scale)
 
             # If action_space is a box with multiple dims, make individual dims
             # independent.
-            distr = tfp.distributions.Independent(distr, len(self.action_space.shape))
+            distr = torch.distributions.Independent(distr, len(self.action_space.shape))
 
         else:
             raise ValueError(f"Action space {self.action_space} not supported!")

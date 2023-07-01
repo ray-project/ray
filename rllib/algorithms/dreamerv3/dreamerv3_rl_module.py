@@ -3,6 +3,7 @@ This file holds framework-agnostic components for DreamerV3's RLModule.
 """
 
 import abc
+from typing import Any, Mapping
 
 import numpy as np
 
@@ -134,3 +135,32 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             # Deterministic, continuous h-states (t1 to T).
             "h_states_BxT",
         ]
+
+    @override(RLModule)
+    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+        # Call the Dreamer-Model's forward_inference method and return a dict.
+        actions, next_state = self.dreamer_model.forward_inference(
+            observations=batch[SampleBatch.OBS],
+            previous_states=batch[STATE_IN],
+            is_first=batch["is_first"],
+        )
+        return {SampleBatch.ACTIONS: actions, STATE_OUT: next_state}
+
+    @override(RLModule)
+    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+        # Call the Dreamer-Model's forward_exploration method and return a dict.
+        actions, next_state = self.dreamer_model.forward_exploration(
+            observations=batch[SampleBatch.OBS],
+            previous_states=batch[STATE_IN],
+            is_first=batch["is_first"],
+        )
+        return {SampleBatch.ACTIONS: actions, STATE_OUT: next_state}
+
+    @override(RLModule)
+    def _forward_train(self, batch: NestedDict):
+        # Call the Dreamer-Model's forward_train method and return its outputs as-is.
+        return self.dreamer_model.forward_train(
+            observations=batch[SampleBatch.OBS],
+            actions=batch[SampleBatch.ACTIONS],
+            is_first=batch["is_first"],
+        )
