@@ -2,7 +2,6 @@ import json
 import logging
 import os
 from collections import defaultdict
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import requests
@@ -344,7 +343,8 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
     def _get_pods_resource_version(self) -> str:
         """
-        Extract a recent pods resource version by reading the head pod's metadata.resourceVersion of the response.
+        Extract a recent pods resource version by reading the head pod's
+        metadata.resourceVersion of the response.
         """
         if not RAY_HEAD_POD_NAME:
             return None
