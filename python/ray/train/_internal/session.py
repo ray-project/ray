@@ -438,6 +438,14 @@ class _TrainSession:
             self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
+    @property
+    def trial_resources(self) -> "PlacementGroupFactory":
+        return self.trial_info.resources
+
+    @property
+    def trial_dir(self) -> str:
+        return self.trial_info.logdir
+
     def get_dataset_shard(
         self,
         dataset_name: Optional[str] = None,
