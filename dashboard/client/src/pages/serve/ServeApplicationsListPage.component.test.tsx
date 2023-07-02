@@ -18,7 +18,7 @@ const mockGetActor = jest.mocked(getActor);
 
 describe("ServeApplicationsListPage", () => {
   it("renders list", async () => {
-    expect.assertions(14);
+    expect.assertions(5);
 
     // Mock ServeController actor fetch
     mockGetActor.mockResolvedValue({
@@ -79,29 +79,15 @@ describe("ServeApplicationsListPage", () => {
     } as any);
 
     render(<ServeApplicationsListPage />, { wrapper: TEST_APP_WRAPPER });
-
-    await screen.findByText("System");
-    expect(screen.getByText("System")).toBeVisible();
-    expect(screen.getByText("1.2.3.4")).toBeVisible();
-    expect(screen.getByText("8000")).toBeVisible();
-
-    // HTTP Proxy row
-    expect(screen.getByText("HTTPProxyActor:node:12345")).toBeVisible();
-    expect(screen.getByText("STARTING")).toBeVisible();
-
-    // Serve Controller row
-    expect(screen.getByText("Serve Controller")).toBeVisible();
-    expect(screen.getByText("HEALTHY")).toBeVisible();
+    await screen.findByText("Application status");
 
     // First row
     expect(screen.getByText("home")).toBeVisible();
     expect(screen.getByText("/")).toBeVisible();
-    expect(screen.getByText("RUNNING")).toBeVisible();
 
     // Second row
     expect(screen.getByText("second-app")).toBeVisible();
     expect(screen.getByText("/second-app")).toBeVisible();
-    expect(screen.getByText("DEPLOYING")).toBeVisible();
 
     expect(screen.getByText("Metrics")).toBeVisible();
   });

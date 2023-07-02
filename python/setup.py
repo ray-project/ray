@@ -248,7 +248,7 @@ if setup_spec.type == SetupType.RAY:
             "requests",
             "gpustat >= 1.0.0",  # for windows
             "opencensus",
-            "pydantic",
+            "pydantic < 2",  # 2.0.0 brings breaking changes
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
