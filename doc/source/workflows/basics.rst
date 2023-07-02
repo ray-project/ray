@@ -21,9 +21,11 @@ taken on it:
 
     ray.shutdown()
 
-    temp_dir = tempfile.TemporaryDirectory()
+    #ray.init()
 
-    ray.init(storage=f"file://{temp_dir.name}")
+    #temp_dir = tempfile.TemporaryDirectory()
+
+    #ray.init(storage=f"file://{temp_dir.name}")
 
 .. testcode::
     :skipif: True
