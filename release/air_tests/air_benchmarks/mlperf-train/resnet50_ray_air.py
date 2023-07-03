@@ -84,6 +84,7 @@ def train_loop_for_worker(config):
 
     dataset_shard = session.get_dataset_shard("train")
     _tf_dataset = None
+    torch_dataset = None
     synthetic_dataset = None
     if config["data_loader"] == TF_DATA:
         assert dataset_shard is None
@@ -191,6 +192,9 @@ def train_loop_for_worker(config):
                 num_steps_per_epoch=num_steps_per_epoch,
                 online_processing=config["online_processing"],
             )
+        elif config["data_loader"] == TORCH_DATALOADER:
+            assert torch_dataset is not None
+            tf_dataset = iter(torch_dataset)
         elif config["data_loader"] == SYNTHETIC:
             tf_dataset = build_synthetic_tf_dataset(
                 synthetic_dataset,
@@ -202,7 +206,7 @@ def train_loop_for_worker(config):
             model.fit(tf_dataset, steps_per_epoch=num_steps_per_epoch)
         else:
             for i, row in enumerate(tf_dataset):
-                if i == num_steps_per_epoch:
+                if i >= num_steps_per_epoch:
                     break
                 time.sleep(config["train_sleep_time_ms"] / 1000)
                 if i % 10 == 0:
@@ -278,7 +282,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     """
 
     def process_images():
-        for image_buffer in tf_record_batch["image/encoded"]:
+        for image_buffer in tf_record_batch["image"]:
             # Each image output is ~600KB.
             yield preprocess_image(
                 image_buffer=image_buffer,
@@ -292,8 +296,8 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     # Subtract one so that labels are in [0, 1000), and cast to float32 for
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
-    labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels})
+    #labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": [0 for _ in range(len(tf_record_batch))]})
 
     return df
 
@@ -322,10 +326,10 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
 
 
 def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file, batch_size):
-    filenames = get_tfrecords_filenames(
-        data_root, num_images_per_epoch, num_images_per_input_file
-    )
-    ds = ray.data.read_tfrecords(filenames)
+    # filenames = get_tfrecords_filenames(
+    #     data_root, num_images_per_epoch, num_images_per_input_file
+    # )
+    ds = ray.data.read_images(data_root)
     ds = ds.map_batches(decode_crop_and_flip_tf_record_batch,
                         batch_size=batch_size,
                         batch_format="pandas")

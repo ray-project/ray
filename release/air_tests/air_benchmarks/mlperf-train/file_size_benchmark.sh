@@ -15,28 +15,28 @@ MAX_IMAGES_PER_FILE=$( \
     echo "$NUM_IMAGES_PER_FILE" \
         | sed 's/ /\n/g' \
         | python -c "import sys; print(max([int(line) for line in sys.stdin]))")
-NUM_IMAGES_PER_EPOCH=$((NUM_FILES * MAX_IMAGES_PER_FILE))
+NUM_IMAGES_PER_EPOCH=1624
 
 SHARD_URL_PREFIX=https://air-example-data.s3.us-west-2.amazonaws.com/air-benchmarks
 
 for num_images_per_file in $NUM_IMAGES_PER_FILE; do
-     rm -rf $DATA_DIR
-     mkdir -p $DATA_DIR
-     time python make_fake_dataset.py \
-         --num-shards "$NUM_FILES" \
-         --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$num_images_per_file-times" \
-         --output-directory $DATA_DIR
+    #  rm -rf $DATA_DIR
+    #  mkdir -p $DATA_DIR
+    #  time python make_fake_dataset.py \
+    #      --num-shards "$NUM_FILES" \
+    #      --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$num_images_per_file-times" \
+    #      --output-directory $DATA_DIR
     
-    time python resnet50_ray_air.py \
-        --num-images-per-input-file "$num_images_per_file" \
-        --num-epochs $NUM_EPOCHS \
-        --batch-size $BATCH_SIZE \
-        --shuffle-buffer-size $SHUFFLE_BUFFER_SIZE \
-        --num-images-per-epoch $NUM_IMAGES_PER_EPOCH \
-        --train-sleep-time-ms 0 \
-        --data-root $DATA_DIR \
-        --use-ray-data 2>&1 | tee -a out
-    sleep 5
+    # time python resnet50_ray_air.py \
+    #     --num-images-per-input-file "$num_images_per_file" \
+    #     --num-epochs $NUM_EPOCHS \
+    #     --batch-size $BATCH_SIZE \
+    #     --shuffle-buffer-size $SHUFFLE_BUFFER_SIZE \
+    #     --num-images-per-epoch $NUM_IMAGES_PER_EPOCH \
+    #     --train-sleep-time-ms 0 \
+    #     --data-root $DATA_DIR \
+    #     --use-ray-data 2>&1 | tee -a out
+    # sleep 5
     # time python resnet50_ray_air.py \
     #     --num-images-per-input-file "$num_images_per_file" \
     #     --num-epochs $NUM_EPOCHS \
@@ -47,4 +47,14 @@ for num_images_per_file in $NUM_IMAGES_PER_FILE; do
     #     --data-root $DATA_DIR \
     #     --use-tf-data 2>&1 | tee -a out
     # sleep 5
+    time python resnet50_ray_air.py \
+        --num-images-per-input-file "$num_images_per_file" \
+        --num-epochs $NUM_EPOCHS \
+        --batch-size $BATCH_SIZE \
+        --shuffle-buffer-size $SHUFFLE_BUFFER_SIZE \
+        --num-images-per-epoch $NUM_IMAGES_PER_EPOCH \
+        --train-sleep-time-ms 0 \
+        --data-root $DATA_DIR \
+        --use-ray-data 2>&1 | tee -a out
+    sleep 5
 done
