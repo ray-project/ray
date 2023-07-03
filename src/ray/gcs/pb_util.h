@@ -33,24 +33,25 @@ std::string GenErrorMessageFromDeathCause(const rpc::ActorDeathCause &death_caus
 
 /// Helper function to produce job table data (for newly created job or updated job).
 ///
-/// \param job_id The ID of job that need to be registered or updated.
+/// \param job_id The ID of job that needs to be registered or updated.
 /// \param is_dead Whether the driver of this job is dead.
-/// \param timestamp The UNIX timestamp of corresponding to this event.
-/// \param driver_ip_address IP address of the driver that started this job.
+/// \param timestamp The UNIX timestamp corresponding to this event.
+/// \param driver_address Address of the driver that started this job.
 /// \param driver_pid Process ID of the driver running this job.
-/// \param entrypoint The entrypoint name of the
+/// \param entrypoint The entrypoint name of the job.
+/// \param job_config The config of this job.
 /// \return The job table data created by this method.
 inline std::shared_ptr<ray::rpc::JobTableData> CreateJobTableData(
     const ray::JobID &job_id,
     bool is_dead,
-    const std::string &driver_ip_address,
+    const ray::rpc::Address &driver_address,
     int64_t driver_pid,
     const std::string &entrypoint,
     const ray::rpc::JobConfig &job_config = {}) {
   auto job_info_ptr = std::make_shared<ray::rpc::JobTableData>();
   job_info_ptr->set_job_id(job_id.Binary());
   job_info_ptr->set_is_dead(is_dead);
-  job_info_ptr->set_driver_ip_address(driver_ip_address);
+  *job_info_ptr->mutable_driver_address() = driver_address;
   job_info_ptr->set_driver_pid(driver_pid);
   job_info_ptr->set_entrypoint(entrypoint);
   *job_info_ptr->mutable_config() = job_config;

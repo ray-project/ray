@@ -335,9 +335,9 @@ Repartitioning data
 
 A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
 :term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks.
+increase the number of blocks by setting a higher ``parallelism`` at read time.
 
-To change the number of blocks, call
+To change the number of blocks for an existing Dataset, call
 :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
 
 .. testcode::

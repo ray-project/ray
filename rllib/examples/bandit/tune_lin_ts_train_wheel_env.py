@@ -83,14 +83,14 @@ if __name__ == "__main__":
     ax1.set_title("Episode reward mean")
     ax1.set_xlabel("Training steps")
 
-    # Restore trainer from checkpoint
+    # Restore Algorithm from checkpoint
     checkpoint = results.get_best_result().checkpoint
-    trainer = config.build()
+    algo = config.build()
     with checkpoint.as_directory() as checkpoint_dir:
-        trainer.restore(checkpoint_dir)
+        algo.restore(checkpoint_dir)
 
     # Get model to plot arm weights distribution
-    model = trainer.get_policy().model
+    model = algo.get_policy().model
     means = [model.arms[i].theta.numpy() for i in range(5)]
     covs = [model.arms[i].covariance.numpy() for i in range(5)]
 

@@ -7,6 +7,7 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
+from ray.rllib.core.learner.learner import FrameworkHyperparameters
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
     SampleBatch,
@@ -63,7 +64,8 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
         scaling_config = LOCAL_SCALING_CONFIGS[scaling_mode]
         learner_group = get_learner_group(fw, env, scaling_config)
-        local_learner = get_learner(framework=fw, env=env)
+        framework_hps = FrameworkHyperparameters(eager_tracing=True)
+        local_learner = get_learner(framework=fw, framework_hps=framework_hps, env=env)
         local_learner.build()
 
         # make the state of the learner and the local learner_group identical

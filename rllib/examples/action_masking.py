@@ -180,7 +180,7 @@ if __name__ == "__main__":
             print(f"Obs: {obs}, Action: {action}")
             obs = next_obs
 
-    # run with tune for auto trainer creation, stopping, TensorBoard, etc.
+    # Run with tune for auto Algorithm creation, stopping, TensorBoard, etc.
     else:
         tuner = tune.Tuner(
             args.run,

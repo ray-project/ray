@@ -204,6 +204,7 @@ struct Mocker {
     node->set_node_manager_address(address);
     node->set_node_name(node_name);
     node->set_instance_id("instance_x");
+    node->set_state(rpc::GcsNodeInfo::ALIVE);
     return node;
   }
 
@@ -212,7 +213,12 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
-    job_table_data->set_driver_ip_address("127.0.0.1");
+    rpc::Address address;
+    address.set_ip_address("127.0.0.1");
+    address.set_port(1234);
+    address.set_raylet_id(UniqueID::FromRandom().Binary());
+    address.set_worker_id(UniqueID::FromRandom().Binary());
+    job_table_data->mutable_driver_address()->CopyFrom(address);
     job_table_data->set_driver_pid(5667L);
     return job_table_data;
   }
@@ -243,14 +249,24 @@ struct Mocker {
   static std::shared_ptr<rpc::AddJobRequest> GenAddJobRequest(
       const JobID &job_id,
       const std::string &ray_namespace,
-      const std::optional<std::string> &submission_id = std::nullopt) {
+      const std::optional<std::string> &submission_id = std::nullopt,
+      const std::optional<rpc::Address> &address = std::nullopt) {
     auto job_config_data = std::make_shared<rpc::JobConfig>();
     job_config_data->set_ray_namespace(ray_namespace);
 
     auto job_table_data = std::make_shared<rpc::JobTableData>();
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->mutable_config()->CopyFrom(*job_config_data);
-
+    if (address.has_value()) {
+      job_table_data->mutable_driver_address()->CopyFrom(address.value());
+    } else {
+      rpc::Address dummy_address;
+      dummy_address.set_port(1234);
+      dummy_address.set_raylet_id(NodeID::FromRandom().Binary());
+      dummy_address.set_ip_address("123.456.7.8");
+      dummy_address.set_worker_id(WorkerID::FromRandom().Binary());
+      job_table_data->mutable_driver_address()->CopyFrom(dummy_address);
+    }
     if (submission_id.has_value()) {
       job_table_data->mutable_config()->mutable_metadata()->insert(
           {"job_submission_id", submission_id.value()});
@@ -296,7 +312,8 @@ struct Mocker {
       const NodeID &node_id,
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
-      bool available_resources_changed) {
+      bool available_resources_changed,
+      int64_t idle_ms = 0) {
     resources_data.set_node_id(node_id.Binary());
     for (const auto &resource : available_resources) {
       (*resources_data.mutable_resources_available())[resource.first] = resource.second;
@@ -305,6 +322,7 @@ struct Mocker {
       (*resources_data.mutable_resources_total())[resource.first] = resource.second;
     }
     resources_data.set_resources_available_changed(available_resources_changed);
+    resources_data.set_idle_duration_ms(idle_ms);
   }
 
   static void FillResourcesData(rpc::ResourcesData &data,

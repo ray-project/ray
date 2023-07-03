@@ -68,11 +68,7 @@ from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 from ray.rllib.utils import check_env, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    Deprecated,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
 from ray.rllib.utils.filter import Filter, NoFilter, get_filter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -407,7 +403,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             if not self.config.disable_env_checking:
                 check_env(self.env, self.config)
             # Custom validation function given, typically a function attribute of the
-            # algorithm trainer.
+            # Algorithm.
             if validate_env is not None:
                 validate_env(self.env, self.env_context)
 
@@ -533,7 +529,9 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # must have it's Model (if any) defined and ready to output an initial
         # state.
         for pol in self.policy_map.values():
-            if not pol._model_init_state_automatically_added:
+            if not pol._model_init_state_automatically_added and not pol.config.get(
+                "_enable_rl_module_api", False
+            ):
                 pol._update_model_view_requirements_from_init_state()
 
         self.multiagent: bool = set(self.policy_map.keys()) != {DEFAULT_POLICY_ID}
@@ -721,6 +719,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 else batch.agent_steps()
             )
             batches.append(batch)
+
         batch = concat_samples(batches)
 
         self.callbacks.on_sample_end(worker=self, samples=batch)
@@ -737,6 +736,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         if self.config.fake_sampler:
             self.last_batch = batch
+
         return batch
 
     @ray.method(num_returns=2)
@@ -1850,9 +1850,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 new_policy = policy
 
             # Maybe torch compile an RLModule.
-            if self.config.get("_enable_rl_module_api", False):
+            if self.config.get("_enable_rl_module_api", False) and self.config.get(
+                "torch_compile_worker"
+            ):
+                if self.config.framework_str != "torch":
+                    raise ValueError("Attempting to compile a non-torch RLModule.")
                 rl_module = getattr(new_policy, "model", None)
-                if rl_module is not None and self.config.framework_str == "torch":
+                if rl_module is not None:
                     compile_config = self.config.get_torch_compile_worker_config()
                     rl_module.compile(compile_config)
 
@@ -2048,34 +2052,3 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         else:
             return _make_sub_env_local
-
-    @Deprecated(
-        new="Trainer.get_policy().export_model([export_dir], [onnx]?)", error=True
-    )
-    def export_policy_model(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="Trainer.get_policy().import_model_from_h5([import_file])", error=True
-    )
-    def import_policy_model_from_h5(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        new="Trainer.get_policy().export_checkpoint([export_dir], [filename]?)",
-        error=True,
-    )
-    def export_policy_checkpoint(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="RolloutWorker.foreach_policy_to_train", error=True)
-    def foreach_trainable_policy(self, func, **kwargs):
-        pass
-
-    @Deprecated(new="state_dict = RolloutWorker.get_state()", error=True)
-    def save(self):
-        pass
-
-    @Deprecated(new="RolloutWorker.set_state([state_dict])", error=True)
-    def restore(self, objs):
-        pass
