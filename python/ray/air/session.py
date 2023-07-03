@@ -215,12 +215,12 @@ def get_world_size() -> int:
         trainer.fit()
     """
     session = _get_session()
-    # if not isinstance(session, _TrainSession):
-    #     raise RuntimeError(
-    #         "`get_world_size` can only be called for TrainSession! "
-    #         "Make sure you only use that in `train_loop_per_worker` function"
-    #         "that is passed into `DataParallelTrainer`."
-    #     )
+    if not hasattr(session, "world_size"):
+        raise RuntimeError(
+            "`get_world_size` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.world_size
 
 
@@ -249,12 +249,12 @@ def get_world_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    # if not isinstance(session, _TrainSession):
-    #     raise RuntimeError(
-    #         "`get_world_rank` can only be called for TrainSession! "
-    #         "Make sure you only use that in `train_loop_per_worker` function"
-    #         "that is passed into `DataParallelTrainer`."
-    #     )
+    if not hasattr(session, "world_rank"):
+        raise RuntimeError(
+            "`get_world_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.world_rank
 
 
@@ -282,12 +282,12 @@ def get_local_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    # if not isinstance(session, _TrainSession):
-    #     raise RuntimeError(
-    #         "`get_local_rank` can only be called for TrainSession! "
-    #         "Make sure you only use that in `train_loop_per_worker` function"
-    #         "that is passed into `DataParallelTrainer`."
-    #     )
+    if not hasattr(session, "local_rank"):
+        raise RuntimeError(
+            "`get_local_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.local_rank
 
 
@@ -313,12 +313,12 @@ def get_local_world_size() -> int:
         >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
-    # if not isinstance(session, _TrainSession):
-    #     raise RuntimeError(
-    #         "`get_local_world_size` can only be called for TrainSession! "
-    #         "Make sure you only use that in `train_loop_per_worker` function"
-    #         "that is passed into `DataParallelTrainer`."
-    #     )
+    if not hasattr(session, "local_world_size"):
+        raise RuntimeError(
+            "`get_local_world_size` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.local_world_size
 
 
@@ -344,12 +344,12 @@ def get_node_rank() -> int:
         >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
-    # if not isinstance(session, _TrainSession):
-    #     raise RuntimeError(
-    #         "`get_node_rank` can only be called for TrainSession! "
-    #         "Make sure you only use that in `train_loop_per_worker` function"
-    #         "that is passed into `DataParallelTrainer`."
-    #     )
+    if not hasattr(session, "node_rank"):
+        raise RuntimeError(
+            "`get_node_rank` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.node_rank
 
 
@@ -396,10 +396,10 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = _get_session()
-    # if not isinstance(session, _TrainSession):
-    #     raise RuntimeError(
-    #         "`get_dataset_shard` can only be called for TrainSession! "
-    #         "Make sure you only use that in `train_loop_per_worker` function"
-    #         "that is passed into `DataParallelTrainer`."
-    #     )
+    if not hasattr(session, "get_dataset_shard"):
+        raise RuntimeError(
+            "`get_dataset_shard` can only be called for TrainSession! "
+            "Make sure you only use that in `train_loop_per_worker` function"
+            "that is passed into `DataParallelTrainer`."
+        )
     return session.get_dataset_shard(dataset_name)
