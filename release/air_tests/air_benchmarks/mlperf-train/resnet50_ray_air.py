@@ -14,6 +14,7 @@ from ray.air.config import ScalingConfig
 from ray.train import DataConfig
 from ray import tune
 from ray.tune import Tuner
+from ray.data.datasource.partitioning import Partitioning
 
 
 from tf_utils import (
@@ -107,6 +108,7 @@ def train_loop_for_worker(config):
         assert dataset_shard is None
         logger.info("Building torch.DataLoader...")
         # TODO(swang): pass in shuffle buffer size.
+        # NOTE(swang): There is no way to .limit() the number of images read for torch.
         torch_dataset = build_torch_dataset(
             config["data_root"],
             config["batch_size"],
@@ -240,7 +242,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     """
 
     def process_images():
-        for image_buffer in tf_record_batch["image"]:
+        for image_buffer in tf_record_batch["image/encoded"]:
             # Each image output is ~600KB.
             yield preprocess_image(
                 image_buffer=image_buffer,
@@ -254,10 +256,27 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     # Subtract one so that labels are in [0, 1000), and cast to float32 for
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
-    #labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict({"image": process_images(), "label": tf_record_batch["label"]})
+    labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels})
 
     return df
+
+
+def crop_and_flip_image_batch(image_batch: pd.DataFrame) -> pd.DataFrame:
+    def process_images():
+        for image_buffer in image_batch["image"]:
+            # Each image output is ~600KB.
+            yield preprocess_image(
+                image_buffer=image_buffer,
+                output_height=DEFAULT_IMAGE_SIZE,
+                output_width=DEFAULT_IMAGE_SIZE,
+                num_channels=NUM_CHANNELS,
+                # TODO(swang): Also load validation set.
+                is_training=True,
+            ).numpy()
+
+    image_batch["image"] = list(process_images())
+    return image_batch
 
 
 def build_synthetic_dataset(batch_size):
@@ -287,14 +306,21 @@ def build_dataset(
     data_root, num_images_per_epoch, num_images_per_input_file, batch_size, read_from_images=True
 ):
     if read_from_images:
-        ds = ray.data.read_images(data_root, partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data"))
+        ds = ray.data.read_images(
+                data_root,
+                partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data")
+            ).limit(num_images_per_epoch)
         classes = {label: i for i, label in enumerate(ds.unique("label"))}
         def convert_class_to_idx(df, classes):
-            df["label"] = df["label"].map(classes)
+            df["label"] = df["label"].map(classes).astype("float32")
             return df
         ds = ds.map_batches(
             convert_class_to_idx,
             fn_kwargs={"classes": classes},
+            batch_format="pandas",
+        )
+        ds = ds.map_batches(
+            crop_and_flip_image_batch,
             batch_format="pandas",
         )
     else:
@@ -302,25 +328,12 @@ def build_dataset(
             data_root, num_images_per_epoch, num_images_per_input_file
         )
         ds = ray.data.read_tfrecords(filenames)
-    ds = ds.map_batches(
-        decode_crop_and_flip_tf_record_batch,
-        batch_size=batch_size,
-        batch_format="pandas",
-    )
+        ds = ds.map_batches(
+            decode_crop_and_flip_tf_record_batch,
+            batch_size=batch_size,
+            batch_format="pandas",
+        )
 
-
-def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file, batch_size):
-    # filenames = get_tfrecords_filenames(
-    #     data_root, num_images_per_epoch, num_images_per_input_file
-    # )
-    ds = ray.data.read_images(data_root)
-    ds = ds.map_batches(decode_crop_and_flip_tf_record_batch,
-                        batch_size=batch_size,
-                        batch_format="pandas")
-    # ds = ds.map_batches(crop_and_flip_image_batch,
-    #                     batch_size=batch_size,
-    #                     batch_format="pandas")
->>>>>>> 3baae97bc3188beff4bcc18d4192b6d5f7497bf1
     # TODO(swang): If we are reading the actual dataset and we only want to read
     # a fraction of images, then we should actually call .limit(), but right now
     # this materializes all data to the object store. For now, we can just skip
@@ -448,7 +461,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--num-images-per-input-file",
-        default=98,
+        default=1,
         type=int,
         help=(
             "Estimated number of images per input TFRecord file. "
@@ -492,6 +505,7 @@ if __name__ == "__main__":
     parser.add_argument("--output-file", default="out.csv", type=str)
     parser.add_argument("--use-gpu", action="store_true")
     parser.add_argument("--num-cpu-nodes", default=0, type=int)
+    parser.add_argument("--from-images", action="store_true")
     args = parser.parse_args()
 
     ray.init(
@@ -559,6 +573,7 @@ if __name__ == "__main__":
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
                 args.batch_size,
+                args.from_images,
             )
             train_loop_config["data_loader"] = RAY_DATA
 
@@ -617,14 +632,17 @@ if __name__ == "__main__":
         "ray_mem_monitor_enabled"
     ] = determine_if_memory_monitor_is_enabled_in_latest_session()
 
-    result["num_files"] = 1623
-    #result["num_files"] = len(
-    #    get_tfrecords_filenames(
-    #        train_loop_config["data_root"],
-    #        train_loop_config["num_images_per_epoch"],
-    #        train_loop_config["num_images_per_input_file"],
-    #    )
-    #)
+    if args.from_images:
+        result["num_files"] = args.num_images_per_epoch
+        result["num_images_per_input_file"] = 1
+    else:
+        result["num_files"] = len(
+            get_tfrecords_filenames(
+                train_loop_config["data_root"],
+                train_loop_config["num_images_per_epoch"],
+                train_loop_config["num_images_per_input_file"],
+            )
+        )
 
     try:
         write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
