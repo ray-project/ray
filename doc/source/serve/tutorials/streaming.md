@@ -116,7 +116,7 @@ The `handle_request` method is decorated with a `fastapi_app.websocket` decorato
 * streams the model's output back using `ws.send_text`
 * stores the prompt and the response in the `conversation` string
 
-Each time `handle_request` gets a new prompt from a client, it runs the whole conversation– with the new prompt appended– through the model. When it the model is finished generating tokens, `handle_request` sends the `"<<Response Finished>>"` string to inform the client that all tokens have been generated. `handle_request` continues to run until the client explicitly disconnects. This raises a `WebSocketDisconnect` exception, which ends the call.
+Each time `handle_request` gets a new prompt from a client, it runs the whole conversation– with the new prompt appended– through the model. When the model is finished generating tokens, `handle_request` sends the `"<<Response Finished>>"` string to inform the client that all tokens have been generated. `handle_request` continues to run until the client explicitly disconnects. This disconnect raises a `WebSocketDisconnect` exception, which ends the call.
 
 Read more about WebSockets in the [FastAPI documentation](https://fastapi.tiangolo.com/advanced/websockets/).
 
