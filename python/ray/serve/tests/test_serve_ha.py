@@ -13,7 +13,7 @@ app = FastAPI()
 from ray import serve
 ray.init(address="auto", namespace="g")
 
-@serve.deployment(name="Counter", route_prefix="/api", version="v1")
+@serve.deployment(num_replicas={num_replicas})
 @serve.ingress(app)
 class Counter:
     def __init__(self):
@@ -38,18 +38,11 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True, http_options={{"location": "EveryNode"}})
-
-Counter.options(num_replicas={num_replicas}).deploy()
-
-print("in start script ray.nods():", ray.nodes())
+counter_app = Counter.bind()
+serve.run(target=counter_app, name="Counter", route_prefix="/api")
 """
 
 check_script = """
-import ray
-ray.init(address="auto", namespace="g")
-print("in start script ray.nods():", ray.nodes())
-
 import requests
 import json
 if {num_replicas} == 1:
