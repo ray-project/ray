@@ -53,18 +53,20 @@ class DreamerV3Catalog(Catalog):
         """Builds the World-Model's encoder network depending on the obs space."""
         if self.is_img_space:
             if framework == "torch":
-                from ray.rllib.algorithms.dreamerv3.torch.models.components.\
-                    cnn_atari import CNNAtari
+                from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+                    cnn_atari,
+                )
 
-                return CNNAtari(
+                return cnn_atari.CNNAtari(
                     gray_scaled=self.is_gray_scale,
                     model_size=self.model_size,
                 )
             elif framework == "tf2":
-                from ray.rllib.algorithms.dreamerv3.tf.models.components.\
-                    cnn_atari import CNNAtari
+                from ray.rllib.algorithms.dreamerv3.tf.models.components import (
+                    cnn_atari,
+                )
 
-                return CNNAtari(model_size=self.model_size)
+                return cnn_atari.CNNAtari(model_size=self.model_size)
             else:
                 raise ValueError(f"`framework={framework}` not supported!")
 
@@ -86,7 +88,7 @@ class DreamerV3Catalog(Catalog):
         if self.is_img_space:
             if framework == "torch":
                 from ray.rllib.algorithms.dreamerv3.torch.models.components import (
-                    conv_transpose_atari
+                    conv_transpose_atari,
                 )
 
                 return conv_transpose_atari.ConvTransposeAtari(
@@ -217,7 +219,7 @@ class DreamerV3Catalog(Catalog):
             )
         else:
             raise ValueError(f"`framework={framework}` not supported!")
-        
+
         return DreamerModel(
             model_size=self.model_size,
             action_space=self.action_space,
@@ -225,4 +227,3 @@ class DreamerV3Catalog(Catalog):
             actor=actor,
             critic=critic,
         )
-

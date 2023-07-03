@@ -56,41 +56,49 @@ class ConvTransposeAtari(nn.Module):
             bias=True,
         )
 
-        self.conv_transpose_layers = nn.ModuleList([
-            nn.ConvTranspose2d(
-                4 * cnn_multiplier,
-                2 * cnn_multiplier,
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                output_padding=0,
-                bias=False,
-            ),
-            nn.ConvTranspose2d(
-                2 * cnn_multiplier,
-                1 * cnn_multiplier,
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                output_padding=0,
-                bias=False,
-            ),
-            nn.ConvTranspose2d(
-                1 * cnn_multiplier,
-                1 if self.gray_scaled else 3,
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                output_padding=0,
-                bias=True,
-            ),
-        ])
+        self.conv_transpose_layers = nn.ModuleList(
+            [
+                nn.ConvTranspose2d(
+                    4 * cnn_multiplier,
+                    2 * cnn_multiplier,
+                    kernel_size=4,
+                    stride=2,
+                    padding=1,
+                    output_padding=0,
+                    bias=False,
+                ),
+                nn.ConvTranspose2d(
+                    2 * cnn_multiplier,
+                    1 * cnn_multiplier,
+                    kernel_size=4,
+                    stride=2,
+                    padding=1,
+                    output_padding=0,
+                    bias=False,
+                ),
+                nn.ConvTranspose2d(
+                    1 * cnn_multiplier,
+                    1 if self.gray_scaled else 3,
+                    kernel_size=4,
+                    stride=2,
+                    padding=1,
+                    output_padding=0,
+                    bias=True,
+                ),
+            ]
+        )
 
-        self.layer_normalizations = nn.ModuleList([
-            nn.LayerNorm(2 * cnn_multiplier * self.input_dims[0] * self.input_dims[1]),
-            nn.LayerNorm(1 * cnn_multiplier * self.input_dims[0] * self.input_dims[1]),
-            nn.LayerNorm(1 * self.input_dims[0] * self.input_dims[1]),
-        ])
+        self.layer_normalizations = nn.ModuleList(
+            [
+                nn.LayerNorm(
+                    2 * cnn_multiplier * self.input_dims[0] * self.input_dims[1]
+                ),
+                nn.LayerNorm(
+                    1 * cnn_multiplier * self.input_dims[0] * self.input_dims[1]
+                ),
+                nn.LayerNorm(1 * self.input_dims[0] * self.input_dims[1]),
+            ]
+        )
 
         self.output_conv2d_transpose = nn.ConvTranspose2d(
             1 * self.input_dims[2],

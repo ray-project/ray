@@ -3,11 +3,9 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from typing import Optional
-
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.torch.models.components.reward_predictor_layer import (
-    RewardPredictorLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    reward_predictor_layer,
 )
 from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
 
@@ -61,7 +59,7 @@ class RewardPredictor(nn.Module):
             output_layer_size=None,
         )
         reward_predictor_input_size = get_dense_hidden_units(model_size)
-        self.reward_layer = RewardPredictorLayer(
+        self.reward_layer = reward_predictor_layer.RewardPredictorLayer(
             input_size=reward_predictor_input_size,
             num_buckets=num_buckets,
             lower_bound=lower_bound,

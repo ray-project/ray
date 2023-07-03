@@ -53,9 +53,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # World Model optimizer.
         optim_world_model = torch.optim.Adam(
-            dreamerv3_module.world_model.parameters(),
-            lr=hps.world_model_lr,
-            eps=1e-8
+            dreamerv3_module.world_model.parameters(), lr=hps.world_model_lr, eps=1e-8
         )
         self.register_optimizer(
             module_id=module_id,
@@ -66,9 +64,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # Actor optimizer.
         optim_actor = torch.optim.Adam(
-            dreamerv3_module.actor.parameters(),
-            lr=hps.actor_lr,
-            eps=1e-5
+            dreamerv3_module.actor.parameters(), lr=hps.actor_lr, eps=1e-5
         )
         self.register_optimizer(
             module_id=module_id,
@@ -79,9 +75,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # Critic optimizer.
         optim_critic = torch.optim.Adam(
-            dreamerv3_module.critic.parameters(),
-            lr=hps.critic_lr,
-            eps=1e-5
+            dreamerv3_module.critic.parameters(), lr=hps.critic_lr, eps=1e-5
         )
         self.register_optimizer(
             module_id=module_id,
@@ -131,8 +125,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             self.register_metric(
                 module_id,
                 optimizer_name.upper() + "_gradients_maxabs_after_clipping",
-                torch.max(torch.abs(
-                    torch.cat([g.flatten() for g in grads_sub_dict.values()]))).item(),
+                torch.max(
+                    torch.abs(torch.cat([g.flatten() for g in grads_sub_dict.values()]))
+                ).item(),
             )
 
         return module_gradients_dict
@@ -211,7 +206,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             module_id=module_id,
             metrics_dict={
                 "WORLD_MODEL_learned_initial_h": self.module[
-                    module_id].world_model.initial_h,
+                    module_id
+                ].world_model.initial_h,
                 # Prediction losses.
                 # Decoder (obs) loss.
                 "WORLD_MODEL_L_decoder": prediction_losses["L_decoder"],
@@ -237,7 +233,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                     "WORLD_MODEL_L_reward_B_T": prediction_losses["L_reward_B_T"],
                     "WORLD_MODEL_L_continue_B_T": prediction_losses["L_continue_B_T"],
                     "WORLD_MODEL_L_prediction_B_T": prediction_losses[
-                        "L_prediction_B_T"],
+                        "L_prediction_B_T"
+                    ],
                     "WORLD_MODEL_L_dynamics_B_T": L_dyn_B_T,
                     "WORLD_MODEL_L_representation_B_T": L_rep_B_T,
                     "WORLD_MODEL_L_total_B_T": L_world_model_total_B_T,
@@ -343,12 +340,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Note: This is described strangely in the paper (stating a neglogp loss here),
         # but the author's own implementation actually uses simple MSE with the loc
         # of the Gaussian.
-        decoder_loss_BxT = torch.sum(
-            torch.square(obs_distr_means - obs_BxT), dim=-1
-        )
+        decoder_loss_BxT = torch.sum(torch.square(obs_distr_means - obs_BxT), dim=-1)
 
         # Reshape decoder loss to (B, T)
-        decoder_loss_B_T = decoder_loss_BxT.reshape(hps.batch_size_B, hps.batch_length_T)
+        decoder_loss_B_T = decoder_loss_BxT.reshape(
+            hps.batch_size_B, hps.batch_length_T
+        )
         L_decoder = torch.mean(decoder_loss_B_T)
 
         # The FiniteDiscrete reward bucket distribution computed by our reward
@@ -438,16 +435,12 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # Stop gradient for encoder's z-outputs:
         sg_z_posterior_distr_BxT = torch.distributions.Independent(
-            torch.distributions.OneHotCategorical(
-                probs=z_posterior_probs_BxT.detach()
-            ),
+            torch.distributions.OneHotCategorical(probs=z_posterior_probs_BxT.detach()),
             reinterpreted_batch_ndims=1,
         )
         # Stop gradient for dynamics model's z-outputs:
         sg_z_prior_distr_BxT = torch.distributions.Independent(
-            torch.distributions.OneHotCategorical(
-                probs=z_prior_probs_BxT.detach()
-            ),
+            torch.distributions.OneHotCategorical(probs=z_prior_probs_BxT.detach()),
             reinterpreted_batch_ndims=1,
         )
 
@@ -534,7 +527,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                 dim=-1,
             )
             # First term of loss function. [1] eq. 11.
-            logp_loss_H_B = logp_actions_dreamed_t0_to_Hm1_B * scaled_value_targets_t0_to_Hm1_B
+            logp_loss_H_B = (
+                logp_actions_dreamed_t0_to_Hm1_B * scaled_value_targets_t0_to_Hm1_B
+            )
         # Box space.
         else:
             logp_actions_dreamed_t0_to_Hm1_B = dist_t0_to_Hm1_B.log_prob(
@@ -569,9 +564,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
                 "ACTOR_L_neglogp_reinforce_term": torch.mean(
                     L_actor_reinforce_term_H_B
                 ),
-                "ACTOR_L_neg_entropy_term": torch.mean(
-                    L_actor_action_entropy_term_H_B
-                ),
+                "ACTOR_L_neg_entropy_term": torch.mean(L_actor_action_entropy_term_H_B),
             },
         )
         if hps.report_individual_batch_item_stats:
@@ -626,11 +619,15 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         value_targets_t0_to_Hm1_B = value_targets_t0_to_Hm1_BxT.detach()
         value_symlog_targets_t0_to_Hm1_B = symlog(value_targets_t0_to_Hm1_B)
         # Fold time rank (for two_hot'ing).
-        value_symlog_targets_HxB = value_symlog_targets_t0_to_Hm1_B.view(-1,)
+        value_symlog_targets_HxB = value_symlog_targets_t0_to_Hm1_B.view(
+            -1,
+        )
         value_symlog_targets_two_hot_HxB = two_hot(value_symlog_targets_HxB)
         # Unfold time rank.
-        value_symlog_targets_two_hot_t0_to_Hm1_B = value_symlog_targets_two_hot_HxB.view(
-            [Hm1, B] + list(value_symlog_targets_two_hot_HxB.shape[-1:])
+        value_symlog_targets_two_hot_t0_to_Hm1_B = (
+            value_symlog_targets_two_hot_HxB.view(
+                [Hm1, B] + list(value_symlog_targets_two_hot_HxB.shape[-1:])
+            )
         )
 
         # Get (B x T x probs) tensor from return distributions.
@@ -640,9 +637,8 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             [H, B] + list(value_symlog_logits_HxB.shape[-1:])
         )[:-1]
 
-        values_log_pred_Hm1_B = (
-            value_symlog_logits_t0_to_Hm1_B
-            - torch.logsumexp(value_symlog_logits_t0_to_Hm1_B, dim=-1, keepdim=True)
+        values_log_pred_Hm1_B = value_symlog_logits_t0_to_Hm1_B - torch.logsumexp(
+            value_symlog_logits_t0_to_Hm1_B, dim=-1, keepdim=True
         )
         # Multiply with two-hot targets and neg.
         value_loss_two_hot_H_B = -torch.sum(
@@ -651,9 +647,13 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         # Compute EMA regularization loss.
         # Expected values (dreamed) from the EMA (slow critic) net.
-        value_symlog_ema_t0_to_Hm1_B = dream_data["v_symlog_dreamed_ema_t0_to_H_BxT"].detach()[:-1]
+        value_symlog_ema_t0_to_Hm1_B = dream_data[
+            "v_symlog_dreamed_ema_t0_to_H_BxT"
+        ].detach()[:-1]
         # Fold time rank (for two_hot'ing).
-        value_symlog_ema_HxB = value_symlog_ema_t0_to_Hm1_B.view(-1,)
+        value_symlog_ema_HxB = value_symlog_ema_t0_to_Hm1_B.view(
+            -1,
+        )
         value_symlog_ema_two_hot_HxB = two_hot(value_symlog_ema_HxB)
         # Unfold time rank.
         value_symlog_ema_two_hot_t0_to_Hm1_B = value_symlog_ema_two_hot_HxB.view(

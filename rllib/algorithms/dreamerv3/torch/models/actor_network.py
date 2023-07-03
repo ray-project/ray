@@ -3,8 +3,6 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from typing import Optional
-
 import gymnasium as gym
 import numpy as np
 

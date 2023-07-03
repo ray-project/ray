@@ -131,7 +131,8 @@ class DreamerV3EnvRunner(EnvRunner):
             self.module = module_spec.build()[DEFAULT_POLICY_ID]
 
         self.convert_to_tensor = (
-            convert_to_torch_tensor if self.config.framework_str == "torch"
+            convert_to_torch_tensor
+            if self.config.framework_str == "torch"
             else _convert_to_tf
         )
 
@@ -296,10 +297,10 @@ class DreamerV3EnvRunner(EnvRunner):
 
                 # Model outputs one-hot actions (if discrete). Convert to int actions
                 # as well.
-                actions = outs[SampleBatch.ACTIONS].numpy()
+                actions = convert_to_numpy(outs[SampleBatch.ACTIONS])
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
+                states = convert_to_numpy(outs[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             ts += self.num_envs
@@ -401,10 +402,10 @@ class DreamerV3EnvRunner(EnvRunner):
                 else:
                     outs = self.module.forward_inference(batch)
 
-                actions = outs[SampleBatch.ACTIONS].numpy()
+                actions = convert_to_numpy(outs[SampleBatch.ACTIONS])
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                states = tree.map_structure(lambda s: s.numpy(), outs[STATE_OUT])
+                states = convert_to_numpy(outs[STATE_OUT])
 
             obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
             if with_render_data:

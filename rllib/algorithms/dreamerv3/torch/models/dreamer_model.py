@@ -471,8 +471,8 @@ class DreamerModel(nn.Module):
 
         # Also provide int-actions, if discrete action space.
         if isinstance(self.action_space, gym.spaces.Discrete):
-            ret[re.sub("^actions_", "actions_ints_", key)] = (
-                torch.argmax(a_t0_to_H_B, dim=-1)
+            ret[re.sub("^actions_", "actions_ints_", key)] = torch.argmax(
+                a_t0_to_H_B, dim=-1
             )
 
         return ret

@@ -435,12 +435,12 @@ class DreamerV3Config(AlgorithmConfig):
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_rl_module import (
-                DreamerV3TorchRLModule as module
+                DreamerV3TorchRLModule as module,
             )
 
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
-                DreamerV3TfRLModule as module
+                DreamerV3TfRLModule as module,
             )
 
         else:

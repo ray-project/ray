@@ -19,7 +19,6 @@ from ray.rllib.utils.numpy import one_hot
 
 @ExperimentalAPI
 class DreamerV3RLModule(RLModule, abc.ABC):
-
     @override(RLModule)
     def setup(self):
         super().setup()
@@ -29,7 +28,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         T = self.config.model_config_dict["batch_length_T"]
         horizon_H = self.config.model_config_dict["horizon_H"]
         gamma = self.config.model_config_dict["gamma"]
-        model_size = self.config.model_config_dict["model_size"]
 
         # Build encoder and decoder from catalog.
         catalog = self.config.get_catalog()
@@ -63,7 +61,8 @@ class DreamerV3RLModule(RLModule, abc.ABC):
             test_actions = np.tile(
                 np.expand_dims(
                     one_hot(
-                        self.config.action_space.sample(), depth=self.config.action_space.n
+                        self.config.action_space.sample(),
+                        depth=self.config.action_space.n,
                     ),
                     (0, 1),
                 ),

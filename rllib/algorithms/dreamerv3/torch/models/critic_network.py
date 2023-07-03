@@ -3,13 +3,10 @@
 D. Hafner, J. Pasukonis, J. Ba, T. Lillicrap
 https://arxiv.org/pdf/2301.04104v1.pdf
 """
-from typing import Optional
-
-
 from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.torch.models.components.reward_predictor_layer import (
-    RewardPredictorLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    reward_predictor_layer,
 )
 from ray.rllib.utils.framework import try_import_torch
 
@@ -83,7 +80,7 @@ class CriticNetwork(nn.Module):
             output_layer_size=None,
         )
         reward_predictor_input_size = get_dense_hidden_units(self.model_size)
-        self.return_layer = RewardPredictorLayer(
+        self.return_layer = reward_predictor_layer.RewardPredictorLayer(
             input_size=reward_predictor_input_size,
             num_buckets=num_buckets,
             lower_bound=lower_bound,
@@ -98,7 +95,7 @@ class CriticNetwork(nn.Module):
             model_size=self.model_size,
             output_layer_size=None,
         )
-        self.return_layer_ema = RewardPredictorLayer(
+        self.return_layer_ema = reward_predictor_layer.RewardPredictorLayer(
             input_size=reward_predictor_input_size,
             num_buckets=num_buckets,
             lower_bound=lower_bound,
@@ -155,9 +152,13 @@ class CriticNetwork(nn.Module):
         ema_net=(`ema_decay`*ema_net) + (1.0-`ema_decay`)*critic_net
         """
         for param_ema, param in zip(self.mlp_ema.parameters(), self.mlp.parameters()):
-            param_ema.data.mul_(self.ema_decay).add_((1.0 - self.ema_decay) * param.data)
+            param_ema.data.mul_(self.ema_decay).add_(
+                (1.0 - self.ema_decay) * param.data
+            )
 
         for param_ema, param in zip(
             self.return_layer_ema.parameters(), self.return_layer.parameters()
         ):
-            param_ema.data.mul_(self.ema_decay).add_((1.0 - self.ema_decay) * param.data)
+            param_ema.data.mul_(self.ema_decay).add_(
+                (1.0 - self.ema_decay) * param.data
+            )

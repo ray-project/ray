@@ -62,9 +62,7 @@ class RewardPredictorLayer(nn.Module):
         self.lower_bound = lower_bound
         self.upper_bound = upper_bound
         self.reward_buckets_layer = nn.Linear(
-            in_features=input_size,
-            out_features=self.num_buckets,
-            bias=True
+            in_features=input_size, out_features=self.num_buckets, bias=True
         )
         self.reward_buckets_layer.weight.data.fill_(0.0)
         self.reward_buckets_layer.bias.data.fill_(0.0)
@@ -92,10 +90,7 @@ class RewardPredictorLayer(nn.Module):
         # symexp'd reward/values.
         probs = F.softmax(logits, dim=-1)
         possible_outcomes = torch.linspace(
-            self.lower_bound,
-            self.upper_bound,
-            self.num_buckets,
-            device=logits.device
+            self.lower_bound, self.upper_bound, self.num_buckets, device=logits.device
         )
 
         # Simple vector dot product (over last dim) to get the mean reward

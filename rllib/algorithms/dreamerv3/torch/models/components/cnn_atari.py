@@ -6,7 +6,9 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import CNNEncoderConfig
+from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -61,4 +63,4 @@ class CNNAtari(nn.Module):
         Args:
             inputs: The image inputs of shape (B, 64, 64, 3).
         """
-        return self.cnn_stack(inputs)
+        return self.cnn_stack({SampleBatch.OBS: inputs})[ENCODER_OUT]

@@ -6,8 +6,8 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 from typing import Optional
 
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.torch.models.components.representation_layer import (
-    RepresentationLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    representation_layer,
 )
 from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
 from ray.rllib.utils.framework import try_import_torch
@@ -54,7 +54,7 @@ class DynamicsPredictor(nn.Module):
             output_layer_size=None,
         )
         representation_layer_input_size = get_dense_hidden_units(model_size)
-        self.representation_layer = RepresentationLayer(
+        self.representation_layer = representation_layer.RepresentationLayer(
             input_size=representation_layer_input_size,
             model_size=model_size,
             num_categoricals=num_categoricals,

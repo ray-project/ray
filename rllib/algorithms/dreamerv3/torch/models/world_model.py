@@ -16,8 +16,8 @@ from ray.rllib.algorithms.dreamerv3.torch.models.components.dynamics_predictor i
     DynamicsPredictor,
 )
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
-from ray.rllib.algorithms.dreamerv3.torch.models.components.representation_layer import (
-    RepresentationLayer,
+from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+    representation_layer,
 )
 from ray.rllib.algorithms.dreamerv3.torch.models.components.reward_predictor import (
     RewardPredictor,
@@ -107,8 +107,10 @@ class WorldModel(nn.Module):
         self.batch_length_T = batch_length_T
         self.symlog_obs = symlog_obs
         self.action_space = action_space
-        a_flat = action_space.n if isinstance(action_space, gym.spaces.Discrete) else (
-            np.prod(action_space.shape)
+        a_flat = (
+            action_space.n
+            if isinstance(action_space, gym.spaces.Discrete)
+            else (np.prod(action_space.shape))
         )
 
         # Encoder (latent 1D vector generator) (xt -> lt).
@@ -130,20 +132,20 @@ class WorldModel(nn.Module):
             num_dense_layers=1,
         )
         # The (posterior) z-state generating layer.
-        self.posterior_representation_layer = RepresentationLayer(
+        self.posterior_representation_layer = representation_layer.RepresentationLayer(
             input_size=get_dense_hidden_units(self.model_size),
             model_size=self.model_size,
         )
 
-        h_plus_z_flat = self.num_gru_units + (
+        z_flat = (
             self.posterior_representation_layer.num_categoricals
             * self.posterior_representation_layer.num_classes_per_categorical
-        )
+        ) 
+        h_plus_z_flat = self.num_gru_units + z_flat
 
         # Dynamics (prior z-state) predictor: ht -> z^t
         self.dynamics_predictor = DynamicsPredictor(
-            input_size=self.num_gru_units,
-            model_size=self.model_size
+            input_size=self.num_gru_units, model_size=self.model_size
         )
 
         # GRU for the RSSM: [at, ht, zt] -> ht+1
@@ -156,7 +158,9 @@ class WorldModel(nn.Module):
         )
         # The actual sequence model containing the GRU layer.
         self.sequence_model = SequenceModel(
-            input_size=int(h_plus_z_flat + a_flat),
+            # Only z- and a-state go into pre-layer. The output of that goes then
+            # into GRU (together with h-state).
+            input_size=int(z_flat + a_flat),
             model_size=self.model_size,
             action_space=self.action_space,
             num_gru_units=self.num_gru_units,
@@ -280,7 +284,13 @@ class WorldModel(nn.Module):
         observations = observations.view((-1,) + shape[2:])
         encoder_out = self.encoder(observations)
         # Unfold time dimension.
-        encoder_out = encoder_out.view((B, T,) + encoder_out.shape[1:])
+        encoder_out = encoder_out.view(
+            (
+                B,
+                T,
+            )
+            + encoder_out.shape[1:]
+        )
         # Make time major for faster upcoming loop.
         encoder_out = encoder_out.transpose(0, 1)
         # encoder_out=[T, B, ...]

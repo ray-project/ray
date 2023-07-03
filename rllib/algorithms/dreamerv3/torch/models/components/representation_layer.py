@@ -60,7 +60,7 @@ class RepresentationLayer(nn.Module):
         self.z_generating_layer = nn.Linear(
             input_size,
             self.num_categoricals * self.num_classes_per_categorical,
-            bias=True
+            bias=True,
         )
 
     def forward(self, inputs, return_z_probs=False):
@@ -119,9 +119,7 @@ class RepresentationLayer(nn.Module):
         # [1] "The representations are sampled from a vector of softmax distributions
         # and we take straight-through gradients through the sampling step."
         # [2] Algorithm 1.
-        differentiable_sample = (
-            sample.detach() + probs - probs.detach()
-        )
+        differentiable_sample = sample.detach() + probs - probs.detach()
         if return_z_probs:
             return differentiable_sample, probs
         return differentiable_sample
