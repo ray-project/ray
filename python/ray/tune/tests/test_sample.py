@@ -376,7 +376,7 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(all(c in samples for c in categories))
 
     def testFunction(self):
-        def sample(spec):
+        def sample(config):
             return np.random.uniform(-4, 4)
 
         fnc = ray.tune.search.sample.Function(sample)
@@ -391,13 +391,13 @@ class SearchSpaceTest(unittest.TestCase):
         def sample_a():
             return 0
 
-        def sample_b(spec):
+        def sample_b(config):
             return 1
 
-        def sample_c(spec, b="ok"):
+        def sample_c(config, b="ok"):
             return 2
 
-        def sample_d_invalid(spec, b):
+        def sample_d_invalid(config, b):
             return 3
 
         sample_d_valid = partial(sample_d_invalid, b="ok")

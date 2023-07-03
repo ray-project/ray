@@ -1,5 +1,6 @@
-import os
 import numpy as np
+import os
+import pytest
 import random
 import unittest
 
@@ -23,7 +24,8 @@ class VariantGeneratorTest(unittest.TestCase):
         ray.shutdown()
         _register_all()  # re-register the evicted objects
 
-    def generate_trials(self, spec, name):
+    @staticmethod
+    def generate_trials(spec, name):
         suggester = BasicVariantGenerator()
         suggester.add_configurations({name: spec})
         trials = []
@@ -361,8 +363,30 @@ class VariantGeneratorTest(unittest.TestCase):
             raise
 
 
+# TODO(ml-team): [Deprecation - tune.sample_from(spec)]
+def test_sample_from_with_spec_deprecated():
+    with pytest.warns() as records:
+        list(
+            VariantGeneratorTest.generate_trials(
+                {
+                    "run": "__fake",
+                    "config": {
+                        "foo": tune.sample_from(lambda spec: spec.config.bar),
+                        "bar": 1,
+                    },
+                },
+                "deprecated_sample_from_spec",
+            )
+        )
+        assert any(
+            "`tune.sample_from` functions that take a `spec` are deprecated"
+            in str(record.message)
+            for record in records
+        )
+        print([record.message for record in records])
+
+
 if __name__ == "__main__":
-    import pytest
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))

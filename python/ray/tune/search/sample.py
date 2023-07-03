@@ -3,6 +3,7 @@ from copy import copy
 from inspect import signature
 from math import isclose
 from typing import Any, Callable, Dict, List, Optional, Sequence, Union
+import warnings
 
 import numpy as np
 
@@ -466,12 +467,13 @@ class Function(Domain):
                 from ray.tune.search.variant_generator import _UnresolvedAccessGuard
 
                 r = domain.func(_UnresolvedAccessGuard({"config": config}))
-                logger.warning(
-                    "sample_from functions that take a spec dict are "
-                    "deprecated. Please update your function to work with "
-                    "the config dict directly:\n"
+                warnings.warn(
+                    "`tune.sample_from` functions that take a `spec` are "
+                    "deprecated and will no longer be supported in a future Ray "
+                    "version. Please update your function to work with "
+                    "the config dict directly.\nFor example:  "
                     "tune.sample_from(lambda spec: spec.config.a) -> "
-                    "tune.sample_from(lambda config: config['a'])"
+                    "tune.sample_from(lambda config: config['a'])",
                 )
                 return r
 
