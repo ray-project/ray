@@ -94,7 +94,7 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        _finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _finalize_fn: Optional[Callable[[Any], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:

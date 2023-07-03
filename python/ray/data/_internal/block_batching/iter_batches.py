@@ -31,7 +31,7 @@ def iter_batches(
     batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-    finalize_fn: Optional[Callable[[DataBatch], Any]] = None,
+    finalize_fn: Optional[Callable[[Any], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -155,15 +155,8 @@ def iter_batches(
             stats=stats,
             batch_format=batch_format,
             collate_fn=collate_fn,
-            num_threadpool_workers=prefetch_batches,
-        )
-
-        # Step 4: Apply the finalize_fn in a 1-thread pool,
-        # useful for operations such as host to device transfer.
-        batch_iter = _apply_finalize_fn_in_threadpool(
-            batch_iter,
-            stats=stats,
             finalize_fn=finalize_fn,
+            num_threadpool_workers=prefetch_batches,
         )
 
         # Step 5: Restore original order.
@@ -190,6 +183,7 @@ def _format_in_threadpool(
     stats: DatasetStats,
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
+    finalize_fn: Optional[Callable[[Any], Any]],
     num_threadpool_workers: int,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
@@ -207,7 +201,7 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
-    def threadpool_computations(
+    def threadpool_computations_format_collate(
         batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
@@ -222,43 +216,27 @@ def _format_in_threadpool(
             )
         yield from formatted_batch_iter
 
-    if num_threadpool_workers > 0:
-        return make_async_gen(
-            base_iterator=batch_iter,
-            fn=threadpool_computations,
-            num_workers=num_threadpool_workers,
-        )
-    else:
-        return threadpool_computations(batch_iter)
-
-
-def _apply_finalize_fn_in_threadpool(
-    batch_iter: Iterator[Batch],
-    stats: DatasetStats,
-    finalize_fn: Optional[Callable[[DataBatch], Any]],
-) -> Iterator[Batch]:
-    """Applies the `finalize_fn` function to each data batch after formatting
-    and collation. The prefetch depth for finalize_fn is always 1, so it can
-    be used for heavyweight operations such as GPU preloading. This is
-    executed in a separate threadpool from the formatting and collation
-    steps, which allows for independent parallelization of these steps.
-
-    Args:
-        batch_iter: An iterator over data batches.
-        stats: DatasetStats object to record timing and other statistics.
-        finalize_fn: A function to apply to each data batch before returning it.
-    """
-    if finalize_fn is None:
-        return batch_iter
-
-    def threadpool_computations(batch_iter):
+    def threadpool_computations_finalize_fn(batch_iter):
+        if finalize_fn is None:
+            yield from batch_iter
         yield from finalize_batches(batch_iter, finalize_fn=finalize_fn, stats=stats)
 
-    return make_async_gen(
-        base_iterator=batch_iter,
-        fn=threadpool_computations,
-        num_workers=1,
-    )
+    if num_threadpool_workers > 0:
+        collated_iter = make_async_gen(
+            base_iterator=batch_iter,
+            fn=threadpool_computations_format_collate,
+            num_workers=num_threadpool_workers,
+        )
+        finalized_iter = make_async_gen(
+            base_iterator=collated_iter,
+            fn=threadpool_computations_finalize_fn,
+            num_workers=1,
+        )
+        return finalized_iter
+    else:
+        collated_iter = threadpool_computations_format_collate(batch_iter)
+        finalized_iter = threadpool_computations_finalize_fn(collated_iter)
+        return finalized_iter
 
 
 def prefetch_batches_locally(

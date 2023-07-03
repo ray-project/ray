@@ -182,7 +182,7 @@ def collate(
 
 def finalize_batches(
     batch_iter: Iterator[Batch],
-    finalize_fn: Optional[Callable[[DataBatch], Any]],
+    finalize_fn: Callable[[Any], Any],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided finalize_fn applied to items of the batch
