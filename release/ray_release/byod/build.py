@@ -9,7 +9,12 @@ import time
 
 from ray_release.config import RELEASE_PACKAGE_DIR
 from ray_release.logger import logger
-from ray_release.test import Test
+from ray_release.test import (
+    Test,
+    DATAPLANE_ECR,
+    DATAPLANE_ECR_REPO,
+    DATAPLANE_ECR_ML_REPO,
+)
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
 DATAPLANE_FILENAME = "dataplane_20230622.tgz"
@@ -20,6 +25,49 @@ RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
 REQUIREMENTS_BYOD = "requirements_byod"
 REQUIREMENTS_ML_BYOD = "requirements_ml_byod"
 PYTHON_VERSION = "3.8"
+
+
+def build_champagne_image(
+    ray_version: str,
+    python_version: str,
+    image_type: str,
+) -> str:
+    """
+    Builds the Anyscale champagne image.
+    """
+    _download_dataplane_build_file()
+    env = os.environ.copy()
+    env["DOCKER_BUILDKIT"] = "1"
+    if image_type == "cpu":
+        ray_project = "ray"
+        anyscale_repo = DATAPLANE_ECR_REPO
+        image_suffix = ""
+    else:
+        ray_project = "ray-ml"
+        anyscale_repo = DATAPLANE_ECR_ML_REPO
+        image_suffix = f"-{image_type}"
+    ray_image = f"rayproject/{ray_project}:{ray_version}-{python_version}{image_suffix}"
+    anyscale_image = f"{DATAPLANE_ECR}/{anyscale_repo}:champagne-{ray_version}"
+
+    logger.info(f"Building champagne anyscale image from {ray_image}")
+    with open(DATAPLANE_FILENAME, "rb") as build_file:
+        subprocess.check_call(
+            [
+                "docker",
+                "build",
+                "--build-arg",
+                f"BASE_IMAGE={ray_image}",
+                "-t",
+                anyscale_image,
+                "-",
+            ],
+            stdin=build_file,
+            stdout=sys.stderr,
+            env=env,
+        )
+    _validate_and_push(anyscale_image)
+
+    return anyscale_image
 
 
 def build_anyscale_custom_byod_image(test: Test) -> None:
@@ -50,12 +98,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         stdout=sys.stderr,
         env=env,
     )
-    # push the image to ecr, the image will have a tag in this format
-    # {commit_sha}-py{version}-gpu-{custom_information_dict_hash}
-    subprocess.check_call(
-        ["docker", "push", byod_image],
-        stdout=sys.stderr,
-    )
+    _validate_and_push(byod_image)
 
 
 def build_anyscale_base_byod_images(tests: List[Test]) -> None:
@@ -134,11 +177,45 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     stdout=sys.stderr,
                     env=env,
                 )
-                subprocess.check_call(
-                    ["docker", "push", byod_image],
-                    stdout=sys.stderr,
-                )
+                _validate_and_push(byod_image)
                 built.add(ray_image)
+
+
+def _validate_and_push(byod_image: str) -> None:
+    """
+    Validates the given image and pushes it to ECR.
+    """
+    docker_ray_commit = (
+        subprocess.check_output(
+            [
+                "docker",
+                "run",
+                "-ti",
+                "--entrypoint",
+                "python",
+                byod_image,
+                "-c",
+                "import ray; print(ray.__commit__)",
+            ],
+        )
+        .decode("utf-8")
+        .strip()
+    )
+    expected_ray_commit = _get_ray_commit()
+    assert (
+        docker_ray_commit == expected_ray_commit
+    ), f"Expected ray commit {expected_ray_commit}, found {docker_ray_commit}"
+    subprocess.check_call(
+        ["docker", "push", byod_image],
+        stdout=sys.stderr,
+    )
+
+
+def _get_ray_commit() -> str:
+    return os.environ.get(
+        "COMMIT_TO_TEST",
+        os.environ["BUILDKITE_COMMIT"],
+    )
 
 
 def _download_dataplane_build_file() -> None:
@@ -174,7 +251,7 @@ def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
     """
     if os.environ.get("BYOD_NO_CACHE", False):
         return False
-    client = boto3.client("ecr")
+    client = boto3.client("ecr", region_name="us-west-2")
     image_tag = (
         test.get_byod_base_image_tag() if base_image else test.get_byod_image_tag()
     )

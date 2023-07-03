@@ -251,6 +251,8 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// \param gcs_client GCS client
   TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
 
+  ~TaskEventBufferImpl() override;
+
   void AddTaskEvent(std::unique_ptr<TaskEvent> task_event)
       LOCKS_EXCLUDED(mutex_) override;
 
