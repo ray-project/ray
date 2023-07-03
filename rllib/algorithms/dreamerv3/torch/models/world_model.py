@@ -5,7 +5,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import gym
+import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 

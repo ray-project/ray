@@ -21,11 +21,13 @@ from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.evaluation.metrics import RolloutMetrics
+from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import _Episode as Episode
-from ray.rllib.utils.numpy import one_hot
+from ray.rllib.utils.numpy import convert_to_numpy, one_hot
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 _, tf, _ = try_import_tf()
 
@@ -128,6 +130,11 @@ class DreamerV3EnvRunner(EnvRunner):
             # TODO (sven): DreamerV3 is currently single-agent only.
             self.module = module_spec.build()[DEFAULT_POLICY_ID]
 
+        self.convert_to_tensor = (
+            convert_to_torch_tensor if self.config.framework_str == "torch"
+            else _convert_to_tf
+        )
+
         self._needs_initial_reset = True
         self._episodes = [None for _ in range(self.num_envs)]
 
@@ -225,7 +232,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Get initial states for all `batch_size_B` rows in the forward batch.
         initial_states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            convert_to_numpy(self.module.get_initial_state()),
         )
 
         # Have to reset the env (on all vector sub-envs).
@@ -276,10 +283,10 @@ class DreamerV3EnvRunner(EnvRunner):
             else:
                 batch = {
                     STATE_IN: tree.map_structure(
-                        lambda s: tf.convert_to_tensor(s), states
+                        lambda s: self.convert_to_tensor(s), states
                     ),
-                    SampleBatch.OBS: tf.convert_to_tensor(obs),
-                    "is_first": tf.convert_to_tensor(is_first),
+                    SampleBatch.OBS: self.convert_to_tensor(obs),
+                    "is_first": self.convert_to_tensor(is_first),
                 }
                 # Explore or not.
                 if explore:
@@ -314,8 +321,10 @@ class DreamerV3EnvRunner(EnvRunner):
                     )
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = v.numpy()
+                    for k, v in convert_to_numpy(
+                        self.module.get_initial_state()
+                    ).items():
+                        states[k][i] = v
                     is_first[i] = True
                     done_episodes_to_return.append(self._episodes[i])
                     # Create a new episode object.
@@ -359,7 +368,7 @@ class DreamerV3EnvRunner(EnvRunner):
         # Multiply states n times according to our vector env batch size (num_envs).
         states = tree.map_structure(
             lambda s: np.repeat(s, self.num_envs, axis=0),
-            self.module.get_initial_state(),
+            convert_to_numpy(self.module.get_initial_state()),
         )
         is_first = np.ones((self.num_envs,), dtype=np.float32)
 
@@ -381,10 +390,10 @@ class DreamerV3EnvRunner(EnvRunner):
             else:
                 batch = {
                     STATE_IN: tree.map_structure(
-                        lambda s: tf.convert_to_tensor(s), states
+                        lambda s: self.convert_to_tensor(s), states
                     ),
-                    SampleBatch.OBS: tf.convert_to_tensor(obs),
-                    "is_first": tf.convert_to_tensor(is_first),
+                    SampleBatch.OBS: self.convert_to_tensor(obs),
+                    "is_first": self.convert_to_tensor(is_first),
                 }
 
                 if explore:
@@ -425,8 +434,10 @@ class DreamerV3EnvRunner(EnvRunner):
 
                     # Reset h-states to the model's initial ones b/c we are starting a
                     # new episode.
-                    for k, v in self.module.get_initial_state().items():
-                        states[k][i] = v.numpy()
+                    for k, v in convert_to_numpy(
+                        self.module.get_initial_state()
+                    ).items():
+                        states[k][i] = v
                     is_first[i] = True
 
                     episodes[i] = Episode(

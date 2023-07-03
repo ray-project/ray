@@ -779,7 +779,7 @@ class Algorithm(Trainable, AlgorithmBase):
                     modules_to_load=modules_to_load,
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
-            # sync the weights from the learner group to the rollout workers
+            # Sync the weights from the learner group to the rollout workers.
             weights = self.learner_group.get_weights()
             local_worker.set_weights(weights)
             self.workers.sync_weights()

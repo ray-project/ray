@@ -61,7 +61,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             module_id=module_id,
             optimizer_name="world_model",
             optimizer=optim_world_model,
-            params=dreamerv3_module.world_model.parameters(),
+            params=list(dreamerv3_module.world_model.parameters()),
         )
 
         # Actor optimizer.
@@ -74,7 +74,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             module_id=module_id,
             optimizer_name="actor",
             optimizer=optim_actor,
-            params=dreamerv3_module.actor.parameters(),
+            params=list(dreamerv3_module.actor.parameters()),
         )
 
         # Critic optimizer.
@@ -87,7 +87,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             module_id=module_id,
             optimizer_name="critic",
             optimizer=optim_critic,
-            params=dreamerv3_module.critic.parameters(),
+            params=list(dreamerv3_module.critic.parameters()),
         )
 
     @override(TorchLearner)
