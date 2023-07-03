@@ -10,7 +10,8 @@ from datetime import datetime
 from enum import Enum, auto
 from pathlib import Path
 import shutil
-from typing import Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
+import warnings
 
 import ray
 from ray.air._internal.util import StartTraceback, RunnerThread
@@ -37,6 +38,11 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
+
+
+if TYPE_CHECKING:
+    from ray.data import DataIterator
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 _INDEX_FILE_EXTENSION = ".files"

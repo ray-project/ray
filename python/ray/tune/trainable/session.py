@@ -17,9 +17,13 @@ from ray.util.scheduling_strategies import (
     SchedulingStrategyT,
 )
 
+if TYPE_CHECKING:
+    from ray.tune.trainable.function_trainable import _StatusReporter
+
+
 logger = logging.getLogger(__name__)
 
-_session = None # Optional[_StatusReporter]
+_session: Optional["_StatusReporter"] = None
 
 _deprecation_msg = (
     "`tune.report` and `tune.checkpoint_dir` APIs are deprecated in Ray "
