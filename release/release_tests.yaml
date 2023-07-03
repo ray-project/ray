@@ -843,7 +843,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
