@@ -93,10 +93,15 @@ class Query:
                 replacement_table = dict(zip(tasks, resolved))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
-            # Make the scanner GCable to avoid memory leak
+            # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
     async def buffer_starlette_requests_and_warn(self):
+        """Buffer any `starlette.request.Requests` objects to make them serializable.
+
+        This is an anti-pattern because the requests will not be fully functional, so
+        warn the user. We may fully disallow it in the future.
+        """
         global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
         scanner = _PyObjScanner(source_type=Request)
 
@@ -120,7 +125,7 @@ class Query:
                 request._send = empty_send
                 request._receive = make_buffered_asgi_receive(await request.body())
         finally:
-            # Make the scanner GCable to avoid memory leak
+            # Make the scanner GC-able to avoid memory leaks.
             scanner.clear()
 
 
