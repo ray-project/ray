@@ -1,0 +1,14 @@
+# Todo: Fix conflicts with pinned boto3/botocore
+# awscli
+gsutil
+
+# Requirements that are shipped in the ML docker image.
+ipython
+
+# Needed for rich visualization for Ray Train and Ray Data.
+# Todo: Pin to >=8 when myst-parser is upgraded
+# ipywidgets>=8
+ipywidgets
+
+# Needed for Ray Client error message serialization/deserialization.
+tblib
