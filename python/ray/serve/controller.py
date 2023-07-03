@@ -116,6 +116,7 @@ class ServeController:
         assert (
             self._controller_node_id == get_head_node_id()
         ), "Controller must be on the head node."
+        logger.info(f"Controller node id: {self._controller_node_id}")
 
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())

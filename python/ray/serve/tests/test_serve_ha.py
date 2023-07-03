@@ -40,9 +40,14 @@ class Counter:
 serve.start(detached=True, http_options={{"location": "EveryNode"}})
 
 Counter.options(num_replicas={num_replicas}).deploy()
+
+print("in start script ray.nods():", ray.nodes())
 """
 
 check_script = """
+import ray
+print("in start script ray.nods():", ray.nodes())
+
 import requests
 import json
 if {num_replicas} == 1:
