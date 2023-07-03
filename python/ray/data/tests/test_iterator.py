@@ -140,14 +140,18 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
 
 
 def test_iter_batches_finalize_fn_uses_single_thread(ray_start_regular_shared):
-    n = 100
-    ds = ray.data.range(n)
-    it = ds.iterator()
     lock = threading.Lock()
 
     def finalize_fn(batch):
-        lock.acquire()
+        if not lock.acquire(timeout=15):
+            raise Exception("finalize_fn called concurrently")
         return batch
+
+    # Test that finalize_fn is called in a single thread when specified
+    # in DataIterator.iter_batches().
+    n = 100
+    ds = ray.data.range(n)
+    it = ds.iterator()
 
     elements = []
     for batch in it.iter_batches(_finalize_fn=finalize_fn):
