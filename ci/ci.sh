@@ -131,7 +131,7 @@ compile_pip_dependencies() {
   alias pip="python -m pip"
   pip install pip-tools
 
-  # Required packages to lookup, e.g. dragonfly-opt
+  # Required packages to lookup e.g. dragonfly-opt
   HAS_TORCH=0
   python -c "import torch" 2>/dev/null && HAS_TORCH=1
   pip install --no-cache-dir numpy torch
