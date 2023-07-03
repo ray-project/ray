@@ -43,7 +43,7 @@ constructor:
 :end-before: __textbot_constructor_end__
 ```
 
-Note that the constructor also caches an `asyncio` loop. This will come in handy when we need to run a model and concurrently stream its tokens back to the user.
+Note that the constructor also caches an `asyncio` loop. This behavior is useful when you need to run a model and concurrently stream its tokens back to the user.
 
 Add the following logic to handle requests sent to the `Textbot`:
 
