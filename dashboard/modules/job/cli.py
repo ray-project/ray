@@ -25,10 +25,10 @@ def _get_sdk_client(
 ) -> JobSubmissionClient:
     client = JobSubmissionClient(address, create_cluster_if_needed, verify=verify)
     client_address = client.get_address()
-    if isinstance(client_address, str):
-        secret = re.findall("https?:\/\/.*:(.*)@.*$", client_address)
-        if len(secret) > 0:
-            client_address = client_address.replace(f":{secret[0]}@", ":<redacted>@")
+    # redact any passwords in the client address
+    secret = re.findall("https?:\/\/.*:(.*)@.*$", client_address)
+    if secret is not None and len(secret) > 0:
+        client_address = client_address.replace(f":{secret[0]}@", ":<redacted>@")
     cli_logger.labeled_value("Job submission server address", client_address)
     return client
 
