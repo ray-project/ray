@@ -19,6 +19,9 @@ from typing import (
     Tuple,
     Union,
 )
+import warnings
+
+from starlette.requests import Request
 
 import ray
 from ray.actor import ActorHandle
@@ -32,6 +35,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
 )
+from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.utils import (
     compute_iterable_delta,
@@ -44,6 +48,9 @@ from ray.serve.generated.serve_pb2 import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Used to only print a single warning when users pass starlette requests via handle.
+WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = False
 
 
 @dataclass
@@ -77,15 +84,44 @@ class Query:
     async def resolve_async_tasks(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
         scanner = _PyObjScanner(source_type=asyncio.Task)
-        tasks = scanner.find_nodes((self.args, self.kwargs))
 
-        if len(tasks) > 0:
-            resolved = await asyncio.gather(*tasks)
-            replacement_table = dict(zip(tasks, resolved))
-            self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        try:
+            tasks = scanner.find_nodes((self.args, self.kwargs))
 
-        # Make the scanner GCable to avoid memory leak
-        scanner.clear()
+            if len(tasks) > 0:
+                resolved = await asyncio.gather(*tasks)
+                replacement_table = dict(zip(tasks, resolved))
+                self.args, self.kwargs = scanner.replace_nodes(replacement_table)
+        finally:
+            # Make the scanner GCable to avoid memory leak
+            scanner.clear()
+
+    async def buffer_starlette_requests_and_warn(self):
+        global WARNED_ABOUT_STARLETTE_REQUESTS_ONCE
+        scanner = _PyObjScanner(source_type=Request)
+
+        try:
+            requests = scanner.find_nodes((self.args, self.kwargs))
+            if len(requests) > 0 and not WARNED_ABOUT_STARLETTE_REQUESTS_ONCE:
+                WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = True
+                # TODO(edoakes): fully disallow this in the future.
+                warnings.warn(
+                    "`starlette.Request` objects should not be directly passed via "
+                    "`ServeHandle` calls. Not all functionality is guaranteed to work "
+                    "(e.g., detecting disconnects) and this may be disallowed in a "
+                    "future release."
+                )
+
+            for request in requests:
+
+                async def empty_send():
+                    pass
+
+                request._send = empty_send
+                request._receive = make_buffered_asgi_receive(await request.body())
+        finally:
+            # Make the scanner GCable to avoid memory leak
+            scanner.clear()
 
 
 class ReplicaWrapper(ABC):
@@ -806,7 +842,6 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
         if query.metadata.is_streaming:
             raise NotImplementedError("Streaming requires new routing to be enabled.")
 
-        await query.resolve_async_tasks()
         assigned_ref = self._try_assign_replica(query)
         while assigned_ref is None:  # Can't assign a replica right now.
             logger.debug(
@@ -935,6 +970,7 @@ class Router:
             metadata=request_meta,
         )
         await query.resolve_async_tasks()
+        await query.buffer_starlette_requests_and_warn()
         result = await self._replica_scheduler.assign_replica(query)
 
         self.num_queued_queries -= 1
