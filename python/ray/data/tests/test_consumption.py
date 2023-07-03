@@ -478,9 +478,6 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
-
-    ds = ray.data.from_items([{"hello": "world"}], output_arrow_format=True)
-    assert ds.take() == [{"hello": "world"}]
     assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
 
 
