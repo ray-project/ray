@@ -126,13 +126,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         ValueError: HTTPInternalServerError
     """
 
-    ## 
-    @routes.get("/worker/traceback")
+    @routes.get("/task/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
         if "ip" in req.query:
             reporter_stub = self._stubs[req.query["ip"]]
         else:
             reporter_stub = list(self._stubs.values())[0]
+            logger.info("reporter_stub {}".format(reporter_stub))
         pid = int(req.query["pid"])
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"

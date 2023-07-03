@@ -19,9 +19,11 @@ import { Link as RouterLink } from "react-router-dom";
 import { CodeDialogButton } from "../common/CodeDialogButton";
 import { DurationText } from "../common/DurationText";
 import { ActorLink, NodeLink } from "../common/links";
-import { CpuProfilingLink, CpuStackTraceLink } from "../common/ProfilingLink";
+import {
+  TaskCpuProfilingLink,
+  TaskCpuStackTraceLink,
+} from "../common/ProfilingLink";
 import rowStyles from "../common/RowStyles";
-import { useJobDetail } from "../pages/job/hook/useJobDetail";
 import { Task } from "../type/task";
 import { useFilter } from "../util/hook";
 import StateCounter from "./StatesCounter";
@@ -334,27 +336,25 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
     task.error_type !== null && task.error_message !== null
       ? `Error Type: ${task.error_type}\n\n${task.error_message}`
       : undefined;
-  const { job } = useJobDetail();
-  // const isActiveTask = task.state === "RUNNING" && task.worker_id;
-  const isActiveTask = true;
+
+  // const isTaskActive = task.state === "RUNNING" && task.worker_id;
+  const isTaskActive = true;
   return (
     <React.Fragment>
       <Link component={RouterLink} to={`tasks/${task.task_id}`}>
         Log
       </Link>
-      {isActiveTask && (
+      {isTaskActive && (
         <React.Fragment>
           <br />
-          <CpuProfilingLink
-            pid={job?.driver_info?.pid}
-            ip={job?.driver_info?.node_ip_address}
-            type=""
+          <TaskCpuProfilingLink
+            taskId={task?.task_id}
+            attemptNumber={task?.attempt_number}
           />
           <br />
-          <CpuStackTraceLink
-            pid={job?.driver_info?.pid}
-            ip={job?.driver_info?.node_ip_address}
-            type=""
+          <TaskCpuStackTraceLink
+            taskId={task?.task_id}
+            attemptNumber={task?.attempt_number}
           />
         </React.Fragment>
       )}

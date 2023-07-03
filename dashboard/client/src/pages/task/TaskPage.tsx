@@ -11,8 +11,8 @@ import {
   MultiTabLogViewerTabDetails,
 } from "../../common/MultiTabLogViewer";
 import {
-  CpuProfilingLink,
-  CpuStackTraceLink,
+  TaskCpuProfilingLink,
+  TaskCpuStackTraceLink,
 } from "../../common/ProfilingLink";
 import { Section } from "../../common/Section";
 import Loading from "../../components/Loading";
@@ -82,6 +82,7 @@ const TaskPageContents = ({
   }
 
   const {
+    attempt_number,
     task_id,
     actor_id,
     end_time_ms,
@@ -96,7 +97,8 @@ const TaskPageContents = ({
     func_or_class_name,
     name,
   } = task;
-  const isTaskActive = true;
+  const isTaskActive = task.state === "RUNNING" && task.worker_id;
+
   return (
     <div>
       <MetadataSection
@@ -221,27 +223,27 @@ const TaskPageContents = ({
               }
             ),
           },
-          {
-            label: "Actions",
-            content: (
-              <React.Fragment>
-                {isTaskActive && (
+          isTaskActive
+            ? {
+                label: "Actions",
+                content: (
                   <React.Fragment>
-                    {/* <CpuProfilingLink
-                    // pid={job?.driver_info?.pid}
-                    // ip={job?.driver_info?.node_ip_address}
-                    // type=""
+                    <TaskCpuProfilingLink
+                      taskId={task_id}
+                      attemptNumber={attempt_number}
                     />
-                    <CpuStackTraceLink
-                    // pid={job?.driver_info?.pid}
-                    // ip={job?.driver_info?.node_ip_address}
-                    // type=""
-                    /> */}
+                    <br />
+                    <TaskCpuStackTraceLink
+                      taskId={task_id}
+                      attemptNumber={attempt_number}
+                    />
                   </React.Fragment>
-                )}
-              </React.Fragment>
-            ),
-          },
+                ),
+              }
+            : {
+                label: "",
+                content: undefined,
+              },
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>

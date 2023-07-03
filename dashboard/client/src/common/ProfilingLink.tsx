@@ -10,21 +10,23 @@ type CpuProfilingLinkProps = PropsWithChildren<
   } & ClassNameProps
 >;
 
-type TaskCpuProfilingLinkProps = {
-  workerId: string | number | null | undefined;
+type TaskProfilingStackTraceProps = {
+  taskId: string | number | null | undefined;
+  attemptNumber: number;
 };
 
-export const TaskCpuStackTraceLink = ({
-  workerId,
-}: TaskCpuProfilingLinkProps) => {
-  if (!workerId) {
+export const TaskCpuProfilingLink = ({
+  taskId,
+  attemptNumber,
+}: TaskProfilingStackTraceProps) => {
+  if (!taskId) {
     return <div></div>;
   }
   return (
     <Link
-      href={`task/traceback?workerId=${workerId}`}
+      href={`task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}`}
       target="_blank"
-      title="Sample the current Python stack trace for this worker."
+      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
       rel="noreferrer"
     >
       Stack&nbsp;Trace
@@ -32,20 +34,21 @@ export const TaskCpuStackTraceLink = ({
   );
 };
 
-export const TaskCpuProfilingLink = ({
-  workerId,
-}: TaskCpuProfilingLinkProps) => {
-  if (!workerId) {
+export const TaskCpuStackTraceLink = ({
+  taskId,
+  attemptNumber,
+}: TaskProfilingStackTraceProps) => {
+  if (!taskId) {
     return <div></div>;
   }
   return (
     <Link
-      href={`task/traceback?workerId=${workerId}`}
+      href={`task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}`}
       target="_blank"
       title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
     >
-      Stack&nbsp;Trace
+      CPU&nbsp;Flame&nbsp;Graph
     </Link>
   );
 };
@@ -62,12 +65,11 @@ export const CpuProfilingLink = ({
     <Link
       href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
       target="_blank"
-      title="Sample the current Python stack trace for this worker."
+      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
       rel="noreferrer"
     >
       Stack&nbsp;Trace{type ? ` (${type})` : ""}
     </Link>
-    // test git
   );
 };
 
@@ -84,7 +86,7 @@ export const CpuStackTraceLink = ({
     <Link
       href={`worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
       target="_blank"
-      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+      title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
     >
       CPU&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
