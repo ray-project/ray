@@ -23,6 +23,8 @@ from tf_utils import (
     build_tf_dataset,
 )
 
+from pytorch_utils import build_torch_dataset
+
 from metric_utils import (
     determine_if_memory_monitor_is_enabled_in_latest_session,
     get_ray_spilled_and_restored_mb,
@@ -43,6 +45,8 @@ TF_DATA = "tf.data"
 SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
+# torch dataloader.
+TORCH_DATALOADER = "torch"
 
 # Each image is about 600KB after preprocessing.
 APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
@@ -79,6 +83,7 @@ def train_loop_for_worker(config):
 
     dataset_shard = session.get_dataset_shard("train")
     _tf_dataset = None
+    torch_dataset = None
     synthetic_dataset = None
     if config["data_loader"] == TF_DATA:
         assert dataset_shard is None
@@ -98,6 +103,14 @@ def train_loop_for_worker(config):
     elif config["data_loader"] == SYNTHETIC:
         # Build an empty batch and repeat it.
         synthetic_dataset = build_synthetic_dataset(config["batch_size"])
+    elif config["data_loader"] == TORCH_DATALOADER:
+        assert dataset_shard is None
+        logger.info("Building torch.DataLoader...")
+        # TODO(swang): pass in shuffle buffer size.
+        torch_dataset = build_torch_dataset(
+            config["data_root"],
+            config["batch_size"],
+        )
 
     def build_synthetic_tf_dataset(dataset, batch_size, num_steps_per_epoch):
         batch = list(dataset.iter_tf_batches(batch_size=batch_size, dtypes=tf.float32))[
@@ -136,6 +149,9 @@ def train_loop_for_worker(config):
             tf_dataset = dataset_shard.to_tf(
                 feature_columns="image", label_columns="label", batch_size=config["batch_size"]
             )
+        elif config["data_loader"] == TORCH_DATALOADER:
+            assert torch_dataset is not None
+            tf_dataset = iter(torch_dataset)
         elif config["data_loader"] == SYNTHETIC:
             tf_dataset = build_synthetic_tf_dataset(
                 synthetic_dataset,
@@ -147,7 +163,7 @@ def train_loop_for_worker(config):
             model.fit(tf_dataset, steps_per_epoch=num_steps_per_epoch)
         else:
             for i, row in enumerate(tf_dataset):
-                if i == num_steps_per_epoch:
+                if i >= num_steps_per_epoch:
                     break
                 time.sleep(config["train_sleep_time_ms"] / 1000)
                 if i % 10 == 0:
@@ -224,7 +240,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     """
 
     def process_images():
-        for image_buffer in tf_record_batch["image/encoded"]:
+        for image_buffer in tf_record_batch["image"]:
             # Each image output is ~600KB.
             yield preprocess_image(
                 image_buffer=image_buffer,
@@ -238,8 +254,8 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     # Subtract one so that labels are in [0, 1000), and cast to float32 for
     # Keras model.
     # TODO(swang): Do we need to support one-hot encoding?
-    labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
-    df = pd.DataFrame.from_dict({"image": process_images(), "label": labels})
+    #labels = (tf_record_batch["image/class/label"] - 1).astype("float32")
+    df = pd.DataFrame.from_dict({"image": process_images(), "label": tf_record_batch["label"]})
 
     return df
 
@@ -268,17 +284,43 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
 
 
 def build_dataset(
-    data_root, num_images_per_epoch, num_images_per_input_file, batch_size
+    data_root, num_images_per_epoch, num_images_per_input_file, batch_size, read_from_images=True
 ):
-    filenames = get_tfrecords_filenames(
-        data_root, num_images_per_epoch, num_images_per_input_file
-    )
-    ds = ray.data.read_tfrecords(filenames)
+    if read_from_images:
+        ds = ray.data.read_images(data_root, partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data"))
+        classes = {label: i for i, label in enumerate(ds.unique("label"))}
+        def convert_class_to_idx(df, classes):
+            df["label"] = df["label"].map(classes)
+            return df
+        ds = ds.map_batches(
+            convert_class_to_idx,
+            fn_kwargs={"classes": classes},
+            batch_format="pandas",
+        )
+    else:
+        filenames = get_tfrecords_filenames(
+            data_root, num_images_per_epoch, num_images_per_input_file
+        )
+        ds = ray.data.read_tfrecords(filenames)
     ds = ds.map_batches(
         decode_crop_and_flip_tf_record_batch,
         batch_size=batch_size,
         batch_format="pandas",
     )
+
+
+def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file, batch_size):
+    # filenames = get_tfrecords_filenames(
+    #     data_root, num_images_per_epoch, num_images_per_input_file
+    # )
+    ds = ray.data.read_images(data_root)
+    ds = ds.map_batches(decode_crop_and_flip_tf_record_batch,
+                        batch_size=batch_size,
+                        batch_format="pandas")
+    # ds = ds.map_batches(crop_and_flip_image_batch,
+    #                     batch_size=batch_size,
+    #                     batch_format="pandas")
+>>>>>>> 3baae97bc3188beff4bcc18d4192b6d5f7497bf1
     # TODO(swang): If we are reading the actual dataset and we only want to read
     # a fraction of images, then we should actually call .limit(), but right now
     # this materializes all data to the object store. For now, we can just skip
@@ -401,6 +443,7 @@ if __name__ == "__main__":
     data_ingest_group = parser.add_mutually_exclusive_group(required=True)
     data_ingest_group.add_argument("--use-tf-data", action="store_true")
     data_ingest_group.add_argument("--use-ray-data", action="store_true")
+    data_ingest_group.add_argument("--use-torch", action="store_true")
     data_ingest_group.add_argument("--synthetic-data", action="store_true")
 
     parser.add_argument(
@@ -457,10 +500,10 @@ if __name__ == "__main__":
         }
     )
 
-    if args.use_tf_data or args.use_ray_data:
+    if args.use_tf_data or args.use_ray_data or args.use_torch:
         assert (
             args.data_root is not None
-        ), "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"  # noqa: E501
+        ), "--use-tf-data, --use-ray-data, and --use-torch require a --data-root directory for TFRecord files"  # noqa: E501
     elif args.synthetic_data:
         assert args.data_root is None, "--synthetic-data doesn't use --data-root"
 
@@ -498,6 +541,10 @@ if __name__ == "__main__":
         if args.use_tf_data:
             logger.info("Using tf.data loader")
             train_loop_config["data_loader"] = TF_DATA
+        elif args.use_torch:
+            logger.info("Using torch Dataloader")
+            preprocessor = None
+            train_loop_config["data_loader"] = TORCH_DATALOADER
         else:
             logger.info("Using Ray Datasets loader")
 
@@ -570,13 +617,14 @@ if __name__ == "__main__":
         "ray_mem_monitor_enabled"
     ] = determine_if_memory_monitor_is_enabled_in_latest_session()
 
-    result["num_files"] = len(
-        get_tfrecords_filenames(
-            train_loop_config["data_root"],
-            train_loop_config["num_images_per_epoch"],
-            train_loop_config["num_images_per_input_file"],
-        )
-    )
+    result["num_files"] = 1623
+    #result["num_files"] = len(
+    #    get_tfrecords_filenames(
+    #        train_loop_config["data_root"],
+    #        train_loop_config["num_images_per_epoch"],
+    #        train_loop_config["num_images_per_input_file"],
+    #    )
+    #)
 
     try:
         write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
