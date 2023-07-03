@@ -77,15 +77,13 @@ def test_ray_serve_basic(docker_cluster):
 
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
-    print(output.output)
     assert output.exit_code == 0
-    assert b"Adding 1 replica to deployment Counter." in output.output
+    assert b"Adding 1 replica to deployment Counter_Counter." in output.output
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
-    print(output.output)
 
     assert output.exit_code == 0
 
@@ -94,7 +92,6 @@ def test_ray_serve_basic(docker_cluster):
 
     # Make sure serve is still working
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
-    print(output.output)
     assert output.exit_code == 0
 
     # Script is running on another thread so that it won't block the main thread.
