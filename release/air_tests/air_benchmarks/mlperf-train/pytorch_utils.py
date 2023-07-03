@@ -24,7 +24,6 @@ def build_torch_dataset(root_dir, batch_size, shuffle=False, num_workers=None):
     ])
 
     data = torchvision.datasets.ImageFolder(root_dir, transform=transform)
-    _, classes_to_idx = data.find_classes(root_dir)
     data_loader = torch.utils.data.DataLoader(data,
                                             batch_size=batch_size,
                                             shuffle=shuffle,

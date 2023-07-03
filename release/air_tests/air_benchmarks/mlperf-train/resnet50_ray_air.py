@@ -71,6 +71,8 @@ def print_dataset_stats(ds):
 
 
 def train_loop_for_worker(config):
+    ray.data.DataContext.get_current().execution_options.verbose_progress = True
+
     epoch_times = []
     throughputs = []
     if config["train_sleep_time_ms"] >= 0:
@@ -139,27 +141,28 @@ def train_loop_for_worker(config):
     if config["num_images_per_epoch"] % config["batch_size"]:
         # Assuming batches will respect epoch boundaries.
         num_steps_per_epoch += 1
+
+    tf_dataset = None
+    if config["data_loader"] == TF_DATA:
+        assert _tf_dataset is not None
+        tf_dataset = _tf_dataset
+    elif config["data_loader"] == RAY_DATA:
+        assert dataset_shard is not None
+        tf_dataset = dataset_shard.to_tf(
+            feature_columns="image", label_columns="label", batch_size=config["batch_size"]
+        )
+    elif config["data_loader"] == TORCH_DATALOADER:
+        assert torch_dataset is not None
+        tf_dataset = iter(torch_dataset)
+    elif config["data_loader"] == SYNTHETIC:
+        tf_dataset = build_synthetic_tf_dataset(
+            synthetic_dataset,
+            batch_size=config["batch_size"],
+            num_steps_per_epoch=num_steps_per_epoch,
+        )
+
     for epoch in range(config["num_epochs"]):
         epoch_start_time_s = time.perf_counter()
-
-        tf_dataset = None
-        if config["data_loader"] == TF_DATA:
-            assert _tf_dataset is not None
-            tf_dataset = _tf_dataset
-        elif config["data_loader"] == RAY_DATA:
-            assert dataset_shard is not None
-            tf_dataset = dataset_shard.to_tf(
-                feature_columns="image", label_columns="label", batch_size=config["batch_size"]
-            )
-        elif config["data_loader"] == TORCH_DATALOADER:
-            assert torch_dataset is not None
-            tf_dataset = iter(torch_dataset)
-        elif config["data_loader"] == SYNTHETIC:
-            tf_dataset = build_synthetic_tf_dataset(
-                synthetic_dataset,
-                batch_size=config["batch_size"],
-                num_steps_per_epoch=num_steps_per_epoch,
-            )
 
         if model:
             model.fit(tf_dataset, steps_per_epoch=num_steps_per_epoch)
