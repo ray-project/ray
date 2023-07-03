@@ -77,7 +77,7 @@ class MLP(nn.Module):
             layers.append(nn.Linear(
                 input_size, output_layer_size, bias=False
             ))
-        self._net = nn.Sequential(layers)
+        self._net = nn.Sequential(*layers)
 
     def forward(self, input_):
         """Performs a forward pass through this MLP.

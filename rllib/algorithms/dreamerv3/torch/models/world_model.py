@@ -9,10 +9,6 @@ import gym
 import numpy as np
 import tree  # pip install dm_tree
 
-from torch import Tensor
-from torch.distributions import Categorical
-from torch.jit import ScriptModule, script_method
-
 from ray.rllib.algorithms.dreamerv3.torch.models.components.continue_predictor import (
     ContinuePredictor,
 )
@@ -29,7 +25,7 @@ from ray.rllib.algorithms.dreamerv3.torch.models.components.reward_predictor imp
 from ray.rllib.algorithms.dreamerv3.torch.models.components.sequence_model import (
     SequenceModel,
 )
-from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units
+from ray.rllib.algorithms.dreamerv3.utils import get_dense_hidden_units, get_gru_units
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import symlog
 
@@ -118,7 +114,7 @@ class WorldModel(nn.Module):
         # Encoder (latent 1D vector generator) (xt -> lt).
         self.encoder = encoder
 
-        self.num_gru_units = self.get_gru_units(
+        self.num_gru_units = get_gru_units(
             model_size=self.model_size,
             override=num_gru_units,
         )
@@ -160,7 +156,7 @@ class WorldModel(nn.Module):
         )
         # The actual sequence model containing the GRU layer.
         self.sequence_model = SequenceModel(
-            input_size=(h_plus_z_flat + a_flat),
+            input_size=int(h_plus_z_flat + a_flat),
             model_size=self.model_size,
             action_space=self.action_space,
             num_gru_units=self.num_gru_units,
@@ -198,9 +194,9 @@ class WorldModel(nn.Module):
 
     def forward_inference(
         self,
-        observations: Tensor,
+        observations: "torch.Tensor",
         previous_states: dict,
-        is_first: Tensor,
+        is_first: "torch.Tensor",
     ) -> dict:
         """Performs a forward step for inference (e.g. environment stepping).
 
@@ -242,9 +238,9 @@ class WorldModel(nn.Module):
 
     def forward_train(
         self,
-        observations: Tensor,
-        actions: Tensor,
-        is_first: Tensor,
+        observations: "torch.Tensor",
+        actions: "torch.Tensor",
+        is_first: "torch.Tensor",
     ) -> dict:
         """Performs a forward step for training.
 
@@ -390,7 +386,9 @@ class WorldModel(nn.Module):
             "z_prior_probs_BxT": z_prior_probs,
         }
 
-    def compute_posterior_z(self, observations: Tensor, initial_h: Tensor) -> Tensor:
+    def compute_posterior_z(
+        self, observations: "torch.Tensor", initial_h: "torch.Tensor"
+    ) -> "torch.Tensor":
         # Compute bare encoder outputs (not including z, which is computed in next step
         # with involvement of the previous output (initial_h) of the sequence model).
         # encoder_outs=[B, ...]
@@ -406,5 +404,5 @@ class WorldModel(nn.Module):
         return z_t
 
     @staticmethod
-    def _mask(value: Tensor, mask: Tensor) -> Tensor:
+    def _mask(value: "torch.Tensor", mask: "torch.Tensor") -> "torch.Tensor":
         return torch.einsum("b...,b->b...", value, mask)

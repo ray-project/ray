@@ -103,7 +103,7 @@ class RepresentationLayer(nn.Module):
         # probabilities and KL divergences well behaved."
         probs = 0.99 * probs + 0.01 * (1.0 / self.num_classes_per_categorical)
 
-        # Danijar's code does: distr = [Distr class](logits=tf.log(probs)).
+        # Danijar's code does: distr = [Distr class](logits=torch.log(probs)).
         # Not sure why we don't directly use the already available probs instead.
         logits = torch.log(probs)
 

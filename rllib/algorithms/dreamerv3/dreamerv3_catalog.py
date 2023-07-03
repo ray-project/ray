@@ -1,5 +1,11 @@
 import gymnasium as gym
 
+from ray.rllib.algorithms.dreamerv3.utils import (
+    do_symlog_obs,
+    get_gru_units,
+    get_num_z_classes,
+    get_num_z_categoricals,
+)
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.utils import override
@@ -32,6 +38,10 @@ class DreamerV3Catalog(Catalog):
         self.is_gray_scale = (
             self.is_img_space and len(self.observation_space.shape) == 2
         )
+        # Compute the size of the vector coming out of the sequence model.
+        self.h_plus_z_flat = get_gru_units(self.model_size) + (
+            get_num_z_categoricals(self.model_size) * get_num_z_classes(self.model_size)
+        )
 
         # TODO (sven): We should work with sub-component configurations here,
         #  and even try replacing all current Dreamer model components with
@@ -41,40 +51,178 @@ class DreamerV3Catalog(Catalog):
     @override(Catalog)
     def build_encoder(self, framework: str) -> Encoder:
         """Builds the World-Model's encoder network depending on the obs space."""
-        if framework != "tf2":
-            raise NotImplementedError
-
         if self.is_img_space:
-            from ray.rllib.algorithms.dreamerv3.tf.models.components.cnn_atari import (
-                CNNAtari,
-            )
+            if framework == "torch":
+                from ray.rllib.algorithms.dreamerv3.torch.models.components.\
+                    cnn_atari import CNNAtari
 
-            return CNNAtari(model_size=self.model_size)
+                return CNNAtari(
+                    gray_scaled=self.is_gray_scale,
+                    model_size=self.model_size,
+                )
+            elif framework == "tf2":
+                from ray.rllib.algorithms.dreamerv3.tf.models.components.\
+                    cnn_atari import CNNAtari
+
+                return CNNAtari(model_size=self.model_size)
+            else:
+                raise ValueError(f"`framework={framework}` not supported!")
+
         else:
-            from ray.rllib.algorithms.dreamerv3.tf.models.components.mlp import MLP
+            if framework == "torch":
+                from ray.rllib.algorithms.dreamerv3.torch.models.components import mlp
 
-            return MLP(model_size=self.model_size, name="vector_encoder")
+            elif framework == "tf2":
+                from ray.rllib.algorithms.dreamerv3.tf.models.components import mlp
+
+            else:
+                raise ValueError(f"`framework={framework}` not supported!")
+
+            return mlp.MLP(model_size=self.model_size, name="vector_encoder")
 
     def build_decoder(self, framework: str) -> Model:
         """Builds the World-Model's decoder network depending on the obs space."""
-        if framework != "tf2":
-            raise NotImplementedError
 
         if self.is_img_space:
-            from ray.rllib.algorithms.dreamerv3.tf.models.components import (
-                conv_transpose_atari,
-            )
+            if framework == "torch":
+                from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+                    conv_transpose_atari
+                )
 
-            return conv_transpose_atari.ConvTransposeAtari(
-                model_size=self.model_size,
-                gray_scaled=self.is_gray_scale,
+                return conv_transpose_atari.ConvTransposeAtari(
+                    input_size=self.h_plus_z_flat,
+                    gray_scaled=self.is_gray_scale,
+                    model_size=self.model_size,
+                )
+
+            elif framework == "tf2":
+                from ray.rllib.algorithms.dreamerv3.tf.models.components import (
+                    conv_transpose_atari,
+                )
+
+                return conv_transpose_atari.ConvTransposeAtari(
+                    gray_scaled=self.is_gray_scale,
+                    model_size=self.model_size,
+                )
+
+            else:
+                raise ValueError(f"`framework={framework}` not supported!")
+
+        else:
+            if framework == "torch":
+                from ray.rllib.algorithms.dreamerv3.torch.models.components import (
+                    vector_decoder,
+                )
+
+                return vector_decoder.VectorDecoder(
+                    input_size=self.h_plus_z_flat,
+                    model_size=self.model_size,
+                    observation_space=self.observation_space,
+                )
+
+            elif framework == "tf2":
+                from ray.rllib.algorithms.dreamerv3.tf.models.components import (
+                    vector_decoder,
+                )
+
+                return vector_decoder.VectorDecoder(
+                    model_size=self.model_size,
+                    observation_space=self.observation_space,
+                )
+
+            else:
+                raise ValueError(f"`framework={framework}` not supported!")
+
+    def build_world_model(self, framework: str, *, encoder, decoder) -> Model:
+        symlog_obs = do_symlog_obs(
+            self.observation_space,
+            self.model_config_dict.get("symlog_obs", "auto"),
+        )
+
+        if framework == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.models.world_model import (
+                WorldModel,
+            )
+        elif framework == "tf2":
+            from ray.rllib.algorithms.dreamerv3.tf.models.world_model import (
+                WorldModel,
             )
         else:
-            from ray.rllib.algorithms.dreamerv3.tf.models.components import (
-                vector_decoder,
+            raise ValueError(f"`framework={framework}` not supported!")
+
+        return WorldModel(
+            model_size=self.model_size,
+            action_space=self.action_space,
+            batch_length_T=self.model_config_dict["batch_length_T"],
+            encoder=encoder,
+            decoder=decoder,
+            symlog_obs=symlog_obs,
+        )
+
+    def build_actor(self, framework: str) -> Model:
+        if framework == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.models.actor_network import (
+                ActorNetwork,
             )
 
-            return vector_decoder.VectorDecoder(
+            return ActorNetwork(
+                input_size=self.h_plus_z_flat,
+                action_space=self.action_space,
                 model_size=self.model_size,
-                observation_space=self.observation_space,
             )
+
+        elif framework == "tf2":
+            from ray.rllib.algorithms.dreamerv3.tf.models.actor_network import (
+                ActorNetwork,
+            )
+
+            return ActorNetwork(
+                action_space=self.action_space,
+                model_size=self.model_size,
+            )
+
+        else:
+            raise ValueError(f"`framework={framework}` not supported!")
+
+    def build_critic(self, framework: str) -> Model:
+        if framework == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.models.critic_network import (
+                CriticNetwork,
+            )
+
+            return CriticNetwork(
+                input_size=self.h_plus_z_flat,
+                model_size=self.model_size,
+            )
+
+        elif framework == "tf2":
+            from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import (
+                CriticNetwork,
+            )
+
+            return CriticNetwork(model_size=self.model_size)
+        else:
+            raise ValueError(f"`framework={framework}` not supported!")
+
+    def build_dreamer_model(
+        self, framework: str, *, world_model, actor, critic
+    ) -> Model:
+        if framework == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.models.dreamer_model import (
+                DreamerModel,
+            )
+        elif framework == "tf2":
+            from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import (
+                DreamerModel,
+            )
+        else:
+            raise ValueError(f"`framework={framework}` not supported!")
+        
+        return DreamerModel(
+            model_size=self.model_size,
+            action_space=self.action_space,
+            world_model=world_model,
+            actor=actor,
+            critic=critic,
+        )
+

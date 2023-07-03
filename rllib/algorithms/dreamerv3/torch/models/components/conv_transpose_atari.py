@@ -23,6 +23,7 @@ class ConvTransposeAtari(nn.Module):
     def __init__(
         self,
         *,
+        input_size: int,
         model_size: str = "XS",
         cnn_multiplier: Optional[int] = None,
         gray_scaled: bool,
@@ -30,6 +31,7 @@ class ConvTransposeAtari(nn.Module):
         """Initializes a ConvTransposeAtari instance.
 
         Args:
+            input_size: The input size of the ConvTransposeAtari network.
             model_size: The "Model Size" used according to [1] Appendinx B.
                 Use None for manually setting the `cnn_multiplier`.
             cnn_multiplier: Optional override for the additional factor used to multiply
@@ -49,8 +51,8 @@ class ConvTransposeAtari(nn.Module):
         self.gray_scaled = gray_scaled
 
         self.dense_layer = nn.Linear(
-            input_size=np.prod(self.input_dims),
-            output_size=int(np.prod(self.input_dims)),
+            input_size,
+            int(np.prod(self.input_dims)),
             bias=True,
         )
 

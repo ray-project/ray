@@ -5,8 +5,7 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import gym
-from gym.spaces import Box, Discrete
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.torch.models.components.mlp import MLP
@@ -58,7 +57,7 @@ class ActorNetwork(nn.Module):
         )
 
         # For discrete actions, use a single MLP that computes logits.
-        if isinstance(self.action_space, Discrete):
+        if isinstance(self.action_space, gym.spaces.Discrete):
             self.mlp = MLP(
                 input_size=self.input_size,
                 model_size=self.model_size,
@@ -68,7 +67,7 @@ class ActorNetwork(nn.Module):
         # TODO (sven): In the author's original code repo, this is NOT the case,
         #  inputs are pushed through a shared MLP, then only the two output linear
         #  layers are separate for std- and mean logits.
-        elif isinstance(action_space, Box):
+        elif isinstance(action_space, gym.spaces.Box):
             output_size = np.prod(action_space.shape)
             self.mlp = MLP(
                 input_size=self.input_size,
@@ -102,7 +101,7 @@ class ActorNetwork(nn.Module):
         # Send h-cat-z through MLP.
         action_logits = self.mlp(out)
 
-        if isinstance(self.action_space, Discrete):
+        if isinstance(self.action_space, gym.spaces.Discrete):
             action_probs = nn.functional.softmax(action_logits, dim=-1)
 
             # Add the unimix weighting (1% uniform) to the probs.
@@ -113,7 +112,7 @@ class ActorNetwork(nn.Module):
             # thus keep log probabilities and KL divergences well behaved."
             action_probs = 0.99 * action_probs + 0.01 * (1.0 / self.action_space.n)
 
-            # Danijar's code does: distr = [Distr class](logits=tf.log(probs)).
+            # Danijar's code does: distr = [Distr class](logits=torch.log(probs)).
             # Not sure why we don't directly use the already available probs instead.
             action_logits = torch.log(action_probs)
 
@@ -125,7 +124,7 @@ class ActorNetwork(nn.Module):
                 action_probs - action_probs.detach()
             )
 
-        elif isinstance(self.action_space, Box):
+        elif isinstance(self.action_space, gym.spaces.Box):
             # Send h-cat-z through MLP to compute stddev logits for Normal dist
             std_logits = self.std_mlp(out)
             # minstd, maxstd taken from [1] from configs.yaml
@@ -159,11 +158,11 @@ class ActorNetwork(nn.Module):
             The torch action distribution object, from which one can sample, compute
             log probs, entropy, etc..
         """
-        if isinstance(self.action_space, Discrete):
+        if isinstance(self.action_space, gym.spaces.Discrete):
             # Create the distribution object using the unimix'd logits.
             distr = torch.distributions.OneHotCategorical(logits=action_dist_params_T_B)
 
-        elif isinstance(self.action_space, Box):
+        elif isinstance(self.action_space, gym.spaces.Box):
             # Compute Normal distribution from action_logits and std_logits
             loc, scale = torch.split(action_dist_params_T_B, 2, dim=-1)
             distr = torch.distributions.Normal(loc=loc, scale=scale)

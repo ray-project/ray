@@ -16,4 +16,4 @@ class DreamerV3TfRLModule(TfRLModule, DreamerV3RLModule):
 
     Serves mainly as a thin-wrapper around the `DreamerModel` (a tf.keras.Model) class.
     """
-    pass
+    framework = "tf2"

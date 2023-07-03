@@ -16,4 +16,4 @@ class DreamerV3TorchRLModule(TorchRLModule, DreamerV3RLModule):
 
     Serves mainly as a thin-wrapper around the `DreamerModel` (a torch.nn.Module) class.
     """
-    pass
+    framework = "torch"

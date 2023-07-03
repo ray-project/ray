@@ -80,7 +80,7 @@ class RewardPredictorLayer(nn.Module):
 
         Returns:
             The expected reward OR a tuple consisting of the expected reward and the
-            tfp `FiniteDiscrete` distribution object. To get the individual bucket
+            torch `FiniteDiscrete` distribution object. To get the individual bucket
             probs, do `[FiniteDiscrete object].probs`.
         """
         # Compute the `num_buckets` weights.

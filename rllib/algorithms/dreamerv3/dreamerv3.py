@@ -416,7 +416,13 @@ class DreamerV3Config(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
-        if self.framework_str == "tf2":
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_learner import (
+                DreamerV3TorchLearner,
+            )
+
+            return DreamerV3TorchLearner
+        elif self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_learner import (
                 DreamerV3TfLearner,
             )
@@ -427,16 +433,22 @@ class DreamerV3Config(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
-        if self.framework_str == "tf2":
-            from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
-                DreamerV3TfRLModule,
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.dreamerv3.torch.dreamerv3_torch_rl_module import (
+                DreamerV3TorchRLModule as module
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=DreamerV3TfRLModule, catalog_class=DreamerV3Catalog
+        elif self.framework_str == "tf2":
+            from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
+                DreamerV3TfRLModule as module
             )
+
         else:
             raise ValueError(f"The framework {self.framework_str} is not supported.")
+
+        return SingleAgentRLModuleSpec(
+            module_class=module, catalog_class=DreamerV3Catalog
+        )
 
     @property
     def share_module_between_env_runner_and_learner(self) -> bool:
