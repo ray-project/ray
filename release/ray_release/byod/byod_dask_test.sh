@@ -7,3 +7,4 @@ set -exo pipefail
 
 pip3 install dask[complete]
 pip3 install boto3 s3fs
+pip3 install -U s3fs

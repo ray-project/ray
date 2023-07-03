@@ -28,6 +28,7 @@ ApplicationName = str
 class EndpointInfo:
     route: str
     app_name: str
+    app_is_cross_language: bool = False
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts

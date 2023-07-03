@@ -174,7 +174,7 @@ void ObjectManager::StartRpcService() {
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
     rpc_threads_[i] = std::thread(&ObjectManager::RunRpcService, this, i);
   }
-  object_manager_server_.RegisterService(object_manager_service_);
+  object_manager_server_.RegisterService(object_manager_service_, false /* token_auth */);
   object_manager_server_.Run();
 }
 
