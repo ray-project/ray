@@ -23,14 +23,14 @@ CALLS_PER_BATCH = 100
 async def timeit(name: str, fn: Callable, multiplier: int = 1):
     # warmup
     start = time.time()
-    while time.time() - start < 1:
+    while time.time() - start < 0.1:
         await fn()
     # real run
     stats = []
-    for _ in range(4):
+    for _ in range(1):
         start = time.time()
         count = 0
-        while time.time() - start < 2:
+        while time.time() - start < 0.1:
             await fn()
             count += 1
         end = time.time()
@@ -191,7 +191,8 @@ async def main():
                         )
                     )
 
-    print(f"Results:\n{pprint(results)}")
+    print("Results from all conditions:")
+    pprint(results)
     return results
 
 
