@@ -911,6 +911,17 @@ def test_get_runtime_context_gcs_client(call_ray_start_shared):
         assert context.gcs_address, "gcs_address not set"
 
 
+def test_internal_kv_in_proxy_mode(call_ray_start_shared):
+    import ray
+
+    ray.init(SHARED_CLIENT_SERVER_ADDRESS)
+    client_api = ray.util.client.ray
+    client_api._internal_kv_put(b"key", b"val")
+    assert client_api._internal_kv_get(b"key") == b"val"
+    assert client_api._internal_kv_del(b"key") == 1
+    assert client_api._internal_kv_get(b"key") is None
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
