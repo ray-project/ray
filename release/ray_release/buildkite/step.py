@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
+from ray_release.configs.global_config import get_global_config
 from ray_release.test import (
     Test,
     TestState,
@@ -100,9 +101,10 @@ def get_step(
     else:
         python_version = DEFAULT_PYTHON_VERSION
 
-    step["plugins"][0][DOCKER_PLUGIN_KEY][
-        "image"
-    ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = (
+        f"{get_global_config()['byod_ray_ecr']}"
+        f"/ray:nightly-py{python_version_str(python_version)}"
+    )
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")

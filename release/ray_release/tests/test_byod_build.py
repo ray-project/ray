@@ -47,8 +47,6 @@ def test_build_anyscale_champagne_image() -> None:
 
 init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
-init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
-
 
 def test_build_anyscale_custom_byod_image() -> None:
     cmds = []
