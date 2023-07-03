@@ -1888,7 +1888,7 @@ def from_numpy_refs(
         >>> ray.data.from_numpy(arr_ref)
         MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
 
-         >>> # Create a Ray Dataset from a list of NumPy array references.
+        >>> # Create a Ray Dataset from a list of NumPy array references.
         >>> ray.data.from_numpy([arr, arr])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 

@@ -2852,7 +2852,7 @@ class Dataset:
         To control the number of number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
 
-         By default, the format of the output files will be {uuid}_{block_idx}.npy,
+        By default, the format of the output files will be {uuid}_{block_idx}.npy,
         where ``uuid`` is an unique id for the dataset. To modify this behavior,
         implement a custom
         :class:`~ray.data.datasource.BlockWritePathProvider`
