@@ -188,6 +188,7 @@ class ServeController:
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
+        self._shutdown = asyncio.Event()
 
         run_background_task(self.run_control_loop())
 
@@ -458,9 +459,9 @@ class ServeController:
         """Shuts down the serve instance completely.
 
         This method will only be triggered when `self._shutting_down` is true. It
-        deletes the kv store for config checkpoint, set application state to deleting,
-        delete all deployments, and shutdown all HTTP proxies. If all the above
-        resources are released, it will then kill the controller actor.
+        deletes the kv store for config checkpoints, sets application state to deleting,
+        delete all deployments, and shuts down all HTTP proxies. Once all these
+        resources are released, it then kills the controller actor.
         """
         if not self._shutting_down:
             return
@@ -474,11 +475,11 @@ class ServeController:
             self.http_state.shutdown()
 
         config_checkpoint_deleted = self.config_checkpoint_deleted()
-        application_is_shutdown = self.application_state_manager.is_shutdown()
-        deployment_is_shutdown = self.deployment_state_manager.is_shutdown()
-        endpoint_is_shutdown = self.endpoint_state.is_shutdown()
+        application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
+        deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
+        endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
         http_state_is_shutdown = (
-            self.http_state is None or self.http_state.is_shutdown()
+            self.http_state is None or self.http_state.is_ready_for_shutdown()
         )
         if (
             config_checkpoint_deleted
@@ -488,12 +489,13 @@ class ServeController:
             and http_state_is_shutdown
         ):
             logger.warning(
-                "All resources are shutdown, shutting down controller!",
+                "All resources have shut down, shutting down controller!",
                 extra={"log_to_stderr": False},
             )
             _controller_actor = ray.get_actor(
                 self.controller_name, namespace=SERVE_NAMESPACE
             )
+            self._shutdown.set()
             ray.kill(_controller_actor, no_restart=True)
         else:
             if not config_checkpoint_deleted:
@@ -913,6 +915,17 @@ class ServeController:
         process so it can shutdown gracefully.
         """
         self._shutting_down = True
+
+    async def await_controller_shutdown(self):
+        """Await controller to shut down.
+
+        This is used to wait for the controller to finish shutting down and signal to
+        the client that it's safe to exit.
+        """
+        if not self._shutdown.is_set():
+            await self._shutdown.wait()
+
+        return True
 
 
 @ray.remote(num_cpus=0, max_calls=1)

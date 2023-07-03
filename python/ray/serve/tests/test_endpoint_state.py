@@ -42,23 +42,23 @@ def mock_endpoint_state() -> Tuple[EndpointState, Mock]:
         yield endpoint_state
 
 
-def test_is_shutdown(mock_endpoint_state):
-    """Test `is_shutdown()` returns the correct state.
+def test_is_ready_for_shutdown(mock_endpoint_state):
+    """Test `is_ready_for_shutdown()` returns the correct state.
 
-    Before shutting down endpoint `is_shutdown()` should return False.
-    After shutting down endpoint `is_shutdown()` should return True.
+    Before shutting down endpoint `is_ready_for_shutdown()` should return False.
+    After shutting down endpoint `is_ready_for_shutdown()` should return True.
     """
     # Setup endpoint state with checkpoint
     endpoint_state = mock_endpoint_state
     endpoint_state._checkpoint()
 
-    # Before shutdown is called, `is_shutdown()` should return False
-    assert not endpoint_state.is_shutdown()
+    # Before shutdown is called, `is_ready_for_shutdown()` should return False
+    assert not endpoint_state.is_ready_for_shutdown()
 
     endpoint_state.shutdown()
 
-    # After shutdown is called, `is_shutdown()` should return True
-    assert endpoint_state.is_shutdown()
+    # After shutdown is called, `is_ready_for_shutdown()` should return True
+    assert endpoint_state.is_ready_for_shutdown()
 
 
 if __name__ == "__main__":

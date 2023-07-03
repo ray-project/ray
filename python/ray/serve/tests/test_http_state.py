@@ -682,11 +682,11 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     )
 
 
-def test_is_shutdown(mock_get_all_node_ids, setup_controller, all_nodes):
-    """Test `is_shutdown()` returns True the correct state.
+def test_is_ready_for_shutdown(mock_get_all_node_ids, setup_controller, all_nodes):
+    """Test `is_ready_for_shutdown()` returns True the correct state.
 
-    Before `shutdown()` is called, `is_shutdown()` should return false. After
-    `shutdown()` is called and all proxy actor are killed, `is_shutdown()` should
+    Before `shutdown()` is called, `is_ready_for_shutdown()` should return false. After
+    `shutdown()` is called and all proxy actor are killed, `is_ready_for_shutdown()` should
     return true.
     """
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
@@ -704,15 +704,15 @@ def test_is_shutdown(mock_get_all_node_ids, setup_controller, all_nodes):
         )
 
     # Ensure before shutdown, state is not shutdown
-    assert not state.is_shutdown()
+    assert not state.is_ready_for_shutdown()
 
     state.shutdown()
 
     # Ensure after shutdown, state is shutdown and all proxy states are shutdown
-    def check_is_shutdown():
-        return state.is_shutdown()
+    def check_is_ready_for_shutdown():
+        return state.is_ready_for_shutdown()
 
-    wait_for_condition(check_is_shutdown)
+    wait_for_condition(check_is_ready_for_shutdown)
 
 
 if __name__ == "__main__":

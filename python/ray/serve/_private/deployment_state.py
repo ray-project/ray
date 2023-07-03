@@ -2287,7 +2287,7 @@ class DeploymentStateManager:
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
 
-    def is_shutdown(self) -> bool:
+    def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
         Check there are no deployment states and no checkpoints.

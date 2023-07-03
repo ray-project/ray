@@ -650,8 +650,8 @@ class ApplicationStateManager:
         for app_state in self._application_states.values():
             app_state.delete()
 
-    def is_shutdown(self) -> bool:
-        """Return whether all applications are shutdown.
+    def is_ready_for_shutdown(self) -> bool:
+        """Return whether all applications have shut down.
 
         Iterate through all application states and check if all their applications
         are deleted.

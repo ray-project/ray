@@ -230,10 +230,10 @@ class HTTPProxyState:
         self._shutting_down = True
         ray.kill(self.actor_handle, no_restart=True)
 
-    def is_shutdown(self) -> bool:
+    def is_ready_for_shutdown(self) -> bool:
         """Return whether the HTTP proxy actor is shutdown.
 
-        For a HTTP proxy actor to be considered shutdown, it must be marked as
+        For an HTTP proxy actor to be considered shutdown, it must be marked as
         _shutting_down and the actor must be dead.
         """
         actor_id = self.actor_handle._actor_id.hex()
@@ -283,14 +283,15 @@ class HTTPState:
         for proxy_state in self._proxy_states.values():
             proxy_state.shutdown()
 
-    def is_shutdown(self) -> bool:
+    def is_ready_for_shutdown(self) -> bool:
         """Return whether all proxies are shutdown.
 
         Iterate through all proxy states and check if all their proxy actors
         are shutdown.
         """
         return all(
-            proxy_state.is_shutdown() for proxy_state in self._proxy_states.values()
+            proxy_state.is_ready_for_shutdown()
+            for proxy_state in self._proxy_states.values()
         )
 
     def get_config(self):
