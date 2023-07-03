@@ -79,7 +79,7 @@ You should see the output printed token by token.
 
 # Stream inputs and outputs using WebSockets
 
-WebSockets let you stream input into the application and stream output back to the client. You can use this to create a chatbot that stores a conversation with a user.
+WebSockets let you stream input into the application and stream output back to the client. Use WebSockets to create a chatbot that stores a conversation with a user.
 
 Create a Python file called `chatbot.py`. First add the imports:
 
