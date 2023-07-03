@@ -139,16 +139,30 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
             pass
 
 
+def test_iter_batches_finalize_fn_uses_single_thread(ray_start_regular_shared):
+    n = 100
+    ds = ray.data.range(n)
+    it = ds.iterator()
+    lock = threading.Lock()
+
+    def finalize_fn(batch):
+        lock.acquire()
+        return batch
+
+    elements = []
+    for batch in it.iter_batches(_finalize_fn=finalize_fn):
+        elements.extend(batch["id"].tolist())
+    assert elements == list(range(n))
+
+
 def test_torch_conversion(ray_start_regular_shared):
     ds = ray.data.range(5)
     it = ds.iterator()
     it.iter_batches = MagicMock()
 
-    lock = threading.Lock()
-    with lock:
-        for batch in it.iter_torch_batches():
-            assert isinstance(batch["id"], torch.Tensor)
-            assert batch["id"].tolist() == list(range(5))
+    for batch in it.iter_torch_batches():
+        assert isinstance(batch["id"], torch.Tensor)
+        assert batch["id"].tolist() == list(range(5))
 
     # When collate_fn is not specified, check that the default
     #  `_collate_fn` (handles formatting and Tensor creation)
