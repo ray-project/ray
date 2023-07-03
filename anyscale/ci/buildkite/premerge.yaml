@@ -1,8 +1,29 @@
 steps:
-  - name: "{{matrix}} wheel"
+  - name: "build env info"
     command:
-      - source anyscale/ci/setup-artifacts-dir.sh
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/show-env.sh
+    agents:
+      queue: "small"
+    retry:
+      automatic:
+        limit: 3
+  
+  - name: "forge"
+    key: "forge"
+    command:
+      - source anyscale/ci/setup-env.sh
       - /bin/bash anyscale/ci/build-forge.sh
+    agents:
+      queue: "large"
+    retry:
+      automatic:
+        limit: 3
+
+  - name: "{{matrix}} wheel"
+    depends_on: "forge"
+    command:
+      - source anyscale/ci/setup-env.sh
       - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
     agents:
       queue: "large"
@@ -11,8 +32,11 @@ steps:
     env:
       BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
     matrix:
-      - "py37"
-      - "py38"
-      - "py39"
-      - "py310"
-      - "py311"
+      - py37
+      - py38
+      - py39
+      - py310
+      - py311
+    retry:
+      automatic:
+        limit: 3

@@ -17,6 +17,16 @@ DOCKER_RUN_ARGS=(
 
 RAY="$(pwd)"
 
+FORGE_IMAGE="${CR_REPO}:${IMAGE_PREFIX}-forge"
+docker pull "${FORGE_IMAGE}"
+
 docker run --rm -w /ray -v "${RAY}":/ray -v "${ARTIFACTS_DIR}:/artifacts" \
-    "${DOCKER_RUN_ARGS[@]}" \
-    anyscale/rayforge /bin/bash /ray/anyscale/ci/build-wheel-manylinux2014.sh
+    "${DOCKER_RUN_ARGS[@]}" "${FORGE_IMAGE}" \
+    /bin/bash /ray/anyscale/ci/build-wheel-manylinux2014.sh
+
+WHEELS=("${ARTIFACTS_DIR}"/*.whl)
+for WHEEL in "${WHEELS[@]}"; do
+    echo "Uploading ${WHEEL}"
+    WHEEL_BASENAME="$(basename "${WHEEL}")"
+    aws s3 cp "${WHEEL}" "${S3_TEMP}/${WHEEL_BASENAME}"
+done
