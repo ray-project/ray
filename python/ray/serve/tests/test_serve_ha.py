@@ -101,6 +101,7 @@ def test_ray_serve_basic(docker_cluster):
 
     # Make sure serve is still working
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
+    print(output.output)
     assert output.exit_code == 0
 
     # Script is running on another thread so that it won't block the main thread.
