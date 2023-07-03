@@ -151,6 +151,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
+    ObjectRefStreamEndOfStreamError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -219,10 +220,6 @@ class ObjectRefGenerator:
 
     def __len__(self):
         return len(self._refs)
-
-
-class ObjectRefStreamEndOfStreamError(RayError):
-    pass
 
 
 class StreamingObjectRefGenerator:
@@ -338,6 +335,11 @@ class StreamingObjectRefGenerator:
         ready, unready = await asyncio.wait([ref], timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
+        # NOTE(swang): Hack to avoid asyncio warnings about not retrieving the
+        # exception. The exception will get returned to the user through the
+        # below code.
+        for result in ready:
+            exc = result.exception()
 
         try:
             ref = core_worker.try_read_next_object_ref_stream(
