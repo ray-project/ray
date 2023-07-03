@@ -7,7 +7,7 @@ Support for streaming is experimental. To enable this feature, set `RAY_SERVE_EN
 :::
 
 This guide walks you through deploying a chatbot that streams output back to the
-user. We show
+user. It shows:
 
 * How to stream outputs from a Serve application
 * How to use WebSockets in a Serve application
