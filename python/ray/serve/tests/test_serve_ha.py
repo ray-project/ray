@@ -47,6 +47,7 @@ print("in start script ray.nods():", ray.nodes())
 
 check_script = """
 import ray
+ray.init(address="auto", namespace="g")
 print("in start script ray.nods():", ray.nodes())
 
 import requests
