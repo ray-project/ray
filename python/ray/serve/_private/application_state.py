@@ -204,9 +204,14 @@ class ApplicationState:
         self._deployment_state_manager.deploy(deployment_name, deployment_info)
 
         if deployment_info.route_prefix is not None:
+            config = deployment_info.deployment_config
             self._endpoint_state.update_endpoint(
                 deployment_name,
-                EndpointInfo(route=deployment_info.route_prefix, app_name=self._name),
+                EndpointInfo(
+                    route=deployment_info.route_prefix,
+                    app_name=self._name,
+                    app_is_cross_language=config.is_cross_language,
+                ),
             )
         else:
             self._endpoint_state.delete_endpoint(deployment_name)

@@ -1122,6 +1122,7 @@ numpy==1.24.3 \
     #   scipy
     #   shimmy
     #   tensorboardx
+    #   torchtext
     #   torchvision
     #   xgboost
 nvidia-cublas-cu11==11.10.3.66 \
@@ -1552,6 +1553,8 @@ requests==2.31.0 \
     #   google-auth
     #   google-cloud-storage
     #   requests-oauthlib
+    #   torchdata
+    #   torchtext
     #   torchvision
 requests-oauthlib==1.3.1 \
     --hash=sha256:2577c501a2fb8d05a304c09d090d6e47c306fef15809d102b327cf8364bddab5 \
@@ -1659,8 +1662,51 @@ torch==2.0.1 \
     --hash=sha256:f66aa6b9580a22b04d0af54fcd042f52406a8479e2b6a550e3d9f95963e168c8
     # via
     #   -r release/ray_release/byod/requirements_ml_byod_3.8.in
+    #   torchdata
+    #   torchtext
     #   torchvision
     #   triton
+torchdata==0.6.1 \
+    --hash=sha256:05db07d2793d181867578be99c211b3c71f83f3fda0bf33a70e5c93794513692 \
+    --hash=sha256:080c1c54128b4eb8e83cf4de74fa38e892cd6bf3114a557a853969543285f2d9 \
+    --hash=sha256:08b745c14adea7e4a36de4241485f9ea058e3ad3959c3e6dd1526c2f278006e7 \
+    --hash=sha256:129d5b2d35717862b194b31a27b61b5faa9efd4ffc36c1a07d85b320dea8b4c6 \
+    --hash=sha256:24d7fb2fcb0af43660fc44d8583cb8f7d25762bb759e8fde003db29c5036d940 \
+    --hash=sha256:2752fd8452d42aeaf480985f5d3d82506ab1ce51ca42cdb61c981145cd2890a8 \
+    --hash=sha256:3501325411063b0da6d85c93222234973780ca3df7d110ee1795723f9b2e3405 \
+    --hash=sha256:42961c40bf9c3fb66aaf4189f9154cb4f2eb3862359e64267708e3d273452d68 \
+    --hash=sha256:6474ed86ed7e060698888fa8ece9155dc94bdb9dfcc1874fa6d7707823551adc \
+    --hash=sha256:6a6d51cfbb63efe65788ad71e84c2be23a0c6520869e075774e7fc2ee535b9ed \
+    --hash=sha256:6a9d4c7d86b0aab2f70cdf0eae50f6eea997051889b0c04ae2f843df048ba9ea \
+    --hash=sha256:7e11108140adaba55491b6124f07b61cce161f53f8604e70961da025ccd014bd \
+    --hash=sha256:87d012adf90cd15d7164a886512b6746788477172394fe56971799d276f8809e \
+    --hash=sha256:b97f60619764d5f2f62ebcf18bff8a7cfc5c84d30d04d30724b753ec95864a70 \
+    --hash=sha256:cae1b4a516124c00ef47db12bab0cc6898bd2d7e749ffb14b6ebf1fe610a6b46 \
+    --hash=sha256:f2a8b0a388753502d49bd5bd186cd8d41dc2d91121246617804578371591b5e6 \
+    --hash=sha256:ff46aa549c0da9aa2bcba95767034a81c950dc7ccc0e24f38cf6f7878ca1826d
+    # via torchtext
+torchtext==0.15.2 \
+    --hash=sha256:0c7b4671df132751323d09fee91dcc59da380d5172449ba903f04d4646a906aa \
+    --hash=sha256:1d8065c4032bfe3558c56e9090ad0cf9c7a01f8800235a938feb41244226b9d4 \
+    --hash=sha256:1f58b4a94e17aada5e2712f2d48437fa8617a09d18160064b0df0c094ad2a3f2 \
+    --hash=sha256:3818c39032150d2c787a07692d92163af7a52b90dab16f985bb45273728a4207 \
+    --hash=sha256:6935af64b2af54bd3f4be71ab0a3776f2074834adc2f44e132a9f0da5f69ba47 \
+    --hash=sha256:7e57d7b7b05d56d8d80be5fc190f68c428fe26f98893f77783f9a1e3876e36e1 \
+    --hash=sha256:826ea4726e421d2c9309b35f485e46e10cd0e9a7f2b26275be98ccf73c2691be \
+    --hash=sha256:8fe27a3e2c0ae42f07ff5cae0ea19c49b23d05aa3666bdbc1a262d7b26b8da0d \
+    --hash=sha256:91edf72b1819432d3524bcd1ab8d9b649afa4d0ed1dd4df594252fa5d073078c \
+    --hash=sha256:9650a0184528cdce9201cc656575219b4539536a991d1bf86c8be8b424e58f53 \
+    --hash=sha256:a2dfd26a35e35e85d934c5fb58bd867bf61e73ca086f1736f36dff3a22c6083a \
+    --hash=sha256:a87c582bddf809a62fd6ecc3bc92a20cb78dba055fcf43ddfce668c4be8352b4 \
+    --hash=sha256:c60c2ec240d86c437478821891c0b167aa0b327f30047196f25da55b82f6785b \
+    --hash=sha256:cbb03114513fa44cd6155f46c5341d4674b42cd86ac1e5123b3565a5295047c2 \
+    --hash=sha256:d265a648722164043bd76e59a8d49a44a96a2f4f74e5e1f84801c047db9f20ce \
+    --hash=sha256:e8d4e81bfad9ee7e4bc66ad41f96878cf5e3c4e9e829de824081bd3a77bc7aa7 \
+    --hash=sha256:f44fa2bdeaba751eca9ff77c28b374234b5281c7b1d40cea38f67a871e64bfb9 \
+    --hash=sha256:f8d8487945b0ea3df2fedf8a9cb3e7c2165bdc2107900e82c8725d96312addd3 \
+    --hash=sha256:fa6f9115e71471cd6060abf4899663719d268d5662950a65357894234fad74a7 \
+    --hash=sha256:fe1794f9b2a9f4923f87488783b06d6c683f332a1db60d17cf65ba3f7c724c56
+    # via -r release/ray_release/byod/requirements_ml_byod_3.8.in
 torchvision==0.15.2 \
     --hash=sha256:012ad25cfd9019ff9b0714a168727e3845029be1af82296ff1e1482931fa4b80 \
     --hash=sha256:07c462524cc1bba5190c16a9d47eac1fca024d60595a310f23c00b4ffff18b30 \
@@ -1686,7 +1732,9 @@ torchvision==0.15.2 \
 tqdm==4.65.0 \
     --hash=sha256:1871fb68a86b8fb3b59ca4cdd3dcccbc7e6d613eeed31f4c332531977b89beb5 \
     --hash=sha256:c4f53a17fe37e132815abceec022631be8ffe1b9381c2e6e30aa70edc99e9671
-    # via -r release/ray_release/byod/requirements_ml_byod_3.8.in
+    # via
+    #   -r release/ray_release/byod/requirements_ml_byod_3.8.in
+    #   torchtext
 triton==2.0.0 \
     --hash=sha256:0117722f8c2b579cd429e0bee80f7731ae05f63fe8e9414acd9a679885fcbf42 \
     --hash=sha256:1aca3303629cd3136375b82cb9921727f804e47ebee27b2677fef23005c3851a \
@@ -1724,6 +1772,7 @@ urllib3==1.26.16 \
     #   botocore
     #   google-auth
     #   requests
+    #   torchdata
 uvicorn==0.22.0 \
     --hash=sha256:79277ae03db57ce7d9aa0567830bbb51d7a612f54d6e1e3e92da3ef24c2c8ed8 \
     --hash=sha256:e9434d3bbf05f310e762147f769c9f21235ee118ba2d2bf1155a7196448bd996

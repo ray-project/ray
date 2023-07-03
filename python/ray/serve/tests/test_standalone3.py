@@ -37,38 +37,6 @@ def shutdown_ray():
         ray.shutdown()
 
 
-@pytest.fixture()
-def ray_instance(request):
-    """Starts and stops a Ray instance for this test.
-
-    Args:
-        request: request.param should contain a dictionary of env vars and
-            their values. The Ray instance will be started with these env vars.
-    """
-
-    original_env_vars = os.environ.copy()
-
-    try:
-        requested_env_vars = request.param
-    except AttributeError:
-        requested_env_vars = {}
-
-    os.environ.update(requested_env_vars)
-
-    yield ray.init(
-        _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50,
-        },
-    )
-
-    ray.shutdown()
-
-    os.environ.clear()
-    os.environ.update(original_env_vars)
-
-
 @contextmanager
 def start_and_shutdown_ray_cli():
     subprocess.check_output(
@@ -431,14 +399,14 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Setup a cluster with 2 nodes
     cluster = Cluster()
-    cluster.add_node(num_cpus=3)
-    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
     serve.start(http_options={"location": "EveryNode"})
 
-    # Deploy 2 replicas, one to each node
-    @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 2})
+    # Deploy 2 replicas, both should be on the worker node.
+    @serve.deployment(num_replicas=2)
     class HelloModel:
         def __call__(self):
             return "hello"
@@ -446,21 +414,45 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     model = HelloModel.bind()
     serve.run(target=model)
 
+    # Ensure worker node has both replicas.
+    def check_replicas_on_worker_nodes():
+        _actors = ray._private.state.actors().values()
+        replica_nodes = [
+            a["Address"]["NodeID"]
+            for a in _actors
+            if a["ActorClassName"].startswith("ServeReplica")
+        ]
+        return len(set(replica_nodes)) == 1
+
+    wait_for_condition(check_replicas_on_worker_nodes)
+
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
     wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
     # on both nodes.
-    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
+    def check_request(url: str, expected_code: int, expected_text: str):
+        req = requests.get(url)
+        return req.status_code == expected_code and req.text == expected_text
+
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
     assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
     assert (
         requests.get("http://127.0.0.1:8000/-/routes").text
         == '{"/":"default_HelloModel"}'
     )
-    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8001/-/healthz").text == "success"
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
     assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
     assert (
         requests.get("http://127.0.0.1:8001/-/routes").text
@@ -490,20 +482,25 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
     # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
     # and unavailable responses.
-    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
-    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
-    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8001/-/healthz").text
-        == "This node is being drained."
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
     )
-    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 503
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=503,
+        expected_text="This node is being drained.",
+    )
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
     assert (
         requests.get("http://127.0.0.1:8001/-/routes").text
         == "This node is being drained."
     )
-    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
 
     # Clean up serve.
     serve.shutdown()
