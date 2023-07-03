@@ -3,6 +3,7 @@ import sys
 import threading
 from time import sleep
 from ray.tests.conftest_docker import *  # noqa
+from ray._private.test_utils import wait_for_condition
 
 scripts = """
 import ray
@@ -114,8 +115,13 @@ def test_ray_serve_basic(docker_cluster):
 
     t.join()
 
-    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
-    assert output.exit_code == 0
+    def check_for_script():
+        _output = worker.exec_run(
+            cmd=f"python -c '{check_script.format(num_replicas=2)}'"
+        )
+        return _output.exit_code == 0
+
+    wait_for_condition(check_for_script)
 
     # Make sure the serve controller still runs on the head node after restart
     check_controller_head_node_script = """
