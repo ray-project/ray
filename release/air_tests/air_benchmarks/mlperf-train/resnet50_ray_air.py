@@ -99,37 +99,6 @@ def train_loop_for_worker(config):
         # Build an empty batch and repeat it.
         synthetic_dataset = build_synthetic_dataset(config["batch_size"])
 
-    def ray_dataset_to_tf_dataset(dataset, batch_size, num_steps_per_epoch):
-        return dataset.to_tf(
-            feature_columns="image", label_columns="label", batch_size=batch_size
-        )
-
-        def to_tensor_iterator():
-            num_steps = 0
-            # TODO(swang): Should also set a local shuffle buffer size here and
-            # pass the same one to build_tf_dataset to match the tf.data
-            # implementation.
-            for batch in dataset.iter_tf_batches(
-                batch_size=batch_size,
-                dtypes=tf.float32,
-                local_shuffle_buffer_size=config["shuffle_buffer_size"],
-            ):
-                yield batch["image"], batch["label"]
-                num_steps += 1
-            assert (
-                num_steps == num_steps_per_epoch
-            ), f"expected {num_steps} to equal {num_steps_per_epoch}"
-            print_dataset_stats(dataset)
-
-        output_signature = (
-            tf.TensorSpec(shape=IMAGE_DIMS, dtype=tf.uint8),
-            tf.TensorSpec(shape=(None,), dtype=tf.int32),
-        )
-        tf_dataset = tf.data.Dataset.from_generator(
-            to_tensor_iterator, output_signature=output_signature
-        )
-        return prepare_dataset_shard(tf_dataset)
-
     def build_synthetic_tf_dataset(dataset, batch_size, num_steps_per_epoch):
         batch = list(dataset.iter_tf_batches(batch_size=batch_size, dtypes=tf.float32))[
             0
@@ -164,10 +133,8 @@ def train_loop_for_worker(config):
             tf_dataset = _tf_dataset
         elif config["data_loader"] == RAY_DATA:
             assert dataset_shard is not None
-            tf_dataset = ray_dataset_to_tf_dataset(
-                dataset=dataset_shard,
-                batch_size=config["batch_size"],
-                num_steps_per_epoch=num_steps_per_epoch,
+            tf_dataset = dataset_shard.to_tf(
+                feature_columns="image", label_columns="label", batch_size=config["batch_size"]
             )
         elif config["data_loader"] == SYNTHETIC:
             tf_dataset = build_synthetic_tf_dataset(
@@ -312,9 +279,6 @@ def build_dataset(
         batch_size=batch_size,
         batch_format="pandas",
     )
-    # ds = ds.map_batches(crop_and_flip_image_batch,
-    #                     batch_size=batch_size,
-    #                     batch_format="pandas")
     # TODO(swang): If we are reading the actual dataset and we only want to read
     # a fraction of images, then we should actually call .limit(), but right now
     # this materializes all data to the object store. For now, we can just skip
