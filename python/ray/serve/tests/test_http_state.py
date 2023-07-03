@@ -686,8 +686,8 @@ def test_is_ready_for_shutdown(mock_get_all_node_ids, setup_controller, all_node
     """Test `is_ready_for_shutdown()` returns True the correct state.
 
     Before `shutdown()` is called, `is_ready_for_shutdown()` should return false. After
-    `shutdown()` is called and all proxy actor are killed, `is_ready_for_shutdown()` should
-    return true.
+    `shutdown()` is called and all proxy actor are killed, `is_ready_for_shutdown()`
+    should return true.
     """
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
 

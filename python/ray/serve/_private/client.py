@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deploy_utils import get_deploy_args
