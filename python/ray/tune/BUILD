@@ -965,16 +965,6 @@ py_test(
     args = ["--smoke-test"]
 )
 
-# Downloads too much data.
-# py_test(
-#     name = "tune_cifar10_gluon",
-#     size = "medium",
-#     srcs = ["examples/tune_cifar10_gluon.py"],
-#     deps = [":tune_lib"],
-#     tags = ["team:ml", "exclusive", "example"],
-#     args = ["--model SqueezeNet1.0", "--smoke-test"]
-# )
-
 py_test(
     name = "tune_mnist_keras",
     size = "medium",

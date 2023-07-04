@@ -68,5 +68,4 @@ Contributed Examples
 --------------------
 
 - `pbt_tune_cifar10_with_keras <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/pbt_tune_cifar10_with_keras.py>`__: A contributed example of tuning a Keras model on CIFAR10 with the PopulationBasedTraining scheduler.
-- `tune_cifar10_gluon <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/tune_cifar10_gluon.py>`__: MXNet Gluon example to use Tune with the function-based API on CIFAR-10 dataset.
 - `hyperopt_conditional_search_space_example <https://github.com/ray-project/ray/blob/master/python/ray/tune/examples/hyperopt_conditional_search_space_example.py>`__: Conditional search space example using HyperOpt.
