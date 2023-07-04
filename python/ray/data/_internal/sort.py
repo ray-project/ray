@@ -144,7 +144,7 @@ def sort_impl(
         key = [(key, "descending" if descending else "ascending")]
 
     if isinstance(key, list):
-        key = [(k, "descending" if descending else "ascending")for k in key]
+        key = [(k, "descending" if descending else "ascending") for k in key]
 
     num_mappers = len(blocks_list)
     # Use same number of output partitions.

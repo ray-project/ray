@@ -74,6 +74,7 @@ def _validate_key_fn(
     else:
         pass
 
+
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`

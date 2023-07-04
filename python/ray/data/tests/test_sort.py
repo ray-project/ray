@@ -156,20 +156,26 @@ def test_sort_arrow_with_empty_blocks(
 def test_sort_multikeys_arrow(ray_start_regular, descending):
     num_items = 1000
     num_blocks = 100
-    df = pd.DataFrame({
-        "a": [random.choice(string.ascii_letters) for _ in range(num_items)],
-        "b": [x %3 for x in range(num_items)],
-    })
-    ds = ray.data.from_pandas(df).map_batches(
-        lambda t: t, batch_format="pyarrow", batch_size=None,
+    df = pd.DataFrame(
+        {
+            "a": [random.choice(string.ascii_letters) for _ in range(num_items)],
+            "b": [x % 3 for x in range(num_items)],
+        }
     )
-    df.sort_values(["a", "b"], inplace=True, ascending=not(descending))
+    ds = ray.data.from_pandas(df).map_batches(
+        lambda t: t,
+        batch_format="pyarrow",
+        batch_size=None,
+    )
+    df.sort_values(["a", "b"], inplace=True, ascending=not (descending))
     sorted_ds = ds.repartition(num_blocks).sort(["a", "b"], descending=descending)
 
     # Number of blocks is preserved
     assert len(sorted_ds._block_num_rows()) == num_blocks
     # Rows are sorted over the dimensions
-    assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(zip(df["a"], df["b"]))
+    assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
+        zip(df["a"], df["b"])
+    )
 
 
 @pytest.mark.parametrize("num_items,parallelism", [(100, 1), (1000, 4)])

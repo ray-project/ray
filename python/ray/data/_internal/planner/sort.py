@@ -45,7 +45,7 @@ def generate_sort_fn(
         if isinstance(key, str):
             key = [(key, "descending" if descending else "ascending")]
         if isinstance(key, list):
-            key = [(k, "descending" if descending else "ascending")for k in key]
+            key = [(k, "descending" if descending else "ascending") for k in key]
 
         num_mappers = len(blocks)
         # Use same number of output partitions.
