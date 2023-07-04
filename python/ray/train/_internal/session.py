@@ -11,7 +11,7 @@ from enum import Enum, auto
 import functools
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 import warnings
 
 import ray
