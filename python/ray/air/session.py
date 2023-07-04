@@ -5,7 +5,6 @@ import functools
 from ray.air._internal.session import _get_session
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import SESSION_MISUSE_LOG_ONCE_KEY
-from ray.train.session import _TrainSessionImpl
 from ray.util import log_once
 from ray.util.annotations import PublicAPI
 
@@ -216,7 +215,7 @@ def get_world_size() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "world_size"):
         raise RuntimeError(
             "`get_world_size` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -250,7 +249,7 @@ def get_world_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "world_rank"):
         raise RuntimeError(
             "`get_world_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -283,7 +282,7 @@ def get_local_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "local_rank"):
         raise RuntimeError(
             "`get_local_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -314,7 +313,7 @@ def get_local_world_size() -> int:
         >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "local_world_size"):
         raise RuntimeError(
             "`get_local_world_size` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -345,7 +344,7 @@ def get_node_rank() -> int:
         >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "node_rank"):
         raise RuntimeError(
             "`get_node_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -397,7 +396,7 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "get_dataset_shard"):
         raise RuntimeError(
             "`get_dataset_shard` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
