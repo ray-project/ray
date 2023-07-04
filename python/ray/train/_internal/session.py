@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 import warnings
 
 import ray
-from ray.air._internal.session import _get_session, Session
+from ray.air._internal.session import _get_session
 from ray.air._internal.util import StartTraceback, RunnerThread
 from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
@@ -39,7 +39,7 @@ from ray.train.constants import (
 )
 
 from ray.train.error import SessionMisuseError
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
 
