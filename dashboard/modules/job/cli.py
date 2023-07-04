@@ -1,6 +1,5 @@
 import os
 import pprint
-import re
 import time
 from subprocess import list2cmdline
 from typing import Optional, Tuple, Union
@@ -14,6 +13,7 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cl
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.dashboard.modules.job.cli_utils import add_common_job_options
+from ray.dashboard.modules.job.utils import redact_url_password
 from ray.util.annotations import PublicAPI
 from ray._private.utils import parse_resources_json, parse_metadata_json
 
@@ -25,11 +25,9 @@ def _get_sdk_client(
 ) -> JobSubmissionClient:
     client = JobSubmissionClient(address, create_cluster_if_needed, verify=verify)
     client_address = client.get_address()
-    # redact any passwords in the client address
-    secret = re.findall("https?:\/\/.*:(.*)@.*$", client_address)
-    if secret is not None and len(secret) > 0:
-        client_address = client_address.replace(f":{secret[0]}@", ":<redacted>@")
-    cli_logger.labeled_value("Job submission server address", client_address)
+    cli_logger.labeled_value(
+        "Job submission server address", redact_url_password(client_address)
+    )
     return client
 
 
