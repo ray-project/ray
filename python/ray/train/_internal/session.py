@@ -11,7 +11,7 @@ from enum import Enum, auto
 import functools
 from pathlib import Path
 import shutil
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Union
 import warnings
 
 import ray
@@ -39,7 +39,7 @@ from ray.train.constants import (
 )
 
 from ray.train.error import SessionMisuseError
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
 
@@ -447,74 +447,19 @@ class _TrainSession:
             self.checkpoint(checkpoint)
         self._report_legacy(**metrics)
 
-
-class _TrainSessionImpl(Session):
-    """Session client that "per worker train loop" can interact with.
-
-    Notice that each worker will automatically switch to its working
-    directory on entering the train loop. This is to ensure that
-    each worker can safely write to a local directory without racing
-    and overwriting each other."""
-
-    def __init__(self, session: "_TrainSession"):
-        self._session = session
-
-    def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
-        self._session.report(metrics, checkpoint)
-
-    @property
-    def loaded_checkpoint(self) -> Optional[Checkpoint]:
-        ckpt = self._session.loaded_checkpoint
-        if ckpt:
-            # The new API should only interact with Checkpoint object.
-            assert isinstance(ckpt, Checkpoint)
-        return ckpt
-
-    @property
-    def experiment_name(self) -> str:
-        return self._session.trial_info.experiment_name
-
-    @property
-    def trial_name(self) -> str:
-        return self._session.trial_info.name
-
-    @property
-    def trial_id(self) -> str:
-        return self._session.trial_info.id
-
     @property
     def trial_resources(self) -> "PlacementGroupFactory":
-        return self._session.trial_info.resources
+        return self.trial_info.resources
 
     @property
     def trial_dir(self) -> str:
-        return self._session.trial_info.logdir
-
-    @property
-    def world_size(self) -> int:
-        return self._session.world_size
-
-    @property
-    def world_rank(self) -> int:
-        return self._session.world_rank
-
-    @property
-    def local_rank(self) -> int:
-        return self._session.local_rank
-
-    @property
-    def local_world_size(self) -> int:
-        return self._session.local_world_size
-
-    @property
-    def node_rank(self) -> int:
-        return self._session.node_rank
+        return self.trial_info.logdir
 
     def get_dataset_shard(
         self,
         dataset_name: Optional[str] = None,
     ) -> Optional["DataIterator"]:
-        shard = self._session.dataset_shard
+        shard = self.dataset_shard
         if shard is None:
             warnings.warn(
                 "No dataset passed in. Returning None. Make sure to "
@@ -534,20 +479,16 @@ class _TrainSessionImpl(Session):
 
 
 _session: Optional[_TrainSession] = None
-# V2 Session API
-_session_v2: Optional[_TrainSessionImpl] = None
 
 
 def init_session(*args, **kwargs) -> None:
     global _session
-    global _session_v2
     if _session:
         raise ValueError(
             "A Train session is already in use. Do not call "
             "`init_session()` manually."
         )
     _session = _TrainSession(*args, **kwargs)
-    _session_v2 = _TrainSessionImpl(session=_session)
 
 
 def get_session() -> Optional[_TrainSession]:
@@ -557,9 +498,7 @@ def get_session() -> Optional[_TrainSession]:
 def shutdown_session():
     """Shuts down the initialized session."""
     global _session
-    global _session_v2
     _session = None
-    _session_v2 = None
 
 
 def _raise_accelerator_session_misuse():
@@ -807,7 +746,7 @@ def get_world_size() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "world_size"):
         raise RuntimeError(
             "`get_world_size` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -841,7 +780,7 @@ def get_world_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "world_rank"):
         raise RuntimeError(
             "`get_world_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -874,7 +813,7 @@ def get_local_rank() -> int:
         trainer.fit()
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "local_rank"):
         raise RuntimeError(
             "`get_local_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -905,7 +844,7 @@ def get_local_world_size() -> int:
         >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "local_world_size"):
         raise RuntimeError(
             "`get_local_world_size` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -936,7 +875,7 @@ def get_node_rank() -> int:
         >>> trainer.fit() # doctest: +SKIP
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "node_rank"):
         raise RuntimeError(
             "`get_node_rank` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
@@ -988,7 +927,7 @@ def get_dataset_shard(
         If no dataset is passed into Trainer, then return None.
     """
     session = _get_session()
-    if not isinstance(session, _TrainSessionImpl):
+    if not hasattr(session, "get_dataset_shard"):
         raise RuntimeError(
             "`get_dataset_shard` can only be called for TrainSession! "
             "Make sure you only use that in `train_loop_per_worker` function"
