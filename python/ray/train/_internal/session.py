@@ -445,6 +445,18 @@ class _TrainSession:
         self._report_legacy(**metrics)
 
     @property
+    def experiment_name(self) -> str:
+        return self.trial_info.experiment_name
+
+    @property
+    def trial_name(self) -> str:
+        return self.trial_info.name
+
+    @property
+    def trial_id(self) -> str:
+        return self.trial_info.id
+
+    @property
     def trial_resources(self) -> "PlacementGroupFactory":
         return self.trial_info.resources
 
