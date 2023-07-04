@@ -414,11 +414,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
     ) -> List["Block"]:
-        if len(key) > 1:
-            raise NotImplementedError(
-                "sorting by multiple columns is not supported yet"
-            )
-
         if self._table.num_rows == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.

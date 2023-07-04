@@ -72,8 +72,7 @@ def _validate_key_fn(
                 "schema '{}'.".format(key, schema)
             )
     else:
-        raise ValueError(f"In Ray 2.5, the key must be a string, was: {key}")
-
+        pass
 
 # Represents a batch of records to be stored in the Ray object store.
 #

@@ -89,10 +89,6 @@ class SortTaskSpec(ExchangeTaskSpec):
         Return (num_reducers - 1) items in ascending order from the blocks that
         partition the domain into ranges with approximately equally many elements.
         """
-        # TODO(Clark): Support multiple boundary sampling keys.
-        if isinstance(key, list) and len(key) > 1:
-            raise ValueError("Multiple boundary sampling keys not supported.")
-
         n_samples = int(num_reducers * 10 / len(blocks))
 
         sample_block = cached_remote_fn(_sample_block)
