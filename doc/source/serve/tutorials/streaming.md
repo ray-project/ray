@@ -26,7 +26,7 @@ pip install transformers
 
 # Create a Streaming Deployment
 
-Open a new Python file called `textbot.py`. First, add the imports and the Serve logger.
+Open a new Python file called `textbot.py`. First, add the imports and the [Serve logger](serve-logging).
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
 :language: python
@@ -34,7 +34,7 @@ Open a new Python file called `textbot.py`. First, add the imports and the Serve
 :end-before: __textbot_setup_end__
 ```
 
-Create a FastAPI deployment, and initialize the model and the tokenizer in the
+Create a [FastAPI deployment](serve-fastapi-http), and initialize the model and the tokenizer in the
 constructor:
 
 ```{literalinclude} ../doc_code/streaming_tutorial.py
