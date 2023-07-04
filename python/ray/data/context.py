@@ -101,7 +101,9 @@ DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED = True
 
 # Whether to automatically cast NumPy ndarray columns in Pandas DataFrames to tensor
 # extension columns.
-DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
+DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = bool(
+    int(os.environ.get("RAY_DATA_DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING", "1"))
+)
 
 # Whether to automatically print Dataset stats after execution.
 # If disabled, users can still manually print stats with Dataset.stats().
