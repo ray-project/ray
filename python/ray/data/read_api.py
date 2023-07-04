@@ -199,7 +199,7 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
         >>> ds  # doctest: +ELLIPSIS
         Dataset(num_blocks=..., num_rows=10000, schema={id: int64})
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
-        [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}]
+        [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
 
     Args:
         n: The upper bound of the range of integers.
@@ -254,8 +254,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
         )
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
-                 [0, 0]])},
-         {'data': array([[2, 2],
+                 [0, 0]])}, {'data': array([[2, 2],
                 [2, 2]])}]
 
     Args:
@@ -936,7 +935,7 @@ def read_json(
     Examples:
         >>> import ray
         >>> # Read a file in remote storage.
-        >>> ray.data.read_json("s3://ray-example-data/logs.json")
+        >>> ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
         >>> ds.schema()
         Column     Type
         ------     ----
@@ -1055,7 +1054,7 @@ def read_csv(
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
 
         >>> # Read directory from remote storage.
-        >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris-csv/")
+        >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris-csv/")
 
         >>> # Read files that use a different delimiter. 
         >>> # For more uses of ParseOptions see
@@ -1185,7 +1184,7 @@ def read_text(
     Examples:
         >>> import ray
         >>> # Read a file in remote storage.
-        >>> ds = ray.data.read_text("s3://ray-example-data/this.txt")
+        >>> ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
         >>> ds.schema()
         Column  Type
         ------  ----
@@ -1344,32 +1343,26 @@ def read_tfrecords(
 
     Examples:
         >>> import ray
-        >>> ds = ray.data.read_tfrecords("example://iris.tfrecords")
-        >>> ds.schema()
-        Column        Type
-        ------        ----
-        sepal.length  float
-        sepal.width   float
-        petal.length  float
-        petal.width   float
-        label         binary
+        >>> ray.data.read_tfrecords("example://iris.tfrecords")
+        Dataset(
+            num_blocks=...,
+            num_rows=150,
+            schema={...}
+        )
 
         We can also read compressed TFRecord files which uses one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
             generated/pyarrow.CompressedInputStream.html>`_:
 
-        >>> ds = ray.data.read_tfrecords(
+        >>> ray.data.read_tfrecords(
         ...     "example://iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
-        >>> ds.schema()
-        Column        Type
-        ------        ----
-        sepal.length  float
-        sepal.width   float
-        petal.length  float
-        petal.width   float
-        label         binary
+        Dataset(
+            num_blocks=...,
+            num_rows=150,
+            schema={...}
+        )
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
@@ -1506,7 +1499,8 @@ def read_binary_files(
     Examples:
         >>> import ray
         >>> # Read a file in remote storage.
-        >>> ds = ray.data.read_binary_files("s3://ray-example-data/pdf-sample_0.pdf")
+        >>> path = "s3://anonymous@ray-example-data/pdf-sample_0.pdf"
+        >>> ds = ray.data.read_binary_files(path)
         >>> ds.schema()
         Column  Type
         ------  ----
@@ -1885,11 +1879,11 @@ def from_numpy_refs(
         >>> import numpy as np
         >>> import ray
         >>> arr_ref = ray.put(np.array([1]))
-        >>> ray.data.from_numpy(arr_ref)
+        >>> ray.data.from_numpy_refs(arr_ref)
         MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
 
         >>> # Create a Ray Dataset from a list of NumPy array references.
-        >>> ray.data.from_numpy([arr, arr])
+        >>> ray.data.from_numpy_refs([arr, arr])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 
     Args:
