@@ -17,7 +17,6 @@ _context_lock = threading.Lock()
 
 
 def _copy_doc(copy_func):
-
     def wrapped(func):
         func.__doc__ = copy_func.__doc__
         return func
@@ -27,8 +26,7 @@ def _copy_doc(copy_func):
 
 @PublicAPI(stability="beta")
 class Context:
-    """Context for Ray Train and Tune executions.
-    """
+    """Context for Ray Train and Tune executions."""
 
     @_copy_doc(session.get_checkpoint)
     def get_checkpoint(self) -> Optional[Checkpoint]:
@@ -76,7 +74,8 @@ class Context:
 
     @_copy_doc(session.get_dataset_shard)
     def get_dataset_shard(
-        self, dataset_name: Optional[str] = None,
+        self,
+        dataset_name: Optional[str] = None,
     ) -> Optional["DataIterator"]:
         return session.get_dataset_shard(dataset_name)
 
