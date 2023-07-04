@@ -91,6 +91,7 @@ a wheel is installed and test code is checked out."
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
+  sudo chmod -R 777 ./
   pip install --use-deprecated=legacy-resolver -c requirements.txt -e .
 fi
 
