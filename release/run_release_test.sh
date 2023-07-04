@@ -121,7 +121,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   fi
 
   if [ -z "${NO_ARTIFACTS}" ]; then
-    sudo rm -rf "${RELEASE_RESULTS_DIR}"/* || true
+    rm -rf "${RELEASE_RESULTS_DIR}"/* || true
   fi
 
   _term() {
@@ -164,8 +164,8 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
 done
 
 if [ -z "${NO_ARTIFACTS}" ]; then
-  sudo rm -rf /tmp/ray_release_test_artifacts/* || true
-  sudo cp -rf "${RELEASE_RESULTS_DIR}"/* /tmp/ray_release_test_artifacts/ || true
+  rm -rf /tmp/ray_release_test_artifacts/* || true
+  cp -rf "${RELEASE_RESULTS_DIR}"/* /tmp/ray_release_test_artifacts/ || true
 fi
 
 echo "----------------------------------------"
