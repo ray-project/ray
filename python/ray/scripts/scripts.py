@@ -636,6 +636,7 @@ def start(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         resources=resources,
+        labels=labels_dict,
         autoscaling_config=autoscaling_config,
         plasma_directory=plasma_directory,
         huge_pages=False,
@@ -655,7 +656,6 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
-        labels=labels_dict,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -1906,7 +1906,7 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._private.gcs_utils.check_health(address):
+    if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     time = datetime.now()
@@ -1947,7 +1947,7 @@ def memory(
 def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._private.gcs_utils.check_health(address):
+    if not ray._raylet.check_health(address):
         print(f"Ray cluster is not found at {address}")
         sys.exit(1)
     gcs_client = ray._raylet.GcsClient(address=address)
@@ -2245,9 +2245,7 @@ def healthcheck(address, redis_password, component, skip_version_check):
 
     if not component:
         try:
-            if ray._private.gcs_utils.check_health(
-                address, skip_version_check=skip_version_check
-            ):
+            if ray._raylet.check_health(address, skip_version_check=skip_version_check):
                 sys.exit(0)
         except Exception:
             traceback.print_exc()

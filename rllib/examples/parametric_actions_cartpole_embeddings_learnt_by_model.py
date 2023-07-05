@@ -75,6 +75,7 @@ if __name__ == "__main__":
             "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
             "num_workers": 0,
             "framework": args.framework,
+            "action_mask_key": "valid_avail_actions_mask",
         },
         **cfg
     )

@@ -9,8 +9,12 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import override, DeveloperAPI
-from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    deprecation_warning,
+    DEPRECATED_VALUE,
+    Deprecated,
+)
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
@@ -26,7 +30,7 @@ if TYPE_CHECKING:
 tf1, tf, tfv = try_import_tf()
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 def build_tf_policy(
     name: str,
     *,

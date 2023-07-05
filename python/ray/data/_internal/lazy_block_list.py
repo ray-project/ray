@@ -100,6 +100,9 @@ class LazyBlockList(BlockList):
         # eagerly deleted after read by the consumer.
         self._owned_by_consumer = owned_by_consumer
         self._stats_actor = _get_or_create_stats_actor()
+        # This field can be set to indicate the number of estimated output blocks,
+        # since each read task may produce multiple output blocks after splitting.
+        self._estimated_num_blocks = None
 
     def __repr__(self):
         return f"LazyBlockList(owned_by_consumer={self._owned_by_consumer})"

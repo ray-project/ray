@@ -21,6 +21,7 @@ from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import FilterManager
 from ray.rllib.utils.actor_manager import FaultAwareApply
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_TRAINED,
@@ -372,6 +373,12 @@ def get_policy_class(config: AlgorithmConfig):
     return policy_cls
 
 
+@Deprecated(
+    old="rllib/algorithms/ars/",
+    new="rllib_contrib/ars/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class ARS(Algorithm):
     """Large-scale implementation of Augmented Random Search in Ray."""
 
