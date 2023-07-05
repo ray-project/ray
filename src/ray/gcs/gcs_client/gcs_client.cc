@@ -94,7 +94,6 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
     gcs_rpc_client_->GetClusterId(
         rpc::GetClusterIdRequest(),
         [this,
-         &io_service,
          &cluster_known](
             const Status &status, const rpc::GetClusterIdReply &reply) {
           RAY_CHECK(status.ok()) << "Failed to get Cluster ID! Status: " << status;
