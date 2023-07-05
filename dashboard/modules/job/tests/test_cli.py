@@ -41,6 +41,9 @@ def mock_sdk_client():
         # 'async for' requires an object with __aiter__ method, got MagicMock"
         mock_client().tail_job_logs.return_value = AsyncIterator(range(10))
 
+        # We need to return a string for the address and not a MagicMock
+        mock_client().get_address.return_value = ""
+
         yield mock_client
 
 
