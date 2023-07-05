@@ -207,7 +207,7 @@ subclass :class:`~ray.train.predictor.Predictor` and implement:
 Examples
 ~~~~~~~~
 
-We'll walk through how to implement a predictor for `statsmodel` --
+We'll walk through how to implement a predictor for ``statsmodel`` --
 a Python library that provides regression and linear models.
 
 For more examples, read the source code of built-in predictors like
