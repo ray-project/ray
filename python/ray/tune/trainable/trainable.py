@@ -192,7 +192,7 @@ class Trainable:
             self.sync_config, self.remote_checkpoint_dir
         )
 
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
@@ -652,15 +652,16 @@ class Trainable:
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-        except TuneError:
+        except TuneError as e:
             num_retries = self.sync_num_retries
             logger.error(
                 f"Could not upload checkpoint to {checkpoint_uri} even after "
-                f"{num_retries} retries."
+                f"{num_retries} retries. "
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported. For large checkpoints or artifacts, "
                 f"consider increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_config.sync_timeout} seconds)."
+                f"(current value: {self.sync_config.sync_timeout} seconds). "
+                f"See the full error details below:\n{e}"
             )
             return False
         return True
