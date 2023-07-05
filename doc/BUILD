@@ -313,7 +313,8 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst"
+            "source/train/faq.rst",
+            "source/workflows/basics.rst"
         ]
     ),
     size = "large",
@@ -321,6 +322,12 @@ doctest(
 )
 
 
+doctest(
+    files = [
+        "source/workflows/basics.rst",
+    ],
+    tags = ["team:core"]
+)
 
 doctest(
     files = [
