@@ -1520,9 +1520,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
-  /// If the worker is not initialized yet, send an error reply and return true.
-  /// This can happen since we first start the grpc server and then
-  /// intialize internal components.
+  /// Wait until the worker is initialized.
   void WaitUntilInitialized() {
     absl::MutexLock lock(&initialize_mutex_);
     while (!initialized_) {
