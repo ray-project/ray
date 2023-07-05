@@ -506,7 +506,10 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     serve.shutdown()
 
 
-def test_controller_shutdown_gracefully(shutdown_ray, call_ray_stop_only):  # noqa: F811
+@pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
+def test_controller_shutdown_gracefully(
+    shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
+):
     """Test controller shutdown gracefully when shutting_down flag is set.
 
     Set the shutting_down flag to the controller, and ensure the controller shuts down
@@ -532,9 +535,15 @@ def test_controller_shutdown_gracefully(shutdown_ray, call_ray_stop_only):  # no
     wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
     assert len(ray.nodes()) == 2
 
-    # Set shutting_down flag to the controller, so it will shut down gracefully.
+    # Call `graceful_shutdown()` on the controller, so it will start shutdown.
     client = get_global_client()
-    ray.get(client._controller.set_shutting_down_flag.remote())
+    if wait_for_controller_shutdown:
+        # Waiting for controller shutdown will throw RayActorError when the controller
+        # killed itself.
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(client._controller.graceful_shutdown.remote(True))
+    else:
+        ray.get(client._controller.graceful_shutdown.remote(False))
 
     # Ensure the all resources are shutdown.
     wait_for_condition(

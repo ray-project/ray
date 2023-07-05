@@ -492,9 +492,10 @@ class ServeController:
                 "All resources have shut down, shutting down controller!",
                 extra={"log_to_stderr": False},
             )
-            _controller_actor = ray.get_actor(
-                self.controller_name, namespace=SERVE_NAMESPACE
-            )
+            # _controller_actor = ray.get_actor(
+            #     self.controller_name, namespace=SERVE_NAMESPACE
+            # )
+            _controller_actor = ray.get_runtime_context().current_actor
             self._shutdown.set()
             ray.kill(_controller_actor, no_restart=True)
         else:
@@ -907,25 +908,19 @@ class ServeController:
         """
         self.deployment_state_manager.record_multiplexed_replica_info(info)
 
-    def set_shutting_down_flag(self):
+    async def graceful_shutdown(self, wait: bool = True):
         """Set the shutting down flag on controller to signal shutdown in
         run_control_loop().
 
         This is used to signal to the controller that it should proceed with shutdown
-        process so it can shutdown gracefully.
+        process, so it can shut down gracefully. It also waits until the shutdown
+        event is triggered if wait is true.
         """
         self._shutting_down = True
+        if not wait:
+            return
 
-    async def await_controller_shutdown(self):
-        """Await controller to shut down.
-
-        This is used to wait for the controller to finish shutting down and signal to
-        the client that it's safe to exit.
-        """
-        if not self._shutdown.is_set():
-            await self._shutdown.wait()
-
-        return True
+        await self._shutdown.wait()
 
 
 @ray.remote(num_cpus=0, max_calls=1)

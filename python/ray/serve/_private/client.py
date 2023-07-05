@@ -107,46 +107,10 @@ class ServeControllerClient:
 
         if ray.is_initialized() and not self._shutdown:
             try:
-                controller_shutdown_ref = (
-                    self._controller.await_controller_shutdown.remote()
-                )
-                ray.get(self._controller.set_shutting_down_flag.remote())
-                logger.info(
-                    "Serve controller received shutdown request. It "
-                    "will shut down gracefully in the background."
-                )
-
-                self._wait_for_deployments_shutdown()
-                # Wait until the named actor entry gets removed as well.
-                ray.get(controller_shutdown_ref)
+                ray.get(self._controller.graceful_shutdown.remote())
             except ray.exceptions.RayActorError:
                 logger.info("The controller has already shut down.")
             self._shutdown = True
-
-    def _wait_for_deployments_shutdown(self, timeout_s: int = 60):
-        """Waits for all deployments to be shut down and deleted.
-
-        Raises TimeoutError if this doesn't happen before timeout_s.
-        """
-        start = time.time()
-        while time.time() - start < timeout_s:
-            deployment_statuses = self.get_all_deployment_statuses()
-            if len(deployment_statuses) == 0:
-                break
-            else:
-                logger.debug(
-                    f"Waiting for shutdown, {len(deployment_statuses)} "
-                    "deployments still alive."
-                )
-            time.sleep(CLIENT_POLLING_INTERVAL_S)
-        else:
-            live_names = [
-                deployment_status.name for deployment_status in deployment_statuses
-            ]
-            raise TimeoutError(
-                f"Shutdown didn't complete after {timeout_s}s. "
-                f"Deployments still alive: {live_names}."
-            )
 
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
         """Waits for the named deployment to enter "HEALTHY" status.
