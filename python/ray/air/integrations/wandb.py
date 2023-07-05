@@ -449,8 +449,8 @@ class WandbLoggerCallback(LoggerCallback):
 
             import random
 
-            from ray import tune
-            from ray.air import session, RunConfig
+            from ray import train, tune
+            from ray.train import RunConfig
             from ray.air.integrations.wandb import WandbLoggerCallback
 
 
@@ -459,7 +459,7 @@ class WandbLoggerCallback(LoggerCallback):
                 for epoch in range(2, config["epochs"]):
                     acc = 1 - (2 + config["lr"]) ** -epoch - random.random() / epoch - offset
                     loss = (2 + config["lr"]) ** -epoch + random.random() / epoch + offset
-                    session.report({"acc": acc, "loss": loss})
+                    train.report({"acc": acc, "loss": loss})
 
 
             tuner = tune.Tuner(

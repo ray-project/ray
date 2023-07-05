@@ -8,11 +8,10 @@ import csv
 import json
 
 import ray
-from ray.air import session
 from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
-from ray.air.config import ScalingConfig
 from ray.data.preprocessors import BatchMapper
-from ray import tune
+from ray import train, tune
+from ray.train import ScalingConfig
 from ray.tune import Tuner
 
 
@@ -78,7 +77,7 @@ def train_loop_for_worker(config):
             # model.compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-    dataset_shard = session.get_dataset_shard("train")
+    dataset_shard = train.get_context().get_dataset_shard("train")
     _tf_dataset = None
     synthetic_dataset = None
     if config["data_loader"] == TF_DATA:
@@ -204,7 +203,7 @@ def train_loop_for_worker(config):
 
         # You can also use ray.air.integrations.keras.Callback
         # for reporting and checkpointing instead of reporting manually.
-        session.report(
+        train.report(
             {
                 # f"epoch_{epoch}_time_s": epoch_time_s,
             }

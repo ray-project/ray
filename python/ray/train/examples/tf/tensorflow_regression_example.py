@@ -5,9 +5,9 @@ import pandas as pd
 import tensorflow as tf
 
 import ray
-from ray.air import session
+from ray import train
+from ray.train import Result
 from ray.air.integrations.keras import ReportCheckpointCallback
-from ray.air.result import Result
 from ray.data import Dataset
 from ray.data.preprocessors import Concatenator
 from ray.train.batch_predictor import BatchPredictor
@@ -43,7 +43,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = session.get_dataset_shard("train")
+    dataset = train.get_context().get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):

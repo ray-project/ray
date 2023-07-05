@@ -11,8 +11,7 @@ from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.tune.schedulers import ASHAScheduler
 # __tutorial_imports_end__
 # fmt: on
@@ -106,7 +105,7 @@ def train_mnist(config):
         acc = test(model, test_loader)
 
         # Send the current training result back to Tune
-        session.report({"mean_accuracy": acc})
+        train.report({"mean_accuracy": acc})
 
         if i % 5 == 0:
             # This saves the model to the trial directory
@@ -208,7 +207,7 @@ search_space = {
 
 tuner = tune.Tuner(
     TrainMNIST,
-    run_config=air.RunConfig(stop={"training_iteration": 10}),
+    run_config=train.RunConfig(stop={"training_iteration": 10}),
     param_space=search_space,
 )
 results = tuner.fit()
