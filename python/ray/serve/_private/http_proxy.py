@@ -122,8 +122,7 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(
-                    endpoint,
+                self.handles[endpoint] = self._get_handle(endpoint,).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -224,13 +223,12 @@ class HTTPProxy:
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(name, stream: bool = False):
+        def get_handle(name):
             return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
                 _is_for_http_requests=True,
-                _stream=stream,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
