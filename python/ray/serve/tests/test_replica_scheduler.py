@@ -509,8 +509,8 @@ async def test_replica_not_blacklisted_after_unexpected_error(
     pow_2_scheduler, fake_query
 ):
     """
-    Verify that if a replica is removed from the set if it returns a RayActorError.
-    Subsequent requests should not be sent to it.
+    Verify that if a replica is not removed from the set if it returns an unexpected
+    error. This should go through the normal backoff/retry logic.
     """
     s = pow_2_scheduler
     loop = get_or_create_event_loop()
