@@ -101,6 +101,7 @@ const columns = [
   },
   { label: "Sent" },
   { label: "Received" },
+  { label: "Custom Resources" },
 ];
 
 export const brpcLinkChanger = (href: string) => {

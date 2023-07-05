@@ -14,12 +14,14 @@ import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
 import rowStyles from "../../common/RowStyles";
+import { formatResourcesStatus } from "../../components/AutoscalerStatusCards";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
 import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
+import { useRayStatus } from "../job/hook/useClusterStatus";
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
@@ -66,6 +68,7 @@ export const NodeRow = ({
    * Because in ray, raylet == node
    */
   const { cluster_status } = useRayStatus();
+  console.log("cluster_status: ", cluster_status);
   const customResource = cluster_status?.data
     ? formatResourcesStatus(cluster_status.data?.clusterStatus)
     : "";
@@ -155,7 +158,9 @@ export const NodeRow = ({
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
       <TableCell align="center">
-        <CodeDialogButton title={"Custom Resource"} code={{ a: 1, "2": 3 }} />
+        <CodeDialogButton title={"Custom Resource"} code="">
+          {customResource}
+        </CodeDialogButton>
       </TableCell>
     </TableRow>
   );
