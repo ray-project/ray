@@ -27,6 +27,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
       :noindex:
    serve.ingress
    serve.batch
+   serve.multiplexed
 ```
 
 #### Object Types
@@ -51,6 +52,7 @@ This is fixed by added custom filename mappings in `source/conf.py` (look for "a
    :toctree: doc/
 
    serve.get_replica_context
+   serve.get_multiplexed_model_id
 ```
 
 ### Running Applications
