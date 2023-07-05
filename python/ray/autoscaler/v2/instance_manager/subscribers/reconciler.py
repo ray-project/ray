@@ -29,17 +29,16 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._failure_handling_executor = ThreadPoolExecutor(max_workers=1)
-        self._reconcile_executor = ThreadPoolExecutor(max_workers=1)
         self._reconcile_interval_s = reconcile_interval_s
         self._reconcile_timer_lock = threading.Lock()
         with self._reconcile_timer_lock:
-            self._reconsile_timer = threading.Timer(
+            self._reconcile_timer = threading.Timer(
                 self._reconcile_interval_s, self._periodic_reconcile_helper
             )
 
     def shutdown(self):
         with self._reconcile_timer_lock:
-            self._reconsile_timer.cancel()
+            self._reconcile_timer.cancel()
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         instance_ids = [
@@ -82,7 +81,7 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         except Exception:
             logger.exception("Failed to reconcile with node provider")
         with self._reconcile_timer_lock:
-            self._reconsile_timer = threading.Timer(
+            self._reconcile_timer = threading.Timer(
                 self._reconcile_interval_s, self._periodic_reconcile_helper
             )
 
@@ -103,7 +102,8 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
                     instance, expected_instance_version=instance.version
                 )
                 if not result:
-                    logger.warning("Failed to update instance status to TERMINATED")
+                    logger.warning("Failed to update instance status to STOPPED")
 
         # 2. TODO: if the cloud instance has no storage instance can be found,
         # it means the instance is likely leaked, terminate the instance.
+        # 3. TODO: we should also GC nodes have been stuck in installing state.

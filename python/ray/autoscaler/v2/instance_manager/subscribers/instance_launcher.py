@@ -89,6 +89,15 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
     def _launch_new_instances_by_type(
         self, instance_type: str, instances: List[Instance]
     ) -> int:
+        """Launches instances of the given type.
+
+        Args:
+            instance_type: type of instance to launch.
+            instances: list of instances to launch. These instances should
+                have been marked as QUEUED with instance_type set.
+        Returns:
+            num of instances launched.
+        """
         logger.info(f"Launching {len(instances)} instances of type {instance_type}")
         instances_selected = []
         for instance in instances:
@@ -132,6 +141,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
                 logger.warn(f"Failed to update instance {instance}")
                 # push the cloud instance back
                 created_cloud_instances.append(cloud_instance)
+                continue
 
             instances_launched += 1
 
@@ -144,6 +154,7 @@ class InstanceLauncher(InstanceUpdatedSuscriber):
             # instances creation failed, we need to marke them allocation failed.
             for instance in instances_selected:
                 instance.status = Instance.ALLOCATION_FAILED
+                # TODO: add more information about the failure.
                 result, _ = self._instance_storage.upsert_instance(
                     instance, expected_instance_version=instance.version
                 )
