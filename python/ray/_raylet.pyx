@@ -342,7 +342,8 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)], timeout=timeout_s)
+        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
+                                            timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
 
