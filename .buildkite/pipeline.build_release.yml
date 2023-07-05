@@ -16,6 +16,7 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     # Upload to branch directory.
+    - aws sts get-caller-identity
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/linux
     # Upload to latest directory.
