@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 
 # The context singleton on this process.
-_default_context: "Optional[Context]" = None
+_default_context: "Optional[TrainContext]" = None
 _context_lock = threading.Lock()
 
 
