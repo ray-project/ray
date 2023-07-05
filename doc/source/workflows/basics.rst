@@ -21,7 +21,7 @@ taken on it:
 
     ray.shutdown()
 
-    #ray.init()
+    ray.init()
 
     #temp_dir = tempfile.TemporaryDirectory()
 
