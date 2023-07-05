@@ -99,7 +99,6 @@
     wait_for_nodes:
       num_nodes: 0
 
-
   variations:
     - __suffix__: aws
     - __suffix__: gce
@@ -108,7 +107,6 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
-
 
   alert: default
 
@@ -177,7 +175,6 @@
     long_running: true
     wait_for_nodes:
       num_nodes: 2
-
 
   smoke_test:
     frequency: manual
@@ -639,7 +636,6 @@
     wait_for_nodes:
       num_nodes: 4
 
-
   smoke_test:
     frequency: nightly
 
@@ -891,8 +887,6 @@
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-
-  
 
   frequency: weekly
   team: ml
@@ -1163,7 +1157,6 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
-
 
   alert: default
 
@@ -3091,7 +3084,6 @@
 
   frequency: nightly
   team: serve
-  
 
   cluster:
     byod: {}
@@ -3758,6 +3750,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -3782,6 +3776,8 @@
 - name: rllib_learning_tests_a2c_torch
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   frequency: nightly
   team: rllib
@@ -3840,6 +3836,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
@@ -3868,6 +3866,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -3893,6 +3893,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -3917,6 +3919,8 @@
 - name: rllib_learning_tests_appo_torch
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -3947,6 +3951,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -3972,6 +3978,8 @@
 - name: rllib_learning_tests_appo_old_stack_torch
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -4135,6 +4143,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   
@@ -4161,6 +4171,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4186,6 +4198,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4210,6 +4224,8 @@
 - name: rllib_learning_tests_dqn_torch
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -4303,6 +4319,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4328,6 +4346,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4352,6 +4372,8 @@
 - name: rllib_learning_tests_marwil_tf
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -4381,6 +4403,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
@@ -4409,6 +4433,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4433,6 +4459,8 @@
 - name: rllib_learning_tests_ppo_torch
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   # Marking as unstable since it's currently expected to fail.
   stable: false
@@ -4516,6 +4544,8 @@
 - name: rllib_learning_tests_sac_tf
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   frequency: nightly
   team: rllib
@@ -4606,6 +4636,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
@@ -4666,6 +4698,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4691,6 +4725,8 @@
   group: RLlib tests
   working_dir: rllib_tests
 
+  python: "3.7"
+
   frequency: nightly
   team: rllib
   cluster:
@@ -4715,6 +4751,8 @@
 - name: rllib_multi_gpu_with_lstm_learning_tests
   group: RLlib tests
   working_dir: rllib_tests
+
+  python: "3.7"
 
   frequency: nightly
   team: rllib
@@ -4962,8 +5000,6 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  
-
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -5087,8 +5123,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  stable: false 
-
+  stable: false
   
   frequency: nightly
   team: core
@@ -5134,7 +5169,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  
   frequency: nightly
   team: core
   cluster:
@@ -5162,7 +5196,6 @@
 - name: stress_test_many_tasks
   group: core-daily-test
   working_dir: nightly_tests
-
   
   frequency: nightly
   team: core
@@ -5204,7 +5237,6 @@
 - name: stress_test_dead_actors
   group: core-daily-test
   working_dir: nightly_tests
-
   
   frequency: nightly
   team: core
@@ -5249,7 +5281,6 @@
 - name: threaded_actors_stress_test
   group: core-daily-test
   working_dir: nightly_tests
-  
 
   frequency: nightly
   team: core
@@ -5312,7 +5343,6 @@
 - name: single_node_oom
   group: core-daily-test
   working_dir: nightly_tests
-
   
   frequency: nightly
   team: core
@@ -5384,7 +5414,6 @@
 - name: many_nodes_actor_test_on_v2
   group: core-daily-test
   working_dir: benchmarks
-
   
   frequency: nightly-3x
   team: core
@@ -5431,7 +5460,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  
   frequency: nightly
   team: core
   cluster:
@@ -5455,7 +5483,6 @@
 - name: placement_group_performance_test
   group: core-daily-test
   working_dir: nightly_tests
-
   
   frequency: nightly
   team: core
@@ -5487,7 +5514,6 @@
 - name: single_node
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly
   team: core
@@ -5516,7 +5542,6 @@
 - name: object_store
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly
   team: core
@@ -5546,7 +5571,6 @@
 - name: many_actors
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly-3x
   team: core
@@ -5576,7 +5600,6 @@
 - name: many_actors_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly
   team: core
@@ -5598,7 +5621,6 @@
 - name: many_tasks
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly
   team: core
@@ -5628,7 +5650,6 @@
 - name: many_pgs
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly-3x
   team: core
@@ -5659,7 +5680,6 @@
 - name: many_pgs_smoke_test
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly
   team: core
@@ -5681,7 +5701,6 @@
 - name: many_nodes
   group: core-scalability-test
   working_dir: benchmarks
-
   
   frequency: nightly-3x
   team: core
@@ -5711,6 +5730,8 @@
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
   working_dir: benchmarks
+
+  python: "3.7"
 
   frequency: nightly
   team: core
@@ -6420,6 +6441,8 @@
   group: data-tests
   working_dir: nightly_tests
 
+  python: "3.7"
+
   frequency: weekly
   team: data
   cluster:
@@ -6453,7 +6476,6 @@
 - name: chaos_many_tasks_no_object_store
   group: core-nightly-test
   working_dir: nightly_tests
-
   
   frequency: nightly
   team: core
@@ -6481,7 +6503,6 @@
 - name: chaos_many_actors
   group: core-nightly-test
   working_dir: nightly_tests
-
   
   frequency: nightly
   team: core
@@ -6747,7 +6768,6 @@
 - name: agent_stress_test
   group: core-observability-test
   working_dir: dashboard
-
   
   frequency: nightly
   team: core
@@ -6776,6 +6796,8 @@
 - name: k8s_serve_ha_test
   group: k8s-test
   working_dir: k8s_tests
+
+  python: "3.7"
 
   stable: false
 
@@ -6809,7 +6831,6 @@
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
   
   frequency: nightly
   team: core
@@ -6825,7 +6846,6 @@
 - name: aws_cluster_launcher_full
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
-
   
   frequency: nightly
   team: core
@@ -6841,6 +6861,8 @@
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
+
+  python: "3.7"
 
   stable: true
 
@@ -6858,6 +6880,8 @@
 - name: gcp_cluster_launcher_full
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
+
+  python: "3.7"
 
   stable: true
 
