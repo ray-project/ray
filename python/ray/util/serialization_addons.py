@@ -14,20 +14,26 @@ def register_pydantic_serializer(serialization_context):
         from pydantic import fields
     except ImportError:
         fields = None
-    
+
     try:
         from pydantic.v1 import fields as pydantic_v1_fields
     except ImportError:
         pydantic_v1_fields = None
 
-    ModelField = fields.ModelField if hasattr(fields, "ModelField") else pydantic_v1_fields.ModelField
+    ModelField = (
+        fields.ModelField
+        if hasattr(fields, "ModelField")
+        else pydantic_v1_fields.ModelField
+    )
 
     if ModelField is not None:
-        # In Pydantic 2.x, ModelField has been removed so this serialization strategy no longer works.
-        # We keep this code around to allow support for users with pydantic 1.x installed or users
-        # using pydantic.v1 import within the pydantic 2.x package.
-        # TODO(aguo): Figure out how to enable cloudpickle serialization for pydantic 2.x
-        
+        # In Pydantic 2.x, ModelField has been removed so this serialization
+        # strategy no longer works. We keep this code around to allow support
+        # for users with pydantic 1.x installed or users using pydantic.v1
+        # import within the pydantic 2.x package.
+        # TODO(aguo): Figure out how to enable cloudpickle serialization for
+        # pydantic 2.x
+
         # Pydantic's Cython validators are not serializable.
         # https://github.com/cloudpipe/cloudpickle/issues/408
         serialization_context._register_cloudpickle_serializer(
