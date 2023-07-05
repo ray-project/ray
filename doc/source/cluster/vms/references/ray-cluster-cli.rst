@@ -20,7 +20,7 @@ prepare you to scale your distributed system. See :ref:`the documentation
 
 .. code-block:: shell
 
-    # Replace '<your_backend>' with one of: 'aws', 'gcp', 'kubernetes', or 'local'.
+    # Replace '<your_backend>' with one of: 'aws', 'gcp', 'kuberay', or 'local'.
     $ BACKEND=<your_backend>
 
     # Create or update the cluster.
