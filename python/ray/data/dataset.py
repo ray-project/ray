@@ -2304,6 +2304,7 @@ class Dataset:
         # of this Dataset, which we then execute to get its schema.
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
+            self._plan.cache_schema(base_schema)
             return Schema(base_schema)
         else:
             return None
