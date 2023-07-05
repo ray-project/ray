@@ -101,7 +101,11 @@ const columns = [
   },
   { label: "Sent" },
   { label: "Received" },
-  { label: "Custom Resources" },
+  {
+    label: "Custom Resources",
+    helpInfo: `
+  By viewing custom resources, you can access the same logical usage and task scheduling information found in the "Resources" section of the CLI command "ray status -v."`,
+  },
 ];
 
 export const brpcLinkChanger = (href: string) => {
