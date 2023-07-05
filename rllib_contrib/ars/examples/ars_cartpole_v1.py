@@ -52,6 +52,6 @@ if __name__ == "__main__":
     results = tuner.fit()
 
     if args.run_as_test:
-        import ipdb; ipdb.set_trace()
-        check_learning_achieved(results, stop_reward, metric=
-                                "sampler_results/episode_reward_mean")
+        check_learning_achieved(
+            results, stop_reward, metric="sampler_results/episode_reward_mean"
+        )
