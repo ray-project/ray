@@ -9,6 +9,7 @@
   instance_size: medium
   commands:
     # Build the wheels and jars
+    - pip install awscli
     - aws sts get-caller-identity
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     # Upload the wheels and jars
