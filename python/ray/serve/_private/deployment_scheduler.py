@@ -271,13 +271,13 @@ class DeploymentScheduler:
             node_to_running_replicas[node_id].add(running_replica)
         # Replicas on the head node has the lowest priority for downscaling
         # since we cannot relinquish the head node.
-        for node_and_running_replicas in sorted(
+        for _, running_replicas in sorted(
             node_to_running_replicas.items(),
             key=lambda node_and_running_replicas: len(node_and_running_replicas[1])
             if node_and_running_replicas[0] != self._head_node_id
             else sys.maxsize,
         ):
-            for running_replica in node_and_running_replicas[1]:
+            for running_replica in running_replicas:
                 if len(replicas_to_stop) == max_num_to_stop:
                     return replicas_to_stop
                 else:
