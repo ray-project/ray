@@ -458,7 +458,11 @@ install_pip_packages() {
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
 
-  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+  if { [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ] || [ -n "${BUILDKITE-}" ]; } && [ "${PYTHON-}" != "3.7" ]; then
+    # On Buildkite, we always require the compiled constraints file.
+    # On Python 3.7, we don't, as the dependencies are compiled for 3.8+
+    # and we don't build ray-ml images. This means we don't have to keep
+    # consistency between CI and docker images.
     pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
   fi
 
