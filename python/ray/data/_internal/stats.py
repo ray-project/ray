@@ -498,14 +498,14 @@ class StageStatsSummary:
             A `StageStatsSummary` object initialized with the calculated statistics
         """
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        rounded_total = 0
+        time_total_s = 0
 
         if is_substage:
             exec_summary_str = "{}/{} blocks executed\n".format(
                 len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = 0
-            time_total_s = 0
             if exec_stats:
                 # Calculate the total execution time of stage as
                 # the maximum wall time from all blocks' stats.

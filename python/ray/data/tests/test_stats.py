@@ -344,7 +344,6 @@ def test_dataset_stats_execution_time(ray_start_regular_shared):
     curr_optimize_fuse_stages = ctx.optimize_fuse_stages
     ctx.optimize_fuse_stages = False
     ctx.optimizer_enabled = False
-    ctx.optimize_fuse_read_stages = False
 
     sleep_1 = 1
     sleep_2 = 3
@@ -1100,9 +1099,10 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
     calculated_stats = stats.to_summary()
     summarized_lines = calculated_stats.to_string().split("\n")
 
+    block_max_time = max(m.exec_stats.wall_time_s for m in block_meta_list)
     assert (
         "Stage 0 Read: 2/2 blocks executed in {}s".format(
-            max(round(stats.time_total_s, 2), 0)
+            max(round(block_max_time, 2), 0)
         )
         == summarized_lines[0]
     )
