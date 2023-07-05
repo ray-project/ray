@@ -32,6 +32,17 @@ from ray.tune.utils.file_transfer import _pack_dir, _unpack_dir
 
 
 @pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
+
+
+@pytest.fixture
 def ray_start_4_cpus():
     address_info = ray.init(num_cpus=4, configure_logging=False)
     yield address_info
