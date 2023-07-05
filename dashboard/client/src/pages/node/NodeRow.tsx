@@ -10,6 +10,7 @@ import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
+import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
 import rowStyles from "../../common/RowStyles";
@@ -64,6 +65,10 @@ export const NodeRow = ({
    * Why do we use raylet.state instead of node.state in the following code?
    * Because in ray, raylet == node
    */
+  const { cluster_status } = useRayStatus();
+  const customResource = cluster_status?.data
+    ? formatResourcesStatus(cluster_status.data?.clusterStatus)
+    : "";
 
   return (
     <TableRow>
@@ -149,6 +154,9 @@ export const NodeRow = ({
       </TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
+      <TableCell align="center">
+        <CodeDialogButton title={"Custom Resource"} code={{ a: 1, "2": 3 }} />
+      </TableCell>
     </TableRow>
   );
 };
