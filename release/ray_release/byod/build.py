@@ -8,10 +8,10 @@ import sys
 import time
 
 from ray_release.config import RELEASE_PACKAGE_DIR
+from ray_release.configs.global_config import get_global_config
 from ray_release.logger import logger
 from ray_release.test import (
     Test,
-    DATAPLANE_ECR,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
 )
@@ -47,7 +47,9 @@ def build_champagne_image(
         anyscale_repo = DATAPLANE_ECR_ML_REPO
         image_suffix = f"-{image_type}"
     ray_image = f"rayproject/{ray_project}:{ray_version}-{python_version}{image_suffix}"
-    anyscale_image = f"{DATAPLANE_ECR}/{anyscale_repo}:champagne-{ray_version}"
+    anyscale_image = (
+        f"{get_global_config()['byod_ecr']}/{anyscale_repo}:champagne-{ray_version}"
+    )
 
     logger.info(f"Building champagne anyscale image from {ray_image}")
     with open(DATAPLANE_FILENAME, "rb") as build_file:

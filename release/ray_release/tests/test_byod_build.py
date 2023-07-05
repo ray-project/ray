@@ -4,6 +4,8 @@ import pytest
 from unittest.mock import patch
 from typing import List
 
+from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import init_global_config
 from ray_release.test import Test
 from ray_release.byod.build import (
     build_anyscale_custom_byod_image,
@@ -41,6 +43,9 @@ def test_build_anyscale_champagne_image() -> None:
         assert "docker build --build-arg BASE_IMAGE=rayproject/ray:2.5.1-py37 -t "
         "029272617770.dkr.ecr.us-west-2.amazonaws.com/"
         "anyscale/ray:champagne-2.5.1 -" == " ".join(cmds[0])
+
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
 def test_build_anyscale_custom_byod_image() -> None:

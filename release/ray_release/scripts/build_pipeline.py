@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 from typing import Optional
+from pathlib import Path
 
 import click
 
@@ -20,6 +21,7 @@ from ray_release.config import (
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     parse_python_version,
 )
+from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 from ray_release.wheels import (
@@ -63,12 +65,25 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     default=False,
     help=("Will run unstable tests."),
 )
+@click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
 def main(
     test_collection_file: Optional[str] = None,
     no_clone_repo: bool = False,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
+    global_config: str = "oss_config.yaml",
 ):
+    global_config_file = os.path.join(
+        os.path.dirname(__file__), "..", "configs", global_config
+    )
+    init_global_config(global_config_file)
     settings = get_pipeline_settings()
 
     repo = settings["ray_test_repo"]
@@ -103,7 +118,12 @@ def main(
         # the modules are reloaded and use the newest files, instead of
         # old ones, which may not have the changes introduced on the
         # checked out branch.
-        cmd = _get_rerun_cmd(test_collection_file, run_jailed_tests, run_unstable_tests)
+        cmd = _get_rerun_cmd(
+            global_config,
+            test_collection_file,
+            run_jailed_tests,
+            run_unstable_tests,
+        )
         subprocess.run(cmd, capture_output=False, check=True)
         return
     elif repo:
@@ -257,6 +277,7 @@ def main(
 
 
 def _get_rerun_cmd(
+    global_config: str,
     test_collection_file: Optional[str] = None,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
@@ -268,6 +289,7 @@ def _get_rerun_cmd(
         cmd += ["--run-jailed-tests"]
     if run_unstable_tests:
         cmd += ["--run-unstable-tests"]
+    cmd += ["--global-config", global_config]
     return cmd
 
 

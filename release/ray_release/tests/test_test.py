@@ -5,13 +5,20 @@ from unittest import mock
 import pytest
 from unittest.mock import patch
 
+from ray_release.bazel import bazel_runfile
+from ray_release.configs.global_config import (
+    init_global_config,
+    get_global_config,
+)
 from ray_release.test import (
     Test,
     _convert_env_list_to_dict,
-    DATAPLANE_ECR,
     DATAPLANE_ECR_REPO,
     DATAPLANE_ECR_ML_REPO,
 )
+
+
+init_global_config(bazel_runfile("release/ray_release/configs/oss_config.yaml"))
 
 
 def _stub_test(val: dict) -> Test:
@@ -86,34 +93,33 @@ def test_get_anyscale_byod_image():
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert (
         _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_REPO}:123456-py37"
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37"
     )
-    assert (
-        _stub_test(
-            {
-                "python": "3.8",
-                "cluster": {
-                    "byod": {
-                        "type": "gpu",
-                    }
-                },
-            }
-        ).get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
+    assert _stub_test(
+        {
+            "python": "3.8",
+            "cluster": {
+                "byod": {
+                    "type": "gpu",
+                }
+            },
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}/" f"{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu"
     )
-    assert (
-        _stub_test(
-            {
-                "python": "3.8",
-                "cluster": {
-                    "byod": {
-                        "type": "gpu",
-                        "post_build_script": "foo.sh",
-                    }
-                },
-            }
-        ).get_anyscale_byod_image()
-        == f"{DATAPLANE_ECR}/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu-"
+    assert _stub_test(
+        {
+            "python": "3.8",
+            "cluster": {
+                "byod": {
+                    "type": "gpu",
+                    "post_build_script": "foo.sh",
+                }
+            },
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}"
+        f"/{DATAPLANE_ECR_ML_REPO}:123456-py38-gpu-"
         "ab7ed2b7a7e8d3f855a7925b0d296b0f9c75fac91882aba47854d92d27e13e53"
     )
 
