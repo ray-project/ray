@@ -82,17 +82,13 @@ class RandomEnv(gym.Env):
             )
 
         if not self.static_samples:
-            #TEST
-            obs = self.observation_space.sample()
-            obs["a"][0] = -100.0  # violate defined space
             return (
-                obs,
+                self.observation_space.sample(),
                 self.reward_space.sample(),
                 terminated,
                 truncated,
                 {},
             )
-            #END TEST
         else:
             return (
                 copy.deepcopy(self.observation_sample),
