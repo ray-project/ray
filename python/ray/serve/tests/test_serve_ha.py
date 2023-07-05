@@ -4,6 +4,7 @@ import threading
 from time import sleep
 from ray.tests.conftest_docker import *  # noqa
 from ray._private.test_utils import wait_for_condition
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 scripts = """
 import ray
@@ -60,6 +61,13 @@ print(pids)
 assert len(pids) == {num_replicas}
 """
 
+check_ray_nodes_script = """
+import ray
+
+ray.init(address="auto")
+print(ray.nodes())
+"""
+
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_serve_basic(docker_cluster):
@@ -109,13 +117,18 @@ def test_ray_serve_basic(docker_cluster):
 
     t.join()
 
-    def check_for_script():
-        _output = worker.exec_run(
-            cmd=f"python -c '{check_script.format(num_replicas=2)}'"
+    # Ensure head node is up before calling check_script on the worker again
+    def check_for_head_node_come_back_up():
+        _output = head.exec_run(cmd=f"python -c '{check_ray_nodes_script}'")
+        return (
+            _output.exit_code == 0
+            and bytes(HEAD_NODE_RESOURCE_NAME, "utf-8") in _output.output
         )
-        return _output.exit_code == 0
 
-    wait_for_condition(check_for_script)
+    wait_for_condition(check_for_head_node_come_back_up)
+
+    output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
+    assert output.exit_code == 0
 
     # Make sure the serve controller still runs on the head node after restart
     check_controller_head_node_script = """
