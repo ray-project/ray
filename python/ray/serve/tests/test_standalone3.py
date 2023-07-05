@@ -510,10 +510,11 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 def test_controller_shutdown_gracefully(
     shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
 ):
-    """Test controller shutdown gracefully when shutting_down flag is set.
+    """Test controller shutdown gracefully when calling `graceful_shutdown()`.
 
-    Set the shutting_down flag to the controller, and ensure the controller shuts down
-    all resources and itself gracefully.
+    Called `graceful_shutdown()` on the controller, so it will start shutdown and
+    eventually all actors will be in DEAD state. Test both cases whether to wait for
+    the controller shutdown or not should both resolve graceful shutdown.
     """
     # Setup a cluster with 2 nodes
     cluster = Cluster()
