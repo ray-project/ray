@@ -175,7 +175,6 @@ class DatasetPipeline:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        _finalize_fn: Optional[Callable[[Any], Any]] = None,
     ) -> Iterator[DataBatch]:
         """Return a local batched iterator over the data in the pipeline.
 
@@ -238,7 +237,6 @@ class DatasetPipeline:
             batch_format=batch_format,
             drop_last=drop_last,
             collate_fn=_collate_fn,
-            finalize_fn=_finalize_fn,
             shuffle_buffer_min_size=local_shuffle_buffer_size,
             shuffle_seed=local_shuffle_seed,
         )
