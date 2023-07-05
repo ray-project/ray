@@ -21,6 +21,8 @@ taken on it:
 
     ray.shutdown()
 
+    assert not ray.is_initialized()
+
     ray.init()
 
     #temp_dir = tempfile.TemporaryDirectory()
