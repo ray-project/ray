@@ -8,21 +8,22 @@ import tree
 from gymnasium.spaces import Box, Dict, Discrete, MultiDiscrete, Tuple
 
 from ray.rllib.core.models.base import Encoder
-from ray.rllib.core.models.configs import ModelConfig
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
     MLPEncoderConfig,
     RecurrentEncoderConfig,
 )
-from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
+from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.distributions import Distribution
+from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.utils import get_filter_config
+from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
+from ray.rllib.utils.typing import ViewRequirementsDict
 
 
 class Catalog:
@@ -240,12 +241,16 @@ class Catalog:
 
         if use_lstm:
             encoder_config = RecurrentEncoderConfig(
+                input_dims=observation_space.shape,
                 recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
-                view_requirements_dict=view_requirements,
-                get_tokenizer_config=cls.get_tokenizer_config,
+                tokenizer_config=cls.get_tokenizer_config(
+                    observation_space,
+                    model_config_dict,
+                    view_requirements,
+                ),
             )
         elif use_attention:
             raise NotImplementedError
@@ -261,7 +266,7 @@ class Catalog:
                 else:
                     hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
                 encoder_config = MLPEncoderConfig(
-                    input_dims=[observation_space.shape[0]],
+                    input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
                     output_layer_dim=encoder_latent_dim,
@@ -308,21 +313,31 @@ class Catalog:
 
     @classmethod
     def get_tokenizer_config(
-        cls, space: gym.Space, model_config_dict: dict
+        cls,
+        observation_space: gym.Space,
+        model_config_dict: dict,
+        view_requirements: Optional[ViewRequirementsDict] = None,
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
-        This is useful for LSTM models that need to tokenize their inputs.
-        By default, RLlib uses the models supported by Catalog out of the box to
+        This is useful for recurrent / tranformer models that need to tokenize their
+        inputs. By default, RLlib uses the models supported by Catalog out of the box to
         tokenize.
+
+        Args:
+            observation_space: The observation space to use.
+            model_config_dict: The model config to use.
+            view_requirements: The view requirements to use if anything else than
+                observation_space is to be encoded. This signifies an advanced use case.
         """
         return cls.get_encoder_config(
-            observation_space=space,
+            observation_space=observation_space,
             # Use model_config_dict without flags that would end up in complex models
             model_config_dict={
                 **model_config_dict,
                 **{"use_lstm": False, "use_attention": False},
             },
+            view_requirements=view_requirements,
         )
 
     @classmethod

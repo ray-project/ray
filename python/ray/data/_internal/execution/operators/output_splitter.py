@@ -1,4 +1,5 @@
 import math
+from collections import deque
 from typing import Dict, List, Optional
 
 from ray.data._internal.execution.interfaces import (
@@ -42,7 +43,7 @@ class OutputSplitter(PhysicalOperator):
         # Buffer of bundles not yet assigned to output splits.
         self._buffer: List[RefBundle] = []
         # The outputted bundles with output_split attribute set.
-        self._output_queue: List[RefBundle] = []
+        self._output_queue: deque[RefBundle] = deque()
         # The number of rows output to each output split so far.
         self._num_output: List[int] = [0 for _ in range(n)]
 
@@ -84,7 +85,7 @@ class OutputSplitter(PhysicalOperator):
         return len(self._output_queue) > 0
 
     def get_next(self) -> RefBundle:
-        return self._output_queue.pop()
+        return self._output_queue.popleft()
 
     def get_stats(self) -> StatsDict:
         return {"split": []}  # TODO(ekl) add split metrics?

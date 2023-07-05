@@ -47,15 +47,39 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
 def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     from ray.data._internal.execution import streaming_executor
 
+    num_runs = 5
+
+    # Test that when an interator is fully consumed,
+    # the executor should be shut down.
     initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        ds = ray.data.range(100).repartition(10)
+        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
+        while True:
+            try:
+                next(it)
+            except StopIteration:
+                break
+    assert streaming_executor._num_shutdown - initial == num_runs
 
-    for _ in range(5):
-        ds = ray.data.range(100)
-        it = ds.iter_batches(batch_size=None, prefetch_batches=0)
+    # Test that when an partially-consumed iterator is deleted,
+    # the executor should be shut down.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        ds = ray.data.range(100).repartition(10)
+        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
         next(it)
+        del it
+        del ds
+    assert streaming_executor._num_shutdown - initial == num_runs
 
-    final = streaming_executor._num_shutdown - initial
-    assert final == 4
+    # Test that the executor is shut down when it's deleted,
+    # even if not using iterators.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        executor = StreamingExecutor(ExecutionOptions())
+        del executor
+    assert streaming_executor._num_shutdown - initial == num_runs
 
 
 def test_pipelined_execution(ray_start_10_cpus_shared):
@@ -103,6 +127,17 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     c1.start()
     c0.join()
     c1.join()
+
+    def get_outputs(out: List[RefBundle]):
+        outputs = []
+        for bundle in out:
+            for block, _ in bundle.blocks:
+                ids: pd.Series = ray.get(block)["id"]
+                outputs.extend(ids.values)
+        return outputs
+
+    assert get_outputs(c0.out) == list(range(0, 20, 2))
+    assert get_outputs(c1.out) == list(range(1, 20, 2))
     assert len(c0.out) == 10, c0.out
     assert len(c1.out) == 10, c0.out
 
