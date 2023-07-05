@@ -187,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -512,7 +512,7 @@ py_test(
 
 py_test(
     name = "test_streaming_response",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -520,7 +520,7 @@ py_test(
 
 py_test(
     name = "test_websockets",
-    size = "large",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
