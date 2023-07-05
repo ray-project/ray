@@ -34,6 +34,7 @@ do
     conda create -y -n "${env_name}" python="${PYTHON_VERSION}"
     conda activate "${env_name}"
 
+    # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
     pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}"
 
     printf "\n\n\n"
