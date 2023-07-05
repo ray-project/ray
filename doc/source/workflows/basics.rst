@@ -23,7 +23,7 @@ taken on it:
 
     assert not ray.is_initialized()
 
-    ray.init()
+    ray.init(address="local")
 
     #temp_dir = tempfile.TemporaryDirectory()
 
