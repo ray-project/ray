@@ -254,8 +254,8 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
         )
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
-                [0, 0]])}, {'data': array([[2, 2],
-                [2, 2]])}]
+               [0, 0]])}, {'data': array([[2, 2],
+               [2, 2]])}]
 
     Args:
         n: The upper bound of the range of tensor records.
@@ -2046,7 +2046,6 @@ def from_huggingface(
         >>> import ray
         >>> import datasets
         >>> hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-        Downloading ...
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
