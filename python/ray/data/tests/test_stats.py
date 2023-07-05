@@ -1,4 +1,5 @@
 import re
+import time
 from collections import Counter
 from unittest.mock import patch
 
@@ -41,6 +42,13 @@ def canonicalize(stats: str) -> str:
 
 def dummy_map_batches(x):
     """Dummy function used in calls to map_batches below."""
+    return x
+
+
+def map_batches_sleep(x, n=3):
+    """Dummy function used in calls to map_batches below, which
+    simply sleeps for `n` seconds before returning the input batch."""
+    time.sleep(n)
     return x
 
 
@@ -325,6 +333,36 @@ Dataset iterator time breakdown:
 * Total time: T
 """
             )
+
+
+def test_dataset_stats_execution_time(ray_start_regular_shared):
+    # Disable stage/operator fusion in order to test the stats
+    # of two different map_batches operators without fusing them together,
+    # so that we can observe different execution times for each.
+    ctx = ray.data.DataContext.get_current()
+    curr_optimizer_enabled = ctx.optimizer_enabled
+    curr_optimize_fuse_stages = ctx.optimize_fuse_stages
+    ctx.optimize_fuse_stages = False
+    ctx.optimizer_enabled = False
+    ctx.optimize_fuse_read_stages = False
+
+    sleep_1 = 1
+    sleep_2 = 3
+    ds = (
+        ray.data.range(100, parallelism=1)
+        .map_batches(lambda batch: map_batches_sleep(batch, sleep_1))
+        .map_batches(lambda batch: map_batches_sleep(batch, sleep_2))
+        .materialize()
+    )
+
+    # Check that each map_batches operator has the corresponding execution time.
+    map_batches_1_stats = ds._get_stats_summary().parents[0].stages_stats[0]
+    map_batches_2_stats = ds._get_stats_summary().stages_stats[0]
+    assert sleep_1 <= map_batches_1_stats.time_total_s <= sleep_1 + 0.5
+    assert sleep_2 <= map_batches_2_stats.time_total_s <= sleep_2 + 0.5
+
+    ctx.optimize_fuse_stages = curr_optimize_fuse_stages
+    ctx.optimizer_enabled = curr_optimizer_enabled
 
 
 def test_dataset__repr__(ray_start_regular_shared):

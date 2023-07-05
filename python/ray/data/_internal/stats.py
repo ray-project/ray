@@ -307,7 +307,6 @@ class DatasetStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
-                    self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
                 )
@@ -485,7 +484,6 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: float,
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -494,7 +492,6 @@ class StageStatsSummary:
 
         Args:
             block_metas: List of `BlockMetadata` to calculate stats of
-            time_total_s: Total execution time of stage
             stage_name: Name of stage associated with `blocks`
             is_substage: Whether this set of blocks belongs to a substage.
         Returns:
@@ -507,11 +504,16 @@ class StageStatsSummary:
                 len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                # Handle -0.0 case.
-                rounded_total = 0
+            rounded_total = 0
+            time_total_s = 0
             if exec_stats:
+                # Calculate the total execution time of stage as
+                # the maximum wall time from all blocks' stats.
+                time_total_s = max(s.wall_time_s for s in exec_stats)
+                rounded_total = round(time_total_s, 2)
+                if rounded_total <= 0:
+                    # Handle -0.0 case.
+                    rounded_total = 0
                 exec_summary_str = "{}/{} blocks executed in {}s".format(
                     len(exec_stats), len(block_metas), rounded_total
                 )
