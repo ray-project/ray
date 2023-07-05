@@ -29,4 +29,3 @@ def create_instance(
         ray_status=ray_status,
         timestamp_since_last_modified=1,
     )
-    return stub.GetClusterResourceState(request).cluster_resource_state
