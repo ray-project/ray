@@ -145,8 +145,8 @@ class ReplicaWrapper(ABC):
         """Set of model IDs on this replica."""
         pass
 
-    async def get_queue_state(self) -> Tuple[str, int, bool]:
-        """Returns tuple of (replica_id, queue_len, accepted)."""
+    async def get_queue_state(self) -> Tuple[int, bool]:
+        """Returns tuple of (queue_len, accepted)."""
         pass
 
     def send_query(
@@ -174,13 +174,13 @@ class ActorReplicaWrapper:
     def multiplexed_model_ids(self) -> Set[str]:
         return self._multiplexed_model_ids
 
-    async def get_queue_state(self) -> Tuple[str, int, bool]:
+    async def get_queue_state(self) -> Tuple[int, bool]:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
         # change both (or introduce a branch here).
         queue_len = await self._actor_handle.get_num_ongoing_requests.remote()
         accepted = queue_len < self._replica_info.max_concurrent_queries
-        return self.replica_id, queue_len, accepted
+        return queue_len, accepted
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
         """Send the query to a Java replica.
@@ -470,7 +470,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Among replicas that respond within the deadline and accept the request (don't
         have full queues), the one with the lowest queue length is chosen.
         """
-        get_queue_state_tasks = [c.get_queue_state() for c in candidates]
+        get_queue_state_tasks = []
+        for c in candidates:
+            t = self._loop.create_task(c.get_queue_state())
+            t.replica_id = c.replica_id
+            get_queue_state_tasks.append(t)
+
         done, pending = await asyncio.wait(
             get_queue_state_tasks,
             timeout=self.queue_len_response_deadline_s,
@@ -481,15 +486,25 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         chosen_replica_id = None
         lowest_queue_len = math.inf
-        for task in done:
-            if task.exception() is not None:
-                logger.warning(
-                    f"Failed to fetch queue length for replica: {task.exception()}"
+        for t in done:
+            if t.exception() is not None:
+                msg = (
+                    "Failed to fetch queue length for "
+                    f"replica {t.replica_id}: '{t.exception()}'"
                 )
+                # If we get a RayActorError, it means the replica actor has died. This
+                # is not recoverable (the controller will start a new replica in its
+                # place), so we should no longer consider it for requests.
+                if isinstance(t.exception(), RayActorError):
+                    self._replicas.pop(t.replica_id, None)
+                    self._replica_id_set.discard(t.replica_id)
+                    msg += " This replica will no longer be considered for requests."
+
+                logger.warning(msg)
             else:
-                replica_id, queue_len, accepted = task.result()
+                queue_len, accepted = t.result()
                 if accepted and queue_len < lowest_queue_len:
-                    chosen_replica_id = replica_id
+                    chosen_replica_id = t.replica_id
                     lowest_queue_len = queue_len
 
         if chosen_replica_id is None:
