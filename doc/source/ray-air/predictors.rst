@@ -218,143 +218,119 @@ For more examples, read the source code of built-in predictors like
 Before you begin
 ****************
 
-.. tabs::
+First, install statsmodel and Ray AIR.
 
-    .. group-tab:: statsmodel
+.. code-block:: console
 
-        First, install statsmodel and Ray AIR.
+    pip install statsmodel 'ray[air]'
 
-        .. code-block:: console
+Then, import the objects required for this example.
 
-            pip install statsmodel 'ray[air]'
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_imports_start__
+    :end-before: __statsmodelpredictor_imports_end__
 
-        Then, import the objects required for this example.
+Finally, create a stub the `StatsmodelPredictor` class.
 
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_imports_start__
-            :end-before: __statsmodelpredictor_imports_end__
-
-        Finally, create a stub the `StatsmodelPredictor` class.
-
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_signature_start__
-            :end-before: __statsmodelpredictor_signature_end__
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_signature_start__
+    :end-before: __statsmodelpredictor_signature_end__
 
 Create a model
 **************
 
-.. tabs::
+You'll need to pass a model to the ``StatsmodelPredictor`` constructor.
 
-    .. group-tab:: statsmodel
+To create the model, fit a linear model on the
+`Guerry dataset <https://vincentarelbundock.github.io/Rdatasets/doc/HistData/Guerry.html>`_.
 
-        You'll need to pass a model to the ``StatsmodelPredictor`` constructor.
-
-        To create the model, fit a linear model on the
-        `Guerry dataset <https://vincentarelbundock.github.io/Rdatasets/doc/HistData/Guerry.html>`_.
-
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_model_start__
-            :end-before: __statsmodelpredictor_model_end__
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_model_start__
+    :end-before: __statsmodelpredictor_model_end__
 
 
 Implement `__init__`
 ********************
 
-.. tabs::
+Use the constructor to set instance attributes required for prediction. In
+the code snippet below, we assign the fitted model to an attribute named
+``results``.
 
-    .. group-tab:: statsmodel
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_init_start__
+    :end-before: __statsmodelpredictor_init_end__
 
-        Use the constructor to set instance attributes required for prediction. In
-        the code snippet below, we assign the fitted model to an attribute named
-        ``results``.
-
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_init_start__
-            :end-before: __statsmodelpredictor_init_end__
-
-        .. warning::
-            You must call the base class' constructor; otherwise,
-            `Predictor.predict <ray.train.predictor.Predict.predict>` raises a
-            ``NotImplementedError``.
+.. warning::
+    You must call the base class' constructor; otherwise,
+    `Predictor.predict <ray.train.predictor.Predict.predict>` raises a
+    ``NotImplementedError``.
 
 Implement `from_checkpoint`
 ***************************
 
-.. tabs::
+:meth:`~ray.train.predictor.from_checkpoint` creates a
+:class:`~ray.train.predictor.Predictor` from a
+:class:`~ray.air.checkpoint.Checkpoint`.
 
-    .. group-tab:: statsmodel
+Before implementing :meth:`~ray.train.predictor.from_checkpoint`,
+save the fitten model to a directory, and create a
+:class:`~ray.air.checkpoint.Checkpoint` from that directory.
 
-        :meth:`~ray.train.predictor.from_checkpoint` creates a
-        :class:`~ray.train.predictor.Predictor` from a
-        :class:`~ray.air.checkpoint.Checkpoint`.
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_checkpoint_start__
+    :end-before: __statsmodelpredictor_checkpoint_end__
 
-        Before implementing :meth:`~ray.train.predictor.from_checkpoint`,
-        save the fitten model to a directory, and create a
-        :class:`~ray.air.checkpoint.Checkpoint` from that directory.
+Then, implement :meth:`~ray.train.predictor.from_checkpoint`.
 
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_checkpoint_start__
-            :end-before: __statsmodelpredictor_checkpoint_end__
-
-        Then, implement :meth:`~ray.train.predictor.from_checkpoint`.
-
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_from_checkpoint_start__
-            :end-before: __statsmodelpredictor_from_checkpoint_end__
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_from_checkpoint_start__
+    :end-before: __statsmodelpredictor_from_checkpoint_end__
 
 Implement `_predict_numpy` or `_predict_pandas`
 ***********************************************
 
-.. tabs::
+Because your OLS model accepts dataframes as input, you should implement
+:meth:`~ray.train.predictor.Predictor._predict_pandas`.
 
-    .. group-tab:: statsmodel
+:meth:`~ray.train.predictor.Predictor._predict_pandas` performs inference on a
+batch of pandas data. It accepts a ``pandas.DataFrame`` as input and return a
+``pandas.DataFrame`` as output.
 
-        Because your OLS model accepts dataframes as input, you should implement
-        :meth:`~ray.train.predictor.Predictor._predict_pandas`.
-
-        :meth:`~ray.train.predictor.Predictor._predict_pandas` performs inference on a
-        batch of pandas data. It accepts a ``pandas.DataFrame`` as input and return a
-        ``pandas.DataFrame`` as output.
-
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_predict_pandas_start__
-            :end-before: __statsmodelpredictor_predict_pandas_end__
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_predict_pandas_start__
+    :end-before: __statsmodelpredictor_predict_pandas_end__
 
 
 Perform inference
 *****************
 
-.. tabs::
+To perform inference with the completed ``StatsmodelPredictor``:
 
-    .. group-tab:: statsmodel
+1. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
+   checkpoint.
+2. Read the Guerry dataset into a :class:`~ray.data.Dataset`.
+3. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to perform
+   regression on the samples in the dataset.
 
-        To perform inference with the completed ``StatsmodelPredictor``:
-
-        1. Create a :class:`~ray.train.batch_predictor.BatchPredictor` from your
-           checkpoint.
-        2. Read the Guerry dataset into a :class:`~ray.data.Dataset`.
-        3. Call :class:`~ray.train.batch_predictor.BatchPredictor.predict` to perform
-           regression on the samples in the dataset.
-
-        .. literalinclude:: doc_code/statsmodel_predictor.py
-            :language: python
-            :dedent:
-            :start-after: __statsmodelpredictor_predict_start__
-            :end-before: __statsmodelpredictor_predict_end__
+.. literalinclude:: doc_code/statsmodel_predictor.py
+    :language: python
+    :dedent:
+    :start-after: __statsmodelpredictor_predict_start__
+    :end-before: __statsmodelpredictor_predict_end__
 
 
 .. _pipelined-prediction:
