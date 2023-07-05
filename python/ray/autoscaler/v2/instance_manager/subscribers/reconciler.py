@@ -61,22 +61,16 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             return
 
         failing_instances = failing_instances.values()
-        cloud_instance_ids = [
-            instance.cloud_instance_id for instance in failing_instances
-        ]
-
-        for cloud_instance_id in cloud_instance_ids:
-            self._node_provider.terminate_node(cloud_instance_id)
-
         for instance in failing_instances:
+            # this call is asynchronous.
+            self._node_provider.terminate_node(instance.cloud_instance_id)
+
             instance.status = Instance.STOPPING
             result, _ = self._instance_storage.upsert_instance(
                 instance, expected_instance_version=instance.version
             )
             if not result:
                 logger.warning("Failed to update instance status to STOPPING")
-
-        return len(cloud_instance_ids)
 
     def _reconcile_with_node_provider(self) -> None:
         # reconcile storage state with cloud state.

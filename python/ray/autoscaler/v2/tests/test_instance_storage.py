@@ -5,7 +5,6 @@ import sys
 from unittest import mock
 
 import pytest  # noqa
-
 from ray.autoscaler.v2.instance_manager.instance_storage import (
     InstanceStorage,
     InstanceUpdatedSuscriber,
