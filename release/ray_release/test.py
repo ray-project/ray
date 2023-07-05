@@ -226,7 +226,8 @@ class Test(dict):
         if branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
-        image_suffix = "-gpu" if self.get_byod_type() == "gpu" else ""
+        byod_type = self.get_byod_type()
+        image_suffix = f"-{byod_type}" if byod_type != "cpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
         return f"{ray_version}-{python_version}{image_suffix}"
 
@@ -246,16 +247,16 @@ class Test(dict):
         Returns the byod repo to use for this test.
         """
         return (
-            DATAPLANE_ECR_ML_REPO
-            if self.get_byod_type() == "gpu"
-            else DATAPLANE_ECR_REPO
+            DATAPLANE_ECR_REPO
+            if self.get_byod_type() == "cpu"
+            else DATAPLANE_ECR_ML_REPO
         )
 
     def get_ray_image(self) -> str:
         """
         Returns the ray docker image to use for this test.
         """
-        ray_project = "ray-ml" if self.get_byod_type() == "gpu" else "ray"
+        ray_project = "ray" if self.get_byod_type() == "cpu" else "ray-ml"
         return f"rayproject/{ray_project}:{self.get_byod_base_image_tag()}"
 
     def get_anyscale_base_byod_image(self) -> str:

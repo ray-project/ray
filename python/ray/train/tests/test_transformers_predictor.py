@@ -10,8 +10,13 @@ from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.data_batch_conversion import _convert_pandas_to_batch_type
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.predictor import TYPE_TO_ENUM
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-from transformers.pipelines import pipeline
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    GPT2LMHeadModel,
+)
+from transformers.pipelines import pipeline, Pipeline
 
 
 import ray
@@ -29,6 +34,20 @@ prompts = pd.DataFrame(test_strings, columns=["sentences"])
 
 model_checkpoint = "hf-internal-testing/tiny-random-gpt2"
 tokenizer_checkpoint = "hf-internal-testing/tiny-random-gpt2"
+
+
+class CustomPipeline(Pipeline):
+    def _forward(self, input_tensors, **forward_parameters):
+        pass
+
+    def _sanitize_parameters(self, **pipeline_parameters):
+        return {}, {}, {}
+
+    def postprocess(self, model_outputs, **postprocess_parameters):
+        pass
+
+    def preprocess(self, input_, **preprocess_parameters):
+        pass
 
 
 def test_repr(tmpdir):
@@ -88,6 +107,25 @@ def test_predict_no_preprocessor_no_training(tmpdir, ray_start_4_cpus):
     predictions = predictor.predict(prompts)
 
     assert len(predictions) == 3
+
+
+@pytest.mark.parametrize("model_cls", [GPT2LMHeadModel, None])
+def test_custom_pipeline(tmpdir, model_cls):
+    """Create predictor from a custom pipeline class."""
+    model_config = AutoConfig.from_pretrained(model_checkpoint)
+    model = AutoModelForCausalLM.from_config(model_config)
+    tokenizer = AutoTokenizer.from_pretrained(tokenizer_checkpoint)
+    checkpoint = TransformersCheckpoint.from_model(model, tokenizer, path=tmpdir)
+
+    if model_cls:
+        kwargs = {}
+    else:
+        kwargs = {"task": "text-generation"}
+
+    predictor = TransformersPredictor.from_checkpoint(
+        checkpoint, pipeline_cls=CustomPipeline, model_cls=model_cls, **kwargs
+    )
+    assert isinstance(predictor.pipeline, CustomPipeline)
 
 
 def create_checkpoint():

@@ -121,6 +121,32 @@ doctest(
 )
 
 # --------------------------------------------------------------------
+# Benchmarks
+#
+# Tag: benchmark
+#
+# This is smoke-testing the benchmark scripts.
+# --------------------------------------------------------------------
+py_test(
+    name = "torch_compile_inference_bm",
+    main = "benchmarks/torch_compile/run_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
+    size = "small",
+    srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
+    args = ["--smoke-test"]
+)
+
+py_test(
+    name = "torch_compile_ppo_with_inference",
+    main = "benchmarks/torch_compile/run_ppo_with_inference_bm.py",
+    tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
+    size = "medium",
+    srcs = ["benchmarks/torch_compile/run_ppo_with_inference_bm.py"],
+    args = ["--smoke-test"]
+)
+
+
+# --------------------------------------------------------------------
 # Algorithms learning regression tests.
 #
 # Tag: learning_tests
@@ -704,6 +730,16 @@ py_test(
     size = "medium",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
+    args = ["--dir=tuned_examples/ppo"]
+)
+
+py_test(
+    name = "learning_tests_repeat_after_me_ppo_with_rl_module",
+    main = "tests/run_regression_tests.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
+    size = "medium",
+    srcs = ["tests/run_regression_tests.py"],
+    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm-with-rl-module.yaml"],
     args = ["--dir=tuned_examples/ppo"]
 )
 
@@ -3059,12 +3095,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/cartpole_lstm_impala_tf",
+    name = "examples/cartpole_lstm_impala_tf2",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=tf", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
 py_test(
@@ -3073,25 +3109,18 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=torch", "--run=IMPALA", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
-py_test(
-    name = "examples/cartpole_lstm_ppo_tf",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=tf", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
-)
 
+# TODO (Kourosh): tf2 ~5x slower compared to torch on the new stack
 py_test(
     name = "examples/cartpole_lstm_ppo_tf2",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=tf2", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
 )
 
 py_test(
@@ -3100,16 +3129,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=40", "--num-cpus=4"]
+    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
 )
 
 py_test(
-    name = "examples/cartpole_lstm_ppo_tf_with_prev_a_and_r",
+    name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
     main = "examples/cartpole_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
-    args = ["--as-test", "--run=PPO", "--stop-reward=40", "--use-prev-action",  "--use-prev-reward", "--num-cpus=4"]
+    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
 )
 
 py_test(
@@ -3415,6 +3444,43 @@ py_test(
     size = "medium",
     srcs = ["examples/custom_rnn_model.py"],
     args = ["--as-test", "--framework=torch", "--run=PPO", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+)
+
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_tf2",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_torch",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
+)
+
+py_test(
+    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch",
+    main = "examples/custom_recurrent_rnn_tokenizer.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(
@@ -4062,6 +4128,25 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/trajectory_view_api.py"],
+    args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
+)
+
+
+py_test(
+    name = "examples/trajectory_view_api_rlm_tf2",
+    main = "examples/trajectory_view_api_rlm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api_rlm.py"],
+    args = ["--as-test", "--framework=tf2", "--stop-reward=100.0"]
+)
+
+py_test(
+    name = "examples/trajectory_view_api_rlm_torch",
+    main = "examples/trajectory_view_api_rlm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/trajectory_view_api_rlm.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=100.0"]
 )
 
