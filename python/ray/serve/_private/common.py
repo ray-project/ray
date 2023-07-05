@@ -391,3 +391,9 @@ class MultiplexedReplicaInfo:
     deployment_name: str
     replica_tag: str
     model_ids: List[str]
+
+
+@dataclass
+class StreamingHTTPRequest:
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle

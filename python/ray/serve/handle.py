@@ -176,10 +176,10 @@ class RayServeHandle:
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
             key: value
-            for key, value in {
-                "method_name": method_name,
-                "stream": stream,
-            }
+            for key, value in [
+                ("method_name", method_name),
+                ("stream", stream),
+            ]
             if value != DEFAULT.VALUE
         }
         new_options_dict.update(user_modified_options_dict)
@@ -205,6 +205,7 @@ class RayServeHandle:
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -219,7 +220,9 @@ class RayServeHandle:
                 multiplexed_model_id="model:v1").remote(*args)
         """
         return self._options(
-            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
@@ -330,6 +333,7 @@ class RayServeSyncHandle(RayServeHandle):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -344,7 +348,9 @@ class RayServeSyncHandle(RayServeHandle):
 
         """
         return self._options(
-            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:

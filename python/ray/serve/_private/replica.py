@@ -25,6 +25,7 @@ from ray.serve._private.common import (
     CONTROL_PLANE_CONCURRENCY_GROUP,
     ReplicaTag,
     ServeComponentType,
+    StreamingHTTPRequest,
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -246,11 +247,10 @@ def create_replica_wrapper(name: str):
             # Returns a small object for router to track request status.
             return b"", result
 
-        async def handle_request_streaming(
+        async def _handle_http_request_streaming(
             self,
-            pickled_request_metadata: bytes,
-            pickled_asgi_scope: bytes,
-            http_proxy_handle: ActorHandle,
+            request_metadata: RequestMetadata,
+            request: StreamingHTTPRequest,
         ) -> AsyncGenerator[Message, None]:
             """Handle a request and stream the results to the caller.
 
@@ -260,24 +260,19 @@ def create_replica_wrapper(name: str):
             interface. This allows us to return the messages back to the HTTP proxy as
             they're sent by user code (e.g., the FastAPI wrapper).
             """
-            request_metadata = pickle.loads(pickled_request_metadata)
-            if not request_metadata.is_http_request:
-                raise NotImplementedError(
-                    "Only HTTP requests are currently supported over streaming."
-                )
-
+            # TODO: update comment.
             receiver_task = None
             handle_request_task = None
             wait_for_message_task = None
             try:
                 receiver = ASGIReceiveProxy(
-                    request_metadata.request_id, http_proxy_handle
+                    request_metadata.request_id, request.http_proxy_handle
                 )
                 receiver_task = self._event_loop.create_task(
                     receiver.fetch_until_disconnect()
                 )
 
-                scope = pickle.loads(pickled_asgi_scope)
+                scope = pickle.loads(request.pickled_asgi_scope)
                 asgi_queue_send = ASGIMessageQueue()
                 request_args = (scope, receiver, asgi_queue_send)
                 request_kwargs = {}
@@ -326,6 +321,20 @@ def create_replica_wrapper(name: str):
                     and not wait_for_message_task.done()
                 ):
                     wait_for_message_task.cancel()
+
+        async def handle_request_streaming(
+            self,
+            pickled_request_metadata: bytes,
+            *args,
+            **kwargs,
+        ) -> AsyncGenerator[Any, None]:
+            request_metadata = pickle.loads(pickled_request_metadata)
+            if request_metadata.is_http_request:
+                assert len(args) == 1 and isinstance(args[0], StreamingHTTPRequest)
+                async for message in self._handle_http_request_streaming(
+                    request_metadata, args[0]
+                ):
+                    yield message
 
         async def handle_request_from_java(
             self,

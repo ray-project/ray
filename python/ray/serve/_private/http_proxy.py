@@ -32,7 +32,13 @@ from ray.serve._private.http_util import (
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName, NodeId
+from ray.serve._private.common import (
+    ApplicationName,
+    EndpointInfo,
+    EndpointTag,
+    NodeId,
+    StreamingHTTPRequest,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -695,7 +701,9 @@ class HTTPProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.remote(pickle.dumps(scope), self.self_actor_handle)
+        assignment_task = handle.remote(
+            StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
+        )
         done, _ = await asyncio.wait(
             [assignment_task, disconnected_task],
             return_when=FIRST_COMPLETED,
