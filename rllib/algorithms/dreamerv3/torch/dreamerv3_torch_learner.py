@@ -148,6 +148,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
 
         grads = {}
         for component in ["world_model", "actor", "critic"]:
+            #print(f"component={component}")
             self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"].backward(
                 retain_graph=True
             )
@@ -211,7 +212,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             metrics_dict={
                 "WORLD_MODEL_learned_initial_h": self.module[
                     module_id
-                ].world_model.initial_h,
+                ].unwrapped().world_model.initial_h,
                 # Prediction losses.
                 # Decoder (obs) loss.
                 "WORLD_MODEL_L_decoder": prediction_losses["L_decoder"],
@@ -250,7 +251,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # Everything goes in as BxT: We are starting a new dream trajectory at every
         # actually encountered timestep in the batch, so we are creating B*T
         # trajectories of len `horizon_H`.
-        dream_data = self.module[module_id].dreamer_model.dream_trajectory(
+        dream_data = self.module[module_id].unwrapped().dreamer_model.dream_trajectory(
             start_states={
                 "h": fwd_out["h_states_BxT"],
                 "z": fwd_out["z_posterior_states_BxT"],
@@ -495,7 +496,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         Returns:
             The total actor loss tensor.
         """
-        actor = self.module[module_id].actor
+        actor = self.module[module_id].unwrapped().actor
 
         # Note: `scaled_value_targets_t0_to_Hm1_B` are NOT stop_gradient'd yet.
         scaled_value_targets_t0_to_Hm1_B = self._compute_scaled_value_targets(
@@ -518,7 +519,9 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         )
 
         # Compute log(p)s of all possible actions in the dream.
-        if isinstance(self.module[module_id].actor.action_space, gym.spaces.Discrete):
+        if isinstance(
+            self.module[module_id].unwrapped().actor.action_space, gym.spaces.Discrete
+        ):
             # Note that when we create the Categorical action distributions, we compute
             # unimix probs, then math.log these and provide these log(p) as "logits" to
             # the Categorical. So here, we'll continue to work with log(p)s (not
@@ -808,7 +811,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
             The scaled value targets used by the actor for REINFORCE policy updates
             (using scaled advantages). See [1] eq. 12 for more details.
         """
-        actor = self.module[module_id].actor
+        actor = self.module[module_id].unwrapped().actor
 
         value_targets_H_B = value_targets_t0_to_Hm1_BxT
         value_predictions_H_B = value_predictions_t0_to_Hm1_BxT
