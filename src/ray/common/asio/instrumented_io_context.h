@@ -29,46 +29,13 @@ class instrumented_io_context : public boost::asio::io_context {
   /// Initializes the global stats struct after calling the base contructor.
   /// TODO(ekl) allow taking an externally defined event tracker.
   instrumented_io_context()
-      : event_stats_(std::make_shared<EventTracker>()), run_count_(0) {}
-
-  void stop_if_solo() {
-    absl::MutexLock l(&mu_);
-    if (run_count_ == 1) {
-      run_count_ = 0;
-      boost::asio::io_context::stop();
-    }
-  }
-
-  bool run_if_stopped(std::function<void()> callback) {
-    size_t old_run_count;
-    {
-      absl::MutexLock l(&mu_);
-      old_run_count = run_count_;
-      run_count_++;
-    }
-
-    if (old_run_count == 0) {
-      callback();
-      boost::asio::io_context::run();
-      return true;
-    } else {
-      absl::MutexLock l(&mu_);
-      run_count_--;
-    }
-    return false;
-  }
+      : event_stats_(std::make_shared<EventTracker>()) {}
 
   void run() {
-    {
-      absl::MutexLock l(&mu_);
-      run_count_++;
-    }
     boost::asio::io_context::run();
   }
 
   void stop() {
-    absl::MutexLock l(&mu_);
-    run_count_ = 0;
     boost::asio::io_context::stop();
   }
 
@@ -101,6 +68,4 @@ class instrumented_io_context : public boost::asio::io_context {
   /// The event stats tracker to use to record asio handler stats to.
   std::shared_ptr<EventTracker> event_stats_;
 
-  absl::Mutex mu_;
-  size_t run_count_ GUARDED_BY(mu_);
 };
