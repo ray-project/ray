@@ -391,7 +391,6 @@ def build_base_images(py_versions, image_types, suffix):
 
 
 def build_or_pull_base_images(
-    branch: str,
     py_versions: List[str],
     image_types: List[str],
     rebuild_base_images: bool = True,
