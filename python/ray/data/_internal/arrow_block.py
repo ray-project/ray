@@ -1,3 +1,4 @@
+import bisect
 import collections
 import heapq
 import random
@@ -421,25 +422,27 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         context = DataContext.get_current()
         sort = get_sort_transform(context)
-        col, _ = key[0]
+        columns = [k[0] for k in key]
         table = sort(self._table, key, descending)
         if len(boundaries) == 0:
             return [table]
 
-        partitions = []
         # For each boundary value, count the number of items that are less
         # than it. Since the block is sorted, these counts partition the items
         # such that boundaries[i] <= x < boundaries[i + 1] for each x in
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
+        table_items = [tuple(d.values()) for d in table.select(columns).to_pylist()]
         if descending:
-            num_rows = len(table[col])
-            bounds = num_rows - np.searchsorted(
-                table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1)
-            )
+            bounds = [
+                len(table) - bisect.bisect_left(table_items[::-1], b)
+                for b in boundaries
+            ]
         else:
-            bounds = np.searchsorted(table[col], boundaries)
+            bounds = [bisect.bisect_left(table_items, b) for b in boundaries]
+
+        partitions = []
         last_idx = 0
         for idx in bounds:
             partitions.append(table.slice(last_idx, idx - last_idx))

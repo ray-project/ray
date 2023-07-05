@@ -110,14 +110,19 @@ class SortTaskSpec(ExchangeTaskSpec):
         for sample in samples:
             builder.add_block(sample)
         samples = builder.build()
-        column = key[0][0] if isinstance(key, list) else None
-        sample_items = BlockAccessor.for_block(samples).to_numpy(column)
-        sample_items = np.sort(sample_items)
-        ret = [
-            np.quantile(sample_items, q, interpolation="nearest")
-            for q in np.linspace(0, 1, num_reducers)
-        ]
-        return ret[1:]
+        columns = [k[0] for k in key] if isinstance(key, list) else None
+        sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+        indices = np.lexsort(list(reversed((sample_dict.values()))))
+        linear_space = np.linspace(0, 1, num_reducers)
+        for k in sample_dict:
+            sample_dict[k] = [
+                np.quantile(sample_dict[k][indices], q, interpolation="nearest")
+                for q in linear_space
+            ][1:]
+        sample_items = []
+        for i in range(num_reducers - 1):
+            sample_items.append(tuple(sample_dict[k][i] for k in sample_dict))
+        return sample_items
 
 
 def _sample_block(block: Block, n_samples: int, key: SortKeyT) -> Block:
