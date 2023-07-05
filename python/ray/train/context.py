@@ -25,8 +25,8 @@ def _copy_doc(copy_func):
 
 
 @PublicAPI(stability="beta")
-class Context:
-    """Context for Ray Train and Tune executions."""
+class TrainContext:
+    """Context for Ray training executions."""
 
     @_copy_doc(session.get_checkpoint)
     def get_checkpoint(self) -> Optional[Checkpoint]:
@@ -81,7 +81,7 @@ class Context:
 
 
 @PublicAPI(stability="beta")
-def get_context() -> Context:
+def get_context() -> TrainContext:
     """Get or create a singleton training context.
 
     The context is only available in a training or tuning loop.
@@ -90,5 +90,5 @@ def get_context() -> Context:
 
     with _context_lock:
         if _default_context is None:
-            _default_context = Context()
+            _default_context = TrainContext()
         return _default_context

@@ -69,7 +69,7 @@ Ray Train Context
     :toctree: doc/
 
     ~train.get_context
-    ~train.context.Context
+    ~train.context.TrainContext
 
 
 .. _train-integration-api:
