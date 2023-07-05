@@ -100,7 +100,7 @@ def _release_build() -> bool:
 
 def _valid_branch() -> bool:
     branch = _BRANCH
-    return branch == "master" or _release_build(branch)
+    return branch == "master" or _release_build()
 
 
 def _get_curr_dir():
