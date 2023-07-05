@@ -1,5 +1,6 @@
 import aiorwlock
 import asyncio
+from contextlib import asynccontextmanager
 from importlib import import_module
 import inspect
 import logging
@@ -237,7 +238,7 @@ def create_replica_wrapper(name: str):
                 buffered_receive = make_buffered_asgi_receive(request.body)
                 request_args = (scope, buffered_receive, buffered_send)
 
-            result = await self.replica.handle_request(
+            result = await self.replica.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
 
@@ -247,7 +248,7 @@ def create_replica_wrapper(name: str):
             # Returns a small object for router to track request status.
             return b"", result
 
-        async def _handle_http_request_streaming(
+        async def _handle_http_request_generator(
             self,
             request_metadata: RequestMetadata,
             request: StreamingHTTPRequest,
@@ -260,9 +261,9 @@ def create_replica_wrapper(name: str):
             interface. This allows us to return the messages back to the HTTP proxy as
             they're sent by user code (e.g., the FastAPI wrapper).
             """
-            # TODO: update comment.
+            # TODO: update comment ^^^
             receiver_task = None
-            handle_request_task = None
+            call_user_method_task = None
             wait_for_message_task = None
             try:
                 receiver = ASGIReceiveProxy(
@@ -281,8 +282,8 @@ def create_replica_wrapper(name: str):
                 # this task will use the provided ASGI send interface to send its HTTP
                 # the response. We will poll for the sent messages and yield them back
                 # to the caller.
-                handle_request_task = self._event_loop.create_task(
-                    self.replica.handle_request(
+                call_user_method_task = self._event_loop.create_task(
+                    self.replica.call_user_method(
                         request_metadata, request_args, request_kwargs
                     )
                 )
@@ -292,7 +293,7 @@ def create_replica_wrapper(name: str):
                         asgi_queue_send.wait_for_message()
                     )
                     done, _ = await asyncio.wait(
-                        [handle_request_task, wait_for_message_task],
+                        [call_user_method_task, wait_for_message_task],
                         return_when=asyncio.FIRST_COMPLETED,
                     )
                     # Consume and yield all available messages in the queue.
@@ -301,20 +302,23 @@ def create_replica_wrapper(name: str):
                     # know it's safe for these messages containing primitive types.
                     yield pickle.dumps(asgi_queue_send.get_messages_nowait())
 
-                    # Exit once `handle_request` has finished. In this case, all
+                    # Exit once `call_user_method` has finished. In this case, all
                     # messages must have already been sent.
-                    if handle_request_task in done:
+                    if call_user_method_task in done:
                         break
 
-                e = handle_request_task.exception()
+                e = call_user_method_task.exception()
                 if e is not None:
                     raise e from None
             finally:
                 if receiver_task is not None:
                     receiver_task.cancel()
 
-                if handle_request_task is not None and not handle_request_task.done():
-                    handle_request_task.cancel()
+                if (
+                    call_user_method_task is not None
+                    and not call_user_method_task.done()
+                ):
+                    call_user_method_task.cancel()
 
                 if (
                     wait_for_message_task is not None
@@ -325,16 +329,24 @@ def create_replica_wrapper(name: str):
         async def handle_request_streaming(
             self,
             pickled_request_metadata: bytes,
-            *args,
-            **kwargs,
+            *request_args,
+            **request_kwargs,
         ) -> AsyncGenerator[Any, None]:
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.is_http_request:
-                assert len(args) == 1 and isinstance(args[0], StreamingHTTPRequest)
-                async for message in self._handle_http_request_streaming(
-                    request_metadata, args[0]
-                ):
-                    yield message
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], StreamingHTTPRequest
+                )
+                generator = self._handle_http_request_generator(
+                    request_metadata, request_args[0]
+                )
+            else:
+                generator = self.replica.call_user_method_generator(
+                    request_metadata, request_args, request_kwargs
+                )
+
+            async for result in generator:
+                yield result
 
         async def handle_request_from_java(
             self,
@@ -351,7 +363,7 @@ def create_replica_wrapper(name: str):
                 proto.request_id, proto.endpoint, call_method=proto.call_method
             )
             request_args = request_args[0]
-            return await self.replica.handle_request(
+            return await self.replica.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
 
@@ -598,79 +610,6 @@ class RayServeReplica:
         else:
             await result(scope, receive, send)
 
-    async def invoke_single(
-        self,
-        request_metadata: RequestMetadata,
-        request_args: Tuple[Any],
-        request_kwargs: Dict[str, Any],
-    ) -> Tuple[Any, bool]:
-        """Executes the provided request on this replica.
-
-        Returns the user-provided output and a boolean indicating if the
-        request succeeded (user code didn't raise an exception).
-        """
-        logger.info(
-            f"Started executing request {request_metadata.request_id}",
-            extra={"log_to_stderr": False},
-        )
-
-        if request_metadata.is_http_request:
-            # For HTTP requests we always expect (scope, receive, send) as args.
-            assert len(request_args) == 3
-            scope, receive, send = request_args
-
-            if isinstance(self.callable, ASGIAppReplicaWrapper):
-                request_args = (scope, receive, send)
-            else:
-                request_args = (Request(scope, receive, send),)
-
-        method_to_call = None
-        success = True
-        try:
-            runner_method = self.get_runner_method(request_metadata)
-            method_to_call = sync_to_async(runner_method)
-            result = None
-
-            # Edge case to support empty HTTP handlers: don't pass the Request
-            # argument if the callable has no parameters.
-            if (
-                request_metadata.is_http_request
-                and len(inspect.signature(runner_method).parameters) == 0
-            ):
-                request_args, request_kwargs = tuple(), {}
-
-            result = await method_to_call(*request_args, **request_kwargs)
-
-        except Exception as e:
-            logger.exception(f"Request failed due to {type(e).__name__}:")
-            success = False
-
-            # If the debugger is enabled, drop into the remote pdb here.
-            if ray.util.pdb._is_ray_debugger_enabled():
-                ray.util.pdb._post_mortem()
-
-            function_name = "unknown"
-            if method_to_call is not None:
-                function_name = method_to_call.__name__
-            result = wrap_to_ray_error(function_name, e)
-            if request_metadata.is_http_request:
-                error_message = f"Unexpected error, traceback: {result}."
-                result = starlette.responses.Response(error_message, status_code=500)
-
-        if request_metadata.is_http_request and not isinstance(
-            self.callable, ASGIAppReplicaWrapper
-        ):
-            # For the FastAPI codepath, the response has already been sent over the ASGI
-            # interface, but for the vanilla deployment codepath we need to send it.
-            await self.send_user_result_over_asgi(result, scope, receive, send)
-
-        if success:
-            self.request_counter.inc(tags={"route": request_metadata.route})
-        else:
-            self.error_counter.inc(tags={"route": request_metadata.route})
-
-        return result, success
-
     async def reconfigure(self, deployment_config: DeploymentConfig):
         old_user_config = self.deployment_config.user_config
         self.deployment_config = deployment_config
@@ -701,43 +640,122 @@ class RayServeReplica:
                 )
                 await reconfigure_method(user_config)
 
-    async def handle_request(
+    @asynccontextmanager
+    async def wrap_user_method_call(
+        self,
+        request_metadata: RequestMetadata,
+    ):
+        # Set request context variables for subsequent handle so that
+        # handle can pass the correct request context to subsequent replicas.
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(
+                request_metadata.route,
+                request_metadata.request_id,
+                self.app_name,
+                request_metadata.multiplexed_model_id,
+            )
+        )
+
+        logger.info(
+            f"Started executing request {request_metadata.request_id}",
+            extra={"log_to_stderr": False},
+        )
+        start_time = time.time()
+        user_exception = None
+        try:
+            # TODO: WTF is up with this thing.
+            # async with self.rwlock.writer_lock:
+            yield
+        except Exception as e:
+            user_exception = e
+            logger.exception(f"Request failed due to {type(e).__name__}:")
+            if ray.util.pdb._is_ray_debugger_enabled():
+                ray.util.pdb._post_mortem()
+            if isinstance(e, RuntimeError):
+                print(e)
+
+        latency_ms = (time.time() - start_time) * 1000
+        self.processing_latency_tracker.observe(
+            latency_ms, tags={"route": request_metadata.route}
+        )
+        logger.info(
+            access_log_msg(
+                method=request_metadata.call_method,
+                status="OK" if user_exception is None else "ERROR",
+                latency_ms=latency_ms,
+            )
+        )
+        if user_exception is None:
+            self.request_counter.inc(tags={"route": request_metadata.route})
+        else:
+            self.error_counter.inc(tags={"route": request_metadata.route})
+            raise user_exception from None
+
+    async def call_user_method(
         self,
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
     ) -> Any:
-        async with self.rwlock.reader_lock:
-            # Set request context variables for subsequent handle so that
-            # handle can pass the correct request context to subsequent replicas.
-            ray.serve.context._serve_request_context.set(
-                ray.serve.context.RequestContext(
-                    request_metadata.route,
-                    request_metadata.request_id,
-                    self.app_name,
-                    request_metadata.multiplexed_model_id,
-                )
-            )
+        async with self.wrap_user_method_call(request_metadata):
+            if request_metadata.is_http_request:
+                # For HTTP requests we always expect (scope, receive, send) as args.
+                assert len(request_args) == 3
+                scope, receive, send = request_args
 
-            start_time = time.time()
-            result, success = await self.invoke_single(
-                request_metadata,
-                request_args,
-                request_kwargs,
-            )
-            latency_ms = (time.time() - start_time) * 1000
-            self.processing_latency_tracker.observe(
-                latency_ms, tags={"route": request_metadata.route}
-            )
-            logger.info(
-                access_log_msg(
-                    method=request_metadata.call_method,
-                    status="OK" if success else "ERROR",
-                    latency_ms=latency_ms,
-                )
-            )
+                if isinstance(self.callable, ASGIAppReplicaWrapper):
+                    request_args = (scope, receive, send)
+                else:
+                    request_args = (Request(scope, receive, send),)
 
-            return result
+            user_method = None
+            try:
+                user_method = sync_to_async(self.get_runner_method(request_metadata))
+
+                # Edge case to support empty HTTP handlers: don't pass the Request
+                # argument if the callable has no parameters.
+                if (
+                    request_metadata.is_http_request
+                    and len(inspect.signature(user_method).parameters) == 0
+                ):
+                    request_args, request_kwargs = tuple(), {}
+
+                result = await user_method(*request_args, **request_kwargs)
+
+            except Exception as e:
+                function_name = "unknown"
+                if user_method is not None:
+                    function_name = user_method.__name__
+                e = wrap_to_ray_error(function_name, e)
+                if request_metadata.is_http_request:
+                    error_message = f"Unexpected error, traceback: {e}."
+                    result = starlette.responses.Response(
+                        error_message, status_code=500
+                    )
+                else:
+                    raise e from None
+
+            if request_metadata.is_http_request and not isinstance(
+                self.callable, ASGIAppReplicaWrapper
+            ):
+                # For the FastAPI codepath, the response has already been sent over the
+                # ASGI interface, but for the vanilla deployment codepath we need to
+                # send it.
+                await self.send_user_result_over_asgi(result, scope, receive, send)
+
+    async def call_user_method_generator(
+        self,
+        request_metadata: RequestMetadata,
+        request_args: Tuple[Any],
+        request_kwargs: Dict[str, Any],
+    ) -> AsyncGenerator[Any, None]:
+        async with self.wrap_user_method_call(request_metadata):
+            assert (
+                not request_metadata.is_http_request
+            ), "HTTP requests should go through `call_user_method`."
+            user_method = self.get_runner_method(request_metadata)
+            async for result in user_method(*request_args, **request_kwargs):
+                yield result
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.

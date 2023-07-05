@@ -397,17 +397,34 @@ class RayServeDeploymentHandle:
         # requirement of serve.start; Thus handle is fulfilled at runtime.
         self.handle: RayServeHandle = None
 
-    def options(self, *, method_name: str) -> "RayServeDeploymentHandle":
-        return self.__class__(
-            self.deployment_name, HandleOptions(method_name=method_name)
-        )
+    def options(
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ) -> "RayServeDeploymentHandle":
+        new_options_dict = self.handle_options.__dict__.copy()
+        user_modified_options_dict = {
+            key: value
+            for key, value in [
+                ("method_name", method_name),
+                ("stream", stream),
+            ]
+            if value != DEFAULT.VALUE
+        }
+        new_options_dict.update(user_modified_options_dict)
+        new_options = HandleOptions(**new_options_dict)
+        return self.__class__(self.deployment_name, new_options)
 
     def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name
             )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
-            self.handle = handle.options(method_name=self.handle_options.method_name)
+            self.handle = handle.options(
+                method_name=self.handle_options.method_name,
+                stream=self.handle_options.stream,
+            )
         return self.handle.remote(*args, **kwargs)
 
     @classmethod
