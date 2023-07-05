@@ -22,11 +22,11 @@ RUN rm -rf /ray
 
 RUN mkdir /ray
 WORKDIR /ray
-RUN mv /tmp/requirements_compiled.txt /ray/python/requirements_compiled.txt || true
-
 
 # Below should be re-run each time
 COPY . .
+
+RUN mv /tmp/requirements_compiled.txt /ray/python/requirements_compiled.txt || true
 
 RUN env
 

@@ -10,10 +10,11 @@ RUN rm -rf /ray
 
 RUN mkdir /ray
 WORKDIR /ray
-RUN mv /tmp/requirements_compiled.txt /ray/python/requirements_compiled.txt || true
 
 # Copy new ray files
 COPY . .
+
+RUN mv /tmp/requirements_compiled.txt /ray/python/requirements_compiled.txt || true
 
 RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh
 
