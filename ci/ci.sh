@@ -158,6 +158,8 @@ compile_pip_dependencies() {
       "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
   fi
 
+  # Remove ray== pin (this can come up from upstream dependencies)
+  sed -i "/^ray==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
   cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
