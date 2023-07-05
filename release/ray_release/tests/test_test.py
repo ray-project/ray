@@ -45,8 +45,8 @@ def test_convert_env_list_to_dict():
 
 
 def test_get_python_version():
-    assert _stub_test({}).get_python_version() == "3.7"
-    assert _stub_test({"python": "3.8"}).get_python_version() == "3.8"
+    assert _stub_test({}).get_python_version() == "3.8"
+    assert _stub_test({"python": "3.9"}).get_python_version() == "3.9"
 
 
 def test_get_ray_image():
@@ -55,16 +55,16 @@ def test_get_ray_image():
     assert (
         _stub_test(
             {
-                "python": "3.8",
+                "python": "3.9",
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:123456-py38"
+        == "rayproject/ray:123456-py39"
     )
     assert (
         _stub_test(
             {
-                "python": "3.8",
+                "python": "3.9",
                 "cluster": {
                     "byod": {
                         "type": "gpu",
@@ -72,12 +72,12 @@ def test_get_ray_image():
                 },
             }
         ).get_ray_image()
-        == "rayproject/ray-ml:123456-py38-gpu"
+        == "rayproject/ray-ml:123456-py39-gpu"
     )
     os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
         _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py37"
+        == "rayproject/ray:1.0.0.123456-py38"
     )
 
 
