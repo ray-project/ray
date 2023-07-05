@@ -254,7 +254,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
         )
         >>> ds.map_batches(lambda row: {"data": row["data"] * 2}).take(2)
         [{'data': array([[0, 0],
-                 [0, 0]])}, {'data': array([[2, 2],
+                [0, 0]])}, {'data': array([[2, 2],
                 [2, 2]])}]
 
     Args:
@@ -1079,7 +1079,7 @@ def read_csv(
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
-        >>> ray.data.read_csv(
+        >>> ds = ray.data.read_csv(
         ...     "example://dow_jones.csv",
         ...     convert_options=convert_options)
 
@@ -1345,9 +1345,9 @@ def read_tfrecords(
         >>> import ray
         >>> ray.data.read_tfrecords("example://iris.tfrecords")
         Dataset(
-            num_blocks=...,
-            num_rows=150,
-            schema={...}
+          num_blocks=...,
+          num_rows=150,
+          schema={...}
         )
 
         We can also read compressed TFRecord files which uses one of the
@@ -1359,9 +1359,9 @@ def read_tfrecords(
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
         Dataset(
-            num_blocks=...,
-            num_rows=150,
-            schema={...}
+          num_blocks=...,
+          num_rows=150,
+          schema={...}
         )
 
     Args:
@@ -1883,7 +1883,7 @@ def from_numpy_refs(
         MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
 
         >>> # Create a Ray Dataset from a list of NumPy array references.
-        >>> ray.data.from_numpy_refs([arr, arr])
+        >>> ray.data.from_numpy_refs([arr_ref, arr_ref])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 
     Args:
