@@ -471,7 +471,7 @@ async def test_replica_responds_after_being_removed(pow_2_scheduler, fake_query)
 @pytest.mark.asyncio
 async def test_replica_blacklisted_after_actor_error(pow_2_scheduler, fake_query):
     """
-    Verify that if a replica is removed from the set if it returns a RayActorError.
+    Verify that a replica is removed from the set if it returns a RayActorError.
     Subsequent requests should not be sent to it.
     """
     s = pow_2_scheduler
