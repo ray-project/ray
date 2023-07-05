@@ -9,6 +9,7 @@
   instance_size: medium
   commands:
     # Build the wheels and jars
+    - aws sts get-caller-identity
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
@@ -16,6 +17,7 @@
     - pip install -q docker aws_requests_auth boto3
     - ./ci/env/env_info.sh
     # Upload to branch directory.
+    - aws sts get-caller-identity
     - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
     - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/linux
     # Upload to latest directory.
