@@ -21,7 +21,7 @@ taken on it:
 
     ray.shutdown()
 
-    assert ray.is_initialized()
+    assert not ray.is_initialized()
 
     ray.init()
 

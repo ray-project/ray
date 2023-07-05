@@ -298,7 +298,7 @@ py_test_run_all_subdirectory(
 
 doctest(
     files = glob(
-        include=["source/workflows/basics.rst"],
+        include=["source/**/*.rst", "source/**/*.md"],
         exclude=[
             "source/ray-contribute/getting-involved.rst",
             "source/ray-core/handling-dependencies.rst",
