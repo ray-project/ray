@@ -63,4 +63,5 @@ WORKDIR /ray
 COPY . .
 
 RUN ./ci/env/install-dependencies.sh init
+RUN bash --login -i ./ci/ci.sh compile_pip_dependencies
 RUN RLLIB_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 bash --login -i ./ci/env/install-dependencies.sh

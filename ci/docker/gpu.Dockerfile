@@ -13,10 +13,13 @@ ENV TRAVIS_COMMIT=${BUILDKITE_COMMIT}
 # Move out of working dir /ray
 # Delete stale data
 WORKDIR /
+# Preserve requirements_compiled.txt
+RUN mv /ray/python/requirements_compiled.txt /tmp/requirements_compiled.txt || true
 RUN rm -rf /ray
 
 RUN mkdir /ray
 WORKDIR /ray
+RUN mv /tmp/requirements_compiled.txt /ray/python/requirements_compiled.txt || true
 
 # Copy new ray files
 COPY . .
