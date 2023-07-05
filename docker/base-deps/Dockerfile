@@ -52,8 +52,6 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
             LIBGCC=(libgcc-ng); \
         else \
             MINICONDA_VERSION="py37_23.1.0-1"; \
-            # TODO (can): Remove libffi=3.3 once #33299 is resolved
-            LIBGCC=(libgcc-ng libffi=3.3); \
         fi \
     && wget --quiet \
         "https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${HOSTTYPE}.sh" \
