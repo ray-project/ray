@@ -140,7 +140,7 @@ class WorldModel(nn.Module):
         z_flat = (
             self.posterior_representation_layer.num_categoricals
             * self.posterior_representation_layer.num_classes_per_categorical
-        ) 
+        )
         h_plus_z_flat = self.num_gru_units + z_flat
 
         # Dynamics (prior z-state) predictor: ht -> z^t
@@ -219,8 +219,9 @@ class WorldModel(nn.Module):
         Returns:
             The next deterministic h-state (h(t+1)) as predicted by the sequence model.
         """
+        B = observations.shape[0]
         initial_states = tree.map_structure(
-            lambda s: s.repeat(observations.shape[0], 1, 1),
+            lambda s: s.tile(B, *([1] * (len(s.shape) - 1))),
             self.get_initial_state(),
         )
 
@@ -296,7 +297,7 @@ class WorldModel(nn.Module):
         # encoder_out=[T, B, ...]
 
         initial_states = tree.map_structure(
-            lambda s: s.repeat(B, 1, 1),
+            lambda s: s.tile(B, *([1] * (len(s.shape) - 1))),
             self.get_initial_state(),
         )
 

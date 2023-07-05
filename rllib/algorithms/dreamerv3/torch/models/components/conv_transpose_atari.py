@@ -5,9 +5,8 @@ https://arxiv.org/pdf/2301.04104v1.pdf
 """
 from typing import Optional
 
-import numpy as np
-
 from ray.rllib.algorithms.dreamerv3.utils import get_cnn_multiplier
+from ray.rllib.core.models.configs import CNNTransposeHeadConfig
 from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
@@ -45,70 +44,24 @@ class ConvTransposeAtari(nn.Module):
         super().__init__()
 
         cnn_multiplier = get_cnn_multiplier(model_size, override=cnn_multiplier)
-
-        self.input_dims = (4, 4, 8 * cnn_multiplier)
-
         self.gray_scaled = gray_scaled
-
-        self.dense_layer = nn.Linear(
-            input_size,
-            int(np.prod(self.input_dims)),
-            bias=True,
+        config = CNNTransposeHeadConfig(
+            input_dims=[input_size],
+            initial_image_dims=(4, 4, 8 * cnn_multiplier),
+            cnn_transpose_filter_specifiers=[
+                [4 * cnn_multiplier, 4, 2],
+                [2 * cnn_multiplier, 4, 2],
+                [1 * cnn_multiplier, 4, 2],
+                [1 if self.gray_scaled else 3, 4, 2],
+            ],
+            cnn_transpose_use_bias=False,
+            cnn_transpose_use_layernorm=True,
+            cnn_transpose_activation="silu",
         )
+        # Make sure the output dims match Atari.
+        assert config.output_dims == (64, 64, 1 if self.gray_scaled else 3)
 
-        self.conv_transpose_layers = nn.ModuleList(
-            [
-                nn.ConvTranspose2d(
-                    4 * cnn_multiplier,
-                    2 * cnn_multiplier,
-                    kernel_size=4,
-                    stride=2,
-                    padding=1,
-                    output_padding=0,
-                    bias=False,
-                ),
-                nn.ConvTranspose2d(
-                    2 * cnn_multiplier,
-                    1 * cnn_multiplier,
-                    kernel_size=4,
-                    stride=2,
-                    padding=1,
-                    output_padding=0,
-                    bias=False,
-                ),
-                nn.ConvTranspose2d(
-                    1 * cnn_multiplier,
-                    1 if self.gray_scaled else 3,
-                    kernel_size=4,
-                    stride=2,
-                    padding=1,
-                    output_padding=0,
-                    bias=True,
-                ),
-            ]
-        )
-
-        self.layer_normalizations = nn.ModuleList(
-            [
-                nn.LayerNorm(
-                    2 * cnn_multiplier * self.input_dims[0] * self.input_dims[1]
-                ),
-                nn.LayerNorm(
-                    1 * cnn_multiplier * self.input_dims[0] * self.input_dims[1]
-                ),
-                nn.LayerNorm(1 * self.input_dims[0] * self.input_dims[1]),
-            ]
-        )
-
-        self.output_conv2d_transpose = nn.ConvTranspose2d(
-            1 * self.input_dims[2],
-            1 if self.gray_scaled else 3,
-            kernel_size=4,
-            stride=2,
-            padding=1,
-            output_padding=0,
-            bias=True,
-        )
+        self._transpose_2d_head = config.build(framework="torch")
 
     def forward(self, h, z):
         """Performs a forward pass through the Conv2D transpose decoder.
@@ -124,18 +77,14 @@ class ConvTransposeAtari(nn.Module):
 
         input_ = torch.cat([h, z], dim=-1)
 
-        out = self.dense_layer(input_)
-        out = out.view(-1, *self.input_dims)
+        out = self._transpose_2d_head(input_)
 
-        for conv_transpose_2d, layer_norm in zip(
-            self.conv_transpose_layers, self.layer_normalizations
-        ):
-            out = layer_norm(conv_transpose_2d(out))
-            out = nn.functional.silu(out)
+        # Interpret output as means of a diag-Gaussian with std=1.0:
+        # From [2]:
+        # "Distributions: The image predictor outputs the mean of a diagonal Gaussian
+        # likelihood with unit variance, ..."
 
-        out = self.output_conv2d_transpose(out)
-        out += 0.5
-        out_shape = out.size()
-        loc = out.view(out_shape[0], -1)
-
+        # Reshape `out` for the diagonal multi-variate Gaussian (each pixel is its own
+        # independent (b/c diagonal co-variance matrix) variable).
+        loc = torch.reshape(out, (z_shape[0], -1))
         return loc

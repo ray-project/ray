@@ -1,4 +1,5 @@
 import gymnasium as gym
+import numpy as np
 
 from ray.rllib.algorithms.dreamerv3.utils import (
     do_symlog_obs,
@@ -74,13 +75,18 @@ class DreamerV3Catalog(Catalog):
             if framework == "torch":
                 from ray.rllib.algorithms.dreamerv3.torch.models.components import mlp
 
+                return mlp.MLP(
+                    input_size=int(np.prod(self.observation_space.shape)),
+                    model_size=self.model_size,
+                )
+
             elif framework == "tf2":
                 from ray.rllib.algorithms.dreamerv3.tf.models.components import mlp
 
+                return mlp.MLP(model_size=self.model_size, name="vector_encoder")
+
             else:
                 raise ValueError(f"`framework={framework}` not supported!")
-
-            return mlp.MLP(model_size=self.model_size, name="vector_encoder")
 
     def build_decoder(self, framework: str) -> Model:
         """Builds the World-Model's decoder network depending on the obs space."""

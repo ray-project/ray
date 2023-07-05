@@ -494,16 +494,11 @@ class CNNTransposeHeadConfig(ModelConfig):
             #  Analogous to Conv2D Layers in a CNNEncoder.
             # Apply the correct padding. Note that this might be asymetrical, meaning
             # left padding might be != right padding, same for top/bottom.
-            _, padding_out_size = same_padding_transpose_after_stride(
+            _, out_size = same_padding_transpose_after_stride(
                 (dims[0], dims[1]), kernel, stride
             )
             # Perform conv transpose operation with the kernel.
-            kernel_w, kernel_h = (kernel, kernel) if isinstance(kernel, int) else kernel
-            dims = [
-                padding_out_size[0] - (kernel_w - 1),
-                padding_out_size[1] - (kernel_h - 1),
-                num_filters,
-            ]
+            dims = [out_size[0], out_size[1], num_filters]
         return tuple(dims)
 
     def _validate(self, framework: str = "torch"):

@@ -240,13 +240,11 @@ class DreamerModel(nn.Module):
             a_dreamed_dist_params_t0_to_H.append(a_dist_params)
 
         h_states_H_B = torch.stack(h_states_t0_to_H, dim=0)  # (T, B, ...)
-        h_states_HxB = h_states_H_B.reshape(
-            [timesteps_H + 1, -1] + h_states_H_B.shape[2:]
-        )
+        h_states_HxB = h_states_H_B.reshape([-1] + list(h_states_H_B.shape[2:]))
 
         z_states_prior_H_B = torch.stack(z_states_prior_t0_to_H, dim=0)  # (T, B, ...)
         z_states_prior_HxB = z_states_prior_H_B.reshape(
-            [timesteps_H + 1, -1] + z_states_prior_H_B.shape[2:]
+            [-1] + list(z_states_prior_H_B.shape[2:])
         )
 
         a_dreamed_H_B = torch.stack(a_dreamed_t0_to_H, dim=0)  # (T, B, ...)

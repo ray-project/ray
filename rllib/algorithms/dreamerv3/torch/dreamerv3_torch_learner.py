@@ -136,26 +136,30 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
     def compute_gradients(
         self,
         loss_per_module,
-        gradient_tape,
         **kwargs,
     ):
         # Override of the default gradient computation method.
         # For DreamerV3, we need to compute gradients over the individual loss terms
         # as otherwise, the world model's parameters would have their gradients also
         # be influenced by the actor- and critic loss terms/gradient computations.
+        for optim in self._optimizer_parameters:
+            # `set_to_none=True` is a faster way to zero out the gradients.
+            optim.zero_grad(set_to_none=True)
+
         grads = {}
         for component in ["world_model", "actor", "critic"]:
-            grads.update(
-                gradient_tape.gradient(
-                    # Take individual loss term from the registered metrics for
-                    # the main module.
-                    self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"],
-                    self.filter_param_dict_for_optimizer(
-                        self._params, self.get_optimizer(optimizer_name=component)
-                    ),
-                )
+            self._metrics[DEFAULT_POLICY_ID][component.upper() + "_L_total"].backward(
+                retain_graph=True
             )
-        del gradient_tape
+            grads.update(
+                {
+                    pid: p.grad
+                    for pid, p in self.filter_param_dict_for_optimizer(
+                        self._params, self.get_optimizer(optimizer_name=component)
+                    ).items()
+                }
+            )
+
         return grads
 
     @override(TorchLearner)
@@ -333,7 +337,7 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         obs_distr_means = fwd_out["obs_distribution_means_BxT"]
 
         # Reshape observations to (B*T, -1)
-        obs_BxT = obs_BxT.reshape(-1, obs_BxT.shape[-1])
+        obs_BxT = obs_BxT.reshape(obs_BxT.shape[0], -1)
 
         # Squared diff loss w/ sum(!) over all (already folded) obs dims.
         # decoder_loss_BxT = SUM[ (obs_distr.loc - observations)^2 ]
@@ -450,20 +454,20 @@ class DreamerV3TorchLearner(DreamerV3Learner, TorchLearner):
         # clipping the dynamics and representation losses below the value of
         # 1 nat ≈ 1.44 bits. This disables them while they are already minimized well to
         # focus the world model on its prediction loss"
-        L_dyn_BxT = torch.maximum(
-            1.0,
+        L_dyn_BxT = torch.clamp(
             torch.distributions.kl.kl_divergence(
                 sg_z_posterior_distr_BxT, z_prior_distr_BxT
             ),
+            min=1.0,
         )
         # Unfold time rank back in.
         L_dyn_B_T = L_dyn_BxT.reshape(hps.batch_size_B, hps.batch_length_T)
 
-        L_rep_BxT = torch.maximum(
-            1.0,
+        L_rep_BxT = torch.clamp(
             torch.distributions.kl.kl_divergence(
                 z_posterior_distr_BxT, sg_z_prior_distr_BxT
             ),
+            min=1.0,
         )
         # Unfold time rank back in.
         L_rep_B_T = L_rep_BxT.reshape(hps.batch_size_B, hps.batch_length_T)

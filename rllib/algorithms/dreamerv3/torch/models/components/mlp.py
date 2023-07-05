@@ -51,6 +51,8 @@ class MLP(nn.Module):
         """
         super().__init__()
 
+        self.output_size = None
+
         num_dense_layers = get_num_dense_layers(model_size, override=num_dense_layers)
         dense_hidden_units = get_dense_hidden_units(
             model_size, override=dense_hidden_units
@@ -63,10 +65,13 @@ class MLP(nn.Module):
             layers.append(nn.LayerNorm(dense_hidden_units))
             layers.append(nn.SiLU())
             input_size = dense_hidden_units
+            self.output_size = (dense_hidden_units,)
 
         self.output_layer = None
         if output_layer_size:
             layers.append(nn.Linear(input_size, output_layer_size, bias=False))
+            self.output_size = (output_layer_size,)
+
         self._net = nn.Sequential(*layers)
 
     def forward(self, input_):
@@ -75,6 +80,4 @@ class MLP(nn.Module):
         Args:
             input_: The input tensor for the MLP dense stack.
         """
-        out = self._net(input_)
-
-        return out
+        return self._net(input_)
