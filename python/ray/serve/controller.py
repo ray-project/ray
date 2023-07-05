@@ -492,9 +492,6 @@ class ServeController:
                 "All resources have shut down, shutting down controller!",
                 extra={"log_to_stderr": False},
             )
-            # _controller_actor = ray.get_actor(
-            #     self.controller_name, namespace=SERVE_NAMESPACE
-            # )
             _controller_actor = ray.get_runtime_context().current_actor
             self._shutdown.set()
             ray.kill(_controller_actor, no_restart=True)
