@@ -616,7 +616,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   {
     absl::MutexLock lock(&initialize_mutex_);
     initialized_ = true;
-    intialize_cv_.notify_all();
+    intialize_cv_.SignalAll();
   }
 }
 
