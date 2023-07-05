@@ -572,4 +572,4 @@
     - (cd rllib_contrib/dreamer && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/dreamer/tests/
-    - python rllib_contrib/dreamer/examples/dreamer_dm_control_cheetah_run.py --run-as-test
+    - MUJOCO_GL=egl python rllib_contrib/dreamer/examples/dreamer_dm_control_cheetah_run.py --run-as-test
