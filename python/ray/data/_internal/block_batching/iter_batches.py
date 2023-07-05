@@ -198,6 +198,12 @@ def _format_in_threadpool(
             ``pyarrow.Table``, or None to use entire blocks
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
+        finalize_fn: A function to apply to each data batch after it has been collated.
+            The prefetch depth for finalize_fn is always 1, so it can
+            be used for heavyweight operations such as GPU preloading. This is
+            executed in a separate threadpool from the formatting and collation
+            logic in ``collate_fn``, which allows for independent parallelization
+            of these steps.
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
@@ -227,16 +233,10 @@ def _format_in_threadpool(
             fn=threadpool_computations_format_collate,
             num_workers=num_threadpool_workers,
         )
-        finalized_iter = make_async_gen(
-            base_iterator=collated_iter,
-            fn=threadpool_computations_finalize_fn,
-            num_workers=1,
-        )
-        return finalized_iter
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
-        finalized_iter = threadpool_computations_finalize_fn(collated_iter)
-        return finalized_iter
+    finalized_iter = threadpool_computations_finalize_fn(collated_iter)
+    return finalized_iter
 
 
 def prefetch_batches_locally(

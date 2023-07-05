@@ -320,7 +320,7 @@ class DataIterator(abc.ABC):
             raise ValueError(
                 "collate_fn cannot be used with dtypes and device."
                 "You should manually move the output Torch tensors to the"
-                "desired dtype and device, outside of collate_fn."
+                "desired dtype and device outside of collate_fn."
             )
 
         if collate_fn is None:
