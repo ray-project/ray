@@ -43,13 +43,12 @@ def iter_batches(
     This takes a block iterator and creates batch_size batches, slicing,
     unioning, shuffling, prefetching, and formatting blocks as needed.
 
-
     The algorithm uses both pipeline parallelism and data parallelism:
 
     If prefetch_batches=2, these are all the batches in flight:
 
     [User thread] trains on Batch 0
-    - [Fetch thread] Batch 1 in output queue
+    - [Fetch thread] Batch 1 finalization + move to output queue
             - [Worker thread 1] Batch 2 formatting + collating
             - [Worker thread 2] Batch 3 formatting + collating
             - [Raylet] Batches 4 + 5 fetched to local object store memory
@@ -68,7 +67,8 @@ def iter_batches(
         4. Then, in a threadpool consisting of `prefetch_batches` threads:
             a. Format the batches to the provided batch format.
             b. Apply the collate function.
-        5. Fetch outputs from the threadpool, maintaining order of the batches.
+        5. Finalize each of the collated batches
+        6. Fetch outputs from the threadpool, maintaining order of the batches.
 
     Args:
         block_refs: An iterator over block object references and their corresponding
@@ -89,11 +89,8 @@ def iter_batches(
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
         finalize_fn: A function to apply to each data batch after it has been collated.
-            The prefetch depth for finalize_fn is always 1, so it can
-            be used for heavyweight operations such as GPU preloading. This is
-            executed in a separate threadpool from the formatting and collation
-            logic in ``collate_fn``, which allows for independent parallelization
-            of these steps.
+            This function is not run in a threadpool so it can be used for
+            memory-intensive operations such as GPU preloading.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -159,7 +156,13 @@ def iter_batches(
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 5: Restore original order.
+        # Step 5: Finalize each batch.
+        if finalize_fn is not None:
+            batch_iter = finalize_batches(
+                batch_iter, finalize_fn=finalize_fn, stats=stats
+            )
+
+        # Step 6: Restore original order.
         batch_iter: Iterator[Batch] = restore_original_order(batch_iter)
 
         yield from extract_data_from_batch(batch_iter)
@@ -198,12 +201,6 @@ def _format_in_threadpool(
             ``pyarrow.Table``, or None to use entire blocks
             as batches.
         collate_fn: A function to apply to each data batch before returning it.
-        finalize_fn: A function to apply to each data batch after it has been collated.
-            The prefetch depth for finalize_fn is always 1, so it can
-            be used for heavyweight operations such as GPU preloading. This is
-            executed in a separate threadpool from the formatting and collation
-            logic in ``collate_fn``, which allows for independent parallelization
-            of these steps.
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
@@ -222,11 +219,6 @@ def _format_in_threadpool(
             )
         yield from formatted_batch_iter
 
-    def threadpool_computations_finalize_fn(batch_iter):
-        if finalize_fn is None:
-            yield from batch_iter
-        yield from finalize_batches(batch_iter, finalize_fn=finalize_fn, stats=stats)
-
     if num_threadpool_workers > 0:
         collated_iter = make_async_gen(
             base_iterator=batch_iter,
@@ -235,8 +227,7 @@ def _format_in_threadpool(
         )
     else:
         collated_iter = threadpool_computations_format_collate(batch_iter)
-    finalized_iter = threadpool_computations_finalize_fn(collated_iter)
-    return finalized_iter
+    return collated_iter
 
 
 def prefetch_batches_locally(

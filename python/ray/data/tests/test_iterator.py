@@ -1,4 +1,3 @@
-import threading
 from typing import Dict
 from unittest.mock import MagicMock, patch
 
@@ -137,26 +136,6 @@ def test_tf_conversion_pipeline(ray_start_regular_shared):
         tf_dataset = it.to_tf("id", "id")
         for _ in tf_dataset:
             pass
-
-
-def test_iter_batches_finalize_fn_uses_single_thread(ray_start_regular_shared):
-    lock = threading.Lock()
-
-    def finalize_fn(batch):
-        if not lock.acquire(timeout=15):
-            raise Exception("finalize_fn called concurrently")
-        return batch
-
-    # Test that finalize_fn is called in a single thread when specified
-    # in DataIterator.iter_batches().
-    n = 100
-    ds = ray.data.range(n)
-    it = ds.iterator()
-
-    elements = []
-    for batch in it.iter_batches(_finalize_fn=finalize_fn):
-        elements.extend(batch["id"].tolist())
-    assert elements == list(range(n))
 
 
 def test_torch_conversion(ray_start_regular_shared):

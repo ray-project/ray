@@ -67,7 +67,6 @@ class PipelinedDataIterator(DataIterator):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
-        _finalize_fn: Optional[Callable[[Any], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -80,7 +79,6 @@ class PipelinedDataIterator(DataIterator):
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=_collate_fn,
-            _finalize_fn=_finalize_fn,
             prefetch_blocks=prefetch_blocks,
         )
 

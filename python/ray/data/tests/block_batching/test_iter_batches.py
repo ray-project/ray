@@ -1,4 +1,5 @@
 import itertools
+import threading
 import time
 from typing import Iterator, List, Tuple
 
@@ -94,6 +95,33 @@ def test_restore_from_original_order():
     ordered = list(restore_original_order(iter(base_iterator)))
     idx = [batch.batch_idx for batch in ordered]
     assert idx == [0, 1, 2, 3]
+
+
+def test_finalize_fn_uses_single_thread():
+    block_refs_iter = itertools.starmap(
+        lambda block, metadata: (ray.put(block), metadata),
+        block_generator(num_blocks=20, num_rows=2),
+    )
+
+    lock = threading.Lock()
+
+    def finalize_enforce_single_thread(batch):
+        lock.acquire()
+        return batch
+
+    # Test that finalize_fn is called in a single thread,
+    # even if prefetch_batches is set.
+
+    output_batches = iter_batches(
+        block_refs_iter,
+        collate_fn=lambda batch: batch,
+        finalize_fn=finalize_enforce_single_thread,
+        prefetch_batches=4,
+    )
+
+    # Force execution of the iterator.
+    # This step should not raise an exception.
+    list(output_batches)
 
 
 # Test for 3 cases

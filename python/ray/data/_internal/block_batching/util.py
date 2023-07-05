@@ -173,6 +173,8 @@ def collate(
 
     Args:
         batch_iter: An iterator over formatted batches.
+        collate_fn: A function to apply to each batch.
+        stats: An optional stats object to record formatting times.
     """
     for batch in batch_iter:
         with stats.iter_collate_batch_s.timer() if stats else nullcontext():
@@ -181,20 +183,18 @@ def collate(
 
 
 def finalize_batches(
-    batch_iter: Iterator[Batch],
+    batch_iter: Iterator[CollatedBatch],
     finalize_fn: Callable[[Any], Any],
     stats: Optional[DatasetStats] = None,
 ) -> Iterator[CollatedBatch]:
     """Returns an iterator with the provided finalize_fn applied to items of the batch
     iterator.
 
+    This is the same as `collate` except the input batches can be of type Any.
+
     Args:
         batch_iter: An iterator over processed batches.
-        finalize_fn: A function to apply to each batch. The prefetch depth for
-            ``finalize_fn`` is always 1, so it can be used for heavyweight
-            operations such as GPU preloading. This is executed in a separate
-            threadpool from the formatting and collation steps, which allows
-            for independent parallelization of these steps.
+        finalize_fn: A function to apply to each batch.
         stats: An optional stats object to record formatting times.
 
     Returns:
