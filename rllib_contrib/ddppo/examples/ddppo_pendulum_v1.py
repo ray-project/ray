@@ -23,7 +23,11 @@ if __name__ == "__main__":
 
     config = (
         DDPPOConfig()
-        .rollouts(num_rollout_workers=4, num_envs_per_worker=10, observation_filter="MeanStdFilter")
+        .rollouts(
+            num_rollout_workers=4,
+            num_envs_per_worker=10,
+            observation_filter="MeanStdFilter",
+        )
         .environment("Pendulum-v1")
         .training(
             train_batch_size=2500,
