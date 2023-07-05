@@ -20,7 +20,7 @@ AWS_BUCKET = "ray-ci-results"
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
 )
 DATAPLANE_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
 DATAPLANE_ECR_REPO = "anyscale/ray"
