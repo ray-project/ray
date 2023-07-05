@@ -48,6 +48,8 @@ extern const TagKeyType SessionNameKey;
 
 extern const TagKeyType NameKey;
 
+extern const TagKeyType SourceKey;
+
 // Object store memory location tag constants
 extern const TagKeyType LocationKey;
 constexpr char kObjectLocMmapShm[] = "MMAP_SHM";

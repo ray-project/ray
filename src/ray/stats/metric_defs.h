@@ -108,6 +108,7 @@ DECLARE_stats(gcs_task_manager_task_events_reported);
 
 /// Object Store
 DECLARE_stats(object_store_memory);
+DECLARE_stats(object_store_dist);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
