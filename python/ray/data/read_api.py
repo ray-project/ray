@@ -1,5 +1,6 @@
 import collections
 import logging
+import math
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -103,30 +104,40 @@ def from_items(
     parallelism: int = -1,
     output_arrow_format: bool = True,
 ) -> MaterializedDataset:
-    """Create a dataset from a list of local Python objects.
+    """Create a :class:`~ray.data.Dataset` from a list of local Python objects.
+
+    Use this method to create small datasets for testing and exploration.
 
     Examples:
-        >>> import ray
-        >>> ds = ray.data.from_items([1, 2, 3, 4, 5]) # doctest: +SKIP
-        >>> ds # doctest: +SKIP
-        MaterializedDataset(num_blocks=5, num_rows=5, schema={item: int64})
-        >>> ds.take_batch(2) # doctest: +SKIP
-        {"item": array([1, 2])}
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.from_items([1, 2, 3, 4, 5])
+
+            print(ds.schema())
+
+        .. testoutput::
+
+            Column  Type
+            ------  ----
+            item    int64
 
     Args:
         items: List of local Python objects.
         parallelism: The amount of parallelism to use for the dataset.
-            Parallelism may be limited by the number of items.
+            Parallelism might be limited by the number of items.
 
     Returns:
-        MaterializedDataset holding the items.
+        A :class:`~ray.data.Dataset` holding the items.
     """
     import builtins
 
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
-    detected_parallelism, _ = _autodetect_parallelism(
+    detected_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
         ray.util.get_current_placement_group(),
         DataContext.get_current(),
@@ -183,7 +194,7 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
         >>> import ray
         >>> ds = ray.data.range(10000) # doctest: +SKIP
         >>> ds # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=10000, schema={id: int64})
+        Dataset(num_blocks=..., num_rows=10000, schema={id: int64})
         >>> ds.map(lambda x: {"id": x["id"] * 2}).take(4) # doctest: +SKIP
         [{"id": 0}, {"id": 2}, {"id": 4}, {"id": 6}]
 
@@ -307,9 +318,12 @@ def read_datasource(
             force_local = True
 
     if force_local:
-        requested_parallelism, min_safe_parallelism, read_tasks = _get_read_tasks(
-            datasource, ctx, cur_pg, parallelism, local_uri, read_args
-        )
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            read_tasks,
+        ) = _get_read_tasks(datasource, ctx, cur_pg, parallelism, local_uri, read_args)
     else:
         # Prepare read in a remote task at same node.
         # NOTE: in Ray client mode, this is expected to be run on head node.
@@ -322,7 +336,12 @@ def read_datasource(
             _get_read_tasks, retry_exceptions=False, num_cpus=0
         ).options(scheduling_strategy=scheduling_strategy)
 
-        requested_parallelism, min_safe_parallelism, read_tasks = ray.get(
+        (
+            requested_parallelism,
+            min_safe_parallelism,
+            inmemory_size,
+            read_tasks,
+        ) = ray.get(
             get_read_tasks.remote(
                 datasource,
                 ctx,
@@ -333,28 +352,35 @@ def read_datasource(
             )
         )
 
-    if read_tasks and len(read_tasks) < min_safe_parallelism * 0.7:
-        perc = 1 + round((min_safe_parallelism - len(read_tasks)) / len(read_tasks), 1)
-        logger.warning(
-            f"{WARN_PREFIX} The blocks of this dataset are estimated to be {perc}x "
-            "larger than the target block size "
-            f"of {int(ctx.target_max_block_size / 1024 / 1024)} MiB. This may lead to "
-            "out-of-memory errors during processing. Consider reducing the size of "
-            "input files or using `.repartition(n)` to increase the number of "
-            "dataset blocks."
-        )
-    elif len(read_tasks) < requested_parallelism and (
-        len(read_tasks) < ray.available_resources().get("CPU", 1) // 2
-    ):
-        logger.warning(
-            f"{WARN_PREFIX} The number of blocks in this dataset "
-            f"({len(read_tasks)}) "
-            f"limits its parallelism to {len(read_tasks)} concurrent tasks. "
-            "This is much less than the number "
-            "of available CPU slots in the cluster. Use `.repartition(n)` to "
-            "increase the number of "
-            "dataset blocks."
-        )
+    # Compute the number of blocks the read will return. If the number of blocks is
+    # expected to be less than the requested parallelism, boost the number of blocks
+    # by adding an additional split into `k` pieces to each read task.
+    if read_tasks:
+        if inmemory_size:
+            expected_block_size = inmemory_size / len(read_tasks)
+            logger.debug(f"Expected block size {expected_block_size}")
+            size_based_splits = round(
+                max(1, expected_block_size / ctx.target_max_block_size)
+            )
+        else:
+            size_based_splits = 1
+        logger.debug(f"Size based split factor {size_based_splits}")
+        estimated_num_blocks = len(read_tasks) * size_based_splits
+        logger.debug(f"Blocks after size splits {estimated_num_blocks}")
+
+        # Add more output splitting for each read task if needed.
+        if estimated_num_blocks < requested_parallelism:
+            k = math.ceil(requested_parallelism / estimated_num_blocks)
+            logger.info(
+                f"To satisfy the requested parallelism of {requested_parallelism}, "
+                f"each read task output will be split into {k} smaller blocks."
+            )
+            for r in read_tasks:
+                r._set_additional_split_factor(k)
+            estimated_num_blocks = estimated_num_blocks * k
+        logger.debug("Estimated num output blocks {estimated_num_blocks}")
+    else:
+        estimated_num_blocks = 0
 
     read_stage_name = f"Read{datasource.get_name()}"
     available_cpu_slots = ray.available_resources().get("CPU", 1)
@@ -380,10 +406,11 @@ def read_datasource(
         ray_remote_args=ray_remote_args,
         owned_by_consumer=False,
     )
+    block_list._estimated_num_blocks = estimated_num_blocks
 
     # TODO(hchen): move _get_read_tasks and related code to the Read physical operator,
     # after removing LazyBlockList code path.
-    read_op = Read(datasource, read_tasks, ray_remote_args)
+    read_op = Read(datasource, read_tasks, estimated_num_blocks, ray_remote_args)
     logical_plan = LogicalPlan(read_op)
 
     return Dataset(
@@ -506,7 +533,7 @@ def read_parquet(
         >>> ray.data.read_parquet("example://iris.parquet",
         ...     schema=pa.schema(fields))
         Dataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=150,
            schema={
               sepal.length: double,
@@ -606,13 +633,13 @@ def read_images(
         >>> path = "s3://anonymous@air-example-data-2/movie-image-small-filesize-1GB"
         >>> ds = ray.data.read_images(path)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
+        Dataset(num_blocks=..., num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8)})
 
         If you need image file paths, set ``include_paths=True``.
 
         >>> ds = ray.data.read_images(path, include_paths=True)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
+        Dataset(num_blocks=..., num_rows=41979, schema={image: numpy.ndarray(ndim=3, dtype=uint8), path: string})
         >>> ds.take(1)[0]["path"]  # doctest: +SKIP
         'air-example-data-2/movie-image-small-filesize-1GB/0.jpg'
 
@@ -635,7 +662,7 @@ def read_images(
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=176, num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
+        Dataset(num_blocks=..., num_rows=94946, schema={image: TensorDtype(shape=(224, 224, 3), dtype=uint8), class: object})
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -1738,22 +1765,22 @@ def from_huggingface(
         >>> ray_ds = ray.data.from_huggingface(hf_dataset)
         >>> ray_ds
         {'train': MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=3257,
            schema={text: string, label: int64}
         ), 'test': MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=1421,
            schema={text: string, label: int64}
         ), 'validation': MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=374,
            schema={text: string, label: int64}
         )}
         >>> ray_ds = ray.data.from_huggingface(hf_dataset["train"])
         >>> ray_ds
         MaterializedDataset(
-           num_blocks=1,
+           num_blocks=...,
            num_rows=3257,
            schema={text: string, label: int64}
         )
@@ -1821,7 +1848,7 @@ def from_tf(
         >>> dataset, _ = tfds.load('cifar10', split=["train", "test"])  # doctest: +SKIP
         >>> ds = ray.data.from_tf(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
+        Dataset(num_blocks=..., num_rows=50000, schema={id: binary, image: numpy.ndarray(shape=(32, 32, 3), dtype=uint8), label: int64})
         >>> ds.take(1)  # doctest: +SKIP
         [{'id': b'train_16399', 'image': array([[[143,  96,  70],
         [141,  96,  72],
@@ -1875,7 +1902,7 @@ def from_torch(
         >>> dataset = datasets.MNIST("data", download=True)  # doctest: +SKIP
         >>> ds = ray.data.from_torch(dataset)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
-        Dataset(num_blocks=200, num_rows=60000, schema={item: object})
+        Dataset(num_blocks=..., num_rows=60000, schema={item: object})
         >>> ds.take(1)  # doctest: +SKIP
         {"item": (<PIL.Image.Image image mode=L size=28x28 at 0x...>, 5)}
 
@@ -1895,7 +1922,7 @@ def _get_read_tasks(
     parallelism: int,
     local_uri: bool,
     kwargs: dict,
-) -> Tuple[int, int, List[ReadTask]]:
+) -> Tuple[int, int, Optional[int], List[ReadTask]]:
     """Generates read tasks.
 
     Args:
@@ -1907,19 +1934,20 @@ def _get_read_tasks(
 
     Returns:
         Request parallelism from the datasource, the min safe parallelism to avoid
-        OOM, and the list of read tasks generated.
+        OOM, the estimated inmemory data size, and list of read tasks generated.
     """
     kwargs = _unwrap_arrow_serialization_workaround(kwargs)
     if local_uri:
         kwargs["local_uri"] = local_uri
     DataContext._set_current(ctx)
     reader = ds.create_reader(**kwargs)
-    requested_parallelism, min_safe_parallelism = _autodetect_parallelism(
+    requested_parallelism, min_safe_parallelism, mem_size = _autodetect_parallelism(
         parallelism, cur_pg, DataContext.get_current(), reader
     )
     return (
         requested_parallelism,
         min_safe_parallelism,
+        mem_size,
         reader.get_read_tasks(requested_parallelism),
     )
 

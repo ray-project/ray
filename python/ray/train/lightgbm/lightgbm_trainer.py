@@ -38,7 +38,7 @@ class LightGBMTrainer(GBDTTrainer):
         `LightGBM documentation <https://lightgbm.readthedocs.io/>`__.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import ray
 
@@ -54,6 +54,11 @@ class LightGBMTrainer(GBDTTrainer):
                 datasets={"train": train_dataset}
             )
             result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         datasets: Datasets to use for training and validation. Must include a

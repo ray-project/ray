@@ -272,7 +272,7 @@ You can install and use Ray C++ API as follows.
 M1 Mac (Apple Silicon) Support
 ------------------------------
 
-Ray has experimental support for machines running Apple Silicon (such as M1 macs).
+Ray supports machines running Apple Silicon (such as M1 macs).
 Multi-node clusters are untested. To get started with local Ray development:
 
 #. Install `miniforge <https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-MacOSX-arm64.sh>`_.
@@ -292,14 +292,6 @@ Multi-node clusters are untested. To get started with local Ray development:
 #. Install Ray as you normally would.
 
    * ``pip install ray``
-
-#. Ensure that the ``grpcio`` package is installed via forge and **not pypi**. Grpcio requires special compilation flags, which pypi does _not_ correctly build with. Miniforge provides a prebuilt version of grpcio for M1 macs.
-
-   * ``pip uninstall grpcio; conda install grpcio=1.43.0 -c conda-forge``
-
-.. note::
-
-  At this time, Apple Silicon ray wheels are being published for **releases only**. As support stabilizes, nightly wheels will be published in the future.
 
 .. _windows-support:
 
@@ -511,12 +503,12 @@ Docker images for Python 3.9.
 
     .. group-tab:: ray (Python 3.9)
 
-        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
     .. group-tab:: ray-ml (Python 3.9)
 
-        Ray version: nightly (`0d880e3 <https://github.com/ray-project/ray/commit/0d880e351d3c52bcb84207e397c531088c11ffda>`_)
+        Ray version: nightly (`cc983fc <https://github.com/ray-project/ray/commit/cc983fc3e64c1ba215e981a43dd0119c03c74ff1>`_)
 
         .. literalinclude:: ./pip_freeze_ray-ml-py39-cpu.txt

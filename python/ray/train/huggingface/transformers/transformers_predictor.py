@@ -34,7 +34,6 @@ except ImportError:
 
 TRANSFORMERS_IMPORT_ERROR: Optional[ImportError] = None
 try:
-    from transformers import PreTrainedModel, TFPreTrainedModel
     from transformers.pipelines import Pipeline
     from transformers.pipelines import pipeline as pipeline_factory
     from transformers.pipelines.table_question_answering import (
@@ -46,6 +45,8 @@ except ImportError as e:
 
 if TYPE_CHECKING:
     from ray.data.preprocessor import Preprocessor
+    from transformers.modeling_utils import PreTrainedModel
+    from transformers.modeling_tf_utils import TFPreTrainedModel
 
 logger = logging.getLogger(__name__)
 

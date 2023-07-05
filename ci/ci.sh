@@ -115,6 +115,56 @@ upload_wheels() {
   )
 }
 
+
+compile_pip_dependencies() {
+  # Compile boundaries
+
+  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
+    # Resolution currently does not work on aarch64 as some pinned packages
+    # are not available. Once they are reasonably upgraded we should be able
+    # to enable this here.p
+    echo "Skipping for aarch64"
+    return 0
+  fi
+
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
+  pip install pip-tools
+
+  # Required packages to lookup e.g. dragonfly-opt
+  HAS_TORCH=0
+  python -c "import torch" 2>/dev/null && HAS_TORCH=1
+  pip install --no-cache-dir numpy torch
+
+  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+    echo requirements_compiled already exists
+  else
+    pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
+      "${WORKSPACE_DIR}/python/requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+  fi
+
+  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
+  if [ "$HAS_TORCH" -eq 0 ]; then
+    pip uninstall -y torch
+  fi
+}
+
 test_core() {
   local args=(
     "//:*"
@@ -432,8 +482,6 @@ build_wheels_and_jars() {
         -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "encrypted_1c30b31fe1ee_key=${encrypted_1c30b31fe1ee_key-}"
-        -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
@@ -745,9 +793,12 @@ build() {
 }
 
 run_minimal_test() {
+  EXPECTED_PYTHON_VERSION=$1
   BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
   # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
   # bazel test cannot recognize the option.
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=EXPECTED_PYTHON_VERSION=$EXPECTED_PYTHON_VERSION ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_minimal_install
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
   # shellcheck disable=SC2086
@@ -789,7 +840,7 @@ test_minimal() {
   ./ci/env/install-minimal.sh "$1"
   echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py
+  python ./ci/env/check_minimal_install.py --expected-python-version "$1"
   run_minimal_test "$1"
 }
 

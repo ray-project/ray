@@ -243,7 +243,7 @@ def test_dynamic_generator_retry_exception(
 def test_dynamic_generator(
     ray_start_regular, use_actors, store_in_plasma, num_returns_type
 ):
-    if use_actors:
+    if not use_actors:
 
         @ray.remote(num_returns=num_returns_type)
         def dynamic_generator(num_returns, store_in_plasma):
