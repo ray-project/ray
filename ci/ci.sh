@@ -89,33 +89,6 @@ _need_wheels() {
 
 NEED_WHEELS="$(_need_wheels)"
 
-upload_wheels() {
-  local branch="" commit
-  commit="$(git rev-parse --verify HEAD)"
-  if [ -z "${branch}" ]; then branch="${GITHUB_BASE_REF-}"; fi
-  if [ -z "${branch}" ]; then branch="${GITHUB_REF#refs/heads/}"; fi
-  if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
-  if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
-  local local_dir="python/dist"
-  if [ -d "${local_dir}" ]; then
-    ls -a -l -- "${local_dir}"
-    local remote_dir
-    for remote_dir in latest "${branch}/${commit}"; do
-      if command -V aws; then
-        aws s3 sync --acl public-read --no-progress "${local_dir}" "s3://ray-wheels/${remote_dir}"
-      fi
-    done
-  fi
-  (
-    cd "${WORKSPACE_DIR}"/python
-    if ! python -s -c "import ray, sys; sys.exit(0 if ray._raylet.OPTIMIZED else 1)"; then
-      echo "ERROR: Uploading non-optimized wheels! Performance will suffer for users!"
-      false
-    fi
-  )
-}
-
-
 compile_pip_dependencies() {
   # Compile boundaries
 
