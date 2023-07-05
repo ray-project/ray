@@ -522,7 +522,7 @@ async def test_replica_not_blacklisted_after_unexpected_error(
     assert await s.choose_replica_for_query(fake_query) == r1
 
     # Set the replica to raise an unknown exception, it shouldn't be scheduled.
-    r1.set_queue_state_response(0, exception=RuntimeError())
+    r1.set_queue_state_response(0, exception=RuntimeError("oopsies"))
     task = loop.create_task(s.choose_replica_for_query(fake_query))
     done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0

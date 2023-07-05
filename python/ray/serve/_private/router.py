@@ -490,7 +490,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             if t.exception() is not None:
                 msg = (
                     "Failed to fetch queue length for "
-                    f"replica {t.replica_id}: {t.exception()}"
+                    f"replica {t.replica_id}: '{t.exception()}'"
                 )
                 # If we get a RayActorError, it means the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
