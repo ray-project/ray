@@ -1,9 +1,15 @@
-import datetime
+import dataclasses
+from datetime import datetime
 from base64 import b64decode
-from collections import defaultdict
-from typing import Dict, List, Tuple, Callable, Any, Optional
+from collections import Counter, defaultdict
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ray._private.utils import binary_to_hex
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.util import (
+    LoadMetricsSummary,
+    format_info_string,
+)
 from ray.autoscaler.v2.schema import (
     NODE_DEATH_CAUSE_RAYLET_DIED,
     ClusterConstraintDemand,
@@ -14,6 +20,7 @@ from ray.autoscaler.v2.schema import (
     PlacementGroupResourceDemand,
     RayTaskActorDemand,
     ResourceDemand,
+    ResourceDemandSummary,
     ResourceRequestByCount,
     ResourceUsage,
     Stats,
@@ -33,7 +40,7 @@ def binary_id_to_hex(binary_id: bytes) -> str:
     return binary_to_hex(binary_id)
 
 
-def count_by(data: Any, keys: List[str])  -> Dict[List[str], int]:
+def count_by(data: Any, key: str) -> Dict[str, int]:
     """
     Count the number of items by the given keys.
 
@@ -46,96 +53,117 @@ def count_by(data: Any, keys: List[str])  -> Dict[List[str], int]:
     """
     counts = defaultdict(int)
     for item in data:
-        key = tuple(getattr(item, key) for key in keys)
-        counts[key] += 1
+        key_name = getattr(item, key)
+        counts[key_name] += 1
     return counts
 
 
 class ClusterStatusFormatter:
 
-    HEADER = """
-======== Autoscaler status : {time} ========\n
-"""
-
-    # Basic autoscaler info.
-    VERBOSE_BASIC = 0
-
-    # Include per node info.
-    VERBOSE_MORE = 1
-
-    def __init__(self, time: datetime):
-        self._time = time
-
-    def _header(self) -> str:
-        return self.HEADER.format(time=self._time)
-
-    def _separator(self) -> str:
-        return "-" * len(self.header) + "\n"
-
-    def format(self, data: ClusterStatus, verbose_lvl: int) -> str:
-        r = ""
-        r += self._header(time=datetime.now())
-        r += self._sepratator(len(self.header))
-
-        r += self._format_stats(data, verbose_lvl)
-
-        r += self._format_nodes(data, verbose_lvl)
-
-        r += self._format_usage(data, verbose_lvl)
-
-        r += self._format_demand(data, verbose_lvl)
-
-        if verbose_lvl >= self.VERBOSE_MORE:
-            r += self._format_node_usage(data, verbose_lvl)
-
-        return r
-    
-    def _format_stats(self, data: ClusterStatus, verbose_lvl) -> str:
-        r = ""
-        stats = data.stats
-        if verbose_lvl < self.VERBOSE_MORE:
-            return r
-
-        if stats.gcs_request_time_s is not None:
-            r += f"GCS request time: {stats.gcs_request_time_s:.3f}s\n"
-
-        if stats.none_terminated_node_request_time_s is not None:
-            r += (
-                "Node Provider non_terminated_nodes time: "
-                f"{stats.none_terminated_node_request_time_s:.3f}s\n"
-            )
-
-        if stats.autoscaler_iteration_time_s is not None:
-            r += (
-                f"Autoscaler iteration time: {stats.autoscaler_iteration_time_s:.3f}s\n"
-            )
-
-        return r
-
     @classmethod
-    def _format_nodes(self, data: ClusterStatus, verbose_lvl) -> str:
-        r = "Node status\n"
-        r += self._separator() 
+    def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
+        # TODO(rickyx): We are parsing this to the legacy format. We should
+        # probably change the legacy format to the new format, i.e. we could
+        # directly format the data (ClusterStatus) into a string.
+        lm_summary = cls._parse_lm_summary(data)
+        print(lm_summary)
 
-        r += "Healthy:\n"
-        assert len(data.healthy_nodes) > 0
-        for node in data.healthy_nodes:
-            node_type_count = count_by(node, ["ray_node_type_name"])
-            for node_type, count in node_type_count.items():
-                r += f" {count} {node_type}\n"
+        autoscaler_summary = cls._parse_autoscaler_summary(data)
+        print(autoscaler_summary)
 
-        r += "Pending nodes:\n"
-        if len(data.pending_nodes) == 0:
-            r += " (no pending nodes)\n"
-        else:
-            for node in data.pending_nodes:
-                r += f"  {node}\n"
-
-        r += "Failed nodes:\n"
+        return format_info_string(
+            lm_summary,
+            autoscaler_summary,
+            time=datetime.now(), # TODO: we don't have request time anymore.
+            gcs_request_time=data.stats.gcs_request_time_s,
+            non_terminated_nodes_time=data.stats.none_terminated_node_request_time_s,
+            autoscaler_update_time=data.stats.autoscaler_iteration_time_s,
+            verbose=verbose,
+        )
+    
+    @classmethod
+    def _parse_autoscaler_summary(cls, data: ClusterStatus) -> AutoscalerSummary:
+        active_nodes = count_by(data.healthy_nodes, "ray_node_type_name")
+        pending_launches = count_by(data.pending_launches, "ray_node_type_name") 
+        pending_nodes = [] 
+        for node in data.pending_nodes:
+            pending_nodes.append((node.ip_address, node.ray_node_type_name, node.node_status))
+        
+        failed_nodes = []
         for node in data.failed_nodes:
-            r += f"  {node}\n"
+            failed_nodes.append((node.ip_address, node.ray_node_type_name))
 
-        return r
+        # From IP to node type name.
+        node_type_mapping = {}
+        for node in data.healthy_nodes:
+            node_type_mapping[node.ip_address] = node.ray_node_type_name
+
+        return AutoscalerSummary(
+            active_nodes=active_nodes,
+            pending_launches=pending_launches,
+            pending_nodes=pending_nodes,
+            failed_nodes=failed_nodes,
+            pending_resources={}, # NOTE: This is not used in ray status.
+            node_type_mapping=node_type_mapping,
+            node_availability_summary=None, # NOTE: this is not surfaced by product yet. We should change it. 
+        )
+
+
+    @classmethod 
+    def _parse_lm_summary(cls, data: ClusterStatus) -> LoadMetricsSummary:
+        usage = {
+            u.resource_name: (u.used, u.total) for u in data.cluster_resource_usage
+        }
+        resource_demands = []
+        for demand in data.resource_demands.ray_task_actor_demand:
+            for bundle_by_count in demand.bundles_by_count:
+                resource_demands.append((bundle_by_count.bundle, bundle_by_count.count))
+
+        pg_demand = []
+        pg_demand_strs = []
+        pg_demand_str_to_demand = {}
+        for pg_demand in data.resource_demands.placement_group_demand:
+            s = str(pg_demand)
+            pg_demand_strs += [s]
+            pg_demand_str_to_demand[s] = pg_demand
+
+        pg_freqs = Counter(pg_demand_strs)
+        pg_demand = [
+            (
+                {
+                    "strategy": pg_demand_str_to_demand[pg_str].strategy,
+                    "bundles": [
+                        (bundle_count.bundle, bundle_count.count)
+                        for bundle_count in pg_demand_str_to_demand[pg_str].bundles_by_count
+                    ],
+                },
+                freq,
+            )
+            for pg_str, freq in pg_freqs.items()
+        ]
+
+        request_demand = [
+            (bc.bundle, bc.count)
+            for constraint_demand in data.resource_demands.cluster_constraint_demand
+            for bc in constraint_demand.bundles_by_count
+        ]
+
+        usage_by_node = {}
+        for node in data.healthy_nodes:
+            # TODO: It was node ip, but should we make it node id? 
+            usage_by_node[node.ip_address] = {
+                u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
+            }
+
+
+        return LoadMetricsSummary(
+            usage=usage,
+            resource_demand=resource_demands,
+            pg_demand=pg_demand,
+            request_demand=request_demand,
+            node_types=None, # NOTE: This is not needed in ray status.
+            usage_by_node=usage_by_node,
+        )
 
 class ClusterStatusParser:
     @classmethod
@@ -158,11 +186,13 @@ class ClusterStatusParser:
 
         return ClusterStatus(
             healthy_nodes=healthy_nodes,
+            pending_launches=pending_launches,
             pending_nodes=pending_nodes,
             failed_nodes=failed_nodes,
             cluster_resource_usage=cluster_resource_usage,
             resource_demands=resource_demands,
             stats=stats,
+            node_availability=None,
         )
 
     @classmethod
@@ -178,46 +208,53 @@ class ClusterStatusParser:
         Returns:
             resource_demands: the resource demands
         """
-        resource_demands = []
+        task_actor_demand = []
+        pg_demand = []
+        constraint_demand = []
 
         for request_count in state.pending_resource_requests:
             # TODO(rickyx): constraints?
             demand = RayTaskActorDemand(
-                bundles=[
+                bundles_by_count=[
                     ResourceRequestByCount(
                         request_count.request.resources_bundle, request_count.count
                     )
                 ],
             )
-            resource_demands.append(demand)
+            task_actor_demand.append(demand)
 
         for gang_request in state.pending_gang_resource_requests:
             demand = PlacementGroupResourceDemand(
-                bundles=cls._aggregate_resource_requests_by_shape(
+                bundles_by_count=cls._aggregate_resource_requests_by_shape(
                     gang_request.requests
                 ),
-                strategy=gang_request.strategy,
+                strategy=gang_request.details,
             )
-            resource_demands.append(demand)
+            pg_demand.append(demand)
+
+        print(pg_demand)
 
         for constraint_request in state.cluster_resource_constraints:
             demand = ClusterConstraintDemand(
-                bundles=cls._aggregate_resource_requests_by_shape(
+                bundles_by_count=cls._aggregate_resource_requests_by_shape(
                     constraint_request.min_bundles
                 ),
             )
-            resource_demands.append(demand)
+            constraint_demand.append(demand)
 
-        return resource_demands
+        return ResourceDemandSummary(
+            ray_task_actor_demand=task_actor_demand,
+            placement_group_demand=pg_demand,
+            cluster_constraint_demand=constraint_demand,
+        )
 
     @classmethod
     def _aggregate_resource_requests_by_shape(
+        cls, 
         requests: List[ResourceRequest],
     ) -> List[ResourceRequestByCount]:
         """
         Aggregate resource requests by shape.
-
-        TODO:
 
         Args:
             requests: the list of resource requests
@@ -228,10 +265,11 @@ class ClusterStatusParser:
 
         resource_requests_by_count = defaultdict(int)
         for request in requests:
-            resource_requests_by_count[request.resources_bundle] += 1
+            bundle = frozenset(request.resources_bundle.items())
+            resource_requests_by_count[bundle] += 1
 
         return [
-            ResourceRequestByCount(bundle, count)
+            ResourceRequestByCount(dict(bundle), count)
             for bundle, count in resource_requests_by_count.items()
         ]
 
@@ -239,17 +277,25 @@ class ClusterStatusParser:
     def _parse_node_resource_usage(
         cls, node_state: NodeState, usage: Dict[str, ResourceUsage]
     ):
+        # Tuple of {resource_name : (used, total)}
+        d = defaultdict(lambda: [0.0, 0.0])
         for resource_name, resource_total in node_state.total_resources.items():
-            usage[resource_name].resource_name = resource_name
-            usage[resource_name].total += resource_total
+            d[resource_name][1] += resource_total
             # Will be subtracted from available later.
-            usage[resource_name].used += resource_total
+            d[resource_name][0] += resource_total
 
         for (
             resource_name,
             resource_available,
         ) in node_state.available_resources.items():
-            usage[resource_name].used -= resource_available
+            d[resource_name][0] -= resource_available
+
+        for k, (used, total) in d.items():
+            usage[k] = ResourceUsage(
+                resource_name=k,
+                used=used,
+                total=total,
+            )
 
     @classmethod
     def _parse_cluster_resource_usage(
@@ -294,21 +340,12 @@ class ClusterStatusParser:
             # Basic node info.
             node_id = binary_id_to_hex(node_state.node_id)
             if len(node_state.ray_node_type_name) == 0:
-                # We don't have a node type name, but this is needed for showing 
+                # We don't have a node type name, but this is needed for showing
                 # healthy nodes. This happens when we don't use cluster launcher.
                 # but start ray manually. We will use node id as node type name.
                 ray_node_type_name = f"node_{node_id}"
             else:
                 ray_node_type_name = node_state.ray_node_type_name
-
-            node_info = NodeInfo(
-                instance_type_name=node_state.instance_type_name,
-                node_status=NodeStatus.Name(node_state.status),
-                node_id=binary_id_to_hex(node_state.node_id),
-                ip_address=node_state.node_ip_address,
-                ray_node_type_name=ray_node_type_name,
-                instance_id=node_state.instance_id,
-            )
 
             # Parse the resource usage
             usage = defaultdict(ResourceUsage)
@@ -319,10 +356,24 @@ class ClusterStatusParser:
                 if node_state.status == NodeStatus.IDLE
                 else 0,
             )
-            node_info.resource_usage = node_resource_usage
+
+            failure_detail = (
+                NODE_DEATH_CAUSE_RAYLET_DIED
+                if node_state.status == NodeStatus.DEAD
+                else None
+            )
+            node_info = NodeInfo(
+                instance_type_name=node_state.instance_type_name,
+                node_status=NodeStatus.Name(node_state.status),
+                node_id=binary_id_to_hex(node_state.node_id),
+                ip_address=node_state.node_ip_address,
+                ray_node_type_name=ray_node_type_name,
+                instance_id=node_state.instance_id,
+                resource_usage=node_resource_usage,
+                failure_detail=failure_detail,
+            )
 
             if node_state.status == NodeStatus.DEAD:
-                node_info.failure_detail = NODE_DEATH_CAUSE_RAYLET_DIED
                 dead_nodes.append(node_info)
             else:
                 healthy_nodes.append(node_info)
@@ -330,9 +381,11 @@ class ClusterStatusParser:
         return healthy_nodes, dead_nodes
 
     @classmethod
-    def _parse_pending(cls, state: AutoscalingState) -> Tuple[List[PendingLaunchRequest], List[NodeInfo]]:
+    def _parse_pending(
+        cls, state: AutoscalingState
+    ) -> Tuple[List[PendingLaunchRequest], List[NodeInfo]]:
         """
-        Parse the pending requests from the autoscaling state.
+        Parse the pending requests/nodes from the autoscaling state.
 
         Args:
             state: the autoscaling state
@@ -343,12 +396,23 @@ class ClusterStatusParser:
         pending_nodes = []
         pending_launches = []
         for pending_request in state.pending_instance_requests:
-            pending_node = PendingLaunchRequest(
+            pending_launches = PendingLaunchRequest(
                 instance_type_name=pending_request.instance_type_name,
                 node_type_name=pending_request.ray_node_type_name,
-                count=pending_request.target_count,
+                count=pending_request.count,
             )
 
-            pending_nodes += [pending_node] * pending_request.target_count
+            pending_launches.append(pending_launches)
 
-        return pending_nodes
+        for pending_node in state.pending_instances:
+            pending_nodes.append(
+                NodeInfo(
+                    instance_type_name=pending_node.instance_type_name,
+                    ray_node_type_name=pending_node.ray_node_type_name,
+                    node_status=pending_node.details,
+                    instance_id=pending_node.instance_id,
+                    ip_address=pending_node.ip_address,
+                )
+            )
+
+        return pending_launches, pending_nodes

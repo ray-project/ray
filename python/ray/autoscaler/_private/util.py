@@ -18,6 +18,9 @@ from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
 from ray.autoscaler._private.local.config import prepare_local
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
 from ray.autoscaler._private.providers import _get_default_config
 from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
@@ -815,10 +818,6 @@ def format_info_string(
                 f"{attempted_time.minute:02d}:"
                 f"{attempted_time.second:02d}"
             )
-            line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
-            if verbose:
-                line += f" - {description}"
-            failure_lines.append(line)
 
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
     failure_report = "Recent failures:\n"

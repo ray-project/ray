@@ -8,7 +8,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class ResourceUsage:
     # Resource name.
     resource_name: str = ""
@@ -18,7 +18,7 @@ class ResourceUsage:
     used: float = 0.0
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class NodeUsage:
     # The node resource usage.
     usage: List[ResourceUsage]
@@ -26,28 +26,28 @@ class NodeUsage:
     idle_time_ms: int
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class NodeInfo:
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # The detailed state of the node/request.
     # E.g. idle, running, setting-up, etc.
     node_status: str
-    # ray node id.
-    node_id: str
     # ray node type name.
     ray_node_type_name: str
     # Cloud instance id.
     instance_id: str
     # Ip address of the node when alive.
     ip_address: str
+    # ray node id. None if still pending.
+    node_id: Optional[str] = None
     # Resource usage breakdown if node alive.
     resource_usage: Optional[NodeUsage] = None
     # Failure detail if the node failed.
     failure_detail: Optional[str] = None
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class PendingLaunchRequest:
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
@@ -57,37 +57,59 @@ class PendingLaunchRequest:
     count: int
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class ResourceRequestByCount:
     # Bundles in the demand.
     bundle: Dict[str, float]
     # Number of bundles with the same shape.
     count: int
 
+    def __str__(self) -> str:
+        return f"[{self.count} {self.bundle}]"
 
-@dataclass
+
+@dataclass(frozen=True, eq=True)
 class ResourceDemand:
     # The bundles in the demand with shape and count info.
-    bundles: List[ResourceRequestByCount]
+    bundles_by_count: List[ResourceRequestByCount]
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class PlacementGroupResourceDemand(ResourceDemand):
     # Placement group strategy.
     strategy: str
 
 
-@dataclass
+    def __str__(self) -> str:
+        s = ""
+        s += f"{self.strategy}:  "
+        for bundle in self.bundles_by_count[:-1]:
+            s += f"{bundle},"
+        s += f"{self.bundles_by_count[-1]}"
+        return s
+
+
+@dataclass(frozen=True, eq=True)
 class RayTaskActorDemand(ResourceDemand):
     pass
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class ClusterConstraintDemand(ResourceDemand):
     pass
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
+class ResourceDemandSummary:
+    # Placement group demand.
+    placement_group_demand: List[PlacementGroupResourceDemand]
+    # Ray task actor demand.
+    ray_task_actor_demand: List[RayTaskActorDemand]
+    # Cluster constraint demand.
+    cluster_constraint_demand: List[ClusterConstraintDemand]
+
+
+@dataclass(frozen=True, eq=True)
 class Stats:
     # How long it took to get the GCS request.
     gcs_request_time_s: Optional[float] = None
@@ -97,7 +119,7 @@ class Stats:
     autoscaler_iteration_time_s: Optional[float] = None
 
 
-@dataclass
+@dataclass(frozen=True, eq=True)
 class ClusterStatus:
     # Healthy nodes information (alive)
     healthy_nodes: List[NodeInfo]
@@ -110,7 +132,7 @@ class ClusterStatus:
     # Resource usage summary for entire cluster.
     cluster_resource_usage: List[ResourceUsage]
     # Demand summary.
-    resource_demands: List[ResourceDemand]
+    resource_demands: ResourceDemandSummary
     # Query metics
     stats: Stats
     # TODO(rickyx): Not sure if this is actually used.

@@ -12,6 +12,7 @@ import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import get_cluster_resource_state
+from ray.autoscaler.v2.util import ClusterStatusFormatter
 from ray.core.generated.experimental import autoscaler_pb2_grpc
 from ray.core.generated.experimental.autoscaler_pb2 import (
     ClusterResourceState,
@@ -102,9 +103,25 @@ def test_request_cluster_resources_basic(shutdown_only):
 
 
 def test_get_cluster_status(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=2)
 
-    print(get_cluster_status())
+    # Request another overrides the previous request
+    request_cluster_resources([{"CPU": 1}] * 100 + [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+
+    # Create a pg usage
+    pg = ray.util.placement_group([{"CPU": 1}] * 1, strategy="STRICT_SPREAD")
+    ray.get(pg.ready())
+
+    pg2 = ray.util.placement_group([{"CPU": 1}] * 10 + [{"GPU": 1}], strategy="STRICT_SPREAD")
+
+    try:
+        ray.get(pg2.ready(), timeout=3)
+    except ray.exceptions.GetTimeoutError:
+        pass
+
+    res = get_cluster_status()
+
+    print(ClusterStatusFormatter.format(res, verbose=True))
     assert False
 
 
@@ -193,7 +210,6 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
         return True
 
     wait_for_condition(verify_cluster_no_node)
->>>>>>> fa385e7fa5c9f71856d7859a0a6ac121ba36a611
 
 
 if __name__ == "__main__":

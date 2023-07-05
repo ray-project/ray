@@ -1,3 +1,4 @@
+import dataclasses
 import time
 from typing import List, Optional
 
@@ -53,11 +54,9 @@ def get_cluster_status(
 
     from rich import print
 
-    print(reply)
-
     cluster_status = ClusterStatusParser.from_get_cluster_status_reply(
         reply, Stats(gcs_request_time_s=end - start)
     )
-    print(cluster_status)
+    # print(dataclasses.asdict(cluster_status))
 
     return cluster_status
