@@ -20,7 +20,7 @@ sudo apt-get update \
 # MuJoCo Installation.
 export MUJOCO_GL=osmesa
 wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-mkdir ~/.mujoco
+mkdir -p ~/.mujoco
 mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
 cd ~/.mujoco || exit
 tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
