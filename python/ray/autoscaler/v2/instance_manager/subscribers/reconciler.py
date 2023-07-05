@@ -24,18 +24,22 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
         self,
         instance_storage: InstanceStorage,
         node_provider: NodeProvider,
-        reconciler_interval_s: int = 120,
+        reconcile_interval_s: int = 120,
     ) -> None:
         self._instance_storage = instance_storage
         self._node_provider = node_provider
         self._failure_handling_executor = ThreadPoolExecutor(max_workers=1)
-        self._reconcile_timer = threading.Timer(
-            reconciler_interval_s, self._reconcile_with_node_provider
-        )
-        self._reconcile_timer.start()
+        self._reconcile_executor = ThreadPoolExecutor(max_workers=1)
+        self._reconcile_interval_s = reconcile_interval_s
+        self._reconcile_timer_lock = threading.Lock()
+        with self._reconcile_timer_lock:
+            self._reconsile_timer = threading.Timer(
+                self._reconcile_interval_s, self._periodic_reconcile_helper
+            )
 
     def shutdown(self):
-        self._reconcile_timer.cancel()
+        with self._reconcile_timer_lock:
+            self._reconsile_timer.cancel()
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         instance_ids = [
@@ -71,6 +75,16 @@ class InstanceReconciler(InstanceUpdatedSuscriber):
             )
             if not result:
                 logger.warning("Failed to update instance status to STOPPING")
+
+    def _periodic_reconcile_helper(self) -> None:
+        try:
+            self._reconcile_with_node_provider()
+        except Exception:
+            logger.exception("Failed to reconcile with node provider")
+        with self._reconcile_timer_lock:
+            self._reconsile_timer = threading.Timer(
+                self._reconcile_interval_s, self._periodic_reconcile_helper
+            )
 
     def _reconcile_with_node_provider(self) -> None:
         # reconcile storage state with cloud state.
