@@ -457,7 +457,7 @@ class Syncer(abc.ABC):
             self.last_sync_down_time = now
             return result
 
-    def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
+    def wait_or_retry(self, max_retries: int = 2, backoff_s: int = 5):
         assert max_retries > 0
         last_error_traceback = None
         for i in range(max_retries + 1):
