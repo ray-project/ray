@@ -1556,7 +1556,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   std::string main_thread_task_name_ GUARDED_BY(mutex_);
 
-  /// Stats that used for waiting for initialization.
+  /// States that used for initialization.
   absl::Mutex initialize_mutex_;
   absl::CondVar intialize_cv_;
   bool initialized_ GUARDED_BY(initialize_mutex_) = false;
