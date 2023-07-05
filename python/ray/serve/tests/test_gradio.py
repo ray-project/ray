@@ -70,15 +70,16 @@ def test_gradio_ingress_scaling(serve_start_shutdown):
     )
     serve.run(app)
 
-    pids = []
-    for _ in range(3):
-        response = requests.post(
+    @ray.remote
+    def get_pid_from_request():
+        r = requests.post(
             "http://127.0.0.1:8000/api/predict/", json={"data": ["input"]}
         )
-        assert response.status_code == 200
-        pids.append(response.json()["data"][0])
+        r.raise_for_status()
+        return r.json()["data"][0]
 
-    assert len(set(pids)) == 2
+    # Verify that the requests are handled by two separate replicas.
+    assert len(set(ray.get([get_pid_from_request.remote() for _ in range(10)]))) == 2
 
 
 if __name__ == "__main__":
