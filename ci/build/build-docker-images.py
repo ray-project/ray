@@ -210,7 +210,7 @@ def _build_docker_image(
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
-    assert(py_version[3:] == "py3")
+    assert(py_version[:3] == "py3")
     python_minor_version = py_version[3:]
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
