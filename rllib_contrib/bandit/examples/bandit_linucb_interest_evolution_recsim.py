@@ -26,18 +26,20 @@ if __name__ == "__main__":
         .framework("torch")
         .environment(
             "ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv",  # noqa
-            env_config={"config": {
-                # Each step, sample `num_candidates` documents using the env-internal
-                # document sampler model (a logic that creates n documents to select
-                # the slate from).
-                "resample_documents": True,
-                "num_candidates": 100,
-                # How many documents to recommend (out of `num_candidates`) each
-                # timestep
-                "slate_size": 2,
-                "convert_to_discrete_action_space": True,
-                "wrap_for_bandits": True,
-            }}
+            env_config={
+                "config": {
+                    # Each step, sample `num_candidates` documents using the env-internal
+                    # document sampler model (a logic that creates n documents to select
+                    # the slate from).
+                    "resample_documents": True,
+                    "num_candidates": 100,
+                    # How many documents to recommend (out of `num_candidates`) each
+                    # timestep
+                    "slate_size": 2,
+                    "convert_to_discrete_action_space": True,
+                    "wrap_for_bandits": True,
+                }
+            },
         )
         .reporting(metrics_num_episodes_for_smoothing=500)
         .debugging(seed=0)
