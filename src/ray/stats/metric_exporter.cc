@@ -201,6 +201,7 @@ void OpenCensusProtoExporter::ExportViewData(
       break;
     }
   }
+  std::this_thread::sleep_for(std::chrono::seconds(5));
 
   client_->ReportOCMetrics(
       request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
