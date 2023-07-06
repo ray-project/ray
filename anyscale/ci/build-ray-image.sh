@@ -20,7 +20,18 @@ else
     exit 1
 fi
 
+if [[ "${PUSH_COMMIT_TAGS:-}" == "" ]]; then
+    if [[ "${BUILDKITE_BRANCH:-}" == "master" ]]; then
+        PUSH_COMMIT_TAGS="true"
+    else
+        PUSH_COMMIT_TAGS="false"
+    fi
+fi
+
 mkdir -p .whl
+
+FULL_COMMIT="$(git rev-parse HEAD)"
+SHORT_COMMIT="${FULL_COMMIT:0:6}"  # Use 6 chars to be consistent with Ray upstream
 
 echo "--- Fetch wheel and base image"
 
@@ -33,6 +44,7 @@ docker pull "${BASE_IMAGE}"
 docker tag "${BASE_IMAGE}" "rayproject/ray-deps:nightly-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
 
 DEST_IMAGE="${RUNTIME_REPO}:${IMAGE_PREFIX}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
+
 echo "--- Build ${DEST_IMAGE}"
 
 tar --mtime="UTC 2020-01-01" -c -f - \
@@ -45,10 +57,11 @@ tar --mtime="UTC 2020-01-01" -c -f - \
 
 docker push "${DEST_IMAGE}"
 
-buildkite-agent annotate --style=info \
-    --context="${PYTHON_VERSION_CODE}-images" \
-    --append "Image built: ${DEST_IMAGE}<br/>"
-
+if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
+    DEST_COMMIT_IMAGE="${RUNTIME_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
+    docker tag "${DEST_IMAGE}" "${DEST_COMMIT_IMAGE}"
+    docker push "${DEST_COMMIT_IMAGE}"
+fi
 
 DEST_ML_IMAGE="${RUNTIME_ML_REPO}:${IMAGE_PREFIX}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
 echo "--- Build ${DEST_ML_IMAGE}"
@@ -73,6 +86,24 @@ docker tag "${DEST_IMAGE}" "rayproject/ray:nightly-${PYTHON_VERSION_CODE}-${IMAG
 
 docker push "${DEST_ML_IMAGE}"
 
+if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
+    DEST_COMMIT_ML_IMAGE="${RUNTIME_ML_REPO}:${SHORT_COMMIT}-${PYTHON_VERSION_CODE}-${IMAGE_TYPE}"
+    docker tag "${DEST_ML_IMAGE}" "${DEST_COMMIT_ML_IMAGE}"
+    docker push "${DEST_COMMIT_ML_IMAGE}"
+fi
+
 buildkite-agent annotate --style=info \
     --context="${PYTHON_VERSION_CODE}-images" \
-    --append "ML image built: ${DEST_ML_IMAGE}<br/>"
+    --append "Image: ${DEST_IMAGE}<br/>"
+buildkite-agent annotate --style=info \
+    --context="${PYTHON_VERSION_CODE}-images" \
+    --append "ML image: ${DEST_ML_IMAGE}<br/>"
+
+if [[ "${PUSH_COMMIT_TAGS}" == "true" ]]; then
+    buildkite-agent annotate --style=info \
+        --context="${PYTHON_VERSION_CODE}-images" \
+        --append "Image (commit tagged): ${DEST_COMMIT_IMAGE}<br/>"
+    buildkite-agent annotate --style=info \
+        --context="${PYTHON_VERSION_CODE}-images" \
+        --append "ML image (commit tagged): ${DEST_COMMIT_ML_IMAGE}<br/>"
+fi
