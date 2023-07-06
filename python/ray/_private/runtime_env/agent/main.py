@@ -189,5 +189,9 @@ if __name__ == "__main__":
     )
     app.router.add_post("/get_runtime_envs_info", get_runtime_envs_info)
 
-    web.run_app(app, host=args.node_ip_address,
-                port=args.runtime_env_agent_port, loop=get_or_create_event_loop())
+    web.run_app(
+        app,
+        host=args.node_ip_address,
+        port=args.runtime_env_agent_port,
+        loop=get_or_create_event_loop(),
+    )
