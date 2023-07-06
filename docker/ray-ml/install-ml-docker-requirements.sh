@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -xe
+
 # shellcheck disable=SC2139
 alias pip="$HOME/anaconda3/bin/pip"
 
@@ -44,4 +46,4 @@ pip --no-cache-dir install -U \
 
 sudo apt-get clean
 
-sudo rm requirements*.txt
+sudo rm ./*requirements.txt

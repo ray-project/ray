@@ -17,7 +17,7 @@ COPY train-test-requirements.txt ./
 
 COPY install-ml-docker-requirements.sh ./
 
-RUN sudo chmod +x install-ml-docker-requirements.sh && ./install-ml-docker-requirements.sh
+RUN sudo chmod +x install-ml-docker-requirements.sh && bash --login -i ./install-ml-docker-requirements.sh
 
 # Export installed packages
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt
