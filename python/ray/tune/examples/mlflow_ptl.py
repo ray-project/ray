@@ -4,14 +4,13 @@ import os
 import tempfile
 
 import pytorch_lightning as pl
-from pl_bolts.datamodules import MNISTDataModule
 
 import mlflow
 
 from ray import air, tune
 from ray.air.integrations.mlflow import setup_mlflow
 from ray.tune.integration.pytorch_lightning import TuneReportCallback
-from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier
+from ray.tune.examples.mnist_ptl_mini import LightningMNISTClassifier, MNISTDataModule
 
 
 def train_mnist_tune(config, data_dir=None, num_epochs=10, num_gpus=0):
