@@ -276,6 +276,10 @@ class NodeInfoGcsServiceHandler {
  public:
   virtual ~NodeInfoGcsServiceHandler() = default;
 
+  virtual void HandleGetClusterId(rpc::GetClusterIdRequest request,
+                                  rpc::GetClusterIdReply *reply,
+                                  rpc::SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleRegisterNode(RegisterNodeRequest request,
                                   RegisterNodeReply *reply,
                                   SendReplyCallback send_reply_callback) = 0;
@@ -314,6 +318,7 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
+    NODE_INFO_SERVICE_RPC_HANDLER(GetClusterId);
     NODE_INFO_SERVICE_RPC_HANDLER(RegisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
@@ -447,6 +452,10 @@ class AutoscalerStateServiceHandler {
       RequestClusterResourceConstraintRequest request,
       RequestClusterResourceConstraintReply *reply,
       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetClusterStatus(GetClusterStatusRequest request,
+                                      GetClusterStatusReply *reply,
+                                      SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `AutoscalerStateService`.
@@ -468,6 +477,7 @@ class AutoscalerStateGrpcService : public GrpcService {
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterResourceState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(ReportAutoscalingState);
     AUTOSCALER_STATE_SERVICE_RPC_HANDLER(RequestClusterResourceConstraint);
+    AUTOSCALER_STATE_SERVICE_RPC_HANDLER(GetClusterStatus);
   }
 
  private:
