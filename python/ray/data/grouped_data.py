@@ -109,16 +109,20 @@ class PushBasedGroupbyOp(_GroupbyOp, PushBasedShufflePlan):
 
 @PublicAPI
 class GroupedData:
-    """Represents a grouped dataset created by calling ``Dataset.groupby()``.
+    """Represent a dataset created by calling :meth:`ray.data.Dataset.groupby()`.
 
-    The actual groupby is deferred until an aggregation is applied.
+    .. note::
+        The actual execution is deferred until an aggregation is applied.
+        Examples of aggregation are :meth`.count`, :meth`.sum`, :meth`.min`,
+        :meth`.max`, :meth`.mean`, :meth`.std`, and `:meth`.map_groups`.
     """
 
     def __init__(self, dataset: Dataset, key: str):
         """Construct a dataset grouped by key (internal API).
 
-        The constructor is not part of the GroupedData API.
-        Use the ``Dataset.groupby()`` method to construct one.
+        .. note::
+            The constructor is not part of the ``GroupedData`` API.
+            Use the :meth:`ray.data.Dataset.groupby()` method to construct one.
         """
         self._dataset = dataset
         self._key = key
@@ -129,14 +133,14 @@ class GroupedData:
         )
 
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
-        """Implements an accumulator-based aggregation.
+        """Implement an accumulator-based aggregation.
 
         Args:
-            aggs: Aggregations to do.
+            aggs: Aggregation functions to do.
 
         Returns:
-            The output is an dataset of ``n + 1`` columns where the first column
-            is the groupby key and the second through ``n + 1`` columns are the
+            The output is an :class:`Dataset` of ``n + 1`` columns where the first
+            column is the groupby key and the second through ``n + 1`` columns are the
             results of the aggregations.
             If groupby key is ``None`` then the key part of return is omitted.
         """
@@ -235,44 +239,45 @@ class GroupedData:
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
 
-        While map_groups() is very flexible, note that it comes with downsides:
-            * It may be slower than using more specific methods such as min(), max().
+        While ``.map_groups()`` is very flexible, note that it comes with downsides:
+            * It may be slower than using more specific methods such as ``.min()``,
+            ``.max()``.
             * It requires that each group fits in memory on a single node.
 
-        In general, prefer to use aggregate() instead of map_groups().
+        In general, prefer to use ``.aggregate()`` instead of ``.map_groups()``.
 
         Examples:
-            >>> # Return a single record per group (list of multiple records in,
-            >>> # list of a single record out).
-            >>> import ray
-            >>> import pandas as pd
-            >>> import numpy as np
-            >>> # Get first value per group.
-            >>> ds = ray.data.from_items([ # doctest: +SKIP
-            ...     {"group": 1, "value": 1},
-            ...     {"group": 1, "value": 2},
-            ...     {"group": 2, "value": 3},
-            ...     {"group": 2, "value": 4}])
-            >>> ds.groupby("group").map_groups( # doctest: +SKIP
-            ...     lambda g: {"result": np.array([g["value"][0]])})
+            .. testcode::
+                import ray
+                import pandas as pd
+                import numpy as np
+                ds = ray.data.from_items([
+                    {"group": 1, "value": 1},
+                    {"group": 1, "value": 2},
+                    {"group": 2, "value": 3},
+                    {"group": 2, "value": 4}])
+                # Get first value per group. Return a single record per group
+                # (list of multiple records in, list of a single record out).
+                ds.groupby("group").map_groups(
+                    lambda g: {"result": np.array([g["value"][0]])})
 
-            >>> # Return multiple records per group (dataframe in, dataframe out).
-            >>> df = pd.DataFrame(
-            ...     {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
-            ... )
-            >>> ds = ray.data.from_pandas(df) # doctest: +SKIP
-            >>> grouped = ds.groupby("A") # doctest: +SKIP
-            >>> grouped.map_groups( # doctest: +SKIP
-            ...     lambda g: g.apply(
-            ...         lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
-            ...     )
-            ... ) # doctest: +SKIP
+                df = pd.DataFrame(
+                    {"A": ["a", "a", "b"], "B": [1, 1, 3], "C": [4, 6, 5]}
+                )
+                ds = ray.data.from_pandas(df)
+                # Return multiple records per group (dataframe in, dataframe out).
+                ds.groupby("A").map_groups(
+                    lambda g: g.apply(
+                        lambda c: c / g[c.name].sum() if c.name in ["B", "C"] else c
+                    )
+                )
 
         Args:
             fn: The function to apply to each group of records, or a class type
                 that can be instantiated to create such a callable. It takes as
                 input a batch of all records from a single group, and returns a
-                batch of zero or more records, similar to map_batches().
+                batch of zero or more records, similar to
+                :meth:`ray.data.map_batches()`.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
@@ -280,7 +285,7 @@ class GroupedData:
             batch_format: Specify ``"default"`` to use the default block format
                 (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
                 select ``pyarrow.Table``, or ``"numpy"`` to select
-                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
+                ``Dict[str, numpy.ndarray]``, or ``None`` to return the underlying block
                 exactly as is with no additional formatting.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
@@ -349,10 +354,11 @@ class GroupedData:
         """Compute count aggregation.
 
         Examples:
-            >>> import ray
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby( # doctest: +SKIP
-            ...     "A").count() # doctest: +SKIP
+            .. testcode::
+                import ray
+                ray.data.from_items([
+                    {"A": x % 3, "B": x} for x in range(100)
+                ]).groupby("A").count()
 
         Returns:
             A dataset of ``[k, v]`` columns where ``k`` is the groupby key and
@@ -367,18 +373,15 @@ class GroupedData:
         r"""Compute grouped sum aggregation.
 
         Examples:
-            >>> import ray
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     (i % 3, i, i**2) # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby(lambda x: x[0] % 3) \ # doctest: +SKIP
-            ...     .sum(lambda x: x[2]) # doctest: +SKIP
-            >>> ray.data.range(100).groupby("id").sum() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
-            ...     .sum(["B", "C"]) # doctest: +SKIP
+            .. testcode::
+                import ray
+                ray.data.from_items([
+                    (i % 3, i, i**2) for i in range(100)
+                ]).groupby(lambda x: x[0] % 3).sum(lambda x: x[2])
+                ray.data.range(100).groupby("id").sum()
+                ray.data.from_items([
+                    {"A": i % 3, "B": i, "C": i**2} for i in range(100)
+                ]).groupby("A").sum(["B", "C"])
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -410,13 +413,12 @@ class GroupedData:
         """Compute grouped min aggregation.
 
         Examples:
-            >>> import ray
-            >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
-            ...     .min(["B", "C"]) # doctest: +SKIP
+            .. testcode::
+                import ray
+                ray.data.le(100).groupby("value").min()
+                ray.data.from_items([
+                    {"A": i % 3, "B": i, "C": i**2} for i in range(100)
+                ]).groupby("A").min(["B", "C"])
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -448,13 +450,12 @@ class GroupedData:
         """Compute grouped max aggregation.
 
         Examples:
-            >>> import ray
-            >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
-            ...     .max(["B", "C"]) # doctest: +SKIP
+            .. testcode::
+                import ray
+                ray.data.le(100).groupby("value").max()
+                ray.data.from_items([
+                    {"A": i % 3, "B": i, "C": i**2} for i in range(100)
+                ]).groupby("A").max(["B", "C"])
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -486,20 +487,19 @@ class GroupedData:
         """Compute grouped mean aggregation.
 
         Examples:
-            >>> import ray
-            >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
-            ...     .mean(["B", "C"]) # doctest: +SKIP
+            .. testcode::
+                import ray
+                ray.data.le(100).groupby("value").mean()
+                ray.data.from_items([
+                    {"A": i % 3, "B": i, "C": i**2} for i in range(100)
+                ]).groupby("A").mean(["B", "C"])
 
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the mean; if ``False``,
                 if a null value is encountered, the output will be null.
-                We consider np.nan, None, and pd.NaT to be null values.
+                We consider ``np.nan``, None, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -527,21 +527,20 @@ class GroupedData:
         """Compute grouped standard deviation aggregation.
 
         Examples:
-            >>> import ray
-            >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
-            >>> ray.data.from_items([ # doctest: +SKIP
-            ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
-            ...     .std(["B", "C"]) # doctest: +SKIP
+            .. testcode::
+                import ray
+                ray.data.range(100).groupby("id").std(ddof=0)
+                ray.data.from_items([
+                    {"A": i % 3, "B": i, "C": i**2} for i in range(100)
+                ]).groupby("A").std(["B", "C"])
 
-        NOTE: This uses Welford's online method for an accumulator-style
-        computation of the standard deviation. This method was chosen due to
-        it's numerical stability, and it being computable in a single pass.
-        This may give different (but more accurate) results than NumPy, Pandas,
-        and sklearn, which use a less numerically stable two-pass algorithm.
-        See
-        https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
+        .. note::
+            This uses Welford's online method for an accumulator-style
+            computation of the standard deviation. This method was chosen due to
+            it's numerical stability, and it being computable in a single pass.
+            This may give different (but more accurate) results than NumPy, Pandas,
+            and sklearn, which use a less numerically stable two-pass algorithm.
+            See https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm # noqa: E501
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -550,7 +549,7 @@ class GroupedData:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values will be ignored when computing the std; if ``False``,
                 if a null value is encountered, the output will be null.
-                We consider np.nan, None, and pd.NaT to be null values.
+                We consider ``np.nan``, None, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:

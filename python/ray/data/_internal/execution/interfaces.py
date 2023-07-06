@@ -122,32 +122,35 @@ class RefBundle:
 
 @dataclass
 class ExecutionResources:
-    """Specifies resources usage or resource limits for execution.
+    """Specify resources usage or limit for execution.
 
-    The value `None` represents unknown resource usage or an unspecified limit.
+    Attributes:
+        cpu: CPU usage in cores (Ray logical CPU slots).
+        gpu: GPU usage in devices (Ray logical GPU slots).
+        object_store_memory: Object store memory usage in bytes.
+
+    .. note::
+        The value ``None`` represents unknown resource usage or an unspecified limit.
     """
 
-    # CPU usage in cores (Ray logical CPU slots).
     cpu: Optional[float] = None
 
-    # GPU usage in devices (Ray logical GPU slots).
     gpu: Optional[float] = None
 
-    # Object store memory usage in bytes.
     object_store_memory: Optional[int] = None
 
     def object_store_memory_str(self) -> str:
-        """Returns a human-readable string for the object store memory field."""
+        """Return a human-readable string for the object store memory field."""
         if self.object_store_memory is None:
             return "None"
         else:
             return memory_string(self.object_store_memory)
 
     def add(self, other: "ExecutionResources") -> "ExecutionResources":
-        """Adds execution resources.
+        """Add execution resources.
 
         Returns:
-            A new ExecutionResource object with summed resources.
+            A new ``ExecutionResources`` object with summed resources.
         """
         total = ExecutionResources()
         if self.cpu is not None or other.cpu is not None:
@@ -164,9 +167,10 @@ class ExecutionResources:
         return total
 
     def satisfies_limit(self, limit: "ExecutionResources") -> bool:
-        """Return if this resource struct meets the specified limits.
+        """Return if this resources struct meets the specified limit.
 
-        Note that None for a field means no limit.
+        .. note::
+            ``None`` for a field means no limit.
         """
 
         if self.cpu is not None and limit.cpu is not None and self.cpu > limit.cpu:
@@ -197,22 +201,22 @@ class ExecutionResources:
 class ExecutionOptions:
     """Common options for execution.
 
-    Some options may not be supported on all executors (e.g., resource limits).
-
     Attributes:
         resource_limits: Set a soft limit on the resource usage during execution.
-            This is not supported in bulk execution mode. Autodetected by default.
+            See :meth:`ExecutionResources` for more details. This is not supported in
+            bulk execution mode. Autodetected by default.
         locality_with_output: Set this to prefer running tasks on the same node as the
             output node (node driving the execution). It can also be set to a list of
             node ids to spread the outputs across those nodes. Off by default.
         preserve_order: Set this to preserve the ordering between blocks processed by
-            operators under the streaming executor. The bulk executor always preserves
-            order. Off by default.
+            operators under the streaming execution mode. The bulk execution mode
+            always preserves order. Off by default.
         actor_locality_enabled: Whether to enable locality-aware task dispatch to
-            actors (on by default). This applies to both ActorPoolStrategy map and
-            streaming_split operations.
+            actors. This applies to both :meth:`~ray.data.Dataset.map_batches` with
+            actors and :meth:`~ray.data.Dataset.streaming_split` operations. On by
+            default.
         verbose_progress: Whether to report progress individually per operator. By
-            default, only AllToAll operators and global progress is reported. This
+            default, only ``AllToAll`` operators and global progress is reported. This
             option is useful for performance debugging. Off by default.
     """
 
