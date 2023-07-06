@@ -56,15 +56,15 @@ class TestAppHandleStreaming:
 
         # Test calling __call__ generator.
         obj_ref_gen = ray.get(h.remote(5))
-        assert ray.get([obj_ref for obj_ref in obj_ref_gen]) == list(range(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling another method name.
         obj_ref_gen = ray.get(h.other_method.remote(5))
-        assert ray.get([obj_ref for obj_ref in obj_ref_gen]) == list(range(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling another method name via `.options`.
         obj_ref_gen = ray.get(h.options(method_name="other_method").remote(5))
-        assert ray.get([obj_ref for obj_ref in obj_ref_gen]) == list(range(5))
+        assert ray.get(list(obj_ref_gen)) == list(range(5))
 
         # Test calling a unary method on the same deployment.
         assert ray.get(h.options(stream=False).unary.remote(5)) == 5
