@@ -189,12 +189,12 @@ class ResultGrid:
 
             .. testcode::
 
-                from ray.air import session
-                from ray.air.config import RunConfig
+                from ray import train
+                from ray.train import RunConfig
                 from ray.tune import Tuner
 
                 def training_loop_per_worker(config):
-                    session.report({"accuracy": 0.8})
+                    train.report({"accuracy": 0.8})
 
                 result_grid = Tuner(
                     trainable=training_loop_per_worker,
