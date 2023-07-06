@@ -50,12 +50,10 @@ if __name__ == "__main__":
         )
     )
     if args.run_as_test:
-        stop = (
-            {
-                "episode_reward_mean": 190,
-                "training_iteration": 20,
-            },
-        )
+        stop = {
+            "episode_reward_mean": 190,
+            "training_iteration": 20,
+        }
     else:
         stop = {"training_iteration": 1}
 
