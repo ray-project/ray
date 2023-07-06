@@ -20,11 +20,12 @@ def register_pydantic_serializer(serialization_context):
     except ImportError:
         pydantic_v1_fields = None
 
-    ModelField = (
-        fields.ModelField
-        if hasattr(fields, "ModelField")
-        else pydantic_v1_fields.ModelField
-    )
+    if hasattr(fields, "ModelField"):
+        ModelField = fields.ModelField
+    elif pydantic_v1_fields:
+        ModelField = pydantic_v1_fields.ModelField
+    else:
+        ModelField = None
 
     if ModelField is not None:
         # In Pydantic 2.x, ModelField has been removed so this serialization
