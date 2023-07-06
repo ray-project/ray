@@ -314,7 +314,8 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
-            "source/workflows/basics.rst"
+            "source/workflows/basics.rst",
+            "source/workflows/events.rst"
         ]
     ),
     size = "large",
@@ -325,7 +326,8 @@ doctest(
 doctest(
     name="doctest_jjyao",
     files = [
-        "source/workflows/basics.rst"
+        "source/workflows/basics.rst",
+        "source/workflows/events.rst"
     ],
     size = "large",
     tags = ["team:none"]
