@@ -704,7 +704,7 @@ class BaseTrainer(abc.ABC):
             # the restored trainer.
             # This handles both worker-level and cluster-level restoration
             # of the Train experiment.
-            checkpoint = train.get_context().get_checkpoint()
+            checkpoint = session.get_checkpoint()
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
                 # Always load the preprocessor from an available checkpoint
