@@ -50,7 +50,7 @@ from ray.rllib.utils.metrics import (
     SYNCH_WORKER_WEIGHTS_TIMER,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict
 
 
 logger = logging.getLogger(__name__)
