@@ -239,8 +239,6 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
     return false;
   }
 
-  node_resources->last_resource_update_time = absl::Now();
-
   if (!resource_data.resources_available_changed()) {
     return true;
   }
@@ -257,7 +255,10 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
   }
 
   // Update the idle timestamp for the node in terms of resources usage.
-  node_resources->idle_resource_duration_ms = resource_data.last_idle_duration_ms();
+  node_resources->idle_resource_duration_ms = resource_data.idle_duration_ms();
+
+  // Last update time to the local node resources view.
+  node_resources->last_resource_update_time = absl::Now();
   return true;
 }
 
