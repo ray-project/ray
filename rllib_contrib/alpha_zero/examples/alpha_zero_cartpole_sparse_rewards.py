@@ -25,25 +25,36 @@ if __name__ == "__main__":
 
     config = (
         AlphaZeroConfig()
-        .rollouts(num_rollout_workers=6, rollout_fragment_length=50, )
+        .rollouts(
+            num_rollout_workers=6,
+            rollout_fragment_length=50,
+        )
         .framework("torch")
         .environment(CartPoleSparseRewards)
-        .training(train_batch_size=500,
-                  sgd_minibatch_size=64,
-                  lr=1e-4,
-                  num_sgd_iter=1,
-                  mcts_config={"puct_coefficient": 1.5,
-                               "num_simulations": 100,
-                               "temperature": 1.0,
-                               "dirichlet_epsilon": 0.20,
-                               "dirichlet_noise": 0.03,
-                               "argmax_tree_policy": False,
-                               "add_dirichlet_noise": True,},
-                  ranked_rewards={"enable": True,},
-                  model={"custom_model": DenseModel,})
+        .training(
+            train_batch_size=500,
+            sgd_minibatch_size=64,
+            lr=1e-4,
+            num_sgd_iter=1,
+            mcts_config={
+                "puct_coefficient": 1.5,
+                "num_simulations": 100,
+                "temperature": 1.0,
+                "dirichlet_epsilon": 0.20,
+                "dirichlet_noise": 0.03,
+                "argmax_tree_policy": False,
+                "add_dirichlet_noise": True,
+            },
+            ranked_rewards={
+                "enable": True,
+            },
+            model={
+                "custom_model": DenseModel,
+            },
+        )
     )
 
-    stop_reward = 30.
+    stop_reward = 30.0
 
     tuner = tune.Tuner(
         AlphaZero,
