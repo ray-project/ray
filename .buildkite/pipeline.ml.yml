@@ -571,4 +571,5 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - (cd rllib_contrib/leela_chess_zero && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/leela_chess_zero/tests/test_leela_chess_zero.py
+    - pytest rllib_contrib/leela_chess_zero/tests/
+    - python rllib_contrib/leela_chess_zero/examples/leela_chess_zero_connect_4.py --run-as-test
