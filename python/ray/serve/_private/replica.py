@@ -1,7 +1,6 @@
 import aiorwlock
 import asyncio
 from contextlib import asynccontextmanager
-from functools import wraps
 from importlib import import_module
 import inspect
 import logging
@@ -58,6 +57,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
     parse_import_path,
+    wrap_generator_function_in_async_if_needed,
     wrap_to_ray_error,
     merge_dict,
     MetricsPusher,
@@ -66,23 +66,6 @@ from ray.serve._private.version import DeploymentVersion
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def wrap_generator_function_in_async_if_needed(
-    f: Callable,
-) -> Callable[[Any], AsyncGenerator]:
-    if inspect.isasyncgenfunction(f):
-        return f
-    elif inspect.isgeneratorfunction(f):
-
-        @wraps(f)
-        async def async_gen_wrapper(*args, **kwargs):
-            for result in f(*args, **kwargs):
-                yield result
-
-        return async_gen_wrapper
-    else:
-        raise TypeError(f"Method '{f.__name__}' is not a generator.")
 
 
 def _format_replica_actor_name(deployment_name: str):
