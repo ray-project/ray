@@ -94,7 +94,7 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
@@ -107,9 +107,15 @@ class ServeControllerClient:
 
         if ray.is_initialized() and not self._shutdown:
             try:
-                ray.get(self._controller.graceful_shutdown.remote())
+                ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
             except ray.exceptions.RayActorError:
-                logger.info("The controller has already shut down.")
+                # Controller has been shut down.
+                pass
+            except TimeoutError:
+                logger.warning(
+                    f"Controller failed to shut down within {timeout_s}s. "
+                    "Check controller logs for more details."
+                )
             self._shutdown = True
 
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):

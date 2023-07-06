@@ -234,15 +234,21 @@ class HTTPProxyState:
         """Return whether the HTTP proxy actor is shutdown.
 
         For an HTTP proxy actor to be considered shutdown, it must be marked as
-        _shutting_down and the actor must be dead.
+        _shutting_down and the actor must be dead. If the actor is dead, the health
+        check will return RayActorError.
         """
-        actor_id = self.actor_handle._actor_id.hex()
-        actor_state = "ALIVE"
-        for _actor in ray._private.state.actors().values():
-            if _actor["ActorID"] == actor_id:
-                actor_state = _actor["State"]
-                break
-        return self._shutting_down and actor_state == "DEAD"
+        if not self._shutting_down:
+            return False
+
+        try:
+            finished, _ = ray.wait(
+                [self._actor_handle.check_health.remote()], timeout=0
+            )
+            ray.get(finished[0])
+        except ray.exceptions.RayActorError:
+            return True
+
+        return False
 
 
 class HTTPState:

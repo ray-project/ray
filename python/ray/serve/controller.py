@@ -189,6 +189,7 @@ class ServeController:
         )
         self._shutting_down = False
         self._shutdown = asyncio.Event()
+        self._shutdown_start_time = None
 
         run_background_task(self.run_control_loop())
 
@@ -466,6 +467,9 @@ class ServeController:
         if not self._shutting_down:
             return
 
+        if self._shutdown_start_time is None:
+            self._shutdown_start_time = time.time()
+
         logger.info("Controller shutdown started!", extra={"log_to_stderr": False})
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
@@ -495,7 +499,7 @@ class ServeController:
             _controller_actor = ray.get_runtime_context().current_actor
             self._shutdown.set()
             ray.kill(_controller_actor, no_restart=True)
-        else:
+        elif time.time() - self._shutdown_start_time > 10:
             if not config_checkpoint_deleted:
                 logger.warning(
                     f"{CONFIG_CHECKPOINT_KEY} not yet deleted",
@@ -503,19 +507,23 @@ class ServeController:
                 )
             if not application_is_shutdown:
                 logger.warning(
-                    "application not yet shutdown", extra={"log_to_stderr": False}
+                    "application not yet shutdown",
+                    extra={"log_to_stderr": False},
                 )
             if not deployment_is_shutdown:
                 logger.warning(
-                    "deployment not yet shutdown", extra={"log_to_stderr": False}
+                    "deployment not yet shutdown",
+                    extra={"log_to_stderr": False},
                 )
             if not endpoint_is_shutdown:
                 logger.warning(
-                    "endpoint not yet shutdown", extra={"log_to_stderr": False}
+                    "endpoint not yet shutdown",
+                    extra={"log_to_stderr": False},
                 )
             if not http_state_is_shutdown:
                 logger.warning(
-                    "http_state not yet shutdown", extra={"log_to_stderr": False}
+                    "http_state not yet shutdown",
+                    extra={"log_to_stderr": False},
                 )
 
     def deploy(

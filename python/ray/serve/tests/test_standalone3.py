@@ -557,5 +557,54 @@ def test_controller_shutdown_gracefully(
     serve.shutdown()
 
 
+def test_client_shutdown_gracefully_when_timeout(
+    shutdown_ray, call_ray_stop_only, caplog  # noqa: F811
+):
+    """Test client shutdown gracefully when timeout.
+
+    When the controller is taking longer than the timeout to shutdown, the client will
+    log timeout message and exit the process. The controller will continue to shutdown
+    everything gracefully.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Ensure client times out if the controller does not shutdown within timeout.
+    timeout_s = 0.0
+    client = get_global_client()
+    client.shutdown(timeout_s=timeout_s)
+    assert (
+        f"Controller failed to shut down within {timeout_s}s. "
+        f"Check controller logs for more details." in caplog.text
+    )
+
+    # Ensure the all resources are shutdown gracefully.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        ),
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
