@@ -53,7 +53,7 @@ class Limit(AbstractOneToOne):
         return True
 
 
-class RandomizeBlocks(AbstractOneToOne):
+class RandomizeBlockOrder(AbstractOneToOne):
     """Logical operator for randomize_block_order."""
 
     def __init__(

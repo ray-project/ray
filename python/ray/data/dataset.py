@@ -60,7 +60,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.one_to_one_operator import Limit, RandomizeBlocks
+from ray.data._internal.logical.operators.one_to_one_operator import Limit, RandomizeBlockOrder
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -1037,7 +1037,7 @@ class Dataset:
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
-            op = RandomizeBlocks(
+            op = RandomizeBlockOrder(
                 logical_plan.dag,
                 window_size=window_size,
                 seed=seed,

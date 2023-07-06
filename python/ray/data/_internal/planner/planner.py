@@ -18,7 +18,7 @@ from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.one_to_one_operator import (
     Limit,
-    RandomizeBlocks,
+    RandomizeBlockOrder,
 )
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
@@ -79,7 +79,7 @@ class Planner:
         elif isinstance(logical_op, Limit):
             assert len(physical_children) == 1
             physical_op = _plan_limit_op(logical_op, physical_children[0])
-        elif isinstance(logical_op, RandomizeBlocks):
+        elif isinstance(logical_op, RandomizeBlockOrder):
             assert len(physical_children) == 1
             physical_op = RandomizeBlockOrderOperator(
                 physical_children[0],

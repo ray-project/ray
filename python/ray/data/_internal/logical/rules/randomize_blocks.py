@@ -5,7 +5,7 @@ from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, 
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlocks
+from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlockOrder
 
 
 class ReorderRandomizeBlocksRule(Rule):
@@ -39,7 +39,7 @@ class ReorderRandomizeBlocksRule(Rule):
             # Iterate through all upstream ops, and remove all RandomizeBlocks
             # operators.
             for i in range(len(upstream_ops)):
-                if isinstance(upstream_ops[i], RandomizeBlocks):
+                if isinstance(upstream_ops[i], RandomizeBlockOrder):
                     # If no seeds are provided, then collapse into a single
                     # RandomizeBlocks operator.
                     current_seed = upstream_ops[i]._seed

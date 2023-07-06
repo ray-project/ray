@@ -5,12 +5,12 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlocks
+from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlockOrder
 from ray.data._internal.stats import StatsDict
 
 
 def generate_randomize_blocks_fn(
-    op: RandomizeBlocks,
+    op: RandomizeBlockOrder,
 ) -> AllToAllTransformFn:
     """Generate function to randomize order of blocks."""
 
