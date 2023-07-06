@@ -66,20 +66,25 @@ parser.add_argument(
     help="The number of seeds/samples to run with the given experiment config.",
 )
 parser.add_argument(
+    "--override-mean-reward",
+    type=float,
+    default=0.0,
+    help=(
+        "Override the mean reward specified by the yaml file in the stopping criteria. "
+        "This is particularly useful for timed tests."
+    ),
+)
+parser.add_argument(
     "--wandb-key",
     type=str,
     default=None,
     help="The WandB API key to use for uploading results.",
 )
 parser.add_argument(
-    "--override-mean-reward",
-    type=float,
-    default=0.0,
-    help=(
-        "Override "
-        "the mean reward specified by the yaml file in the stopping criteria. This "
-        "is particularly useful for timed tests."
-    ),
+    "--wandb-project",
+    type=str,
+    default=None,
+    help="The WandB project name to use.",
 )
 
 # Obsoleted arg, use --dir instead.
@@ -178,13 +183,11 @@ if __name__ == "__main__":
 
         callbacks = None
         if args.wandb_key is not None:
-            callbacks = [WandbLoggerCallback(
-                api_key=args.wandb_key,
-                project=(
-                    exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
-                    if config_is_python else list(experiments.keys())[0]
-                ),
-            )]
+            project = args.wandb_project or (
+                exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
+                if config_is_python else list(experiments.keys())[0]
+            )
+            callbacks = [WandbLoggerCallback(api_key=args.wandb_key, project=project)]
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.
