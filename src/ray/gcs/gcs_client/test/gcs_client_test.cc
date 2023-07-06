@@ -886,6 +886,7 @@ TEST_P(GcsClientTest, TestGcsTableReload) {
 
   // Restart GCS.
   RestartGcsServer();
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
 
   // Get information of nodes from GCS.
   std::vector<rpc::GcsNodeInfo> node_list = GetNodeInfoList();
@@ -982,6 +983,7 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
 
   // Restart GCS.
   RestartGcsServer();
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
 
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
@@ -1008,21 +1010,16 @@ TEST_P(GcsClientTest, TestGcsAuth) {
   // Restart GCS.
   RestartGcsServer();
   auto node_info = Mocker::GenNodeInfo();
-  if (RayConfig::instance().gcs_storage() != gcs::GcsServer::kInMemoryStorage) {
-    EXPECT_TRUE(RegisterNode(*node_info));
-    return;
-  }
 
   EXPECT_FALSE(RegisterNode(*node_info));
-  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
-  }
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   EXPECT_TRUE(RegisterNode(*node_info));
 }
 
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
   // Restart GCS.
   RestartGcsServer();
+  RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }

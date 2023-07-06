@@ -201,21 +201,21 @@ int main(int argc, char *argv[]) {
                              ? static_cast<int>(num_cpus_it->second)
                              : 0;
 
-        node_manager_config.raylet_config = stored_raylet_config.get();
-        node_manager_config.resource_config =
-            ray::ResourceMapToResourceRequest(std::move(static_resource_conf), false);
-        RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
-                       << node_manager_config.resource_config.DebugString();
-        node_manager_config.node_manager_address = node_ip_address;
-        node_manager_config.node_manager_port = node_manager_port;
-        node_manager_config.num_workers_soft_limit =
-            RayConfig::instance().num_workers_soft_limit();
-        node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
-        node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
-        node_manager_config.min_worker_port = min_worker_port;
-        node_manager_config.max_worker_port = max_worker_port;
-        node_manager_config.worker_ports = worker_ports;
-        node_manager_config.labels = parse_node_labels(labels_json_str);
+          node_manager_config.raylet_config = stored_raylet_config.get();
+          node_manager_config.resource_config =
+              ray::ResourceMapToResourceRequest(std::move(static_resource_conf), false);
+          RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
+                         << node_manager_config.resource_config.DebugString();
+          node_manager_config.node_manager_address = node_ip_address;
+          node_manager_config.node_manager_port = node_manager_port;
+          node_manager_config.num_workers_soft_limit =
+              RayConfig::instance().num_workers_soft_limit();
+          node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
+          node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
+          node_manager_config.min_worker_port = min_worker_port;
+          node_manager_config.max_worker_port = max_worker_port;
+          node_manager_config.worker_ports = worker_ports;
+          node_manager_config.labels = parse_node_labels(labels_json_str);
 
           if (!python_worker_command.empty()) {
             node_manager_config.worker_commands.emplace(make_pair(
