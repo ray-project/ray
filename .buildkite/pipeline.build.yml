@@ -267,8 +267,8 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     # Todo (krfricke): Move mosaicml to train-test-requirements.txt
     - pip install "mosaicml==0.12.1"
-    # TODO (shrekris-anyscale): Remove transformers install after upgrade in
-    # core requirements
+    # TODO (shrekris-anyscale): Remove transformers after core transformer
+    # requirement is upgraded
     - pip install "transformers==4.30.2"
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/install-horovod.sh
