@@ -45,7 +45,7 @@ def dummy_map_batches(x):
     return x
 
 
-def map_batches_sleep(x, n=3):
+def map_batches_sleep(x, n):
     """Dummy function used in calls to map_batches below, which
     simply sleeps for `n` seconds before returning the input batch."""
     time.sleep(n)
@@ -335,7 +335,7 @@ Dataset iterator time breakdown:
             )
 
 
-def test_dataset_stats_execution_time(ray_start_regular_shared):
+def test_dataset_stats_stage_execution_time(ray_start_regular_shared):
     # Disable stage/operator fusion in order to test the stats
     # of two different map_batches operators without fusing them together,
     # so that we can observe different execution times for each.
@@ -362,6 +362,21 @@ def test_dataset_stats_execution_time(ray_start_regular_shared):
 
     ctx.optimize_fuse_stages = curr_optimize_fuse_stages
     ctx.optimizer_enabled = curr_optimizer_enabled
+
+    # The following case runs 2 tasks with 1 CPU, with each task sleeping for
+    # `sleep_2` seconds. We expect the overall reported stage time to be
+    # at least `2 * sleep_2` seconds`, and less than the total elapsed time.
+    num_tasks = 2
+    ds = ray.data.range(100, parallelism=num_tasks).map_batches(
+        lambda batch: map_batches_sleep(batch, sleep_2)
+    )
+    start_time = time.time()
+    ds.take_all()
+    end_time = time.time()
+
+    stage_stats = ds._get_stats_summary().stages_stats[0]
+    stage_time = stage_stats.time_total_s
+    assert num_tasks * sleep_2 <= stage_time <= end_time - start_time
 
 
 def test_dataset__repr__(ray_start_regular_shared):
