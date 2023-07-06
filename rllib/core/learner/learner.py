@@ -35,7 +35,6 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
