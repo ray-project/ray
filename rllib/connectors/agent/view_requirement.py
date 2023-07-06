@@ -36,6 +36,7 @@ class ViewRequirementAgentConnector(AgentConnector):
         super().__init__(ctx)
 
         self._view_requirements = ctx.view_requirements
+        _enable_rl_module_api = ctx.config.get("_enable_rl_module_api", False)
 
         # a dict of env_id to a dict of agent_id to a list of agent_collector objects
         self.agent_collectors = defaultdict(
@@ -55,6 +56,7 @@ class ViewRequirementAgentConnector(AgentConnector):
                     # to behave in inference mode, so they don't accumulate episode data
                     # that is not useful for inference.
                     is_training=False,
+                    _enable_rl_module_api=_enable_rl_module_api,
                 )
             )
         )

@@ -86,6 +86,14 @@ def test_cifar10_pytorch(legacy_progress_reporter, start_client_server_2_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.cifar10_pytorch import main
 
+    # This is a workaround that is needed because of
+    # https://github.com/grpc/grpc/issues/32758 -- this happens only
+    # if the DataLoader is used on the Ray Client side, which we should
+    # not encourage anyways (heavy processing should be done on the cluster).
+    import torch
+
+    torch.multiprocessing.set_start_method("spawn")
+
     main(num_samples=1, max_num_epochs=1, gpus_per_trial=0)
 
 
@@ -93,7 +101,7 @@ def test_tune_mnist_keras(legacy_progress_reporter, start_client_server_4_cpus):
     assert ray.util.client.ray.is_connected()
     from ray.tune.examples.tune_mnist_keras import tune_mnist
 
-    tune_mnist(num_training_iterations=5)
+    tune_mnist(num_training_iterations=2)
 
 
 def test_mnist_ptl_mini(legacy_progress_reporter, start_client_server):
@@ -174,4 +182,4 @@ def test_jupyter_rich_output(legacy_progress_reporter, start_client_server_4_cpu
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

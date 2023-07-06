@@ -1,7 +1,7 @@
 # flake8: noqa
 
 # __start_graph__
-# File name: graph.py
+# File name: serve_quickstart_composed.py
 from starlette.requests import Request
 
 import ray

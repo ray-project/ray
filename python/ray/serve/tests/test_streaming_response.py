@@ -217,12 +217,10 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
     async def hi_gen_async():
         yield "first result"
         raise Exception("raised in generator")
-        yield "never reached"
 
     def hi_gen_sync():
         yield "first result"
         raise Exception("raised in generator")
-        yield "never reached"
 
     if use_fastapi:
         app = FastAPI()
@@ -251,6 +249,36 @@ def test_exception_in_generator(serve_instance, use_async: bool, use_fastapi: bo
     assert next(stream_iter) == "first result"
     with pytest.raises(requests.exceptions.ChunkedEncodingError):
         next(stream_iter)
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+def test_http_disconnect(serve_instance):
+    """Test that response generators are cancelled when the client disconnects."""
+    signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    class SimpleGenerator:
+        def __call__(self, request: Request) -> StreamingResponse:
+            async def wait_for_disconnect():
+                try:
+                    yield "hi"
+                    await asyncio.sleep(100)
+                except asyncio.CancelledError:
+                    print("Cancelled!")
+                    signal_actor.send.remote()
+
+            return StreamingResponse(wait_for_disconnect())
+
+    serve.run(SimpleGenerator.bind())
+
+    with requests.get("http://localhost:8000", stream=True):
+        with pytest.raises(TimeoutError):
+            ray.get(signal_actor.wait.remote(), timeout=1)
+
+    ray.get(signal_actor.wait.remote(), timeout=5)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 # Deployment Graph Patterns
 
-These are some common [deployment graph](serve-model-composition-deployment-graph) patterns that can support complex workloads: 
+These are some common [deployment graph](serve-deployment-graphs) patterns that can support complex workloads: 
 
 - [Linear Pipeline](deployment-graph-patterns/linear_pipeline.md)
 - [Branching Input](deployment-graph-patterns/branching_input.md)

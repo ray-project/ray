@@ -10,7 +10,6 @@ import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
-import warnings
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
@@ -52,7 +51,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -112,8 +111,6 @@ class Trainable:
         config: Dict[str, Any] = None,
         logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,  # Deprecated (2.6)
-        sync_timeout: Optional[int] = None,  # Deprecated (2.6)
         sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
@@ -189,26 +186,13 @@ class Trainable:
             upload_dir=self.remote_checkpoint_dir, syncer="auto"
         )
 
-        # TODO(ml-team): `custom_syncer` and `syncer` are deprecated. Remove in 2.6.
-        warning_message = (
-            "Specifying `custom_syncer` and `sync_timeout` as arguments in the "
-            "Trainable constructor is deprecated and will be removed in version 2.6. "
-            "Pass in a `tune.SyncConfig` object through the `sync_config` "
-            "argument instead."
+        # Resolves syncer="auto" to an actual syncer cloud storage is used
+        # If sync_config.syncer is a custom Syncer instance, this is a no-op.
+        self.sync_config.syncer = get_node_to_storage_syncer(
+            self.sync_config, self.remote_checkpoint_dir
         )
-        if sync_timeout:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.sync_timeout = sync_timeout
-        if custom_syncer:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.syncer = custom_syncer
-        else:
-            # Resolves syncer="auto" to an actual syncer if needed
-            self.sync_config.syncer = get_node_to_storage_syncer(
-                self.sync_config, self.remote_checkpoint_dir
-            )
 
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
@@ -668,15 +652,16 @@ class Trainable:
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-        except TuneError:
+        except TuneError as e:
             num_retries = self.sync_num_retries
             logger.error(
                 f"Could not upload checkpoint to {checkpoint_uri} even after "
-                f"{num_retries} retries."
+                f"{num_retries} retries. "
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported. For large checkpoints or artifacts, "
                 f"consider increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_config.sync_timeout} seconds)."
+                f"(current value: {self.sync_config.sync_timeout} seconds). "
+                f"See the full error details below:\n{e}"
             )
             return False
         return True
