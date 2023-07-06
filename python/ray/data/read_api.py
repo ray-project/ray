@@ -861,7 +861,7 @@ def read_json(
             limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
-            ``pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>``_.
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -965,7 +965,7 @@ def read_csv(
             limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
-            pyarrow.fs.FileSystem.open_input_stream
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -1035,7 +1035,7 @@ def read_text(
         ray_remote_args: Kwargs passed to ray.remote in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
-            pyarrow.fs.FileSystem.open_input_stream
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -1050,7 +1050,7 @@ def read_text(
 
     Returns:
         Dataset producing lines of text read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         TextDatasource(),
         parallelism=parallelism,
@@ -1103,7 +1103,7 @@ def read_numpy(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the dataset.
         arrow_open_stream_args: kwargs passed to
-            pyarrow.fs.FileSystem.open_input_stream
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
         numpy_load_args: Other options to pass to np.load.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
@@ -1118,7 +1118,7 @@ def read_numpy(
 
     Returns:
         Dataset holding Tensor records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         NumpyDatasource(),
         parallelism=parallelism,
@@ -1202,7 +1202,8 @@ def read_tfrecords(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files in the dataset.
         arrow_open_stream_args: Key-word arguments passed to
-            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
+            To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
             ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
@@ -1260,7 +1261,8 @@ def read_webdataset(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files in the dataset.
         arrow_open_stream_args: Key-word arguments passed to
-            ``pyarrow.fs.FileSystem.open_input_stream``. To read a compressed TFRecord file,
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
+            To read a compressed TFRecord file,
             pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``, use
             ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: File metadata provider. Custom metadata providers may
@@ -1333,7 +1335,7 @@ def read_binary_files(
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the number of files of the stream.
         arrow_open_stream_args: kwargs passed to
-            pyarrow.fs.FileSystem.open_input_stream
+            `pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>`_.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -1348,7 +1350,7 @@ def read_binary_files(
 
     Returns:
         Dataset producing records read from the specified paths.
-    """
+    """  # noqa: E501
     output_arrow_format = True
 
     return read_datasource(
