@@ -8,7 +8,7 @@ from ray import serve
 from ray.serve import Deployment
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    RAY_SERVE_ENABLE_NEW_ROUTING,
 )
 
 
@@ -47,7 +47,7 @@ class SyncStreamer:
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Streaming FF must be enabled."
+    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
 )
 @pytest.mark.parametrize("deployment", [AsyncStreamer, SyncStreamer])
 class TestAppHandleStreaming:
@@ -105,7 +105,7 @@ class TestAppHandleStreaming:
 
 
 @pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Streaming FF must be enabled."
+    not RAY_SERVE_ENABLE_NEW_ROUTING, reason="Routing FF must be enabled."
 )
 @pytest.mark.parametrize("deployment", [AsyncStreamer, SyncStreamer])
 class TestDeploymentHandleStreaming:
