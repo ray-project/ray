@@ -164,6 +164,15 @@ class DataIterator(abc.ABC):
                 for block_ref, metadata in block_iterator:
                     yield block_ref
 
+            # Legacy iter_batches does not have a distinction between
+            # collate_fn and finalize_fn since batches are not prefetched.
+            def collate_and_finalize(batch):
+                if _collate_fn is not None:
+                    batch = _collate_fn(batch)
+                if _finalize_fn is not None:
+                    batch = _finalize_fn(batch)
+                return batch
+
             yield from batch_block_refs(
                 drop_metadata(block_iterator),
                 stats=stats,
@@ -172,7 +181,7 @@ class DataIterator(abc.ABC):
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
-                collate_fn=_collate_fn,
+                collate_fn=collate_and_finalize,
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
             )

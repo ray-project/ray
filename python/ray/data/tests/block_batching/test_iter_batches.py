@@ -97,7 +97,7 @@ def test_restore_from_original_order():
     assert idx == [0, 1, 2, 3]
 
 
-def test_finalize_fn_uses_single_thread():
+def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
     block_refs_iter = itertools.starmap(
         lambda block, metadata: (ray.put(block), metadata),
         block_generator(num_blocks=20, num_rows=2),
