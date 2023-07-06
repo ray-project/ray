@@ -43,7 +43,7 @@ if __name__ == "__main__":
         .reporting(min_sample_timesteps_per_iteration=1000, min_time_s_per_iteration=5)
     )
 
-    stop_reward = -300
+    stop_reward = -700
 
     tuner = tune.Tuner(
         DDPPO,
