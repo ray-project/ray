@@ -119,16 +119,16 @@ def sample_boundaries(
     columns = [k[0] for k in key] if isinstance(key, list) else None
     sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
     indices = np.lexsort(list(reversed((sample_dict.values()))))
-    linear_space = np.linspace(0, 1, num_reducers)
-    for k in sample_dict:
-        sample_dict[k] = [
-            np.quantile(sample_dict[k][indices], q, interpolation="nearest")
-            for q in linear_space
+    sample_dict = {
+        k: [
+            np.quantile(v[indices], q, interpolation="nearest")
+            for q in np.linspace(0, 1, num_reducers)
         ][1:]
-    sample_items = []
-    for i in range(num_reducers - 1):
-        sample_items.append(tuple(sample_dict[k][i] for k in sample_dict))
-    return sample_items
+        for k, v in sample_dict.items()
+    }
+    return [
+        tuple(sample_dict[k][i] for k in sample_dict) for i in range(num_reducers - 1)
+    ]
 
 
 # Note: currently the map_groups() API relies on this implementation
