@@ -195,10 +195,6 @@ class ClientCallManager {
   /// \param[in] main_service The main event loop, to which the callback functions will be
   /// posted.
   ///
-  /// Note: Ideally with C++20 we could use constraints here, or auto&& in the contructor.
-  template <typename T = std::shared_future<ClusterID>,
-            typename = typename std::enable_if_t<
-                std::is_convertible<T, std::shared_future<ClusterID>>::value>>
   explicit ClientCallManager(instrumented_io_context &main_service,
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
