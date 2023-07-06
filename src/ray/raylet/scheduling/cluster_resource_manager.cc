@@ -254,8 +254,8 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
     node_resources->available.Set(resource_id, resources.Get(resource_id));
   }
 
-  // Update the idle duration for the node in terms of resources usage.
-  node_resources->idle_resource_duration_ms = resource_data.idle_duration_ms();
+  // Update the idle timestamp for the node in terms of resources usage.
+  node_resources->idle_resource_timestamp_ms = resource_data.last_idle_timestamp_ms();
   return true;
 }
 

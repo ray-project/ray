@@ -199,11 +199,12 @@ void GcsAutoscalerStateManager::GetNodeStates(
     // THe node is alive. We need to check if the node is idle.
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
         scheduling::NodeID(node_state_proto->node_id()));
-    if (node_resource_data.idle_resource_duration_ms > 0) {
+    if (node_resource_data.idle_resource_timestamp_ms > 0) {
       // The node is idle.
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::IDLE);
       node_state_proto->set_idle_duration_ms(
-          node_resource_data.idle_resource_duration_ms);
+          absl::ToUnixMillis(absl::Now()) -
+          node_resource_data.idle_resource_timestamp_ms);
     } else {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
     }
