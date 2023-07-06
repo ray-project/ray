@@ -1345,9 +1345,9 @@ def read_tfrecords(
         >>> import ray
         >>> ray.data.read_tfrecords("example://iris.tfrecords")
         Dataset(
-          num_blocks=...,
-          num_rows=150,
-          schema={...}
+           num_blocks=...,
+           num_rows=150,
+           schema={...}
         )
 
         We can also read compressed TFRecord files which uses one of the
@@ -1359,9 +1359,9 @@ def read_tfrecords(
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
         Dataset(
-          num_blocks=...,
-          num_rows=150,
-          schema={...}
+           num_blocks=...,
+           num_rows=150,
+           schema={...}
         )
 
     Args:
@@ -1511,7 +1511,7 @@ def read_binary_files(
         ...     ["local:///path/to/file1", "local:///path/to/file2"])
 
         >>> # Read a file with path.
-        >>> path = "s3://ray-example-data/pdf-sample_0.pdf"
+        >>> path = "s3://anonymous@ray-example-data/pdf-sample_0.pdf"
         >>> ds = ray.data.read_binary_files(path, include_paths=True)
         >>> ds.take(1)[0]["path"]
         'ray-example-data/pdf-sample_0.pdf'
