@@ -2,9 +2,7 @@ import copy
 from collections import deque
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.all_to_all_operator import (
-    AbstractAllToAll,
-)
+from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlockOrder
 
 
