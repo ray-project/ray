@@ -1,21 +1,24 @@
 import asyncio
 import os
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import FastAPI
 import requests
 from pydantic import BaseModel, ValidationError
 import pytest
 import starlette.responses
+from starlette.requests import Request
 
 import ray
-from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
+
+from ray import serve
 from ray.serve.built_application import BuiltApplication
 from ray.serve.deployment import Application
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
 from ray.serve.exceptions import RayServeException
+from ray.serve.handle import RayServeHandle
 from ray.serve._private.api import call_app_builder_with_args_if_necessary
 from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
@@ -398,7 +401,7 @@ def test_run_get_ingress_app(serve_instance):
     ingress_handle = serve.run(app)
 
     assert ray.get(ingress_handle.remote()) == "got g"
-    serve_instance.delete_deployments(["g"])
+    serve_instance.delete_apps(["default"])
 
     no_ingress_app = BuiltApplication([g.options(route_prefix=None)])
     ingress_handle = serve.run(no_ingress_app)
@@ -845,6 +848,40 @@ def test_no_slash_route_prefix(serve_instance):
         ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
     ):
         serve.run(f.bind(), route_prefix="no_slash")
+
+
+def test_pass_starlette_request_over_handle(serve_instance):
+    @serve.deployment
+    class Downstream:
+        async def __call__(self, request: Request) -> Dict[str, str]:
+            r = await request.json()
+            r["foo"] = request.headers["foo"]
+            r.update(request.query_params)
+            return r
+
+    @serve.deployment
+    class Upstream:
+        def __init__(self, downstream: RayServeHandle):
+            self._downstream = downstream
+
+        async def __call__(self, request: Request) -> Dict[str, str]:
+            ref = await self._downstream.remote(request)
+            return await ref
+
+    serve.run(Upstream.bind(Downstream.bind()))
+
+    r = requests.get(
+        "http://127.0.0.1:8000/",
+        json={"hello": "world"},
+        headers={"foo": "bar"},
+        params={"baz": "quux"},
+    )
+    r.raise_for_status()
+    assert r.json() == {
+        "hello": "world",
+        "foo": "bar",
+        "baz": "quux",
+    }
 
 
 if __name__ == "__main__":

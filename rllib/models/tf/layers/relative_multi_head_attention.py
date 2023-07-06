@@ -2,6 +2,8 @@ from typing import Optional
 
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import TensorType
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -36,6 +38,10 @@ class RelativeMultiHeadAttention(tf.keras.layers.Layer if tf else object):
                 activation function. Should be relu for GTrXL.
             **kwargs:
         """
+        if log_once("relative_multi_head_attention"):
+            deprecation_warning(
+                old="rllib.models.tf.layers.RelativeMultiHeadAttention",
+            )
         super().__init__(**kwargs)
 
         # No bias or non-linearity.

@@ -242,6 +242,8 @@ message TaskStateUpdate {
   optional TaskLogInfo task_log_info = 10;
   // Actor task repr name.
   optional string actor_repr_name = 11;
+  // Worker Pid.
+  optional int32 worker_pid = 12;
 }
 
 // Represents events and state changes from a single task run.
@@ -325,6 +327,10 @@ message GcsNodeInfo {
   // The instance id of the node if it's running on a cloud provider.
   string instance_id = 13;
 
+  // The instance node type of the node if it's running on a cloud provider.
+  // Set through ENV of src/ray/common/constants.h::kNodeTypeNameEnv
+  string node_type_name = 14;
+
   // The unix ms timestamp the node was started at.
   uint64 start_time_ms = 23;
   // The unix ms timestamp the node was ended at.
@@ -375,8 +381,8 @@ message JobTableData {
   bool is_dead = 2;
   // The UNIX timestamp corresponding to this event (job added or removed).
   int64 timestamp = 3;
-  // IP address of the driver that started this job.
-  string driver_ip_address = 4;
+  // Address of the driver that started this job.
+  Address driver_address = 4;
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
   // The config of this job.
@@ -387,8 +393,10 @@ message JobTableData {
   uint64 end_time = 8;
   // The entrypoint of the job.
   string entrypoint = 9;
+  // Whether this job has running tasks.
+  bool is_running_tasks = 10;
   // The optional JobInfo from the Ray Job API.
-  optional JobsAPIInfo job_info = 10;
+  optional JobsAPIInfo job_info = 11;
 }
 
 message WorkerTableData {
@@ -546,6 +554,10 @@ message ResourcesData {
   int64 resources_normal_task_timestamp = 13;
   // Whether this node has detected a resource deadlock (full of actors).
   bool cluster_full_of_actors_detected = 14;
+  // The duration in ms during which all the node's resources are idle. If the
+  // node currently has any resource being used, this will 0.
+  int64 idle_duration_ms = 15;
+  // Last unused = 16
 }
 
 message ResourceUsageBatchData {

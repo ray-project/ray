@@ -32,7 +32,8 @@ class TestBasic(DataParallelTrainer):
                 else:
                     count = 0
                     for batch in shard.iter_batches():
-                        count += len(batch)
+                        for arr in batch.values():
+                            count += arr.size
                     assert count == v, shard
 
         kwargs.pop("scaling_config", None)

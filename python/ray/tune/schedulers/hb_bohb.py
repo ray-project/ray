@@ -111,6 +111,8 @@ class HyperBandForBOHB(HyperBandScheduler):
             # TODO(team-ml): Refactor alongside HyperBandForBOHB
             trial_runner.search_alg.searcher.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
+
+        logger.debug(f"Processing bracket after trial {trial} result")
         action = self._process_bracket(trial_runner, bracket)
         if action == TrialScheduler.PAUSE:
             trial_runner.search_alg.searcher.on_pause(trial.trial_id)
@@ -150,6 +152,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                         for trial in bracket.current_trials()
                     ):
                         # This will change the trial state
+                        logger.debug("Processing bracket since no trial is running.")
                         self._process_bracket(trial_runner, bracket)
 
                         # If there are pending trials now, suggest one.
