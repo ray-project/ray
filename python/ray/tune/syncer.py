@@ -787,6 +787,9 @@ class SyncerCallback(Callback):
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
     ) -> bool:
+        if not os.environ.get("AIR_ENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+            return True
+
         if not self._enabled or trial.uses_cloud_checkpointing:
             return False
 
@@ -893,10 +896,36 @@ class SyncerCallback(Callback):
         if self._sync_trial_dir(
             trial, force=trial.sync_on_checkpoint, wait=True
         ) and not os.path.exists(checkpoint.dir_or_data):
-            raise TuneError(
-                f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
-                "found after successful sync down."
-            )
+            if not os.environ.get("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+                raise DeprecationWarning(
+                    "Ray AIR no longer supports the synchronization of the trial "
+                    "directory from worker nodes to the head node. This means that the "
+                    "checkpoints of trials scheduled on worker nodes will not be "
+                    "accessible during the run (e.g., resuming from a checkpoint "
+                    "after a failure) or after the run "
+                    "(e.g., loading the checkpoint of a trial that ran on an already "
+                    "terminated worker node).\n\n"
+                    "To fix this issue, configure AIR to use either:\n"
+                    "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
+                    "(2) A network filesystem mounted on all nodes: "
+                    "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
+                    "See here for a full guide on how to configure these "
+                    "persistent storage options: "
+                    "https://docs.ray.io/en/master/tune/tutorials/tune-storage.html\n\n"
+                    "Other notes:\n"
+                    "- See here for a thread explaining why this functionality is "
+                    "being removed: <LINK>\n"
+                    # TODO(justinvyu): put in the link to the REP
+                    "- To re-enable the head node syncing behavior, set the "
+                    "environment variable AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE=1\n"
+                    "  - **Note that this functionality will be fully removed in "
+                    "Ray 2.7.**"
+                )
+            else:
+                raise TuneError(
+                    f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
+                    "found after successful sync down."
+                )
 
     def wait_for_all(self):
         # Remove any sync processes as needed, and only wait on the remaining ones.

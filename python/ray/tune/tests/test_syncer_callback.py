@@ -566,6 +566,46 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, "save_to_object1234")
 
 
+# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
+def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
+    """Checks that an error is raised when default syncing is disabled, and a
+    checkpoint cannot be found on the driver (since it was not synced)."""
+    syncer_callback = SyncerCallback(sync_period=0)
+    trial = MockTrial(trial_id="a", logdir=None)
+
+    with pytest.raises(DeprecationWarning):
+        syncer_callback.on_checkpoint(
+            iteration=1,
+            trials=[],
+            trial=trial,
+            checkpoint=_TrackedCheckpoint(
+                dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
+            ),
+        )
+
+    monkeypatch.setenv("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE", "1")
+    with pytest.raises(TuneError):
+        syncer_callback.on_checkpoint(
+            iteration=1,
+            trials=[],
+            trial=trial,
+            checkpoint=_TrackedCheckpoint(
+                dir_or_data="/does/not/exist", storage_mode=CheckpointStorage.PERSISTENT
+            ),
+        )
+
+    path_that_exists = tmp_path / "exists"
+    path_that_exists.mkdir()
+    syncer_callback.on_checkpoint(
+        iteration=1,
+        trials=[],
+        trial=trial,
+        checkpoint=_TrackedCheckpoint(
+            dir_or_data=str(path_that_exists), storage_mode=CheckpointStorage.PERSISTENT
+        ),
+    )
+
+
 if __name__ == "__main__":
     import sys
 
