@@ -111,7 +111,7 @@ def from_items(
 
         >>> import ray
         >>> ds = ray.data.from_items([1, 2, 3, 4, 5])
-        >>> ds  # doctest: +ELLIPSIS
+        >>> ds
         MaterializedDataset(num_blocks=..., num_rows=5, schema={item: int64})
         >>> ds.schema()
         Column  Type
@@ -196,7 +196,7 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
 
         >>> import ray
         >>> ds = ray.data.range(10000)
-        >>> ds  # doctest: +ELLIPSIS
+        >>> ds
         Dataset(num_blocks=..., num_rows=10000, schema={id: int64})
         >>> ds.map(lambda row: {"id": row["id"] * 2}).take(4)
         [{'id': 0}, {'id': 2}, {'id': 4}, {'id': 6}]
@@ -246,7 +246,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
 
         >>> import ray
         >>> ds = ray.data.range_tensor(1000, shape=(2, 2))
-        >>> ds  # doctest: +ELLIPSIS
+        >>> ds
         Dataset(
            num_blocks=...,
            num_rows=1000,
@@ -274,7 +274,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     .. seealso::
 
         :meth:`~ray.data.range`
-                    Call this method for creating synthetic datasets of integer data.
+                    Call this method to create synthetic datasets of integer data.
 
     """
     return read_datasource(
@@ -302,7 +302,7 @@ def read_datasource(
         datasource: The datasource to read data from.
         parallelism: The requested parallelism of the read. Parallelism may be
             limited by the available partitioning of the datasource. If set to -1,
-            parallelism will be automatically chosen based on the available cluster
+            parallelism is automatically chosen based on the available cluster
             resources and estimated in-memory data size.
         read_args: Additional kwargs to pass to the datasource impl.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
@@ -399,7 +399,7 @@ def read_datasource(
             k = math.ceil(requested_parallelism / estimated_num_blocks)
             logger.info(
                 f"To satisfy the requested parallelism of {requested_parallelism}, "
-                f"each read task output will be split into {k} smaller blocks."
+                f"each read task output is split into {k} smaller blocks."
             )
             for r in read_tasks:
                 r._set_additional_split_factor(k)
@@ -464,11 +464,11 @@ def read_mongo(
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
     of the MongoDB. The dataset is created from the results of executing
     ``pipeline`` against the ``collection``. If ``pipeline`` is None, the entire
-    ``collection`` will be read.
+    ``collection`` is read.
 
     .. tip::
 
-        See the following more details about these MongoDB concepts:
+        For more details about these MongoDB concepts, see the following:
         - URI: https://www.mongodb.com/docs/manual/reference/connection-string/
         - Database and Collection: https://www.mongodb.com/docs/manual/core/databases-and-collections/
         - Pipeline: https://www.mongodb.com/docs/manual/core/aggregation-pipeline/
@@ -493,15 +493,15 @@ def read_mongo(
         ... )
 
     Args:
-        uri: The URI of the source MongoDB where the dataset will be
+        uri: The URI of the source MongoDB where the dataset is
             read from. For the URI format, see details in the `MongoDB docs <https:/\
                 www.mongodb.com/docs/manual/reference/connection-string/>`_.
         database: The name of the database hosted in the MongoDB. This database
-            must exist otherwise ValueError will be raised.
+            must exist otherwise ValueError is raised.
         collection: The name of the collection in the database. This collection
-            must exist otherwise ValueError will be raised.
+            must exist otherwise ValueError is raised.
         pipeline: A `MongoDB pipeline <https://www.mongodb.com/docs/manual/core\
-            aggregation-pipeline/>`_, which will be executed on the given collection
+            aggregation-pipeline/>`_, which is executed on the given collection
             with results used to create Dataset. If None, the entire collection will
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
@@ -519,11 +519,11 @@ def read_mongo(
             Arrow-formatted results.
 
     Returns:
-        :class:`~ray.data.Dataset` producing records from the results of executing the pipeline on the specified MongoDB collection.
+        :class:`~ray.data.Dataset` producing rows from the results of executing the pipeline on the specified MongoDB collection.
 
     Raises:
-        ValueError: if ``database`` does not exist.
-        ValueError: if ``collection`` does not exist.
+        ValueError: if ``database`` doesn't exist.
+        ValueError: if ``collection`` doesn't exist.
     """
     return read_datasource(
         MongoDatasource(),
@@ -554,8 +554,9 @@ def read_parquet(
 
 
     Examples:
+        Read a file in remote storage.
+
         >>> import ray
-        >>> # Read a file in remote storage.
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
         >>> ds.schema()
         Column        Type
@@ -567,14 +568,14 @@ def read_parquet(
         variety       string
 
 
-        >>> # Read a directory in remote storage.
+        Read a directory in remote storage.
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris-parquet/")
 
-        >>> # Read multiple local files.
+        Read multiple local files.
         >>> ray.data.read_parquet(
         ...    ["local:///path/to/file1", "local:///path/to/file2"]) # doctest: +SKIP
 
-        >>> # Specify a schema for the parquet file.
+        Specify a schema for the parquet file.
         >>> import pyarrow as pa
         >>> fields = [("sepal.length", pa.float32()),
         ...           ("sepal.width", pa.float32()),
@@ -623,13 +624,14 @@ def read_parquet(
         paths: A single file path or directory, or a list of file paths. Multiple
             directories are not supported.
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
             the filesystem is automatically selected based on the scheme of the paths.
-            For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        columns: A list of column names to read. Only the specified columns will be
+            For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
+            used.
+        columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: The amount of parallelism to use for the dataset. Defaults to -1
             which automatically determines the optimal parallelism for your
@@ -741,7 +743,7 @@ def read_images(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
@@ -832,19 +834,20 @@ def read_parquet_bulk(
     and metadata fetching using :meth:`~ray.data.read_parquet` takes too long or the
     parquet files do not all have a unified schema.
 
-    There may be performance slowdowns when using this method with parquet files that
+    Performance slowdowns are possible when using this method with parquet files that
     are very large.
 
     .. warning::
 
         Only file paths should be provided as input (i.e. no directory paths). An
-        OSError will be raised if one or more paths point to directories. If your
+        OSError is raised if one or more paths point to directories. If your
         use-case requires directory paths, then use :meth:`~ray.data.read_parquet`
         instead.
 
     Examples:
-        >>> # Read multiple local files. You should always provide only input file
-        >>> # paths (i.e. no directory paths) when known to minimize read latency.
+        Read multiple local files. You should always provide only input file paths
+        (i.e. no directory paths) when known to minimize read latency.
+
         >>> ray.data.read_parquet_bulk( # doctest: +SKIP
         ...     ["/path/to/file1", "/path/to/file2"])
 
@@ -860,7 +863,7 @@ def read_parquet_bulk(
             on the scheme of the paths. For example, if the path begins with ``s3://``,
             the `S3FileSystem` is used.
         columns: A list of column names to read. Only the
-            specified columns will be read during the file scan.
+            specified columns are read during the file scan.
         parallelism: The amount of parallelism to use for
             the dataset. Defaults to -1 which automatically determines the optimal
             parallelism for your configuration. You should not need to manually set
@@ -930,11 +933,12 @@ def read_json(
     ignore_missing_paths: bool = False,
     **arrow_json_args,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from json files.
+    """Creates a :class:`~ray.data.Dataset` from JSON files.
 
     Examples:
+        Read a file in remote storage.
+
         >>> import ray
-        >>> # Read a file in remote storage.
         >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
         >>> ds.schema()
         Column     Type
@@ -942,11 +946,13 @@ def read_json(
         timestamp  timestamp[s]
         size       int64
 
-        >>> # Read multiple local files.
+        Read multiple local files.
+
         >>> ray.data.read_json( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
 
-        >>> # Read multiple directories.
+        Read multiple directories.
+
         >>> ray.data.read_json( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
@@ -964,7 +970,7 @@ def read_json(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
@@ -1037,8 +1043,9 @@ def read_csv(
     """Creates a :class:`~ray.data.Dataset` from CSV files.
 
     Examples:
+        Read a file in remote storage.
+
         >>> import ray
-        >>> # Read a file in remote storage.
         >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
         >>> ds.schema()
         Column             Type
@@ -1049,16 +1056,18 @@ def read_csv(
         petal width (cm)   double
         target             int64
 
-        >>> # Read multiple local files.
+        Read multiple local files.
+
         >>> ray.data.read_csv( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
 
-        >>> # Read directory from remote storage.
+        Read a directory from remote storage.
+
         >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris-csv/")
 
-        >>> # Read files that use a different delimiter. 
-        >>> # For more uses of ParseOptions see
-        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
+        Read files that use a different delimiter. For more uses of ParseOptions see
+        https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
+
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\\t")
         >>> ds = ray.data.read_csv(
@@ -1073,9 +1082,8 @@ def read_csv(
         petal.width   double
         variety       string
 
-        >>> # Convert a date column with a custom format from a CSV file.
-        >>> # For more uses of ConvertOptions see
-        >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
+        Convert a date column with a custom format from a CSV file. For more uses of ConvertOptions see https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
+        
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
@@ -1096,7 +1104,8 @@ def read_csv(
         By default, :meth:`~ray.data.read_csv` reads all files from file paths. If you want to filter
         files by file extensions, set the ``partition_filter`` parameter.
 
-        >>> # Read only *.csv files from a directory.
+        Read only *.csv files from a directory.
+
         >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv("example://different-extensions/",
         ...     partition_filter=FileExtensionFilter("csv"))
@@ -1106,7 +1115,7 @@ def read_csv(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
@@ -1183,15 +1192,17 @@ def read_text(
     """Create a :class:`~ray.data.Dataset` from lines stored in text files.
 
     Examples:
+        Read a file in remote storage.
+
         >>> import ray
-        >>> # Read a file in remote storage.
         >>> ds = ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
         >>> ds.schema()
         Column  Type
         ------  ----
         text    string
 
-        >>> # Read multiple local files.
+        Read multiple local files.
+
         >>> ray.data.read_text( # doctest: +SKIP
         ...    ["local:///path/to/file1", "local:///path/to/file2"])
 
@@ -1200,7 +1211,7 @@ def read_text(
             A list of paths can contain both files and directories.
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
@@ -1273,14 +1284,17 @@ def read_numpy(
     """Create an Arrow dataset from numpy files.
 
     Examples:
+        Read a directory of files in remote storage.
+
         >>> import ray
-        >>> # Read a directory of files in remote storage.
         >>> ray.data.read_numpy("s3://bucket/path") # doctest: +SKIP
 
-        >>> # Read multiple local files.
+        Read multiple local files.
+
         >>> ray.data.read_numpy(["/path/to/file1", "/path/to/file2"]) # doctest: +SKIP
 
-        >>> # Read multiple directories.
+        Read multiple directories.
+
         >>> ray.data.read_numpy( # doctest: +SKIP
         ...     ["s3://bucket/path1", "s3://bucket/path2"])
 
@@ -1338,9 +1352,9 @@ def read_tfrecords(
     messages.
 
     .. warning::
-        This method exclusively supports ``tf.train.Example`` messages. If a file
+        This function exclusively supports ``tf.train.Example`` messages. If a file
         contains a message that isn't of type ``tf.train.Example``, then this function
-        will fail.
+        fails.
 
     Examples:
         >>> import ray
@@ -1369,7 +1383,7 @@ def read_tfrecords(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
@@ -1498,8 +1512,9 @@ def read_binary_files(
     """Create a :class:`~ray.data.Dataset` from binary files of arbitrary contents.
 
     Examples:
+        Read a file in remote storage.
+
         >>> import ray
-        >>> # Read a file in remote storage.
         >>> path = "s3://anonymous@ray-example-data/pdf-sample_0.pdf"
         >>> ds = ray.data.read_binary_files(path)
         >>> ds.schema()
@@ -1507,11 +1522,13 @@ def read_binary_files(
         ------  ----
         bytes   binary
 
-        >>> # Read multiple local files.
+        Read multiple local files.
+
         >>> ray.data.read_binary_files( # doctest: +SKIP
         ...     ["local:///path/to/file1", "local:///path/to/file2"])
 
-        >>> # Read a file with path.
+        Read a file with the filepaths included as a column in the dataset.
+
         >>> path = "s3://anonymous@ray-example-data/pdf-sample_0.pdf"
         >>> ds = ray.data.read_binary_files(path, include_paths=True)
         >>> ds.take(1)[0]["path"]
@@ -1524,7 +1541,7 @@ def read_binary_files(
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
         filesystem: The pyarrow filesystem
-            implementation to read from. These are specified in the
+            implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
             filesystems.html#filesystem-implementations>`_. You should specify this if
             you need to provide specific configurations to the filesystem. By default
@@ -1556,7 +1573,7 @@ def read_binary_files(
             found. Defaults to False.
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified paths.
+        :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
     output_arrow_format = True
 
@@ -1744,7 +1761,8 @@ def from_pandas(
         >>> ray.data.from_pandas(df)
         MaterializedDataset(num_blocks=1, num_rows=3, schema={a: int64, b: int64})
 
-        >>> # Create a Ray Dataset from a list of Pandas DataFrames.
+       Create a Ray Dataset from a list of Pandas DataFrames.
+
         >>> ray.data.from_pandas([df, df])
         MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
 
@@ -1783,7 +1801,8 @@ def from_pandas_refs(
         >>> ray.data.from_pandas_refs(df_ref)
         MaterializedDataset(num_blocks=1, num_rows=3, schema={a: int64, b: int64})
 
-        >>> # Create a Ray Dataset from a list of Pandas Dataframes references.
+        Create a Ray Dataset from a list of Pandas Dataframes references.
+
         >>> ray.data.from_pandas_refs([df_ref, df_ref])
         MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
 
@@ -1853,7 +1872,8 @@ def from_numpy(ndarrays: Union[np.ndarray, List[np.ndarray]]) -> MaterializedDat
         >>> ray.data.from_numpy(arr)
         MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
 
-        >>> # Create a Ray Dataset from a list of NumPy arrays.
+        Create a Ray Dataset from a list of NumPy arrays.
+
         >>> ray.data.from_numpy([arr, arr])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 
@@ -1883,7 +1903,8 @@ def from_numpy_refs(
         >>> ray.data.from_numpy_refs(arr_ref)
         MaterializedDataset(num_blocks=1, num_rows=1, schema={data: int64})
 
-        >>> # Create a Ray Dataset from a list of NumPy array references.
+        Create a Ray Dataset from a list of NumPy array references.
+
         >>> ray.data.from_numpy_refs([arr_ref, arr_ref])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={data: int64})
 
@@ -1942,7 +1963,8 @@ def from_arrow(
         >>> ray.data.from_arrow(table)
         MaterializedDataset(num_blocks=1, num_rows=1, schema={x: int64})
 
-        >>> # Create a Ray Dataset from a list of PyArrow tables.
+        Create a Ray Dataset from a list of PyArrow tables.
+
         >>> ray.data.from_arrow([table, table])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={x: int64})
 
@@ -1978,7 +2000,8 @@ def from_arrow_refs(
         >>> ray.data.from_arrow_refs(table_ref)
         MaterializedDataset(num_blocks=1, num_rows=1, schema={x: int64})
 
-        >>> # Create a Ray Dataset from a list of PyArrow table references
+        Create a Ray Dataset from a list of PyArrow table references
+
         >>> ray.data.from_arrow_refs([table_ref, table_ref])
         MaterializedDataset(num_blocks=2, num_rows=2, schema={x: int64})
 
@@ -2019,7 +2042,7 @@ def from_spark(
         spark: A SparkSession, which must be created by RayDP (Spark-on-Ray).
         df: A Spark dataframe, which must be created by RayDP (Spark-on-Ray).
             parallelism: The amount of parallelism to use for the dataset.
-            If not provided, it will be equal to the number of partitions of
+            If not provided, it is set to the number of partitions of
             the original Spark dataframe.
 
     Returns:
