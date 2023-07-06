@@ -1,10 +1,14 @@
+import sys
 from typing import Callable, Dict, Tuple, List, Union, Set
 from dataclasses import dataclass
 from collections import defaultdict
 
 import ray
 from ray._raylet import GcsClient
-from ray.serve._private.utils import get_all_node_ids
+from ray.serve._private.utils import (
+    get_all_node_ids,
+    get_head_node_id,
+)
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
@@ -75,6 +79,8 @@ class DeploymentScheduler:
         self._running_replicas = defaultdict(dict)
 
         self._gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
+
+        self._head_node_id = get_head_node_id()
 
     def on_deployment_created(
         self,
@@ -263,8 +269,13 @@ class DeploymentScheduler:
         node_to_running_replicas = defaultdict(set)
         for running_replica, node_id in self._running_replicas[deployment_name].items():
             node_to_running_replicas[node_id].add(running_replica)
-        for running_replicas in sorted(
-            node_to_running_replicas.values(), key=lambda lst: len(lst)
+        # Replicas on the head node has the lowest priority for downscaling
+        # since we cannot relinquish the head node.
+        for _, running_replicas in sorted(
+            node_to_running_replicas.items(),
+            key=lambda node_and_running_replicas: len(node_and_running_replicas[1])
+            if node_and_running_replicas[0] != self._head_node_id
+            else sys.maxsize,
         ):
             for running_replica in running_replicas:
                 if len(replicas_to_stop) == max_num_to_stop:

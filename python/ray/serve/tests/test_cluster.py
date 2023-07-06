@@ -175,9 +175,11 @@ def test_replica_startup_status_transitions(ray_cluster):
 
 def test_intelligent_scale_down(ray_cluster):
     cluster = ray_cluster
-    cluster.add_node(num_cpus=2)
-    cluster.add_node(num_cpus=2)
+    # Head node
+    cluster.add_node(num_cpus=0)
     cluster.connect(namespace=SERVE_NAMESPACE)
+    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2)
     serve.start()
 
     @serve.deployment(version="1")

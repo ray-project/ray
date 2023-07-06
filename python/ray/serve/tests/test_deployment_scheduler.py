@@ -11,6 +11,7 @@ from ray.serve._private.deployment_scheduler import (
     ReplicaSchedulingRequest,
     DeploymentDownscaleRequest,
 )
+from ray.serve._private.utils import get_head_node_id
 
 
 @ray.remote(num_cpus=1)
@@ -161,6 +162,61 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
     assert deployment_to_replicas_to_stop["deployment1"] == {"replica1", "replica2"}
     scheduler.on_replica_stopping("deployment1", "replica1")
     scheduler.on_replica_stopping("deployment1", "replica2")
+    scheduler.on_deployment_deleted("deployment1")
+
+
+def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_cluster):
+    """Test to make sure downscale deprioritizes replicas on the head node."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=3)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    head_node_id = get_head_node_id()
+
+    scheduler = DeploymentScheduler()
+    scheduler.on_deployment_created("deployment1", SpreadDeploymentSchedulingPolicy())
+    scheduler.on_replica_running("deployment1", "replica1", head_node_id)
+    scheduler.on_replica_running("deployment1", "replica2", "node2")
+    scheduler.on_replica_running("deployment1", "replica3", "node2")
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            "deployment1": DeploymentDownscaleRequest(
+                deployment_name="deployment1", num_to_stop=1
+            )
+        },
+    )
+    assert len(deployment_to_replicas_to_stop) == 1
+    assert deployment_to_replicas_to_stop["deployment1"] < {"replica2", "replica3"}
+    scheduler.on_replica_stopping(
+        "deployment1", deployment_to_replicas_to_stop["deployment1"].pop()
+    )
+
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            "deployment1": DeploymentDownscaleRequest(
+                deployment_name="deployment1", num_to_stop=1
+            )
+        },
+    )
+    assert len(deployment_to_replicas_to_stop) == 1
+    assert deployment_to_replicas_to_stop["deployment1"] < {"replica2", "replica3"}
+    scheduler.on_replica_stopping(
+        "deployment1", deployment_to_replicas_to_stop["deployment1"].pop()
+    )
+
+    deployment_to_replicas_to_stop = scheduler.schedule(
+        upscales={},
+        downscales={
+            "deployment1": DeploymentDownscaleRequest(
+                deployment_name="deployment1", num_to_stop=1
+            )
+        },
+    )
+    assert len(deployment_to_replicas_to_stop) == 1
+    assert deployment_to_replicas_to_stop["deployment1"] == {"replica1"}
+    scheduler.on_replica_stopping("deployment1", "replica1")
     scheduler.on_deployment_deleted("deployment1")
 
 
