@@ -7,7 +7,7 @@ from typing import Optional
 import numpy as np
 
 import ray
-from ray.air import session
+from ray import train
 from ray.air.config import DatasetConfig, ScalingConfig
 from ray.data import Dataset, DataIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
@@ -69,8 +69,8 @@ class DummyTrainer(DataParallelTrainer):
         def train_loop_per_worker():
             import pandas as pd
 
-            rank = session.get_world_rank()
-            data_shard = session.get_dataset_shard("train")
+            rank = train.get_context().get_world_rank()
+            data_shard = train.get_dataset_shard("train")
             start = time.perf_counter()
             epochs_read, batches_read, bytes_read = 0, 0, 0
             batch_delays = []
@@ -100,7 +100,7 @@ class DummyTrainer(DataParallelTrainer):
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
                         bytes_read += sys.getsizeof(batch)
-                    session.report(
+                    train.report(
                         dict(
                             bytes_read=bytes_read,
                             batches_read=batches_read,
@@ -139,7 +139,7 @@ def make_local_dataset_iterator(
 ) -> DataIterator:
     """A helper function to create a local
     :py:class:`DataIterator <ray.data.DataIterator>`,
-    like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
+    like the one returned by :meth:`~ray.train.get_dataset_shard`.
 
     This function should only be used for development and debugging. It will
     raise an exception if called by a worker instead of the driver.

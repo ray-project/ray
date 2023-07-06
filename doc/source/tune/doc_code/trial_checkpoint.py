@@ -89,15 +89,14 @@ tuner.fit()
 
 
 # __function_api_checkpointing_start__
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 
 
 def train_func(config):
     epochs = config.get("epochs", 2)
     start = 0
-    loaded_checkpoint = session.get_checkpoint()
+    loaded_checkpoint = train.get_context().get_checkpoint()
     if loaded_checkpoint:
         last_step = loaded_checkpoint.to_dict()["step"]
         start = last_step + 1
@@ -109,7 +108,7 @@ def train_func(config):
         # Report metrics and save a checkpoint
         metrics = {"metric": "my_metric"}
         checkpoint = Checkpoint.from_dict({"epoch": epoch})
-        session.report(metrics, checkpoint=checkpoint)
+        train.report(metrics, checkpoint=checkpoint)
 
 
 tuner = tune.Tuner(train_func)
@@ -122,9 +121,8 @@ class MyModel:
 
 
 # __function_api_checkpointing_from_dir_start__
-from ray import tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 
 
 # like Keras, or pytorch save methods.
@@ -144,8 +142,8 @@ def get_epoch_from_dir(dir_path: str) -> int:
 
 def train_func(config):
     start = 1
-    if session.get_checkpoint() is not None:
-        loaded_checkpoint = session.get_checkpoint()
+    if train.get_context().get_checkpoint() is not None:
+        loaded_checkpoint = train.get_context().get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_path:
             start = get_epoch_from_dir(loaded_checkpoint_path) + 1
 
@@ -158,7 +156,7 @@ def train_func(config):
         # some function to write model to directory
         write_model_to_dir(my_model, "my_model")
         write_epoch_to_dir(epoch, "my_model")
-        session.report(
+        train.report(
             metrics=metrics, checkpoint=Checkpoint.from_directory("my_model")
         )
 
@@ -178,9 +176,9 @@ def train_func(config):
         metrics = {"metric": "my_metric"}
         if epoch % checkpoint_freq == 0:
             checkpoint = Checkpoint.from_dict({"epoch": epoch})
-            session.report(metrics, checkpoint=checkpoint)
+            train.report(metrics, checkpoint=checkpoint)
         else:
-            session.report(metrics)
+            train.report(metrics)
 
 
 tuner = tune.Tuner(train_func, param_space={"epochs": 12})

@@ -100,8 +100,7 @@ class BaseTrainer(abc.ABC):
         import torch
 
         from ray.train.trainer import BaseTrainer
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
 
         class MyPytorchTrainer(BaseTrainer):
@@ -142,7 +141,7 @@ class BaseTrainer(abc.ABC):
 
                     # Use Tune functions to report intermediate
                     # results.
-                    session.report({"loss": loss, "epoch": epoch_idx})
+                    train.report({"loss": loss, "epoch": epoch_idx})
 
 
         # Initialize the Trainer, and call Trainer.fit()
@@ -547,7 +546,7 @@ class BaseTrainer(abc.ABC):
         ``self.datasets`` have already been preprocessed by ``self.preprocessor``.
 
         You can use the :ref:`Tune Function API functions <tune-function-docstring>`
-        (``session.report()`` and ``session.get_checkpoint()``) inside
+        (``train.report()`` and ``train.get_context().get_checkpoint()``) inside
         this training loop.
 
         Example:
@@ -555,13 +554,13 @@ class BaseTrainer(abc.ABC):
         .. testcode::
 
             from ray.train.trainer import BaseTrainer
-            from ray.air import session
+            from ray import train
 
             class MyTrainer(BaseTrainer):
                 def training_loop(self):
                     for epoch_idx in range(5):
                         ...
-                        session.report({"epoch": epoch_idx})
+                        train.report({"epoch": epoch_idx})
 
         """
         raise NotImplementedError
@@ -701,11 +700,11 @@ class BaseTrainer(abc.ABC):
             # Instantiate new Trainer in Trainable.
             trainer = trainer_cls(**config)
 
-            # Get the checkpoint from the Tune session, and use it to initialize
+            # Get the checkpoint from the train context, and use it to initialize
             # the restored trainer.
             # This handles both worker-level and cluster-level restoration
             # of the Train experiment.
-            checkpoint = session.get_checkpoint()
+            checkpoint = train.get_context().get_checkpoint()
             if checkpoint:
                 trainer.resume_from_checkpoint = checkpoint
                 # Always load the preprocessor from an available checkpoint
