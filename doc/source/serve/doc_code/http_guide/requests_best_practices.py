@@ -15,7 +15,7 @@ response = requests.get("http://localhost:8000/")
 result = response.json()
 # __prototype_code_end__
 
-assert result == "Hi there"
+assert result == "Hi there!"
 
 # __production_code_start__
 import requests
@@ -38,4 +38,7 @@ retries = Retry(
 session.mount("http://", HTTPAdapter(max_retries=retries))
 
 response = session.get("http://localhost:8000/", timeout=10)  # Add timeout
+result = response.json()
 # __production_code_end__
+
+assert result == "Hi there!"
