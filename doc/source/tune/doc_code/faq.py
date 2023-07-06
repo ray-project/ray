@@ -2,8 +2,8 @@
 
 # __reproducible_start__
 import numpy as np
-from ray import tune
-from ray.air import session, ScalingConfig
+from ray import train, tune
+from ray.train import ScalingConfig
 
 
 def train(config):
@@ -13,7 +13,7 @@ def train(config):
     # is the same.
     np.random.seed(config["seed"])
     random_result = np.random.uniform(0, 100, size=1).item()
-    session.report({"result": random_result})
+    train.report({"result": random_result})
 
 
 # Set seed for Ray Tune's random search.
@@ -58,7 +58,7 @@ config = {
 
 def train(config):
     random_result = np.random.uniform(0, 100, size=1).item()
-    session.report({"result": random_result})
+    train.report({"result": random_result})
 
 
 train_fn = train
@@ -126,7 +126,7 @@ if not MOCK:
     def train_fn(config, checkpoint_dir=None):
         # some Modin operations here
         # import modin.pandas as pd
-        session.report({"metric": metric})
+        train.report({"metric": metric})
 
     tuner = tune.Tuner(
         tune.with_resources(
@@ -223,7 +223,7 @@ if __name__ == "__main__":
 # __torch_seed_example_end__
 
 # __large_data_start__
-from ray import air, tune
+from ray import train, tune
 import numpy as np
 
 
@@ -244,7 +244,7 @@ if not MOCK:
     # __log_1_start__
     tuner = tune.Tuner(
         MyTrainableClass,
-        run_config=air.RunConfig(storage_path="s3://my-log-dir"),
+        run_config=train.RunConfig(storage_path="s3://my-log-dir"),
     )
     tuner.fit()
     # __log_1_end__
@@ -426,7 +426,7 @@ if not MOCK:
         assert os.getcwd() == os.environ["TUNE_ORIG_WORKING_DIR"]
 
         # Write to the Tune trial directory, not the shared working dir
-        tune_trial_dir = Path(session.get_trial_dir())
+        tune_trial_dir = Path(train.get_context().get_trial_dir())
         with open(tune_trial_dir / "write.txt", "w") as f:
             f.write("trial saved artifact")
 
@@ -439,8 +439,8 @@ if not MOCK:
 
 
 # __iter_experimentation_initial_start__
-from ray import air, tune
-from ray.air import Checkpoint, session
+from ray import train, tune
+from ray.train import Checkpoint
 import random
 
 
@@ -448,7 +448,7 @@ def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        session.report(
+        train.report(
             {"score": random.random()},
             checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
         )
@@ -480,7 +480,7 @@ def trainable(config):
     for epoch in range(1, config["num_epochs"]):
         # Do some training...
 
-        session.report(
+        train.report(
             {"score": random.random()},
             checkpoint=Checkpoint.from_dict({"model_state_dict": {"x": 1}}),
         )
