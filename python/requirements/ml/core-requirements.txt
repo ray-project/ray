@@ -13,7 +13,7 @@ lightgbm==3.3.5
 lightgbm_ray==0.1.8
 
 # Huggingface
-transformers==4.19.1
+transformers==4.30.0
 accelerate==0.20.3
 
 # DL libraries
