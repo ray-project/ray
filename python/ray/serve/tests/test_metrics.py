@@ -119,14 +119,20 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
     def ensure_request_processing():
         resp = requests.get("http://127.0.0.1:9999").text
         resp = resp.split("\n")
+        expected_metrics = {
+            "serve_replica_processing_queries",
+            "serve_replica_pending_queries",
+        }
         for metrics in resp:
             if "# HELP" in metrics or "# TYPE" in metrics:
                 continue
             if "serve_replica_processing_queries" in metrics:
-                print(metrics)
                 assert "1.0" in metrics
+                expected_metrics.discard("serve_replica_processing_queries")
             elif "serve_replica_pending_queries" in metrics:
                 assert "0.0" in metrics
+                expected_metrics.discard("serve_replica_pending_queries")
+        assert len(expected_metrics) == 0
         return True
 
     wait_for_condition(ensure_request_processing, timeout=5)
