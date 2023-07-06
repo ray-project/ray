@@ -9,22 +9,18 @@ configured via the --env option:
 """
 
 import argparse
+
 import numpy as np
+from rllib_slate_q.slate_q import SlateQ, SlateQConfig
 from scipy.stats import sem
 
 import ray
 from ray import air, tune
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.examples.env.recommender_system_envs_with_recsim import (
     InterestEvolutionRecSimEnv,
     InterestExplorationRecSimEnv,
     LongTermSatisfactionRecSimEnv,
 )
-from ray.rllib.utils.test_utils import check_learning_achieved
-from ray.tune.logger import pretty_print
-
-from rllib_slate_q.slate_q import SlateQ, SlateQConfig
-
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
