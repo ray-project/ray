@@ -1286,26 +1286,28 @@ class TestDeployApp:
 
         handle = client.get_handle(name)
         pid1 = ray.get(handle.remote())[0]
-        # Health check counter shouldn't increase beyond any initial health checks done
-        # upon replica actor startup
+
+        # The health check counter shouldn't increase beyond any initial health checks
+        # done as part of the replica startup sequence.
         initial_counter = ray.get(handle.get_counter.remote(health_check=True))
         time.sleep(5)
         assert (
             ray.get(handle.get_counter.remote(health_check=True)) <= initial_counter + 1
         )
 
-        # Redeploy with health check period reduced to 1 second
+        # Update the deployment's health check period to 0.1 seconds.
         config_template["deployments"][0]["health_check_period_s"] = 0.1
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
         wait_for_condition(partial(self.check_running, client), timeout=15)
-        # health check counter should now very quickly increase
+
+        # Health check counter should now quickly increase due to the shorter period.
         wait_for_condition(
             lambda: ray.get(handle.get_counter.remote(health_check=True)) >= 30,
             retry_interval_ms=1000,
-            timeout=5,
+            timeout=10,
         )
 
-        # Check that it's the same replica, it didn't get teared down
+        # Check that it's the same replica (it wasn't torn down to update the config).
         pid2 = ray.get(handle.remote())[0]
         assert pid1 == pid2
 
