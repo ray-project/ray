@@ -3,6 +3,7 @@
 
 * [A3C](./a3c)
 * [MAML](./maml)
+* [DDPG](./ddpg)
 
 
 
