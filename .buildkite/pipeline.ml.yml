@@ -581,4 +581,5 @@
 
     - (cd rllib_contrib/mbmpo && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
-    - pytest rllib_contrib/mbmpo/tests/test_mbmpo.py
+    - pytest rllib_contrib/mbmpo/tests/
+    - python rllib_contrib/mbmpo/examples/mbmpo_cartpole_v1_model_based.py --run-as-test
