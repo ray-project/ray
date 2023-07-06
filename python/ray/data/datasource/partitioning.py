@@ -36,6 +36,66 @@ class Partitioning:
 
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
+
+    For example, to read a dataset with
+    `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_:
+
+        .. testcode::
+
+            import ray
+            from ray.data.datasource.partitioning import Partitioning
+            ds = ray.data.read_csv(
+                "example://iris.csv",
+                partitioning=Partitioning("hive"),
+            )
+
+        .. testoutput::
+            Dataset(
+                num_blocks=20,
+                num_rows=150,
+                schema={
+                    sepal.length: double,
+                    sepal.width: double,
+                    petal.length: double,
+                    petal.width: double,
+                    variety: string
+                }
+            )
+
+    Instead, if your files are arranged in a directory structure such as:
+
+        .. code::
+
+            root/dog/dog_0.jpeg
+            root/dog/dog_1.jpeg
+            ...
+
+            root/cat/cat_0.jpeg
+            root/cat/cat_1.jpeg
+            ...
+
+    Then you can use directory-based partitioning:
+
+        .. testcode::
+            root = "s3://anonymous@air-example-data/cifar-10/images"
+            partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+            dataset = ray.data.read_images(root, partitioning=partitioning)
+            ds
+
+        .. testoutput::
+
+            Dataset(
+                num_blocks=20,
+                num_rows=150,
+                schema={
+                    sepal.length: double,
+                    sepal.width: double,
+                    petal.length: double,
+                    petal.width: double,
+                    variety: string
+                }
+            )
+
     """
 
     #: The partition style - may be either HIVE or DIRECTORY.
@@ -101,23 +161,22 @@ class Partitioning:
         self._normalized_base_dir = normalized_base_dir
 
 
-@DeveloperAPI
 class PathPartitionEncoder:
     """Callable that generates directory path strings for path-based partition formats.
 
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
 
-    Two path partition formats are currently supported - ``HIVE`` and ``DIRECTORY``.
+    Two path partition formats are currently supported - `HIVE` and `DIRECTORY`.
 
-    For ``HIVE`` Partitioning, all partition directories will be generated using a
-    ``{key1}={value1}/{key2}={value2}`` naming convention under the base directory.
+    For `HIVE` Partitioning, all partition directories will be generated using a
+    `{key1}={value1}/{key2}={value2}` naming convention under the base directory.
     An accompanying ordered list of partition key field names must also be
     provided, where the order and length of all partition values must match the
     order and length of field names
 
-    For ``DIRECTORY`` Partitioning, all directories will be generated from partition
-    values using a ``{value1}/{value2}`` naming convention under the base directory.
+    For `DIRECTORY` Partitioning, all directories will be generated from partition
+    values using a `{value1}/{value2}` naming convention under the base directory.
     """
 
     @staticmethod
@@ -218,25 +277,24 @@ class PathPartitionEncoder:
         return self._encoder_fn(values)
 
 
-@DeveloperAPI
 class PathPartitionParser:
     """Partition parser for path-based partition formats.
 
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
 
-    Two path partition formats are currently supported - ``HIVE`` and ``DIRECTORY``.
+    Two path partition formats are currently supported - `HIVE` and `DIRECTORY`.
 
-    For ``HIVE`` Partitioning, all partition directories under the base directory
-    will be discovered based on ``{key1}={value1}/{key2}={value2}`` naming
+    For `HIVE` Partitioning, all partition directories under the base directory
+    will be discovered based on `{key1}={value1}/{key2}={value2}` naming
     conventions. Key/value pairs do not need to be presented in the same
     order across all paths. Directory names nested under the base directory that
     don't follow this naming condition will be considered unpartitioned. If a
     partition filter is defined, then it will be called with an empty input
     dictionary for each unpartitioned file.
 
-    For ``DIRECTORY`` Partitioning, all directories under the base directory will
-    be interpreted as partition values of the form ``{value1}/{value2}``. An
+    For `DIRECTORY` Partitioning, all directories under the base directory will
+    be interpreted as partition values of the form `{value1}/{value2}`. An
     accompanying ordered list of partition field names must also be provided,
     where the order and length of all partition values must match the order and
     length of field names. Files stored directly in the base directory will

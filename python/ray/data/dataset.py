@@ -172,7 +172,8 @@ class Dataset:
 
     Datasets are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
     where each block holds data in Arrow format, representing a shard of the overall
-    data collection. The block also determines the unit of parallelism.
+    data collection. The block also determines the unit of parallelism. For more
+    details, see :ref:`Ray Data Internals <dataset_concept>`.
 
     Datasets can be created in multiple ways: from synthetic data via ``range_*()``
     APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
@@ -200,7 +201,7 @@ class Dataset:
     Dataset has two kinds of operations: transformation, which takes in Dataset
     and outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption,
     which produces values (not a data stream) as output
-    (e.g. :py:meth:`.iter_batches()`).
+    (e.g. :meth:`.iter_batches()`).
 
     Dataset transformations are lazy, with execution of the transformations being
     triggered by downstream consumption.
@@ -3648,13 +3649,13 @@ class Dataset:
 
         This works by first converting this dataset into a distributed set of
         Pandas DataFrames (using :meth:`~ray.data.Dataset.to_pandas_refs`).
-        Please see caveats there. Then the individual DataFrames are used to
+        See caveats there. Then the individual DataFrames are used to
         create the Modin DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using :meth:`Dataset.to_arrow` or
+        underlying data, consider using :meth:`.to_arrow_refs` or
         :meth:`.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)

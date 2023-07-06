@@ -274,15 +274,14 @@ def read_datasource(
 
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
-        parallelism: The requested parallelism of the read. Parallelism may be
+        parallelism: The requested parallelism of the read. Parallelism might be
             limited by the available partitioning of the datasource. If set to -1,
-            parallelism will be automatically chosen based on the available cluster
-            resources and estimated in-memory data size.
-        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource` impl.
-        ray_remote_args: kwargs passed to ``ray.remote`` in the read tasks.
+            parallelism is automatically chosen based on the available cluster
+        read_args: Additional kwargs to pass to the :class:`~ray.data.Datasource` implementation.
+        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
 
     Returns:
-        :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`..
+        :class:`~ray.data.Dataset` that reads data from the :class:`~ray.data.Datasource`.
     """  # noqa: E501
     ctx = DataContext.get_current()
 
@@ -862,7 +861,7 @@ def read_json(
             limited by the number of files of the dataset.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
         arrow_open_stream_args: kwargs passed to
-            pyarrow.fs.FileSystem.open_input_stream
+            ``pyarrow.fs.FileSystem.open_input_stream <https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html/>``_.
         meta_provider: File metadata provider. Custom metadata providers may
             be able to resolve file metadata more quickly and/or accurately.
         partition_filter: Path-based partition filter, if any. Can be used
@@ -1459,8 +1458,7 @@ def from_dask(df: "dask.DataFrame") -> MaterializedDataset:
         df: A `Dask DataFrame`_.
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` holding Arrow records
-        read from the DataFrame.
+        A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import dask
 
@@ -1496,8 +1494,7 @@ def from_mars(df: "mars.DataFrame") -> MaterializedDataset:
         df: A `Mars DataFrame`_, which must be executed by Mars-on-Ray.
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` holding Arrow records
-        read from the DataFrame.
+        A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import mars.dataframe as md
 
@@ -1514,8 +1511,7 @@ def from_modin(df: "modin.DataFrame") -> MaterializedDataset:
         df: A `Modin DataFrame`_, which must be using the Ray backend.
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` holding Arrow records
-        read from the DataFrame.
+        A :class:`~ray.data.MaterializedDataset` rows read from the DataFrame.
     """  # noqa: E501
     from modin.distributed.dataframe.pandas.partitions import unwrap_partitions
 
@@ -1742,12 +1738,11 @@ def from_spark(
     Args:
         df: A `Spark DataFrame`_, which must be created by RayDP (Spark-on-Ray).
         parallelism: The amount of parallelism to use for the dataset. If
-            not provided, it will be equal to the number of partitions of
+            not provided, the parallelism is equal to the number of partitions of
             the original Spark DataFrame.
 
     Returns:
-        A :class:`~ray.data.MaterializedDataset` holding Arrow records
-        read from the DataFrame.
+        A :class:`~ray.data.MaterializedDataset` holding rows read from the DataFrame.
     """  # noqa: E501
     import raydp
 
@@ -1762,7 +1757,7 @@ def from_huggingface(
     `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
     or `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_.
 
-    This function is not parallelized, and is intended to be used
+    This function isn't parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
     to memory-mapped).
 
@@ -1799,11 +1794,11 @@ def from_huggingface(
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_ or `DatasetDict`_.
-            :class:`~ray.data.IterableDataset` is not supported.
+            :class:`~ray.data.IterableDataset` isn't supported.
 
     Returns:
-        A :class:`~ray.data.Dataset` holding Arrow records from the `Hugging Face Datasets Dataset`_,
-        or a dict of :class:`~ray.data.Dataset` s in case ``dataset`` is a `DatasetDict`_.
+        A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_,
+        or a dict of :class:`Datasets <ray.data.Dataset>` in case ``dataset`` is a `DatasetDict`_.
     """  # noqa: E501
     import datasets
 
@@ -1878,9 +1873,7 @@ def from_tf(
         [ 96,  37,  19],
         [105,  42,  18],
         [104,  38,  20]],
-
         ...,
-
         [[195, 161, 126],
         [187, 153, 123],
         [186, 151, 128],
