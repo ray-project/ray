@@ -753,12 +753,12 @@ class RayServeReplica:
                     function_name = runner_method.__name__
                 e = wrap_to_ray_error(function_name, e)
                 if request_metadata.is_http_request:
-                    error_message = f"Unexpected error, traceback: {e}."
                     result = starlette.responses.Response(
-                        error_message, status_code=500
+                        f"Unexpected error, traceback: {e}.", status_code=500
                     )
-                else:
-                    raise e from None
+                    await self.send_user_result_over_asgi(result, scope, receive, send)
+
+                raise e from None
 
             if request_metadata.is_http_request and not isinstance(
                 self.callable, ASGIAppReplicaWrapper
