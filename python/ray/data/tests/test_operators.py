@@ -35,6 +35,8 @@ from ray.data._internal.execution.operators.task_pool_map_operator import (
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data.block import Block
+from ray.data.context import DataContext
+from ray.data.tests.util import named_values
 from ray.tests.conftest import *  # noqa
 
 
@@ -739,6 +741,51 @@ def test_union_operator(ray_start_regular_shared, preserve_order):
     _take_outputs(union_op)
     union_op.all_inputs_done()
     assert union_op.completed()
+
+
+def test_random_block_order_schema(ray_start_regular_shared):
+    df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
+    ds = ray.data.from_pandas(df).randomize_block_order()
+    assert ds.schema().names == ["a", "b"]
+
+
+def test_random_block_order(ray_start_regular_shared, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+
+    # Test BlockList.randomize_block_order.
+    ds = ray.data.range(12).repartition(4)
+    ds = ds.randomize_block_order(seed=0)
+
+    results = ds.take_all()
+    expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
+    assert results == expected
+
+    # Test window_size.
+    ds = ray.data.range(100).repartition(100)
+    ds = ds.randomize_block_order(window_size=20, seed=0)
+    results = ds.take_all()
+    # When setting window_size, the output is non-deterministic.
+    # Because it depends on the timing of data consumption.
+    assert sorted(results, key=lambda item: item["id"]) == named_values(
+        "id", range(100)
+    ), results
+
+    # Test LazyBlockList.randomize_block_order.
+    context = DataContext.get_current()
+    try:
+        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
+        context.optimize_fuse_read_stages = False
+
+        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
+        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
+        lazy_blocklist_results = lazy_blocklist_ds.take_all()
+        lazy_blocklist_expected = named_values(
+            "id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
+        )
+        assert lazy_blocklist_results == lazy_blocklist_expected
+    finally:
+        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
 
 
 @pytest.mark.parametrize(

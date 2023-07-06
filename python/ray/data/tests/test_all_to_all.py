@@ -1027,41 +1027,6 @@ def test_groupby_map_groups_with_different_types(ray_start_regular_shared):
     assert sorted([x["out"] for x in ds.take()]) == [1, 3]
 
 
-def test_random_block_order_schema(ray_start_regular_shared):
-    df = pd.DataFrame({"a": np.random.rand(10), "b": np.random.rand(10)})
-    ds = ray.data.from_pandas(df).randomize_block_order()
-    ds.schema().names == ["a", "b"]
-
-
-def test_random_block_order(ray_start_regular_shared, restore_data_context):
-    ctx = DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-
-    # Test BlockList.randomize_block_order.
-    ds = ray.data.range(12).repartition(4)
-    ds = ds.randomize_block_order(seed=0)
-
-    results = ds.take()
-    expected = named_values("id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11])
-    assert results == expected
-
-    # Test LazyBlockList.randomize_block_order.
-    context = DataContext.get_current()
-    try:
-        original_optimize_fuse_read_stages = context.optimize_fuse_read_stages
-        context.optimize_fuse_read_stages = False
-
-        lazy_blocklist_ds = ray.data.range(12, parallelism=4)
-        lazy_blocklist_ds = lazy_blocklist_ds.randomize_block_order(seed=0)
-        lazy_blocklist_results = lazy_blocklist_ds.take()
-        lazy_blocklist_expected = named_values(
-            "id", [6, 7, 8, 0, 1, 2, 3, 4, 5, 9, 10, 11]
-        )
-        assert lazy_blocklist_results == lazy_blocklist_expected
-    finally:
-        context.optimize_fuse_read_stages = original_optimize_fuse_read_stages
-
-
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
 

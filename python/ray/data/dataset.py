@@ -1020,12 +1020,16 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> # Randomize the block order.
+            >>> # Randomize the block order of the entire dataset.
             >>> ds.randomize_block_order() # doctest: +SKIP
+            >>> # Randomize the block order with a window size of 10.
+            >>> ds.randomize_block_order(window_size=10) # doctest: +SKIP
             >>> # Randomize the block order with a fixed random seed.
             >>> ds.randomize_block_order(seed=12345) # doctest: +SKIP
 
         Args:
+            window_size: The number of blocks to shuffle at a time. If None,
+                the entire dataset is shuffled at once.
             seed: Fix the random seed to use, otherwise one will be chosen
                 based on system randomness.
 
