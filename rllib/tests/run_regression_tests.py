@@ -75,6 +75,12 @@ parser.add_argument(
     ),
 )
 parser.add_argument(
+    "--verbose",
+    type=int,
+    default=2,
+    help="The verbosity level for the main `tune.run_experiments()` call.",
+)
+parser.add_argument(
     "--wandb-key",
     type=str,
     default=None,
@@ -202,7 +208,10 @@ if __name__ == "__main__":
             else:
                 try:
                     trials = run_experiments(
-                        experiments, resume=False, verbose=2, callbacks=callbacks
+                        experiments,
+                        resume=False,
+                        verbose=args.verbose,
+                        callbacks=callbacks,
                     )
                 finally:
                     ray.shutdown()
