@@ -270,9 +270,6 @@
     - DOC_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/install-horovod.sh
     - ./ci/env/env_info.sh
-    # TODO (shrekris-anyscale): Remove transformers after core transformer
-    # requirement is upgraded
-    - pip install "transformers==4.30.2"
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
       python/ray/... doc/...
