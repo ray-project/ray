@@ -37,6 +37,14 @@ class DummyWithNumpyPreprocessor(DummyPreprocessor):
             return np_data * self.multiplier
 
 
+def test_batch_predictor_warns_deprecation(shutdown_only):
+    with pytest.warns(DeprecationWarning):
+        BatchPredictor.from_checkpoint(
+            Checkpoint.from_dict({"factor": 0}),
+            DummyPredictorFS,
+        )
+
+
 def test_repr(shutdown_only):
     predictor = BatchPredictor.from_checkpoint(
         Checkpoint.from_dict({"factor": 2.0}),
@@ -116,10 +124,8 @@ def test_separate_gpu_stage(shutdown_only):
         allow_gpu=True,
     ).materialize()
     stats = ds.stats()
-    assert (
-        "Stage 1 ReadRange->MapBatches(DummyPreprocessor._transform_pandas):" in stats
-    ), stats
-    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
+    assert "MapBatches(DummyPreprocessor._transform_pandas):" in stats, stats
+    assert "MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("id") == 36.0, ds
 
     ds = batch_predictor.predict(
@@ -129,8 +135,7 @@ def test_separate_gpu_stage(shutdown_only):
         allow_gpu=True,
     ).materialize()
     stats = ds.stats()
-    assert "Stage 1 ReadRange:" in stats, stats
-    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
+    assert "MapBatches(ScoringWrapper):" in stats, stats
     assert ds.max("id") == 36.0, ds
 
 
@@ -162,9 +167,7 @@ def test_batch_prediction():
     test_dataset = ray.data.range(4)
     ds = batch_predictor.predict(test_dataset).materialize()
     # Check fusion occurred.
-    assert (
-        "ReadRange->MapBatches(DummyPreprocessor._transform_pandas)" in ds.stats()
-    ), ds.stats()
+    assert "MapBatches(DummyPreprocessor._transform_pandas)" in ds.stats(), ds.stats()
     assert ds.to_pandas().to_numpy().squeeze().tolist() == [
         0.0,
         4.0,
@@ -288,9 +291,7 @@ def test_batch_prediction_various_combination():
 
         ds = batch_predictor.predict(input_dataset).materialize()
         # Check no fusion needed since we're not doing a dataset read.
-        assert (
-            f"Stage 1 MapBatches({preprocessor.__class__.__name__}" in ds.stats()
-        ), ds.stats()
+        assert f"MapBatches({preprocessor.__class__.__name__}" in ds.stats(), ds.stats()
         assert ds.to_pandas().to_numpy().squeeze().tolist() == [
             4.0,
             8.0,
@@ -505,7 +506,7 @@ def test_get_and_set_preprocessor():
 
     test_dataset = ray.data.range(4)
     output_ds = batch_predictor.predict(test_dataset)
-    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+    assert sorted(output_ds.to_pandas().to_numpy().squeeze().tolist()) == [
         0.0,
         2.0,
         4.0,
@@ -517,7 +518,7 @@ def test_get_and_set_preprocessor():
     assert batch_predictor.get_preprocessor() == preprocessor2
 
     output_ds = batch_predictor.predict(test_dataset)
-    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+    assert sorted(output_ds.to_pandas().to_numpy().squeeze().tolist()) == [
         0.0,
         4.0,
         8.0,
@@ -529,7 +530,7 @@ def test_get_and_set_preprocessor():
     assert batch_predictor.get_preprocessor() is None
 
     output_ds = batch_predictor.predict(test_dataset)
-    assert output_ds.to_pandas().to_numpy().squeeze().tolist() == [
+    assert sorted(output_ds.to_pandas().to_numpy().squeeze().tolist()) == [
         0.0,
         2.0,
         4.0,
@@ -575,8 +576,8 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
     )
     out = [x["id"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 ReadRange->DummyPreprocessor:" in stats, stats
-    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
+    assert "DummyPreprocessor:" in stats, stats
+    assert "MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
     ds = batch_predictor.predict_pipelined(
@@ -588,8 +589,7 @@ def test_separate_gpu_stage_pipelined(shutdown_only):
     )
     out = [x["id"] for x in ds.iter_rows()]
     stats = ds.stats()
-    assert "Stage 1 ReadRange:" in stats, stats
-    assert "Stage 2 MapBatches(ScoringWrapper):" in stats, stats
+    assert "MapBatches(ScoringWrapper):" in stats, stats
     assert max(out) == 16.0, out
 
 

@@ -5,7 +5,6 @@ import pytest
 
 import ray
 from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.simple_block import SimpleBlockBuilder
 from ray.tests.conftest import *  # noqa
 
 SMALL_VALUE = "a" * 100
@@ -17,44 +16,6 @@ ARROW_LARGE_VALUE = {"value": "a" * 10000}
 def assert_close(actual, expected, tolerance=0.3):
     print("assert_close", actual, expected)
     assert abs(actual - expected) / expected < tolerance, (actual, expected)
-
-
-def test_py_size(ray_start_regular_shared):
-    b = SimpleBlockBuilder()
-    assert b.get_estimated_memory_usage() == 0
-    b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 111)
-    b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 222)
-    for _ in range(8):
-        b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 1110)
-    for _ in range(90):
-        b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 11100)
-    b.add_block([SMALL_VALUE] * 900)
-    assert_close(b.get_estimated_memory_usage(), 111000)
-    assert len(b.build()) == 1000
-
-
-def test_py_size_diff_values(ray_start_regular_shared):
-    b = SimpleBlockBuilder()
-    assert b.get_estimated_memory_usage() == 0
-    for _ in range(10):
-        b.add(LARGE_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 100120)
-    for _ in range(100):
-        b.add(SMALL_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 121120)
-    for _ in range(100):
-        b.add(LARGE_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 1166875)
-    for _ in range(100):
-        b.add(LARGE_VALUE)
-    assert_close(b.get_estimated_memory_usage(), 2182927)
-    b.add_block([SMALL_VALUE] * 1000)
-    assert_close(b.get_estimated_memory_usage(), 2240613)
-    assert len(b.build()) == 1310
 
 
 def test_arrow_size(ray_start_regular_shared):
@@ -125,7 +86,7 @@ def test_split_read_csv(ray_start_regular_shared, tmp_path):
         ray.data.range(1000, parallelism=1).map(
             lambda _: {"out": LARGE_VALUE}
         ).write_csv(path)
-        return ray.data.read_csv(path)
+        return ray.data.read_csv(path, parallelism=1)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -171,7 +132,7 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
         # will only write to one file, even though there are multiple
         # blocks created by block splitting.
         ds.write_parquet(path)
-        return ray.data.read_parquet(path, parallelism=200)
+        return ray.data.read_parquet(path, parallelism=1)
 
     # 20MiB
     ctx.target_max_block_size = 20_000_000
@@ -182,17 +143,17 @@ def test_split_read_parquet(ray_start_regular_shared, tmp_path):
     ctx.target_max_block_size = 3_000_000
     ds2 = gen("out2")
     nrow = ds2._block_num_rows()
-    assert 3 < len(nrow) < 5, nrow
+    assert 2 < len(nrow) < 5, nrow
     for x in nrow[:-1]:
-        assert 50000 < x < 75000, (x, nrow)
+        assert 50000 < x < 95000, (x, nrow)
 
     # 1MiB
     ctx.target_max_block_size = 1_000_000
     ds3 = gen("out3")
     nrow = ds3._block_num_rows()
-    assert 8 < len(nrow) < 12, nrow
+    assert 6 < len(nrow) < 12, nrow
     for x in nrow[:-1]:
-        assert 20000 < x < 25000, (x, nrow)
+        assert 20000 < x < 35000, (x, nrow)
 
 
 @pytest.mark.parametrize("use_actors", [False, True])

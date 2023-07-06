@@ -6,6 +6,7 @@ from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.test import (
     Test,
+    TestState,
     DEFAULT_PYTHON_VERSION,
 )
 from ray_release.config import (
@@ -123,11 +124,13 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is jailed or not stable, allow to soft fail
+    # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)
-    jailed = test.get("jailed", False)
+    clone_test = copy.deepcopy(test)  # avoid modifying the original test
+    clone_test.update_from_s3()
+    jailed = clone_test.get_state() == TestState.JAILED
     full_label = ""
-    if jailed or not stable:
+    if not stable:
         step["soft_fail"] = True
     if not stable:
         full_label += "[unstable]"

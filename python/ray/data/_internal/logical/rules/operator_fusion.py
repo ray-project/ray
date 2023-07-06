@@ -10,7 +10,9 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
+)
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -22,6 +24,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
 )
 from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block
 
@@ -129,6 +132,9 @@ class OperatorFusionRule(Rule):
 
         down_logical_op = self._op_map[down_op]
         up_logical_op = self._op_map[up_op]
+
+        if isinstance(up_logical_op, Read) and not up_logical_op.fusable():
+            return False
 
         # If the downstream operator takes no input, it cannot be fused with
         # the upstream operator.

@@ -13,6 +13,7 @@ import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -147,26 +148,29 @@ def clip_gradients(
             grad_clip_by == "global_norm"
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
 
-        # Compute the global L2-norm of all the gradient tensors.
-        global_norm = sum(
-            # `.norm()` is the square root of the sum of all squares.
-            # We need to "undo" the square root b/c we want to compute the global
-            # norm afterwards -> `** 2`.
-            t.norm(2) ** 2
-            for t in gradients_dict.values()
-            if t is not None
+        grads = [g for g in gradients_dict.values() if g is not None]
+        norm_type = 2.0
+        if len(grads) == 0:
+            return torch.tensor(0.0)
+        device = grads[0].device
+
+        total_norm = torch.norm(
+            torch.stack([torch.norm(g.detach(), norm_type).to(device) for g in grads]),
+            norm_type,
         )
-        # Now we do the square root.
-        global_norm = torch.sqrt(global_norm)
-
-        # Clip all the gradients.
-        if global_norm > grad_clip:
-            for tensor in gradients_dict.values():
-                if tensor is not None:
-                    tensor.mul_(grad_clip / global_norm)
-
-        # Return the computed global norm scalar.
-        return global_norm
+        if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
+            raise RuntimeError(
+                f"The total norm of order {norm_type} for gradients from "
+                "`parameters` is non-finite, so it cannot be clipped. "
+            )
+        clip_coef = grad_clip / (total_norm + 1e-6)
+        # Note: multiplying by the clamped coef is redundant when the coef is clamped to
+        # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
+        # CPU <=> device synchronization when the gradients do not reside in CPU memory.
+        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+        for g in grads:
+            g.detach().mul_(clip_coef_clamped.to(g.device))
+        return total_norm
 
 
 @PublicAPI
@@ -304,12 +308,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
-    if y_var == 0.0:
-        # Model case in which y does not vary with explained variance of -1
-        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var))[0]
+    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
 
 
 @PublicAPI
@@ -628,12 +629,11 @@ def sequence_mask(
     """
     # If maxlen not given, use the longest lengths in the `lengths` tensor.
     if maxlen is None:
-        maxlen = int(lengths.max())
+        maxlen = lengths.max()
 
-    mask = ~(
-        torch.ones((len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t()
-        > lengths
-    )
+    mask = torch.ones(tuple(lengths.shape) + (int(maxlen),))
+
+    mask = ~(mask.to(lengths.device).cumsum(dim=1).t() > lengths)
     # Time major transformation.
     if not time_major:
         mask = mask.t()
@@ -695,3 +695,14 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
+
+
+def _dynamo_is_available():
+    # This only works if torch._dynamo is available
+    try:
+        # TODO(Artur): Remove this once torch._dynamo is available on CI
+        import torch._dynamo as dynamo  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

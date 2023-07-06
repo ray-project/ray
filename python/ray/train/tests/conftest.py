@@ -22,17 +22,6 @@ def ray_start_4_cpus():
 
 
 @pytest.fixture
-def ray_start_runtime_env():
-    # Requires at least torch 1.11 to pass
-    # TODO update torch version in requirements instead
-    runtime_env = {"pip": ["torch==1.11.0"]}
-    address_info = ray.init(runtime_env=runtime_env)
-    yield address_info
-    # The code after the yield will run as teardown code.
-    ray.shutdown()
-
-
-@pytest.fixture
 def ray_start_1_cpu_1_gpu():
     address_info = ray.init(num_cpus=1, num_gpus=1)
     yield address_info
