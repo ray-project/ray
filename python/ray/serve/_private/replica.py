@@ -621,7 +621,7 @@ class RayServeReplica:
             await self.update_user_config(deployment_config.user_config)
 
     async def update_user_config(self, user_config: Any):
-        async with self.rwlock.writer_lock:
+        async with self.rwlock.writer:
             if user_config is not None:
                 if self.is_function:
                     raise ValueError(
@@ -664,8 +664,8 @@ class RayServeReplica:
         user_exception = None
         try:
             # TODO: WTF is up with this thing.
-            # async with self.rwlock.writer_lock:
-            yield
+            async with self.rwlock.reader:
+                yield
         except Exception as e:
             user_exception = e
             logger.exception(f"Request failed due to {type(e).__name__}:")
@@ -742,6 +742,8 @@ class RayServeReplica:
                 # ASGI interface, but for the vanilla deployment codepath we need to
                 # send it.
                 await self.send_user_result_over_asgi(result, scope, receive, send)
+
+            return result
 
     async def call_user_method_generator(
         self,
