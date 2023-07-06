@@ -34,7 +34,7 @@ def take_table(
     if any(_is_column_extension_type(col) for col in table.columns):
         new_cols = []
         for col in table.columns:
-            if _is_column_extension_type(col):
+            if _is_column_extension_type(col) and col.num_chunks > 1:
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)

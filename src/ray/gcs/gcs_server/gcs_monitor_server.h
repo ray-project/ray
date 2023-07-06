@@ -31,7 +31,7 @@ void GcsPlacementGroupToResourceRequest(const GcsPlacementGroup &gcs_placement_g
 class GcsMonitorServer : public rpc::MonitorServiceHandler {
  public:
   explicit GcsMonitorServer(
-      std::shared_ptr<GcsNodeManager> gcs_node_manager,
+      GcsNodeManager &gcs_node_manager,
       ClusterResourceManager &cluster_resource_manager,
       std::shared_ptr<GcsResourceManager> gcs_resource_manager,
       std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager);
@@ -53,7 +53,7 @@ class GcsMonitorServer : public rpc::MonitorServiceHandler {
   void PopulateResourceDemands(rpc::GetSchedulingStatusReply *reply) const;
   void PopulatePlacementGroupDemands(rpc::GetSchedulingStatusReply *reply) const;
 
-  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  GcsNodeManager &gcs_node_manager_;
   ClusterResourceManager &cluster_resource_manager_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
   std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;

@@ -19,11 +19,11 @@
 (rayserve-overview)=
 
 Ray Serve is a scalable model serving library for building online inference APIs.
-Serve is framework-agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic.
+Serve is framework-agnostic, so you can use a single toolkit to serve everything from deep learning models built with frameworks like PyTorch, Tensorflow, and Keras, to Scikit-Learn models, to arbitrary Python business logic. It has several features and performance optimizations for serving Large Language Models such as response streaming, dynamic request batching, multi-node/multi-GPU serving, etc.
 
-Serve is particularly well suited for [model composition](serve-model-composition), enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code.
+Ray Serve is particularly well suited for [model composition](serve-model-composition) and [many model serving](serve-deploy-many-models), enabling you to build a complex inference service consisting of multiple ML models and business logic all in Python code. 
 
-Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost.
+Ray Serve is built on top of Ray, so it easily scales to many machines and offers flexible scheduling support such as fractional GPUs so you can share resources and serve many machine learning models at low cost. 
 
 ## Quickstart
 
@@ -38,15 +38,7 @@ Define a simple "hello world" application, run it locally, and query it over HTT
 :language: python
 ```
 
-::::{tab-set} 
-
-:::{tab-item} More examples
-
-For more examples, select from the tabs.
-
-:::
-
-::::
+## More examples
 
 ::::{tab-set}
 
@@ -163,7 +155,7 @@ Serve supports arbitrary Python code and therefore integrates well with the MLOp
 :::{dropdown} LLM developer
 :animate: fade-in-slide-down
 
-Serve enables you to rapidly prototype, develop, and deploy scalable LLM applications to production. Many large language model (LLM) applications combine prompt preprocessing, vector database lookups, LLM API calls, and response validation. Because Serve supports any arbitrary Python code, you can write all these steps as a single Python module, enabling rapid development and easy testing. You can then quickly deploy your Ray Serve LLM application to production, and each application step can independently autoscale to efficiently accommodate user traffic without wasting resources.
+Serve enables you to rapidly prototype, develop, and deploy scalable LLM applications to production. Many large language model (LLM) applications combine prompt preprocessing, vector database lookups, LLM API calls, and response validation. Because Serve supports any arbitrary Python code, you can write all these steps as a single Python module, enabling rapid development and easy testing. You can then quickly deploy your Ray Serve LLM application to production, and each application step can independently autoscale to efficiently accommodate user traffic without wasting resources. In order to improve performance of your LLM applications, Ray Serve has features for batching and can integrate with any model optimization technique. Ray Serve also supports streaming responses, a key feature for chatbot-like applications. 
 
 :::
 
@@ -265,22 +257,6 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
             :expand:
         
             Learn Key Concepts
-    
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-        
-        **User Guides**
-        ^^^
-        Learn best practices for common patterns like :ref:`scaling and resource allocation <serve-scaling-and-resource-allocation>` and :ref:`model composition <serve-model-composition>`.
-        Learn how to :ref:`develop Serve applications locally <serve-dev-workflow>` and :ref:`go to production <serve-in-production>`.
-        
-        +++
-        .. button-ref:: serve-user-guides
-            :color: primary
-            :outline:
-            :expand:
-        
-            Start Using Ray Serve
         
     .. grid-item-card::
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
@@ -314,21 +290,6 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         
             Read the API Reference
         
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-            
-        **Serve Architecture**
-        ^^^
-        
-        Understand how each component in Ray Serve works.
-        
-        +++
-        .. button-ref:: serve-architecture
-            :color: primary
-            :outline:
-            :expand:
-        
-            Understand Serve Architecture
 ```
 
 For more, see the following blog posts about Ray Serve:

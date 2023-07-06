@@ -93,7 +93,7 @@ class TestDatasource(Datasource):
 
 def gen_dataset_func(do_shuffle: Optional[bool] = False) -> Dataset:
     test_datasource = TestDatasource(do_shuffle)
-    return read_datasource(test_datasource)
+    return read_datasource(test_datasource, parallelism=1)
 
 
 def gen_dataset_func_eager():

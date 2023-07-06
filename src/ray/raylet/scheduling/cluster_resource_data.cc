@@ -36,6 +36,17 @@ ResourceRequest ResourceMapToResourceRequest(
 }
 
 /// Convert a map of resources to a ResourceRequest data structure.
+ResourceRequest ResourceMapToResourceRequest(
+    const absl::flat_hash_map<ResourceID, double> &resource_map,
+    bool requires_object_store_memory) {
+  ResourceRequest res({}, requires_object_store_memory);
+  for (auto entry : resource_map) {
+    res.Set(entry.first, FixedPoint(entry.second));
+  }
+  return res;
+}
+
+/// Convert a map of resources to a ResourceRequest data structure.
 ///
 /// \param string_to_int_map: Map between names and ids maintained by the
 /// \param resource_map_total: Total capacities of resources we want to convert.
@@ -44,10 +55,12 @@ ResourceRequest ResourceMapToResourceRequest(
 /// \request Conversion result to a ResourceRequest data structure.
 NodeResources ResourceMapToNodeResources(
     const absl::flat_hash_map<std::string, double> &resource_map_total,
-    const absl::flat_hash_map<std::string, double> &resource_map_available) {
+    const absl::flat_hash_map<std::string, double> &resource_map_available,
+    const absl::flat_hash_map<std::string, std::string> &node_labels) {
   NodeResources node_resources;
   node_resources.total = ResourceMapToResourceRequest(resource_map_total, false);
   node_resources.available = ResourceMapToResourceRequest(resource_map_available, false);
+  node_resources.labels = node_labels;
   return node_resources;
 }
 
@@ -97,7 +110,8 @@ bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
 }
 
 bool NodeResources::operator==(const NodeResources &other) const {
-  return this->available == other.available && this->total == other.total;
+  return this->available == other.available && this->total == other.total &&
+         this->labels == other.labels;
 }
 
 bool NodeResources::operator!=(const NodeResources &other) const {
@@ -106,7 +120,7 @@ bool NodeResources::operator!=(const NodeResources &other) const {
 
 std::string NodeResources::DebugString() const {
   std::stringstream buffer;
-  buffer << "{";
+  buffer << "{\"resources\":{";
   bool first = true;
   for (auto &resource_id : total.ResourceIds()) {
     if (!first) {
@@ -115,6 +129,11 @@ std::string NodeResources::DebugString() const {
     first = false;
     buffer << resource_id.Binary() << ": " << available.Get(resource_id) << "/"
            << total.Get(resource_id);
+  }
+
+  buffer << "}, \"labels\":{";
+  for (const auto &[key, value] : labels) {
+    buffer << "\"" << key << "\":\"" << value << "\",";
   }
   buffer << "}";
   return buffer.str();
