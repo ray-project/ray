@@ -19,18 +19,11 @@ taken on it:
     import tempfile
     import ray
 
-    ray.shutdown()
+    temp_dir = tempfile.TemporaryDirectory()
 
-    assert not ray.is_initialized()
-
-    ray.init(address="local")
-
-    #temp_dir = tempfile.TemporaryDirectory()
-
-    #ray.init(storage=f"file://{temp_dir.name}")
+    ray.init(storage=f"file://{temp_dir.name}")
 
 .. testcode::
-    :skipif: True
 
     from typing import List
     import ray
@@ -64,7 +57,6 @@ We can plot this DAG by using ``ray.dag.vis_utils.plot(output, "output.jpg")``:
 Next, let's execute the DAG we defined and inspect the result:
 
 .. testcode::
-    :skipif: True
 
     # <follow the previous code>
     from ray import workflow
@@ -96,7 +88,6 @@ Ray remote function. To set workflow-specific options, use ``workflow.options``
 either as a decorator or as kwargs to ``<task>.options``:
 
 .. testcode::
-    :skipif: True
 
     import ray
     from ray import workflow
@@ -116,7 +107,6 @@ Retrieving Workflow Results
 To retrieve a workflow result, assign ``workflow_id`` when running a workflow:
 
 .. testcode::
-    :skipif: True
 
     import ray
     from ray import workflow
@@ -150,7 +140,6 @@ The workflow results can be retrieved with
 workflow ids, call ``ray.workflow.list_all()``.
 
 .. testcode::
-    :skipif: True
 
     print(workflow.get_output("add_example"))
     # "workflow.get_output_async" is an asynchronous version
@@ -174,7 +163,6 @@ Once a task id is given, the result of the task will be retrievable via ``workfl
 If the task with the given ``task_id`` hasn't been executed before the workflow completes, an exception will be thrown. Here are some examples:
 
 .. testcode::
-    :skipif: True
 
     import ray
     from ray import workflow
@@ -216,7 +204,6 @@ Workflow provides two ways to handle application-level exceptions: (1) automatic
 so they should be used inside the Ray remote decorator. Here is how you could use them:
 
 .. testcode::
-    :skipif: True
 
     # specify in decorator
     @workflow.options(catch_exceptions=True)
@@ -233,7 +220,6 @@ so they should be used inside the Ray remote decorator. Here is how you could us
 Here is one example:
 
 .. testcode::
-    :skipif: True
 
     from typing import Tuple
     import random
@@ -327,7 +313,6 @@ static which means a DAG node can't be returned in a DAG node. For example, the
 following code is invalid:
 
 .. testcode::
-    :skipif: True
 
     @ray.remote
     def bar(): ...
@@ -349,7 +334,6 @@ Workflow introduces a utility function called ``workflow.continuation`` which
 makes Ray DAG node can return a DAG in the runtime:
 
 .. testcode::
-    :skipif: True
 
     @ray.remote
     def bar():
@@ -371,7 +355,6 @@ The following example shows how to implement the recursive ``factorial`` program
 using dynamically workflow:
 
 .. testcode::
-    :skipif: True
 
     @ray.remote
     def factorial(n: int) -> int:
@@ -457,7 +440,6 @@ before the task starts which is different from passing them into a Ray remote
 function whether they have been executed or not is not defined.
 
 .. testcode::
-    :skipif: True
 
     @ray.remote
     def add(values: List[ray.ObjectRef]) -> int:
@@ -483,7 +465,6 @@ executing. However, an object will not be checkpointed more than once, even if
 it is passed to many different tasks.
 
 .. testcode::
-    :skipif: True
 
     @ray.remote
     def do_add(a, b):

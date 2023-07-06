@@ -314,8 +314,7 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
-            "source/workflows/basics.rst",
-            "source/workflows/events.rst"
+            "source/workflows/*.rst"
         ]
     ),
     size = "large",
@@ -324,13 +323,11 @@ doctest(
 
 
 doctest(
-    name="doctest_jjyao",
-    files = [
-        "source/workflows/basics.rst",
-        "source/workflows/events.rst"
-    ],
-    size = "large",
-    tags = ["team:none"]
+    name="doctest[workflow]",
+    files = glob(
+        include=["source/workflows/*.rst"]
+    ),
+    tags = ["team:core"]
 )
 
 doctest(
