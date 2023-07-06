@@ -272,7 +272,7 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options)
       --test_tag_filters=doctest,-gpu
-      doc/...
+      python/ray/... doc/...
 
 - label: ":python: Ray on Spark Test"
   conditions: ["RAY_CI_PYTHON_AFFECTED"]
