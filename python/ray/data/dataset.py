@@ -2445,8 +2445,8 @@ class Dataset:
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the 
                 `pyarrow docs <https://arrow.apache.org/docs\
-                /python/api/filesystems.html#filesystem-implementations>`_. You should
-                specify this if you need to provide specific configurations to the
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
@@ -2536,8 +2536,8 @@ class Dataset:
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
-                /python/api/filesystems.html#filesystem-implementations>`_. You should
-                specify this if you need to provide specific configurations to the
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
@@ -2634,8 +2634,8 @@ class Dataset:
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
-                /python/api/filesystems.html#filesystem-implementations>`_. You should
-                specify this if you need to provide specific configurations to the
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
@@ -2731,8 +2731,8 @@ class Dataset:
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
-                /python/api/filesystems.html#filesystem-implementations>`_. You should
-                specify this if you need to provide specific configurations to the
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
@@ -2880,8 +2880,8 @@ class Dataset:
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
-                /python/api/filesystems.html#filesystem-implementations>`_. You should
-                specify this if you need to provide specific configurations to the
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
