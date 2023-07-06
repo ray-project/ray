@@ -1134,7 +1134,7 @@ class DatasetPipeline:
         return self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            collate_fn=collate_fn,
+            _collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
