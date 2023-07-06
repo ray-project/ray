@@ -10,7 +10,7 @@ export DOCKER_BUILDKIT=1
 
 echo "--- Build forge"
 
-DEST_IMAGE="${CR_REPO}:${IMAGE_PREFIX}-forge"
+DEST_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-forge"
 
 tar --mtime="UTC 2020-01-01" -c -f - \
 	anyscale/ci/rayforge/Dockerfile \

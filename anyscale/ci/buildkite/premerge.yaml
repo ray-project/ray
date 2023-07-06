@@ -40,3 +40,50 @@ steps:
     retry:
       automatic:
         limit: 3
+  
+  - name: "{{matrix.py}} {{matrix.type}} base image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
+    agents:
+      queue: "large"
+    artifact_paths:
+      - "/artifacts/**/*"
+    env:
+      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+    matrix:
+      setup:
+        py:
+          - py38
+          - py39
+        type:
+          - cpu
+          - gpu
+    retry:
+      automatic:
+        limit: 3
+
+  - wait: ~
+
+  - name: "{{matrix.py}} {{matrix.type}} image"
+    command:
+      - source anyscale/ci/setup-env.sh
+      - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
+    agents:
+      queue: "large"
+    artifact_paths:
+      - "/artifacts/**/*"
+    env:
+      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+    matrix:
+      setup:
+        py:
+          - py38
+          - py39
+        type:
+          - cpu
+          - gpu
+    retry:
+      automatic:
+        limit: 3
+

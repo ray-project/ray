@@ -15,5 +15,7 @@ if [[ "${RUNTIME_BUILD_ID:-}" == "" ]]; then
 fi
 
 export S3_TEMP="s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/${RUNTIME_BUILD_ID}"
-export CR_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime"
+export CI_TMP_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ci-tmp"
+export RUNTIME_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime"
+export RUNTIME_ML_REPO="830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/runtime-ml"
 export IMAGE_PREFIX="${RUNTIME_BUILD_ID}"
