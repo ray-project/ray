@@ -58,7 +58,7 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://archive.vn/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
+        .. button-link:: https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
 
             [Article] How OpenAI Uses Ray to Train Tools like ChatGPT
 
