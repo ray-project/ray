@@ -28,9 +28,29 @@ class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
   /// TODO(ekl) allow taking an externally defined event tracker.
-  instrumented_io_context() : event_stats_(std::make_shared<EventTracker>()) {}
+  instrumented_io_context()
+      : is_running_{false}, event_stats_(std::make_shared<EventTracker>()) {}
 
-  void run() { boost::asio::io_context::run(); }
+  /// Run the io_context if and only if no other thread is running it. Blocks
+  /// other threads from running once started. Noop if there is a thread
+  /// running it already.
+  void run_exclusive(std::function<void()> callback) {
+    absl::MutexLock l(&mu_);
+    // Note: this doesn't set is_running_ because it blocks anything else from running
+    // anyway.
+    if (!is_running_) {
+      callback();
+      boost::asio::io_context::run();
+    }
+  }
+
+  void run() {
+    {
+      absl::MutexLock l(&mu_);
+      is_running_ = true;
+    }
+    boost::asio::io_context::run();
+  }
 
   void stop() { boost::asio::io_context::stop(); }
 
@@ -60,6 +80,8 @@ class instrumented_io_context : public boost::asio::io_context {
   EventTracker &stats() const { return *event_stats_; };
 
  private:
+  absl::Mutex mu_;
+  bool is_running_ GUARDED_BY(mu_);
   /// The event stats tracker to use to record asio handler stats to.
   std::shared_ptr<EventTracker> event_stats_;
 };
