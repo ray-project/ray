@@ -47,6 +47,8 @@ end-before: __batch_params_update_end__
 Use these methods in the `reconfigure` [method](serve-user-config) to control the `@serve.batch` parameters through your Serve configuration file.
 :::
 
+(serve-streaming-batched-requests-guide)=
+
 ## Streaming batched requests
 
 ```{warning}
