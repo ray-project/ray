@@ -40,7 +40,11 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
-from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE, TRAINING_ITERATION
+from ray.air.constants import (
+    LAZY_CHECKPOINT_MARKER_FILE,
+    REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE,
+    TRAINING_ITERATION,
+)
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
@@ -787,7 +791,7 @@ class SyncerCallback(Callback):
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
     ) -> bool:
-        if not os.environ.get("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+        if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
             return False
 
         if not self._enabled or trial.uses_cloud_checkpointing:
@@ -893,7 +897,7 @@ class SyncerCallback(Callback):
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
-        if not os.environ.get("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+        if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
             if not os.path.exists(checkpoint.dir_or_data):
                 raise DeprecationWarning(
                     "Ray AIR no longer supports the synchronization of the trial "
@@ -915,7 +919,7 @@ class SyncerCallback(Callback):
                     "being removed: <LINK>\n"
                     # TODO(justinvyu): put in the link to the REP/issue
                     "- To re-enable the head node syncing behavior, set the "
-                    "environment variable AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE=1\n"
+                    f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
                     "  - **Note that this functionality will be fully removed in "
                     "Ray 2.7.**"
                 )
