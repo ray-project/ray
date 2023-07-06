@@ -109,8 +109,8 @@ class TensorflowCheckpoint(Checkpoint):
             >>> from ray.train.tensorflow import (
             ...     TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor
             ... )
-            >>> from ray.air import session
-            >>> from ray.air.config import ScalingConfig
+            >>> from ray import train
+            >>> from ray.train import ScalingConfig
 
             >>> def train_func():
             ...     model = tf.keras.Sequential(
@@ -123,7 +123,7 @@ class TensorflowCheckpoint(Checkpoint):
             ...     )
             ...     model.save("my_model.h5")
             ...     checkpoint = TensorflowCheckpoint.from_h5("my_model.h5")
-            ...     session.report({"my_metric": 1}, checkpoint=checkpoint)
+            ...     train.report({"my_metric": 1}, checkpoint=checkpoint)
 
             >>> trainer = TensorflowTrainer(
             ...     train_loop_per_worker=train_func,
@@ -177,8 +177,8 @@ class TensorflowCheckpoint(Checkpoint):
             >>> from ray.train.batch_predictor import BatchPredictor
             >>> from ray.train.tensorflow import (
             ... TensorflowCheckpoint, TensorflowTrainer, TensorflowPredictor)
-            >>> from ray.air import session
-            >>> from ray.air.config import ScalingConfig
+            >>> from ray import train
+            >>> from ray.train import ScalingConfig
 
             >>> def train_fn():
             ...     model = tf.keras.Sequential(
@@ -190,7 +190,7 @@ class TensorflowCheckpoint(Checkpoint):
             ...         ])
             ...     model.save("my_model")
             ...     checkpoint = TensorflowCheckpoint.from_saved_model("my_model")
-            ...     session.report({"my_metric": 1}, checkpoint=checkpoint)
+            ...     train.report({"my_metric": 1}, checkpoint=checkpoint)
 
             >>> trainer = TensorflowTrainer(
             ...     train_loop_per_worker=train_fn,

@@ -123,12 +123,12 @@ class DataParallelTrainer(BaseTrainer):
     .. testcode::
 
         import ray
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
         from ray.train.data_parallel_trainer import DataParallelTrainer
 
         def train_loop_for_worker():
-            dataset_shard_for_this_worker = session.get_dataset_shard("train")
+            dataset_shard_for_this_worker = train.get_dataset_shard("train")
 
             # 3 items for 3 workers, each worker gets 1 item
             batches = list(dataset_shard_for_this_worker.iter_batches(batch_size=1))

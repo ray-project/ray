@@ -21,9 +21,9 @@ __all__ = [
     "CheckpointConfig",
     "DataConfig",
     "FailureConfig",
+    "Result",
     "RunConfig",
     "ScalingConfig",
-    "Result",
     "TrainingIterator",
     "TRAIN_DATASET_KEY",
 ]

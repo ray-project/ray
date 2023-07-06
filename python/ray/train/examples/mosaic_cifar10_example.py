@@ -9,9 +9,8 @@ from torchmetrics.classification.accuracy import Accuracy
 
 
 import ray
-from ray.air.config import ScalingConfig
-import ray.train as train
-from ray.air import session
+from ray import train
+from ray.train import ScalingConfig
 
 
 def trainer_init_per_worker(config):
@@ -45,7 +44,7 @@ def trainer_init_per_worker(config):
         list(range(BATCH_SIZE * 10)),
     )
 
-    batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+    batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
     train_dataloader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size_per_worker, shuffle=True
     )

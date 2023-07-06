@@ -6,7 +6,7 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
+from ray.tune.examples.mnist_pytorch import test, ConvNet, get_data_loaders
 
 from ray import train, tune
 from ray.train import Checkpoint
@@ -39,7 +39,7 @@ def train_convnet(config):
             step = checkpoint["step"]
 
     while True:
-        train(model, optimizer, train_loader)
+        ray.tune.examples.mnist_pytorch.train(model, optimizer, train_loader)
         acc = test(model, test_loader)
         checkpoint = None
         if step % 5 == 0:

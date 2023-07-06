@@ -40,9 +40,8 @@ class MosaicTrainer(TorchTrainer):
         >>> from composer.algorithms import LabelSmoothing # doctest: +SKIP
         >>>
         >>> import ray
-        >>> from ray.air.config import ScalingConfig
         >>> import ray.train as train
-        >>> from ray.air import session
+        >>> from ray.train import ScalingConfig
         >>> from ray.train.mosaic import MosaicTrainer # doctest: +SKIP
         >>>
         >>> def trainer_init_per_worker(config):
@@ -66,7 +65,7 @@ class MosaicTrainer(TorchTrainer):
         ...     )
         ...
         ...     # prepare train dataloader
-        ...     batch_size_per_worker = BATCH_SIZE // session.get_world_size()
+        ...     batch_size_per_worker = BATCH_SIZE // train.get_context().get_world_size()
         ...     train_dataloader = torch.utils.data.DataLoader(
         ...         train_dataset,
         ...         batch_size=batch_size_per_worker

@@ -3,9 +3,8 @@
 Example of training DCGAN on MNIST using PBT with Tune's function API.
 """
 import ray
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 import argparse
@@ -51,8 +50,8 @@ def dcgan_train(config):
         dataloader = get_data_loader()
 
     step = 1
-    if session.get_checkpoint():
-        checkpoint_dict = session.get_checkpoint().to_dict()
+    if train.get_context().get_checkpoint():
+        checkpoint_dict = train.get_context().get_checkpoint().to_dict()
         netD.load_state_dict(checkpoint_dict["netDmodel"])
         netG.load_state_dict(checkpoint_dict["netGmodel"])
         optimizerD.load_state_dict(checkpoint_dict["optimD"])
@@ -96,7 +95,7 @@ def dcgan_train(config):
                     "step": step,
                 }
             )
-        session.report(
+        train.report(
             {"lossg": lossG, "lossd": lossD, "is_score": is_score},
             checkpoint=checkpoint,
         )
@@ -160,7 +159,7 @@ if __name__ == "__main__":
     tune_iter = 5 if args.smoke_test else 300
     tuner = tune.Tuner(
         dcgan_train,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_dcgan_mnist",
             stop={"training_iteration": tune_iter},
             verbose=1,

@@ -589,15 +589,14 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     Example:
         .. code-block: python
 
-            from ray.air import session
-            from ray.air.checkpoint import Checkpoint
-            from ray.air.config import ScalingConfig
+            from ray import train
+            from ray.train import Checkpoint, ScalingConfig
 
             ######## Using it in the *per worker* train loop (TrainSession) #######
             def train_func():
                 model = build_model()
                 model.save("my_model", overwrite=True)
-                session.report(
+                train.report(
                     metrics={"foo": "bar"},
                     checkpoint=Checkpoint.from_directory(temp_dir.name)
                 )
@@ -634,11 +633,11 @@ def get_checkpoint() -> Optional[Checkpoint]:
     .. code-block:: python
 
         ######## Using it in the *per worker* train loop (TrainSession) ######
-        from ray.air import session
-        from ray.air.checkpoint import Checkpoint
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import Checkpoint, ScalingConfig
+
         def train_func():
-            ckpt = session.get_checkpoint()
+            ckpt = train.get_context().get_checkpoint()
             if ckpt:
                 with ckpt.as_directory() as loaded_checkpoint_dir:
                     import tensorflow as tf
@@ -648,7 +647,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
                 model = build_model()
 
             model.save("my_model", overwrite=True)
-            session.report(
+            train.report(
                 metrics={"iter": 1},
                 checkpoint=Checkpoint.from_directory("my_model")
             )
@@ -710,12 +709,11 @@ def get_trial_dir() -> str:
 
     .. code-block:: python
 
-        from ray import tune
-        from ray.air import session
+        from ray import train, tune
 
         def train_func():
             # Example:
-            # >>> session.get_trial_dir()
+            # >>> train.get_context().get_trial_dir()
             # ~/ray_results/<exp-name>/<trial-dir>
 
         tuner = tune.Tuner(train_func)
@@ -732,11 +730,11 @@ def get_world_size() -> int:
     .. code-block:: python
 
         import time
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
 
         def train_loop_per_worker(config):
-            assert session.get_world_size() == 4
+            assert train.get_context().get_world_size() == 4
 
         train_dataset = ray.data.from_items(
             [{"x": x, "y": x + 1} for x in range(32)])
@@ -763,13 +761,13 @@ def get_world_rank() -> int:
     .. code-block:: python
 
         import time
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
 
         def train_loop_per_worker():
             for iter in range(100):
                 time.sleep(1)
-                if session.get_world_rank() == 0:
+                if train.get_context().get_world_rank() == 0:
                     print("Worker 0")
 
         train_dataset = ray.data.from_items(
@@ -797,8 +795,8 @@ def get_local_rank() -> int:
     .. code-block:: python
 
         import time
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray import train
+        from ray.train import ScalingConfig
 
         def train_loop_per_worker():
             if torch.cuda.is_available():
@@ -829,12 +827,12 @@ def get_local_world_size() -> int:
 
     Example:
         >>> import ray
-        >>> from ray.air import session
-        >>> from ray.air.config import ScalingConfig
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
         >>> from ray.train.torch import TorchTrainer
         >>>
         >>> def train_loop_per_worker():
-        ...     return session.get_local_world_size()
+        ...     return train.get_context().get_local_world_size()
         >>>
         >>> train_dataset = ray.data.from_items(
         ...     [{"x": x, "y": x + 1} for x in range(32)])
@@ -860,12 +858,12 @@ def get_node_rank() -> int:
 
     Example:
         >>> import ray
-        >>> from ray.air import session
-        >>> from ray.air.config import ScalingConfig
+        >>> from ray import train
+        >>> from ray.train import ScalingConfig
         >>> from ray.train.torch import TorchTrainer
         >>>
         >>> def train_loop_per_worker():
-        ...     return session.get_node_rank()
+        ...     return train.get_context().get_node_rank()
         >>>
         >>> train_dataset = ray.data.from_items(
         ...     [{"x": x, "y": x + 1} for x in range(32)])
@@ -899,14 +897,13 @@ def get_dataset_shard(
 
         import ray
         from ray import train
-        from ray.air import session
-        from ray.air.config import ScalingConfig
+        from ray.train import ScalingConfig
 
         def train_loop_per_worker():
             model = Net()
             for iter in range(100):
                 # Trainer will automatically handle sharding.
-                data_shard = session.get_dataset_shard("train")
+                data_shard = train.get_dataset_shard("train")
                 for batch in data_shard.iter_torch_batches():
                     # ...
             return model

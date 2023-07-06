@@ -5,13 +5,13 @@
 import argparse
 import numpy as np
 import pandas as pd
-from ray.air import session
 import tensorflow as tf
 import tensorflow_datasets as tfds
+from ray import train
 from ray.data.datasource import SimpleTensorFlowDatasource
 from ray.air.batch_predictor import BatchPredictor
 from ray.air.predictors.integrations.tensorflow import TensorflowPredictor
-from ray.air.result import Result
+from ray.train import Result
 from ray.train.tensorflow import TensorflowTrainer
 from ray.train.tensorflow import prepare_dataset_shard
 from ray.air.integrations.keras import ReportCheckpointCallback
@@ -74,7 +74,7 @@ def train_func(config: dict):
     per_worker_batch_size = config.get("batch_size", 64)
     epochs = config.get("epochs", 3)
 
-    dataset_shard = session.get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
 
