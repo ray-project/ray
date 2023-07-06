@@ -646,6 +646,12 @@ class RayServeReplica:
         self,
         request_metadata: RequestMetadata,
     ):
+        """Context manager that should be used to wrap user method calls.
+
+        This sets up the serve request context, grabs the reader lock to avoid mutating
+        user_config during method calls, and records metrics based on the result of the
+        method.
+        """
         # Set request context variables for subsequent handle so that
         # handle can pass the correct request context to subsequent replicas.
         ray.serve.context._serve_request_context.set(
