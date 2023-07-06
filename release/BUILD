@@ -14,9 +14,9 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
-    name = "requirements_byod",
-    requirements_in = "ray_release/byod/requirements_byod.in",
-    requirements_txt = "ray_release/byod/requirements_byod.txt",
+    name = "requirements_byod_3.8",
+    requirements_in = "ray_release/byod/requirements_byod_3.8.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.8.txt",
     tags = [
         "team:ci",
     ],
@@ -24,9 +24,29 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
-    name = "requirements_ml_byod",
-    requirements_in = "ray_release/byod/requirements_ml_byod.in",
-    requirements_txt = "ray_release/byod/requirements_ml_byod.txt",
+    name = "requirements_byod_3.9",
+    requirements_in = "ray_release/byod/requirements_byod_3.9.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.9.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
+    name = "requirements_ml_byod_3.8",
+    requirements_in = "ray_release/byod/requirements_ml_byod_3.8.in",
+    requirements_txt = "ray_release/byod/requirements_ml_byod_3.8.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
+    name = "requirements_ml_byod_3.9",
+    requirements_in = "ray_release/byod/requirements_ml_byod_3.9.in",
+    requirements_txt = "ray_release/byod/requirements_ml_byod_3.9.txt",
     tags = [
         "team:ci",
     ],
@@ -538,6 +558,9 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_byod_build.py"],
     exec_compatible_with = [":hermetic_python"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",
@@ -703,6 +726,9 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_test.py"],
     exec_compatible_with = [":hermetic_python"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",

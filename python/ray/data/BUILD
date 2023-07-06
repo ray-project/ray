@@ -387,6 +387,14 @@ py_test(
 )
 
 py_test(
+    name = "test_progress_bar",
+    size = "small",
+    srcs = ["tests/test_progress_bar.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_random_access",
     size = "small",
     srcs = ["tests/test_random_access.py"],

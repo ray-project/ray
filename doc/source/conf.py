@@ -183,10 +183,6 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
-    "workflows/api/doc/ray.workflow.*",
-    "serve/api/doc/ray.serve.*",
-    "ray-references/api/ray-observability/state/doc/ray.*",
-    "ray-observability/reference/doc/ray.*",
     "cluster/running-applications/doc/ray.*",
 ]
 
@@ -245,6 +241,8 @@ linkcheck_ignore = [
     "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
+    # Returns 429 errors in Linkcheck due to too many requests
+    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
 ]
 
 # -- Options for HTML output ----------------------------------------------

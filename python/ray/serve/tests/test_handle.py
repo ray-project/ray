@@ -1,15 +1,18 @@
-import concurrent.futures
 import asyncio
+import concurrent.futures
+import threading
+
 import pytest
-from ray._private.utils import get_or_create_event_loop
 import requests
 
 import ray
+
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
 
@@ -118,6 +121,9 @@ def test_handle_in_endpoint(serve_instance):
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
+)
 def test_handle_inject_starlette_request(serve_instance):
     @serve.deployment(name="echo")
     def echo_request_type(request):
@@ -225,7 +231,17 @@ async def test_nonexistent_method(serve_instance, sync):
     assert "Available methods: ['exists']" in exception_string
 
 
-def test_handle_across_loops(serve_instance):
+def _get_asyncio_loop_running_in_thread() -> asyncio.AbstractEventLoop:
+    loop = asyncio.new_event_loop()
+    threading.Thread(
+        daemon=True,
+        target=loop.run_forever,
+    ).start()
+    return loop
+
+
+@pytest.mark.asyncio
+async def test_handle_across_loops(serve_instance):
     @serve.deployment
     class A:
         def exists(self):
@@ -238,8 +254,8 @@ def test_handle_across_loops(serve_instance):
         assert await (await handle.exists.remote())
 
     for _ in range(10):
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        get_or_create_event_loop().run_until_complete(refresh_get())
+        loop = _get_asyncio_loop_running_in_thread()
+        asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
     handle = A.get_handle(sync=False)
 
@@ -247,8 +263,8 @@ def test_handle_across_loops(serve_instance):
         assert await (await handle.exists.remote())
 
     for _ in range(10):
-        asyncio.set_event_loop(asyncio.new_event_loop())
-        get_or_create_event_loop().run_until_complete(cache_get())
+        loop = _get_asyncio_loop_running_in_thread()
+        asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
 
 
 if __name__ == "__main__":

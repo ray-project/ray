@@ -394,6 +394,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Please keep this in sync with the definition kRayInternalNamespacePrefix
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 def gcs_actor_scheduling_enabled():

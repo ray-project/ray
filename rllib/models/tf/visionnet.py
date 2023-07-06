@@ -7,6 +7,8 @@ from ray.rllib.models.tf.misc import normc_initializer
 from ray.rllib.models.utils import get_activation_fn, get_filter_config
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.typing import ModelConfigDict, TensorType
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 tf1, tf, tfv = try_import_tf()
 
@@ -30,6 +32,11 @@ class VisionNetwork(TFModelV2):
         model_config: ModelConfigDict,
         name: str,
     ):
+        if log_once("deprecated_tfmodelv2_visionnet"):
+            deprecation_warning(
+                old="ray.rllib.models.tf.visionnet.VisionNetwork",
+                new="ray.rllib.core.rl_module.RLModule",
+            )
         if not model_config.get("conv_filters"):
             model_config["conv_filters"] = get_filter_config(obs_space.shape)
 
