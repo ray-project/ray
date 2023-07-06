@@ -323,7 +323,7 @@ doctest(
 
 
 doctest(
-    name="doctest [jjyao]",
+    name="doctest_jjyao",
     files = [
         "source/workflows/basics.rst"
     ],
