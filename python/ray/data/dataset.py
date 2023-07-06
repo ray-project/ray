@@ -3506,6 +3506,7 @@ class Dataset:
             Tuple[Any],
             None,
         ] = None,
+        verify_meta: bool = True,
     ) -> "dask.DataFrame":
         """Convert this dataset into a Dask DataFrame.
 
@@ -3526,6 +3527,8 @@ class Dataset:
                 tuple of ``(name, dtype)`` can be used.
                 By default, this will be inferred from the underlying Dataset schema,
                 with this argument supplying an optional override.
+            verify_meta: If True, Dask will check that the partitions have consistent
+                metadata. Defaults to True.
 
         Returns:
             A Dask DataFrame created from this dataset.
@@ -3595,6 +3598,7 @@ class Dataset:
         ddf = dd.from_delayed(
             [block_to_df(block) for block in self.get_internal_block_refs()],
             meta=meta,
+            verify_meta=verify_meta,
         )
         return ddf
 
