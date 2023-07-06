@@ -242,6 +242,8 @@ message TaskStateUpdate {
   optional TaskLogInfo task_log_info = 10;
   // Actor task repr name.
   optional string actor_repr_name = 11;
+  // Worker Pid.
+  optional int32 worker_pid = 12;
 }
 
 // Represents events and state changes from a single task run.

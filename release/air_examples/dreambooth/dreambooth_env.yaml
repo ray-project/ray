@@ -1,4 +1,8 @@
-base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray-ml:nightly-py37-gpu") }}
+# NOTE:
+# - This test runs with py38 (see the entry in release_tests.yaml)
+# - This test installs dependencies on top of a base ray image
+#   instead of using the default ray-ml image. See dreambooth/requirements.txt.
+base_image: "anyscale/ray:nightly-py38-cu118"
 env_vars: {}
 debian_packages:
   - curl
