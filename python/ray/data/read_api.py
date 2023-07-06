@@ -120,12 +120,12 @@ def from_items(
 
     Args:
         items: List of local Python objects.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the
-            :ref:`Tuning read parallelism guide <read_parallelism>`.
+            on how to tune it, see
+            :ref:`Tuning read parallelism <read_parallelism>`.
             Parallelism is upper bounded by ``len(items)``.
 
     Returns:
@@ -189,7 +189,7 @@ def from_items(
 def range(n: int, *, parallelism: int = -1) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
-    This allows for easy creation of synthetic datasets for testing or benchmarking
+    This function allows for easy creation of synthetic datasets for testing or benchmarking
     :ref:`Ray Data <data>`.
 
     Examples:
@@ -203,12 +203,12 @@ def range(n: int, *, parallelism: int = -1) -> Dataset:
 
     Args:
         n: The upper bound of the range of integers.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the
-            :ref:`Tuning read parallelism guide <read_parallelism>`.
+            on how to tune it, see
+            :ref:`Tuning read parallelism <read_parallelism>`.
             Parallelism is upper bounded by n.
 
     Returns:
@@ -239,7 +239,7 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     """Creates a :class:`~ray.data.Dataset` tensors of the provided shape from range
     [0...n].
 
-    This allows for easy creation of synthetic tensor datasets for testing or
+    This function allows for easy creation of synthetic tensor datasets for testing or
     benchmarking :ref:`Ray Data <data>`.
 
     Examples:
@@ -260,12 +260,12 @@ def range_tensor(n: int, *, shape: Tuple = (1,), parallelism: int = -1) -> Datas
     Args:
         n: The upper bound of the range of tensor records.
         shape: The shape of each tensor in the dataset.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the
-            :ref:`Tuning read parallelism guide <read_parallelism>`.
+            on how to tune it, see
+            :ref:`Tuning read parallelism <read_parallelism>`.
             Parallelism is upper bounded by n.
 
     Returns:
@@ -459,7 +459,7 @@ def read_mongo(
     ray_remote_args: Dict[str, Any] = None,
     **mongo_args,
 ) -> Dataset:
-    """Create a :class:`~ray.data.Dataset` from MongoDB database.
+    """Create a :class:`~ray.data.Dataset` from a MongoDB database.
 
     The data to read from is specified via the ``uri``, ``database`` and ``collection``
     of the MongoDB. The dataset is created from the results of executing
@@ -506,11 +506,11 @@ def read_mongo(
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
-        parallelism: The requested parallelism of the read. Defaults to -1
+        parallelism: The requested parallelism of the read. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
@@ -616,42 +616,42 @@ def read_parquet(
             {'sepal.length': 5.1, 'variety': 'Setosa'}
             {'sepal.length': 5.4, 'variety': 'Setosa'}
 
-        For further arguments you can pass to pyarrow as a keyword argument, see the
-        `pyarrow API reference <https://arrow.apache.org/docs/python/generated/\
+        For further arguments you can pass to PyArrow as a keyword argument, see the
+        `PyArrow API reference <https://arrow.apache.org/docs/python/generated/\
         pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_.
 
     Args:
         paths: A single file path or directory, or a list of file paths. Multiple
             directories are not supported.
-        filesystem: The pyarrow filesystem
+        filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the ``S3FileSystem`` is
             used.
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
             records in all the parquet files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        tensor_column_schema: A dict of column name to pyarrow dtype and shape
+        tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
-            tensors (ndarrays) as their elements to Pyarrow tensors. This assumes that
-            the tensors were serialized in the raw
-            NumPy array format in C-contiguous order (e.g. via
+            tensors (ndarrays) as their elements to PyArrow tensors. This function assumes that
+            the tensors are serialized in the raw
+            NumPy array format in C-contiguous order (e.g., via
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
-        arrow_parquet_args: Other parquet read options to pass to pyarrow. For the full
-            set of arguments, see `the pyarrow API <https://arrow.apache.org/docs/\
+            accurately. In most cases you do not need to set this parameter.
+        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
+            set of arguments, see the`PyArrow API <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.dataset.Scanner.html\
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
@@ -745,20 +745,20 @@ def read_images(
         filesystem: The pyarrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the csv files.
+            records in all the CSV files.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -766,7 +766,7 @@ def read_images(
                     #pyarrow.fs.FileSystem.open_input_file>`_.
             when opening input files to read.
         partition_filter:  A
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Can be used
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match ``*.png``, ``*.jpg``, ``*.jpeg``, ``*.tiff``, ``*.bmp``, or ``*.gif``.
@@ -828,7 +828,7 @@ def read_parquet_bulk(
 ) -> Dataset:
     """Create :class:`~ray.data.Dataset` from parquet files without reading metadata.
 
-    You should use :meth:`~ray.data.read_parquet` in most cases.
+    Use :meth:`~ray.data.read_parquet` for most cases.
 
     Use :meth:`~ray.data.read_parquet_bulk` if all the provided paths point to files
     and metadata fetching using :meth:`~ray.data.read_parquet` takes too long or the
@@ -839,9 +839,9 @@ def read_parquet_bulk(
 
     .. warning::
 
-        Only file paths should be provided as input (i.e. no directory paths). An
+        Only provide file paths as input (i.e., no directory paths). An
         OSError is raised if one or more paths point to directories. If your
-        use-case requires directory paths, then use :meth:`~ray.data.read_parquet`
+        use-case requires directory paths, use :meth:`~ray.data.read_parquet`
         instead.
 
     Examples:
@@ -853,23 +853,23 @@ def read_parquet_bulk(
 
     Args:
         paths: A single file path or a list of file paths.
-        filesystem: The pyarrow filesystem
-            implementation to read from. These are
+        filesystem: The PyArrow filesystem
+            implementation to read from. These filesystems are
             specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
                 filesystems.html#filesystem-implementations>`_.
-            You should specify this if you need to provide specific configurations to
+            Specify this parameter if you need to provide specific configurations to
             the filesystem. By default, the filesystem is automatically selected based
             on the scheme of the paths. For example, if the path begins with ``s3://``,
             the `S3FileSystem` is used.
         columns: A list of column names to read. Only the
             specified columns are read during the file scan.
         parallelism: The amount of parallelism to use for
-            the dataset. Defaults to -1 which automatically determines the optimal
+            the dataset. Defaults to -1, which automatically determines the optimal
             parallelism for your configuration. You should not need to manually set
             this value in most cases. For details on how the parallelism is
-            automatically determined and guidance on how to tune it, see the
-            :ref:`Tuning read parallelism guide <read_parallelism>`. Parallelism is
+            automatically determined and guidance on how to tune it, see
+            :ref:`Tuning read parallelism <read_parallelism>`. Parallelism is
             upper bounded by the total number of records in all the parquet files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
@@ -877,23 +877,23 @@ def read_parquet_bulk(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_file>`_.
             when opening input files to read.
-        tensor_column_schema: A dict of column name to pyarrow dtype and shape
+        tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
-            tensors (ndarrays) as their elements to Pyarrow tensors. This assumes that
-            the tensors were serialized in the raw
+            tensors (ndarrays) as their elements to PyArrow tensors. This function assumes that
+            the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         partition_filter: A
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Can be used
+            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.parquet*".
-        arrow_parquet_args: Other parquet read options to pass to pyarrow. For the full
+        arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
             set of arguments, see
-            `the pyarrow API <https://arrow.apache.org/docs/python/generated/\
+            the `PyArrow API <https://arrow.apache.org/docs/python/generated/\
                 pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
@@ -969,20 +969,20 @@ def read_json(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
-        filesystem: The pyarrow filesystem
+        filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the json files.
+            records in all the JSON files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -991,10 +991,10 @@ def read_json(
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
-            Can be used with a custom callback to read only selected partitions of a
+            Use with a custom callback to read only selected partitions of a
             dataset.
             By default, this filters out any file paths whose file extension does not
             match "*.json*".
@@ -1004,7 +1004,7 @@ def read_json(
                 hive-style-partitioning/>`_.
         ignore_missing_paths: If True, ignores any file paths in ``paths`` that are not
             found. Defaults to False.
-        arrow_json_args: json read options to pass to `pyarrow.json.read_json <https://\
+        arrow_json_args: JSON read options to pass to `pyarrow.json.read_json <https://\
             arrow.apache.org/docs/python/generated/pyarrow.json.read_json.html#pyarrow.\
             json.read_json>`_.
 
@@ -1114,20 +1114,20 @@ def read_csv(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
-        filesystem: The pyarrow filesystem
+        filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the csv files.
+            records in all the CSV files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1136,13 +1136,13 @@ def read_csv(
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         partition_filter: A 
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. 
-            Can be used with a custom callback to read only selected partitions of a
+            Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             To filter out all file paths except those whose file extension
-            matches e.g. "*.csv*", you can provide a
+            matches e.g., "*.csv*", you can provide a
             :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
@@ -1210,18 +1210,18 @@ def read_text(
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
         encoding: The encoding of the files (e.g., "utf-8" or "ascii").
-        filesystem: The pyarrow filesystem
+        filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
             lines in all the text files.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
@@ -1233,13 +1233,13 @@ def read_text(
             when opening input files to read.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
-            Can be used with a custom callback to read only selected partitions of a
+            Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             To filter out all file paths except those whose file extension
-            matches e.g. "*.txt*", you can provide a
+            matches e.g., "*.txt*", you can provide a
             :class:`~ray.data.datasource.FileExtensionFilter`.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. Defaults to ``None``.
@@ -1365,7 +1365,7 @@ def read_tfrecords(
            schema={...}
         )
 
-        We can also read compressed TFRecord files which uses one of the
+        We can also read compressed TFRecord files, which use one of the
         `compression types supported by Arrow <https://arrow.apache.org/docs/python/\
             generated/pyarrow.CompressedInputStream.html>`_:
 
@@ -1382,33 +1382,33 @@ def read_tfrecords(
     Args:
         paths: A single file or directory, or a list of file or directory paths.
             A list of paths can contain both files and directories.
-        filesystem: The pyarrow filesystem
+        filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
-            records in all the csv files.
+            records in all the CSV files.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read. To read a compressed TFRecord file,
-            pass the corresponding compression type (e.g. for ``GZIP`` or ``ZLIB``), use
+            pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``), use
             ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
-            Can be used with a custom callback to read only selected partitions of a
+            Use with a custom callback to read only selected partitions of a
             dataset.
             By default, this filters out any file paths whose file extension does not
             match ``"*.tfrecords*"``.
@@ -1540,19 +1540,19 @@ def read_binary_files(
             A list of paths can contain both files and directories.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
-        filesystem: The pyarrow filesystem
+        filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
-            `pyarrow docs <https://arrow.apache.org/docs/python/api/\
-            filesystems.html#filesystem-implementations>`_. You should specify this if
-            you need to provide specific configurations to the filesystem. By default
+            `PyArrow docs <https://arrow.apache.org/docs/python/api/\
+            filesystems.html#filesystem-implementations>`_. Specify this parameter if
+            you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        parallelism: The amount of parallelism to use for the dataset. Defaults to -1
+        parallelism: The amount of parallelism to use for the dataset. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`. Parallelism is upper bounded by the total number of
             files.
         arrow_open_stream_args: kwargs passed to
@@ -1561,10 +1561,10 @@ def read_binary_files(
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases you do not need to set this.
+            accurately. In most cases, you do not need to set this.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
-            Can be used with a custom callback to read only selected partitions of a
+            Use with a custom callback to read only selected partitions of a
             dataset. By default, no files are filtered.
             By default, this does not filter out any files.
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
@@ -1660,11 +1660,11 @@ def read_sql(
         connection_factory: A function that takes no arguments and returns a
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
-        parallelism: The requested parallelism of the read. Defaults to -1
+        parallelism: The requested parallelism of the read. Defaults to -1,
             which automatically determines the optimal parallelism for your
             configuration. You should not need to manually set this value in most cases.
             For details on how the parallelism is automatically determined and guidance
-            on how to tune it, see the :ref:`Tuning read parallelism guide
+            on how to tune it, see :ref:`Tuning read parallelism
             <read_parallelism>`.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
@@ -1767,7 +1767,7 @@ def from_pandas(
         MaterializedDataset(num_blocks=2, num_rows=6, schema={a: int64, b: int64})
 
     Args:
-        dfs: A pandas dataframe or a list of Pandas dataframes.
+        dfs: A pandas dataframe or a list of pandas dataframes.
 
     Returns:
         :class:`~ray.data.Dataset` holding data read from the dataframes.

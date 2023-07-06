@@ -2450,7 +2450,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
+            try_create_dir: If True, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2469,7 +2469,7 @@ class Dataset:
                     /arrow.apache.org/docs/python/generated/\
                         pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``arrow_parquet_args``. This should be used
+                any duplicate keys from ``arrow_parquet_args``. Use this parameter
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
@@ -2541,7 +2541,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
+            try_create_dir: If True, attempts to create all directories in
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2560,7 +2560,7 @@ class Dataset:
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
                     api/pandas.DataFrame.to_json.html>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``pandas_json_args``. This should be used
+                any duplicate keys from ``pandas_json_args``. Use this parameter
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
@@ -2639,7 +2639,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
+            try_create_dir: If true, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2658,7 +2658,7 @@ class Dataset:
                 arrow.apache.org/docs/python/generated/\
                 pyarrow.csv.write_csv.html#pyarrow.csv.write_csv>`_ when writing each
                 block to a file. Overrides any duplicate keys from ``arrow_csv_args``.
-                This should be used instead of ``arrow_csv_args`` if any of your write
+                This parameter should be used instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
@@ -2695,7 +2695,7 @@ class Dataset:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
+        files contain
         `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/\
             Example>`_
         records, with one Example record for each row in the dataset.
@@ -2736,7 +2736,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
+            try_create_dir: If true, attempts to create all directories in
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2885,8 +2885,8 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
-                destination path if True. Does nothing if all directories already
+            try_create_dir: If True, attempts to create all directories in
+                destination path. Does nothing if all directories already
                 exist. Defaults to True.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
@@ -2931,9 +2931,9 @@ class Dataset:
         :meth:`~ray.data.Dataset.repartition`.
 
         .. warning::
-            Currently, this supports only a subset of the pyarrow's types, due to the
+            This method supports only a subset of the PyArrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
-            types will fail on type checking. See all the supported types at:
+            types fails on type checking. See all the supported types at:
             https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
 
         .. note::
