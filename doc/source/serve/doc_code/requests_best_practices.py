@@ -16,7 +16,7 @@ serve.run(f.bind())
 import requests
 
 response = requests.get("http://localhost:8000/")
-result = response.json()
+result = response.text
 # __prototype_code_end__
 
 assert result == "Hi there!"
@@ -42,7 +42,7 @@ retries = Retry(
 session.mount("http://", HTTPAdapter(max_retries=retries))
 
 response = session.get("http://localhost:8000/", timeout=10)  # Add timeout
-result = response.json()
+result = response.text
 # __production_code_end__
 
 assert result == "Hi there!"
