@@ -92,6 +92,12 @@ parser.add_argument(
     default=None,
     help="The WandB project name to use.",
 )
+parser.add_argument(
+    "--wandb-run-name",
+    type=str,
+    default=None,
+    help="The WandB run name to use.",
+)
 
 # Obsoleted arg, use --dir instead.
 parser.add_argument("--yaml-dir", type=str, default="")
@@ -193,7 +199,11 @@ if __name__ == "__main__":
                 exp["run"].lower() + "-" + re.sub("\\W+", "-", exp["env"].lower())
                 if config_is_python else list(experiments.keys())[0]
             )
-            callbacks = [WandbLoggerCallback(api_key=args.wandb_key, project=project)]
+            callbacks = [WandbLoggerCallback(
+                api_key=args.wandb_key,
+                project=project,
+                **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
+            )]
 
         # Try running each test 3 times and make sure it reaches the given
         # reward.
