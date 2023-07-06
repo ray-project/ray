@@ -146,7 +146,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
 CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
-  RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   stats::Shutdown();
   if (options_.enable_logging) {
@@ -255,8 +254,6 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   RAY_CHECK(global_worker);
   global_worker->Disconnect(/*exit_type*/ rpc::WorkerExitType::INTENDED_USER_EXIT,
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
-  // Make sure the stats module shutdown before shutting down the core worker.
-  stats::Shutdown();
   global_worker->Shutdown();
   {
     absl::WriterMutexLock lock(&mutex_);
