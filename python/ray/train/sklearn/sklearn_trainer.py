@@ -63,7 +63,7 @@ class SklearnTrainer(BaseTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
 
@@ -81,6 +81,11 @@ class SklearnTrainer(BaseTrainer):
             datasets={"train": train_dataset}
         )
         result = trainer.fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
 
     Args:
         estimator: A scikit-learn compatible estimator to use.

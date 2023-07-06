@@ -50,8 +50,9 @@ TEST_F(GcsResourceManagerTest, TestBasic) {
   // Get and check cluster resources.
   const auto &resource_view = cluster_resource_manager_.GetResourceView();
   ASSERT_EQ(1, resource_view.size());
-
   scheduling::NodeID scheduling_node_id(node->node_id());
+  ASSERT_TRUE(resource_view.at(scheduling_node_id).GetLocalView().labels.empty());
+
   auto resource_request =
       ResourceMapToResourceRequest(resource_map, /*requires_object_store_memory=*/false);
 
@@ -127,6 +128,26 @@ TEST_F(GcsResourceManagerTest, TestSetAvailableResourcesWhenNodeDead) {
   resources_data.set_resources_available_changed(true);
   gcs_resource_manager_->UpdateFromResourceReport(resources_data);
   ASSERT_EQ(cluster_resource_manager_.GetResourceView().size(), 0);
+}
+
+TEST_F(GcsResourceManagerTest, TestNodeLabels) {
+  const std::string cpu_resource = "CPU";
+  absl::flat_hash_map<std::string, double> resource_map;
+  resource_map[cpu_resource] = 10;
+  absl::flat_hash_map<std::string, std::string> labels = {{"key", "value"},
+                                                          {"gpu_type", "a100"}};
+
+  auto node = Mocker::GenNodeInfo();
+  node->mutable_resources_total()->insert(resource_map.begin(), resource_map.end());
+  node->mutable_labels()->insert(labels.begin(), labels.end());
+  // Add node resources.
+  gcs_resource_manager_->OnNodeAdd(*node);
+
+  // Get and check cluster resources.
+  const auto &resource_view = cluster_resource_manager_.GetResourceView();
+  ASSERT_EQ(1, resource_view.size());
+  scheduling::NodeID scheduling_node_id(node->node_id());
+  ASSERT_EQ(resource_view.at(scheduling_node_id).GetLocalView().labels, labels);
 }
 
 }  // namespace ray

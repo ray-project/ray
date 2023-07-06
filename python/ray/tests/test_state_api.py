@@ -2135,7 +2135,7 @@ def test_list_get_pgs(shutdown_only):
 
 
 @pytest.mark.asyncio
-async def test_node_instance_id(ray_start_cluster, monkeypatch):
+async def test_cloud_envs(ray_start_cluster, monkeypatch):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
@@ -2144,6 +2144,7 @@ async def test_node_instance_id(ray_start_cluster, monkeypatch):
             "RAY_CLOUD_INSTANCE_ID",
             "test_cloud_id",
         )
+        m.setenv("RAY_NODE_TYPE_NAME", "test-node-type")
         cluster.add_node(num_cpus=1, node_name="worker_node")
     client = state_source_client(cluster.address)
 
@@ -2154,8 +2155,10 @@ async def test_node_instance_id(ray_start_cluster, monkeypatch):
         for node_info in reply.node_info_list:
             if node_info.node_name == "worker_node":
                 assert node_info.instance_id == "test_cloud_id"
+                assert node_info.node_type_name == "test-node-type"
             else:
                 assert node_info.instance_id == ""
+                assert node_info.node_type_name == ""
 
         return True
 
@@ -2461,6 +2464,7 @@ def test_pg_worker_id_tasks(shutdown_only):
 
         assert tasks[0]["placement_group_id"] == pg.id.hex()
         assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+        assert tasks[0]["worker_pid"] == workers[0]["pid"]
 
         return True
 
