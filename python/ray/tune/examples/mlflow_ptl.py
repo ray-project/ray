@@ -44,7 +44,7 @@ def tune_mnist(
 ):
     data_dir = os.path.join(tempfile.gettempdir(), "mnist_data_")
     # Download data
-    MNISTDataModule(data_dir=data_dir).prepare_data()
+    MNISTDataModule(data_dir=data_dir, batch_size=32).prepare_data()
 
     # Set the MLflow experiment, or create it if it does not exist.
     mlflow.set_tracking_uri(tracking_uri)
