@@ -419,7 +419,7 @@ torchvision==0.14.0+cu116
 tornado==6.3.2
 tqdm @ file:///croot/tqdm_1679561862951/work
 traitlets==5.9.0
-transformers==4.30.2
+transformers==4.19.1
 tune-sklearn==0.4.4
 typeguard==2.13.3
 typer==0.9.0
