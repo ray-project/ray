@@ -483,7 +483,7 @@ class RayletServicerProxy(ray_client_pb2_grpc.RayletDriverServicer):
         Otherwise, we proxy the call to the downstream server as usual.
         """
         if self._has_channel_for_request(context):
-            return self._call_inner_function(request, context, "KVGet")
+            return self._call_inner_function(request, context, "KVDel")
 
         with disable_client_hook():
             ray.experimental.internal_kv._internal_kv_del(request.key)
