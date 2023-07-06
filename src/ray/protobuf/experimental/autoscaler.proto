@@ -27,7 +27,7 @@ package ray.rpc.autoscaler;
 // value.
 //
 // This is now used to implement placement group anti-affinity, i.e.
-// strict-spread. The label_name is "_PG_<pg_id>",
+// strict-spread. The label_name is "_PG_<pg_id_in_hex>",
 // and the label_value is empty string.
 message AntiAffinityConstraint {
   string label_name = 1;
@@ -38,7 +38,7 @@ message AntiAffinityConstraint {
 // should be allocated to node with the same label name and value.
 //
 // This is now used to implement placement group affinity, i.e.
-// strict-pack. The label_name is "_PG_<pg_id>",
+// strict-pack. The label_name is "_PG_<pg_id_in_hex>",
 // and the label_value is empty string.
 message AffinityConstraint {
   string label_name = 1;
