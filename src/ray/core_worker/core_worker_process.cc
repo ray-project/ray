@@ -146,7 +146,6 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
 
 CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   RAY_LOG(INFO) << "Destructing CoreWorkerProcessImpl. pid: " << getpid();
-  RAY_LOG(DEBUG) << "Stats stop in core worker.";
   // Shutdown stats module if worker process exits.
   stats::Shutdown();
   if (options_.enable_logging) {
