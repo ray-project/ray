@@ -19,16 +19,16 @@ pip --no-cache-dir install -U pip pip-tools
 # Install requirements
 pip --no-cache-dir install -U -r requirements.txt
 
-if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
-  CONSTRAINT="-c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
+if [ -f "requirements_compiled.txt" ]; then
+  CONSTRAINT="-c requirements.txt -c requirements_compiled.txt"
 else
-  CONSTRAINT=""
+  CONSTRAINT="-c requirements.txt"
 fi
 
 # Install other requirements. Keep pinned requirements bounds as constraints
+# shellcheck disable=SC2086
 pip --no-cache-dir install -U \
-           -c requirements.txt \
-           "$CONSTRAINT" \
+           $CONSTRAINT \
            -r core-requirements.txt \
            -r data-requirements.txt \
            -r rllib-requirements.txt \
