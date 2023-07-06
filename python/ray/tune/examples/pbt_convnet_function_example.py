@@ -8,9 +8,8 @@ import torch
 import torch.optim as optim
 from ray.tune.examples.mnist_pytorch import train, test, ConvNet, get_data_loaders
 
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining
 
 # __tutorial_imports_end__
@@ -28,11 +27,11 @@ def train_convnet(config):
         momentum=config.get("momentum", 0.9),
     )
 
-    # If `session.get_checkpoint()` is not None, then we are resuming from a checkpoint.
+    # If `get_checkpoint()` is not None, then we are resuming from a checkpoint.
     # Load model state and iteration step from checkpoint.
-    if session.get_checkpoint():
+    if train.get_context().get_checkpoint():
         print("Loading from checkpoint.")
-        loaded_checkpoint = session.get_checkpoint()
+        loaded_checkpoint = train.get_context().get_checkpoint()
         with loaded_checkpoint.as_directory() as loaded_checkpoint_dir:
             path = os.path.join(loaded_checkpoint_dir, "checkpoint.pt")
             checkpoint = torch.load(path)
@@ -59,7 +58,7 @@ def train_convnet(config):
             checkpoint = Checkpoint.from_directory("my_model")
 
         step += 1
-        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 # __train_end__
@@ -118,11 +117,11 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         train_convnet,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="pbt_test",
             stop=stopper,
             verbose=1,
-            checkpoint_config=air.CheckpointConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_score_attribute="mean_accuracy",
                 num_to_keep=4,
             ),

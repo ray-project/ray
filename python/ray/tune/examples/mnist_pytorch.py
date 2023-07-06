@@ -10,8 +10,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 
 import ray
-from ray import air, tune
-from ray.air import session
+from ray import train, tune
 from ray.train.torch import TorchCheckpoint
 from ray.tune.schedulers import AsyncHyperBandScheduler
 
@@ -109,7 +108,7 @@ def train_mnist(config):
         if should_checkpoint:
             checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
         # Report metrics (and possibly a checkpoint) to Tune
-        session.report({"mean_accuracy": acc}, checkpoint=checkpoint)
+        train.report({"mean_accuracy": acc}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -136,7 +135,7 @@ if __name__ == "__main__":
             scheduler=sched,
             num_samples=1 if args.smoke_test else 50,
         ),
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="exp",
             stop={
                 "mean_accuracy": 0.98,

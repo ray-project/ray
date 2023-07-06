@@ -7,9 +7,8 @@ import os
 import numpy as np
 
 import ray
-from ray import air, tune
-from ray.air import session
-from ray.air.checkpoint import Checkpoint
+from ray import train, tune
+from ray.train import Checkpoint
 from ray.tune.schedulers import HyperBandScheduler
 
 
@@ -31,7 +30,7 @@ def train(config, checkpoint_dir=None):
 
         # Here we use `episode_reward_mean`, but you can also report other
         # objectives such as loss or accuracy.
-        session.report({"episode_reward_mean": v}, checkpoint=checkpoint)
+        train.report({"episode_reward_mean": v}, checkpoint=checkpoint)
 
 
 if __name__ == "__main__":
@@ -50,10 +49,10 @@ if __name__ == "__main__":
 
     tuner = tune.Tuner(
         train,
-        run_config=air.RunConfig(
+        run_config=train.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 10 if args.smoke_test else 99999},
-            failure_config=air.FailureConfig(
+            failure_config=train.FailureConfig(
                 fail_fast=True,
             ),
         ),
