@@ -17,14 +17,6 @@ sudo apt-get update \
         unrar \
         zlib1g-dev
 
-# MuJoCo Installation.
-export MUJOCO_GL=osmesa
-wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
-mkdir -p ~/.mujoco
-mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
-cd ~/.mujoco || exit
-tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
-
 pip --no-cache-dir install -U pip pip-tools
 
 # Install requirements
@@ -52,3 +44,11 @@ pip --no-cache-dir install -U \
 sudo apt-get clean
 
 sudo rm requirements*.txt
+
+# MuJoCo Installation.
+export MUJOCO_GL=osmesa
+wget https://mujoco.org/download/mujoco210-linux-x86_64.tar.gz
+mkdir -p ~/.mujoco
+mv mujoco210-linux-x86_64.tar.gz ~/.mujoco/.
+cd ~/.mujoco || exit
+tar -xf ~/.mujoco/mujoco210-linux-x86_64.tar.gz
