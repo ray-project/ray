@@ -375,6 +375,15 @@ class AsyncSampler(threading.Thread, SamplerInput):
         """
         # All of the following arguments are deprecated. They will instead be
         # provided via the passed in `worker` arg, e.g. `worker.policy_map`.
+        if log_once("async-sampler-deprecation-warning"):
+            deprecation_warning(
+                old="rllib.evaluation.sampler.AsyncSampler",
+                help=(
+                    "AsyncSampler is being deprecated from RLlib in future releases. "
+                    "See https://github.com/ray-project/enhancements/blob/main/reps/2023-04-28-remove-algorithms-from-rllib.md"  # noqa: E501
+                    "for more details. "
+                ),
+            )
         if log_once("deprecated_async_sampler_args"):
             if policies is not None:
                 deprecation_warning(old="policies")

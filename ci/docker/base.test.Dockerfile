@@ -5,7 +5,7 @@ ARG REMOTE_CACHE_URL
 ARG BUILDKITE_PULL_REQUEST
 ARG BUILDKITE_COMMIT
 ARG BUILDKITE_PULL_REQUEST_BASE_BRANCH
-ARG PYTHON=3.7
+ARG PYTHON=3.8
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=America/Los_Angeles
@@ -65,3 +65,4 @@ WORKDIR /ray
 COPY . .
 
 RUN ./ci/env/install-dependencies.sh init
+RUN bash --login -i ./ci/ci.sh compile_pip_dependencies

@@ -31,7 +31,7 @@ class TestSlateQ(unittest.TestCase):
 
         num_iterations = 1
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()

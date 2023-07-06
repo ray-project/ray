@@ -684,6 +684,13 @@ class GCPTPU(GCPResource):
             # https://cloud.google.com/tpu/docs/users-guide-tpu-vm#create-curl
             config["networkConfig"]["enableExternalIps"] = True
 
+        # replace serviceAccounts with serviceAccount, and scopes with scope
+        # this is necessary for the head node to work
+        # see here: https://tpu.googleapis.com/$discovery/rest?version=v2alpha1
+        if "serviceAccounts" in config:
+            config["serviceAccount"] = config.pop("serviceAccounts")[0]
+            config["serviceAccount"]["scope"] = config["serviceAccount"].pop("scopes")
+
         operation = (
             self.resource.projects()
             .locations()

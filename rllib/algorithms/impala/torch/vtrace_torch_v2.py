@@ -9,7 +9,6 @@ def make_time_major(
     *,
     trajectory_len: int = None,
     recurrent_seq_len: int = None,
-    drop_last: bool = False,
 ):
     """Swaps batch and trajectory axis.
 
@@ -21,8 +20,6 @@ def make_time_major(
             If None then `recurrent_seq_len` must be set.
         recurrent_seq_len: Sequence lengths if recurrent.
             If None then `trajectory_len` must be set.
-        drop_last: A bool indicating whether to drop the last
-            trajectory item.
 
     Returns:
         res: A tensor with swapped axes or a list of tensors with
@@ -30,7 +27,7 @@ def make_time_major(
     """
     if isinstance(tensor, (list, tuple)):
         return [
-            make_time_major(_tensor, trajectory_len, recurrent_seq_len, drop_last)
+            make_time_major(_tensor, trajectory_len, recurrent_seq_len)
             for _tensor in tensor
         ]
 
@@ -53,8 +50,6 @@ def make_time_major(
     # Swap B and T axes.
     res = torch.transpose(rs, 1, 0)
 
-    if drop_last:
-        return res[:-1]
     return res
 
 

@@ -28,7 +28,7 @@ install_bazel() {
       # Only reinstall Bazel if we need to upgrade to a different version.
       python="$(command -v python3 || command -v python || echo python)"
       current_version="$(bazel --version | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
-      new_version="$("${python}" -s -c "import runpy, sys; runpy.run_path(sys.argv.pop(), run_name='__api__')" bazel_version "${SCRIPT_DIR}/../../python/setup.py")"
+      new_version="$(grep 'USE_BAZEL_VERSION=' "${WORKSPACE_DIR}/.bazeliskrc" | grep -o "[0-9]\+.[0-9]\+.[0-9]\+")"
       if [[ "$current_version" == "$new_version" ]]; then
         echo "Bazel of the same version already exists, skipping the install"
         export BAZEL_CONFIG_ONLY=1
@@ -82,7 +82,7 @@ install_miniconda() {
 
   if [ ! -x "${conda}" ] || [ "${MINIMAL_INSTALL-}" = 1 ]; then  # If no conda is found, install it
     local miniconda_dir  # Keep directories user-independent, to help with Bazel caching
-    local miniconda_version="Miniconda3-py37_4.9.2"
+    local miniconda_version="Miniconda3-py38_23.1.0-1"
     local miniconda_platform=""
     local exe_suffix=".sh"
 
@@ -94,7 +94,6 @@ install_miniconda() {
       darwin*)
         if [ "$(uname -m)" = "arm64" ]; then
           HOSTTYPE="arm64"
-          miniconda_version="Miniconda3-py38_23.1.0-1"
           miniconda_dir="/opt/homebrew/opt/miniconda"
         else
           HOSTTYPE="x86_64"
@@ -193,7 +192,7 @@ install_shellcheck() {
 }
 
 install_linters() {
-  pip install -r "${WORKSPACE_DIR}"/python/requirements_linters.txt
+  pip install -r "${WORKSPACE_DIR}"/python/requirements/lint-requirements.txt
 
   install_shellcheck
 }
@@ -329,7 +328,7 @@ install_pip_packages() {
   # files.
   delayed_packages=()
 
-  requirements_files+=("${WORKSPACE_DIR}/python/requirements_test.txt")
+  requirements_files+=("${WORKSPACE_DIR}/python/requirements/test-requirements.txt")
 
   if [ "${LINT-}" = 1 ]; then
     install_linters
@@ -351,34 +350,26 @@ install_pip_packages() {
 
   # Additional RLlib test dependencies.
   if [ "${RLLIB_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_rllib.txt")
-    #TODO(amogkam): Add this back to requirements_rllib.txt once mlagents no longer pins torch<1.9.0 version.
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
+    #TODO(amogkam): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
     pip install --no-dependencies mlagents==0.28.0
   fi
 
-  # Some Ray Train dependencies have to be installed with --no-deps,
-  # as sub-dependencies conflict. The packages still work for our workflows.
-  # Todo(krfricke): Try to remove once we move to Python 3.8 in CI.
-  local install_ml_no_deps=0
-
   # Additional Train test dependencies.
   if [ "${TRAIN_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_train.txt")
-    install_ml_no_deps=1
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt")
   fi
 
   # Additional Tune/Doc test dependencies.
   if [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_tune.txt")
-  fi
-
-  # For Tune, install upstream dependencies.
-  if [ "${TUNE_TESTING-}" = 1 ] ||  [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_upstream.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt")
   fi
 
   # Additional dependency for Ludwig.
-  # This cannot be included in requirements_upstream.txt as it has conflicting
+  # This cannot be included in requirements files as it has conflicting
   # dependencies with Modin.
   if [ "${INSTALL_LUDWIG-}" = 1 ]; then
     # TODO: eventually pin this to master.
@@ -387,7 +378,7 @@ install_pip_packages() {
   fi
 
   # Additional dependency for time series libraries.
-  # This cannot be included in requirements_tune.txt as it has conflicting
+  # This cannot be included in tune-requirements.txt as it has conflicting
   # dependencies.
   if [ "${INSTALL_TIMESERIES_LIBS-}" = 1 ]; then
     requirements_packages+=("statsforecast==1.5.0")
@@ -397,10 +388,10 @@ install_pip_packages() {
 
   # Data processing test dependencies.
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt")
   fi
   if [ "${DATA_PROCESSING_TESTING-}" = 1 ]; then
-    requirements_files+=("${WORKSPACE_DIR}/python/requirements/data_processing/requirements_dataset.txt")
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt")
     if [ -n "${ARROW_VERSION-}" ]; then
       if [ "${ARROW_VERSION-}" = nightly ]; then
         delayed_packages+=("--extra-index-url")
@@ -417,28 +408,19 @@ install_pip_packages() {
     fi
   fi
 
-  if [ "${install_ml_no_deps}" = 1 ]; then
-    # Install these requirements first. Their dependencies may be overwritten later
-    # by the main install.
-    pip install -r "${WORKSPACE_DIR}/python/requirements/ml/requirements_no_deps.txt"
-  fi
-
   retry_pip_install "CC=gcc pip install -Ur ${WORKSPACE_DIR}/python/requirements.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [ -n "${TORCH_VERSION-}" ] || [ "${DL-}" = "1" ] || [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ]; then
       # If we require a custom torch version, use that
       if [ -n "${TORCH_VERSION-}" ]; then
-        case "${TORCH_VERSION-1.9.0}" in
-          1.9.0) TORCHVISION_VERSION=0.10.0;;
-        esac
         # Install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION}"
-        # We won't add requirements_dl.txt as it would otherwise overwrite our custom
+        pip install -U "torch==${TORCH_VERSION-1.9.0}" "torchvision==${TORCHVISION_VERSION-0.10.0}"
+        # We won't add dl-cpu-requirements.txt as it would otherwise overwrite our custom
         # torch. Thus we have also have to install tensorflow manually.
-        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
-        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TF_PACKAGE=$(grep "tensorflow==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
+        TFPROB_PACKAGE=$(grep "tensorflow-probability==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install -U "${TF_PACKAGE%%;*}" "${TFPROB_PACKAGE%%;*}"
@@ -446,13 +428,18 @@ install_pip_packages() {
         # Otherwise, use pinned default torch version.
         # Again, install right away, as some dependencies (e.g. torch-spline-conv) need
         # torch to be installed for their own install.
-        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
-        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        TORCH_PACKAGE=$(grep "torch==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
+        TORCHVISION_PACKAGE=$(grep "torchvision==" "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
 
         # %%;* deletes everything after ; to get rid of e.g. python version specifiers
         pip install "${TORCH_PACKAGE%%;*}" "${TORCHVISION_PACKAGE%%;*}"
-        requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/requirements_dl.txt")
+        requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt")
       fi
+  fi
+
+  # AIR core dependencies
+  if [ "${RLLIB_TESTING-}" = 1 ] || [ "${TRAIN_TESTING-}" = 1 ] || [ "${TUNE_TESTING-}" = 1 ] || [ "${DOC_TESTING-}" = 1 ]; then
+    requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt")
   fi
 
   # Inject our own mirror for the CIFAR10 dataset

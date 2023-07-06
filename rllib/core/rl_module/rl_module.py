@@ -1,10 +1,12 @@
 import abc
-from dataclasses import dataclass
 import datetime
-import gymnasium as gym
 import json
 import pathlib
-from typing import Any, Dict, Mapping, Optional, Type, TYPE_CHECKING, Union
+from dataclasses import dataclass
+from typing import Mapping, Any, TYPE_CHECKING, Optional, Type, Dict, Union
+
+import gymnasium as gym
+import tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.marl_module import (
@@ -18,6 +20,11 @@ from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.rllib.utils.typing import ViewRequirementsDict
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
+from ray.rllib.policy.view_requirement import ViewRequirement
 
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.models.specs.checker import (
@@ -28,6 +35,7 @@ from ray.rllib.core.models.specs.checker import (
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, SampleBatch
 from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import SampleBatchType
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
@@ -285,7 +293,19 @@ class RLModule(abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        # Make sure, `setup()` is only called once, no matter what. In some cases
+        # of multiple inheritance (and with our __post_init__ functionality in place,
+        # this might get called twice.
+        if hasattr(self, "_is_setup") and self._is_setup:
+            raise RuntimeError(
+                "`RLModule.setup()` called twice within your RLModule implementation "
+                f"{self}! Make sure you are using the proper inheritance order "
+                "(TorchRLModule before [Algo]RLModule) or (TfRLModule before "
+                "[Algo]RLModule) and that you are using `super().__init__(...)` in "
+                "your custom constructor."
+            )
         self.setup()
+        self._is_setup = True
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.
@@ -327,6 +347,7 @@ class RLModule(abc.ABC):
             self.output_specs_inference()
         )
 
+    @OverrideToImplementCustomLogic
     def setup(self):
         """Sets up the components of the module.
 
@@ -336,6 +357,7 @@ class RLModule(abc.ABC):
         """
         pass
 
+    @OverrideToImplementCustomLogic
     def get_train_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for training.
 
@@ -350,6 +372,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for exploration.
 
@@ -364,6 +387,7 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
+    @OverrideToImplementCustomLogic
     def get_inference_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for inference.
 
@@ -378,12 +402,87 @@ class RLModule(abc.ABC):
         """
         raise NotImplementedError
 
-    def get_initial_state(self) -> NestedDict:
+    @OverrideToImplementCustomLogic
+    def get_initial_state(self) -> Any:
         """Returns the initial state of the module.
 
-        This is used for recurrent models.
+        This can be used for recurrent models.
         """
         return {}
+
+    @OverrideToImplementCustomLogic
+    def is_stateful(self) -> bool:
+        """Returns True if the initial state is empty.
+
+        By default, RLlib assumes that the module is not recurrent if the initial
+        state is an empty dict and recurrent otherwise.
+        This behavior can be overridden by implementing this method.
+        """
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(initial_state)
+
+    @OverrideToImplementCustomLogic
+    def update_default_view_requirements(
+        self, defaults: ViewRequirementsDict
+    ) -> Mapping[str, ViewRequirement]:
+        """Updates default view requirements with the view requirements of this module.
+
+        This method should be called with view requirements that already contain
+        information such as the given observation space, action space, etc.
+        This method may then add additional shifts or state columns to the view
+        requirements, or apply other changes.
+
+        Args:
+            defaults: The default view requirements to update.
+
+        Returns:
+            The updated view requirements.
+        """
+        if self.is_stateful():
+            # get the initial state in numpy format, infer the state from it, and create
+            # appropriate view requirements.
+            init_state = convert_to_numpy(self.get_initial_state())
+            init_state = tree.map_structure(lambda x: x[None], init_state)
+            space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
+            max_seq_len = self.config.model_config_dict["max_seq_len"]
+            assert max_seq_len is not None
+            defaults[STATE_IN] = ViewRequirement(
+                data_col=STATE_OUT,
+                shift=-1,
+                used_for_compute_actions=True,
+                used_for_training=True,
+                batch_repeat_value=max_seq_len,
+                space=space,
+            )
+
+            if self.config.model_config_dict["lstm_use_prev_action"]:
+                defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
+                    data_col=SampleBatch.ACTIONS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                )
+
+            if self.config.model_config_dict["lstm_use_prev_reward"]:
+                defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
+                    data_col=SampleBatch.REWARDS,
+                    shift=-1,
+                    used_for_compute_actions=True,
+                    used_for_training=True,
+                )
+
+            defaults[STATE_OUT] = ViewRequirement(
+                data_col=STATE_OUT,
+                used_for_compute_actions=False,
+                used_for_training=True,
+                space=space,
+            )
+
+        return defaults
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:

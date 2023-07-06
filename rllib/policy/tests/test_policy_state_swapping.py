@@ -36,7 +36,7 @@ class TestPolicyStateSwapping(unittest.TestCase):
             .resources(num_gpus=1)
             # Set eager tracing to True here, such that the framework_iterator loop
             # below skips tf2 w/o tracing (loops through tf, tf2+tracing, and torch).
-            .framework("tf2", eager_tracing=True)
+            .framework("tf2")
         )
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
