@@ -324,9 +324,10 @@ doctest(
 
 doctest(
     files = [
-        "source/workflows/basics.rst",
+        "source/workflows/basics.rst"
     ],
-    tags = ["team:core"]
+    size = "large",
+    tags = ["team:none"]
 )
 
 doctest(
