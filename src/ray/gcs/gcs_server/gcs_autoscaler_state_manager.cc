@@ -126,7 +126,8 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         << "Placement group load should only include pending/rescheduling PGs. ";
 
     const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
-        pg_data.placement_group_id(), pg_data.strategy());
+        PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex(),
+        pg_data.strategy());
 
     // Copy the PG's bundles to the request.
     for (const auto &bundle : pg_data.bundles()) {
@@ -222,7 +223,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
         NodeID::FromBinary(gcs_node_info.node_id()));
     for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
       node_state_proto->mutable_dynamic_labels()->insert(
-          {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
+          {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
     }
   };
 
