@@ -75,7 +75,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
+        
+        If node_id is specified, return the status of a node.
         """
+        if "node_id" in req.query:
+            logger.info(f"Getting status of node {req.query['node_id']}")
+        
         return_formatted_output = req.query.get("format", "0") == "1"
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(

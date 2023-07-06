@@ -22,6 +22,10 @@ import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { useRayStatus } from "../job/hook/useClusterStatus";
+<<<<<<< HEAD
+=======
+import { formatResourcesStatus } from "../job/JobDetail";
+>>>>>>> 2526173d021b8739f0be5a2816c6ff96fb1637b7
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
@@ -73,6 +77,7 @@ export const NodeRow = ({
     ? formatResourcesStatus(cluster_status.data?.clusterStatus)
     : "";
 
+  console.log("customResource: ", customResource);
   return (
     <TableRow>
       <TableCell>
