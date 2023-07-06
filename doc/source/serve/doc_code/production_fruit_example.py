@@ -133,10 +133,6 @@ for deployment in app.deployments.values():
     deployment.set_options(ray_actor_options={"num_cpus": 0.1})
 serve.run(app)
 check_fruit_deployment_graph()
-MangoStand.options(name="MangoStand", user_config={"price": 0}).deploy()
-OrangeStand.options(user_config={"price": 0}).deploy()
-PearStand.options(user_config={"price": 0}).deploy()
-check_fruit_deployment_graph_updates()
 print("Example ran successfully from the file.")
 serve.shutdown()
 

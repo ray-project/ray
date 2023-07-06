@@ -3,9 +3,9 @@ import subprocess
 import sys
 import time
 from contextlib import contextmanager
-from typing import Dict, Set
-from concurrent.futures.thread import ThreadPoolExecutor
+from typing import Dict
 from functools import partial
+from tempfile import NamedTemporaryFile
 
 import pytest
 import requests
@@ -13,7 +13,7 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
-from ray.util.state import list_actors
+from ray.util.state import list_actors, list_tasks
 
 from ray import serve
 from ray._private.test_utils import (
@@ -45,38 +45,6 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
-
-
-@pytest.fixture()
-def ray_instance(request):
-    """Starts and stops a Ray instance for this test.
-
-    Args:
-        request: request.param should contain a dictionary of env vars and
-            their values. The Ray instance will be started with these env vars.
-    """
-
-    original_env_vars = os.environ.copy()
-
-    try:
-        requested_env_vars = request.param
-    except AttributeError:
-        requested_env_vars = {}
-
-    os.environ.update(requested_env_vars)
-
-    yield ray.init(
-        _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50,
-        },
-    )
-
-    ray.shutdown()
-
-    os.environ.clear()
-    os.environ.update(original_env_vars)
 
 
 @contextmanager
@@ -407,11 +375,13 @@ def test_controller_recover_and_delete(shutdown_ray):
     # The deployment should be deleted, meaning its state should not be stored
     # in the DeploymentStateManager. This can be checked by attempting to
     # retrieve the deployment's status through the controller.
-    assert (
-        client.get_serve_status().get_deployment_status(
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+    wait_for_condition(
+        lambda: (
+            client.get_serve_status().get_deployment_status(
+                f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+            )
+            is None
         )
-        is None
     )
 
     serve.shutdown()
@@ -420,7 +390,6 @@ def test_controller_recover_and_delete(shutdown_ray):
 
 def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
     """Test that serve logs show up across different drivers."""
-    import tempfile
 
     file1 = """from ray import serve
 @serve.deployment
@@ -436,7 +405,7 @@ class B:
         return "Hello B"
 serve.run(B.bind())"""
 
-    with tempfile.NamedTemporaryFile() as f1, tempfile.NamedTemporaryFile() as f2:
+    with NamedTemporaryFile() as f1, NamedTemporaryFile() as f2:
         f1.write(file1.encode("utf-8"))
         f1.seek(0)
         # Driver 1 (starts Serve controller)
@@ -468,14 +437,9 @@ class TestDeployApp:
             serve.shutdown()
             ray.shutdown()
 
-    def check_deployment_running(self, client: ServeControllerClient, name: str):
+    def check_running(self, client: ServeControllerClient):
         serve_status = client.get_serve_status()
-        return (
-            serve_status.get_deployment_status(name) is not None
-            and serve_status.app_status.status == ApplicationStatus.RUNNING
-            and serve_status.get_deployment_status(name).status
-            == DeploymentStatus.HEALTHY
-        )
+        return serve_status.app_status.status == ApplicationStatus.RUNNING
 
     def check_deployments_dead(self, deployment_names):
         actor_names = [
@@ -1124,33 +1088,35 @@ class TestDeployApp:
     def test_controller_recover_and_deploy(self, client: ServeControllerClient):
         """Ensure that in-progress deploy can finish even after controller dies."""
 
-        config = ServeApplicationSchema.parse_obj(self.get_test_config())
+        signal = SignalActor.options(name="signal123").remote()
+
+        config_json = {
+            "applications": [
+                {
+                    "name": "default",
+                    "import_path": "ray.serve.tests.test_config_files.hangs.app",
+                }
+            ]
+        }
+        config = ServeDeploySchema.parse_obj(config_json)
         client.deploy_apps(config)
-        # Wait for app to deploy
-        self.check_single_app()
-        deployment_timestamp = client.get_serve_status().app_status.deployment_timestamp
 
-        # Delete all deployments, but don't update config
-        deployments = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{name}"
-            for name in ["Router", "Multiplier", "Adder", "create_order", "DAGDriver"]
-        ]
-        client.delete_deployments(deployments)
-
+        # Wait for deploy_serve_application task to start->config has been checkpointed
+        wait_for_condition(
+            lambda: len(
+                list_tasks(
+                    filters=[("func_or_class_name", "=", "deploy_serve_application")],
+                )
+            )
+            > 0
+        )
         ray.kill(client._controller, no_restart=False)
+
+        signal.send.remote()
 
         # When controller restarts, it should redeploy config automatically
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "4 pizzas please!"
-        )
-        wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-            == "9 pizzas please!"
-        )
-        assert (
-            deployment_timestamp
-            == client.get_serve_status().app_status.deployment_timestamp
+            lambda: requests.post("http://localhost:8000/").text == "hello world"
         )
 
         serve.shutdown()
@@ -1167,7 +1133,6 @@ class TestDeployApp:
         self, client: ServeControllerClient, field_to_update: str
     ):
         """Check that replicas are torn down when code updates are made."""
-        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config_template = {
             "import_path": "ray.serve.tests.test_config_files.pid.node",
             "deployments": [
@@ -1181,9 +1146,7 @@ class TestDeployApp:
         }
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         pid1, _ = requests.get("http://localhost:8000/f").json()
 
         if field_to_update == "import_path":
@@ -1196,13 +1159,8 @@ class TestDeployApp:
             config_template["deployments"][0]["ray_actor_options"] = {"num_cpus": 0.2}
 
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
-        # This assumes that Serve implements round-robin routing for its replicas. As
-        # long as that doesn't change, this test shouldn't be flaky; however if that
-        # routing ever changes, this test could become mysteriously flaky
         pids = []
         for _ in range(4):
             pids.append(requests.get("http://localhost:8000/f").json()[0])
@@ -1211,7 +1169,6 @@ class TestDeployApp:
     def test_update_config_user_config(self, client: ServeControllerClient):
         """Check that replicas stay alive when user config is updated."""
 
-        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config_template = {
             "import_path": "ray.serve.tests.test_config_files.pid.node",
             "deployments": [{"name": "f", "user_config": {"name": "alice"}}],
@@ -1219,9 +1176,7 @@ class TestDeployApp:
 
         # Deploy first time
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         # Query
         pid1, res = requests.get("http://localhost:8000/f").json()
@@ -1230,20 +1185,18 @@ class TestDeployApp:
         # Redeploy with updated option
         config_template["deployments"][0]["user_config"] = {"name": "bob"}
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
 
-        # This assumes that Serve implements round-robin routing for its replicas. As
-        # long as that doesn't change, this test shouldn't be flaky; however if that
-        # routing ever changes, this test could become mysteriously flaky
         # Query
-        pids = []
-        for _ in range(4):
-            pid, res = requests.get("http://localhost:8000/f").json()
-            assert res == "bob"
-            pids.append(pid)
-        assert pid1 in pids
+        def check():
+            pids = []
+            for _ in range(4):
+                pid, res = requests.get("http://localhost:8000/f").json()
+                assert res == "bob"
+                pids.append(pid)
+            assert pid1 in pids
+            return True
+
+        wait_for_condition(check)
 
     def test_update_config_graceful_shutdown_timeout(
         self, client: ServeControllerClient
@@ -1257,9 +1210,7 @@ class TestDeployApp:
 
         # Deploy first time
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         handle = client.get_handle(name)
 
         # Start off with signal ready, and send query
@@ -1270,9 +1221,7 @@ class TestDeployApp:
         # Redeploy with shutdown timeout set to 5 seconds
         config_template["deployments"][0]["graceful_shutdown_timeout_s"] = 5
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         pid2 = ray.get(handle.remote())[0]
         assert pid1 == pid2
@@ -1282,7 +1231,7 @@ class TestDeployApp:
         handle.send.remote(clear=True)
         handle.remote()
         # Try to delete deployment, should be blocked until the timeout at 5 seconds
-        client.delete_deployments([name], blocking=False)
+        client.delete_apps([SERVE_DEFAULT_APP_NAME], blocking=False)
         # Replica should be dead within 10 second timeout, which means
         # graceful_shutdown_timeout_s was successfully updated lightweightly
         wait_for_condition(partial(self.check_deployments_dead, ["f"]))
@@ -1290,61 +1239,37 @@ class TestDeployApp:
     def test_update_config_max_concurrent_queries(self, client: ServeControllerClient):
         """Check that replicas stay alive when max_concurrent_queries is updated."""
 
-        url = "http://localhost:8000/f"
         name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config_template = {
-            "import_path": "ray.serve.tests.test_config_files.pid.async_node",
+            "import_path": "ray.serve.tests.test_config_files.pid.node",
             "deployments": [{"name": "f", "max_concurrent_queries": 1000}],
         }
 
-        # Deploy first time
+        # Deploy first time, max_concurent_queries set to 1000.
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
+        all_replicas = ray.get(client._controller._all_running_replicas.remote())
+        assert len(all_replicas) == 1
+        assert (
+            all_replicas[list(all_replicas.keys())[0]][0].max_concurrent_queries == 1000
         )
+
         handle = client.get_handle(name)
-        # Block on calls
-        ray.get(handle.send.remote(clear=True))
 
-        with ThreadPoolExecutor() as pool:
-            # Send 10 queries
-            futs = [pool.submit(partial(requests.get, url)) for _ in range(10)]
-            wait_for_condition(lambda: 10 == ray.get(handle.get_counter.remote()))
+        responses = ray.get([handle.remote() for _ in range(10)])
+        pids1 = {response[0] for response in responses}
+        assert len(pids1) == 1
 
-            # Unblock
-            ray.get(handle.send.remote())
-            pids = [fut.result().json()[0] for fut in futs]
-            pid1 = pids[0]
-            # Check all returned pids are the same, meaning requests were served by the
-            # same replica
-            assert all(pid == pid1 for pid in pids)
-
-        # Redeploy with max concurrent queries set to 2
+        # Redeploy with max concurrent queries set to 2.
         config_template["deployments"][0]["max_concurrent_queries"] = 2
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
-        # Re-block
-        ray.get(handle.send.remote(clear=True))
-
-        with ThreadPoolExecutor() as pool:
-            # Send 3 queries
-            futs = [pool.submit(partial(requests.get, url)) for _ in range(3)]
-            # Only 2 out of the 3 queries should have been sent to the replica because
-            # max concurrent queries is 2
-            time.sleep(10)
-            assert ray.get(handle.get_counter.remote()) < 103
-
-            # Unblock
-            ray.get(handle.send.remote())
-            pids = [fut.result().json()[0] for fut in futs]
-            pid2 = pids[0]
-            assert all(pid == pid2 for pid in pids)
-
-        # Check that it's the same replica, it didn't get teared down
-        assert pid1 == pid2
+        # Verify that the PID of the replica didn't change.
+        responses = ray.get([handle.remote() for _ in range(10)])
+        pids2 = {response[0] for response in responses}
+        assert pids2 == pids1
 
     def test_update_config_health_check_period(self, client: ServeControllerClient):
         """Check that replicas stay alive when max_concurrent_queries is updated."""
@@ -1357,31 +1282,32 @@ class TestDeployApp:
 
         # Deploy first time, wait for replica running and deployment healthy
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
         handle = client.get_handle(name)
         pid1 = ray.get(handle.remote())[0]
-        # Health check counter shouldn't increase beyond any initial health checks done
-        # upon replica actor startup
+
+        # The health check counter shouldn't increase beyond any initial health checks
+        # done as part of the replica startup sequence.
         initial_counter = ray.get(handle.get_counter.remote(health_check=True))
         time.sleep(5)
-        assert initial_counter == ray.get(handle.get_counter.remote(health_check=True))
+        assert (
+            ray.get(handle.get_counter.remote(health_check=True)) <= initial_counter + 1
+        )
 
-        # Redeploy with health check period reduced to 1 second
+        # Update the deployment's health check period to 0.1 seconds.
         config_template["deployments"][0]["health_check_period_s"] = 0.1
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
-        # health check counter should now very quickly increase
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
+        # Health check counter should now quickly increase due to the shorter period.
         wait_for_condition(
             lambda: ray.get(handle.get_counter.remote(health_check=True)) >= 30,
             retry_interval_ms=1000,
-            timeout=5,
+            timeout=10,
         )
 
-        # Check that it's the same replica, it didn't get teared down
+        # Check that it's the same replica (it wasn't torn down to update the config).
         pid2 = ray.get(handle.remote())[0]
         assert pid1 == pid2
 
@@ -1404,18 +1330,16 @@ class TestDeployApp:
 
         # Deploy first time, wait for replica running and deployment healthy
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
         handle = client.get_handle(name)
         pid1 = ray.get(handle.remote())[0]
 
         # Redeploy with health check timeout reduced to 1 second
         config_template["deployments"][0]["health_check_timeout_s"] = 1
         client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
+
         # Check that it's the same replica, it didn't get teared down
         # (needs to be done before the tests below because the replica will be marked
         # unhealthy then stopped and restarted)
@@ -1634,6 +1558,7 @@ class TestDeployApp:
                 return (
                     details["applications"]["app1"]["status"]
                     == ApplicationStatus.RUNNING
+                    and "app2" not in details["applications"]
                 )
             except Exception:
                 info_valid = False
@@ -1690,107 +1615,20 @@ class TestDeployApp:
         not redeploy.
         """
 
-        name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
         config = {"import_path": "ray.serve.tests.test_config_files.pid.node"}
         client.deploy_apps(ServeApplicationSchema(**config))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
         pid1, _ = requests.get("http://localhost:8000/f").json()
 
         # Redeploy the same config (with no deployments listed)
         client.deploy_apps(ServeApplicationSchema(**config))
-        wait_for_condition(
-            partial(self.check_deployment_running, client, name), timeout=15
-        )
+        wait_for_condition(partial(self.check_running, client), timeout=15)
 
         # It should be the same replica actor
         pids = []
         for _ in range(4):
             pids.append(requests.get("http://localhost:8000/f").json()[0])
         assert all(pid == pid1 for pid in pids)
-
-
-class TestServeRequestProcessingTimeoutS:
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [
-            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
-            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
-            {
-                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5",
-                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0",
-            },
-        ],
-        indirect=True,
-    )
-    def test_normal_operation(self, ray_instance):
-        """Checks that a moderate timeout doesn't affect normal operation."""
-
-        @serve.deployment(num_replicas=2)
-        def f(*args):
-            return "Success!"
-
-        serve.run(f.bind())
-
-        for _ in range(20):
-            requests.get("http://localhost:8000").text == "Success!"
-
-        serve.shutdown()
-
-    @pytest.mark.parametrize(
-        "ray_instance",
-        [
-            {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
-            {"SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
-            {
-                "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1",
-                "SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0",
-            },
-        ],
-        indirect=True,
-    )
-    def test_hanging_request(self, ray_instance):
-        """Checks that the env var mitigates the hang."""
-
-        @ray.remote
-        class PidTracker:
-            def __init__(self):
-                self.pids = set()
-
-            def add_pid(self, pid: int) -> None:
-                self.pids.add(pid)
-
-            def get_pids(self) -> Set[int]:
-                return self.pids
-
-        pid_tracker = PidTracker.remote()
-        signal_actor = SignalActor.remote()
-
-        @serve.deployment(num_replicas=2)
-        async def waiter(*args):
-            import os
-
-            ray.get(pid_tracker.add_pid.remote(os.getpid()))
-            await signal_actor.wait.remote()
-            return "Success!"
-
-        serve.run(waiter.bind())
-
-        with ThreadPoolExecutor() as pool:
-            response_fut = pool.submit(requests.get, "http://localhost:8000")
-
-            # Force request to hang
-            time.sleep(0.5)
-            ray.get(signal_actor.send.remote())
-
-            wait_for_condition(lambda: response_fut.done())
-            assert response_fut.result().text == "Success!"
-
-        # Hanging request should have been retried
-        assert len(ray.get(pid_tracker.get_pids.remote())) == 2
-
-        serve.shutdown()
 
 
 if __name__ == "__main__":

@@ -28,7 +28,8 @@ class TestA3C(unittest.TestCase):
         num_iterations = 2
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=False):
+        for _ in framework_iterator(config):
+            config.eager_tracing = False
             for env in ["CartPole-v1", "Pendulum-v1"]:
                 print("env={}".format(env))
                 config.model["use_lstm"] = env == "CartPole-v1"
@@ -78,7 +79,8 @@ class TestA3C(unittest.TestCase):
             ]
 
         # Test against all frameworks.
-        for _ in framework_iterator(config):
+        for _ in framework_iterator(config, frameworks=("torch", "tf")):
+            config.eager_tracing = False
             algo = config.build(env="CartPole-v1")
 
             coeff = _step_n_times(algo, 1)  # 20 timesteps

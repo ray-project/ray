@@ -165,6 +165,12 @@ class MockCoreWorker : public CoreWorker {
                rpc::AssignObjectOwnerReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
+  MOCK_METHOD(void,
+              HandleNumPendingTasks,
+              (rpc::NumPendingTasksRequest request,
+               rpc::NumPendingTasksReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
 };
 
 }  // namespace core
