@@ -32,7 +32,6 @@ class Datasource:
     .. note:: Datasource instances must be serializable, since
     :meth:`~ray.data.Datasource.create_reader` and
     :meth:`~ray.data.Datasource.write` are called in remote tasks.
-
     """  # noqa: E501
 
     def create_reader(self, **read_args) -> "Reader":
