@@ -267,25 +267,3 @@ Here is a list of adapters; please feel free to [contribute more](https://github
     :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json, json_to_multi_ndarray
 
 ```
-
-## Best practices for HTTP requests
-
-Most examples in these docs use straightforward `get` or `post` requests using Python's `requests` library, such as:
-
-```{literalinclude} doc_code/http_guide/requests_best_practices.py
-:start-after: __prototype_code_start__
-:end-before: __prototype_code_end__
-:language: python
-```
-
-This pattern is useful for prototyping, but isn't sufficient for production. In production, HTTP requests should use:
-
-* Retries: requests may occasionally fail due to transient issues (e.g. slow network, node failure, power outage, spike in traffic, etc.). Retry failed requests a handful (~10) of times to account for these issues.
-* Exponential backoff: To avoid bombarding the Serve application with retries during a transient error, apply an exponential backoff on failure. Each retry should wait exponentially longer than the previous one before running. For example, the first retry may happen 0.1 seconds after a failure, the next one 0.4s (4 x 0.1), then 1.6s, 6.4s, 25.6s, etc.
-* Timeouts: add a timeout to each retry to prevent your requests from hanging. The timeout should be longer than the latency of your application to give your application enough time to process requests.
-
-```{literalinclude} doc_code/http_guide/requests_best_practices.py
-:start-after: __production_code_start__
-:end-before: __production_code_end__
-:language: python
-```
