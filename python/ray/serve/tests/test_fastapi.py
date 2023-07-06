@@ -661,10 +661,6 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and sys.platform == "win32",
-    reason="https://github.com/ray-project/ray/issues/35775",
-)
 def test_fastapi_custom_serializers(serve_instance):
     app = FastAPI()
 
