@@ -71,6 +71,8 @@ constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
 
 constexpr char kNodeTypeNameEnv[] = "RAY_NODE_TYPE_NAME";
 
+constexpr char kNodeCloudInstanceTypeNameEnv[] = "RAY_CLOUD_INSTANCE_TYPE_NAME";
+
 /**********************************/
 /* ENV labels for autoscaler ends */
 /**********************************/
