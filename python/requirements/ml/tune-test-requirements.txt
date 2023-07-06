@@ -9,7 +9,6 @@ gpy==1.10.0
 jupyterlab==3.6.1
 matplotlib!=3.4.3
 
-mxnet==1.9.1; sys_platform != "darwin"
 pytest-remotedata==0.3.2
 lightning-bolts==0.4.0
 pytorch-lightning==1.6.5
