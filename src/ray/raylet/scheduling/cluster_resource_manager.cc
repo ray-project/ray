@@ -167,8 +167,8 @@ std::string ClusterResourceManager::GetNodeResourceViewString(
   return node.GetLocalView().DictString();
 }
 
-const absl::flat_hash_map<scheduling::NodeID, Node>
-    &ClusterResourceManager::GetResourceView() const {
+const absl::flat_hash_map<scheduling::NodeID, Node> &
+ClusterResourceManager::GetResourceView() const {
   return nodes_;
 }
 
@@ -254,7 +254,7 @@ bool ClusterResourceManager::UpdateNodeAvailableResourcesIfExist(
     node_resources->available.Set(resource_id, resources.Get(resource_id));
   }
 
-  // Update the idle timestamp for the node in terms of resources usage.
+  // Update the idle duration for the node in terms of resources usage.
   node_resources->idle_resource_duration_ms = resource_data.idle_duration_ms();
 
   // Last update time to the local node resources view.
