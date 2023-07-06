@@ -22,10 +22,6 @@ import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { useRayStatus } from "../job/hook/useClusterStatus";
-<<<<<<< HEAD
-=======
-import { formatResourcesStatus } from "../job/JobDetail";
->>>>>>> 2526173d021b8739f0be5a2816c6ff96fb1637b7
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
 
@@ -73,11 +69,11 @@ export const NodeRow = ({
    */
   const { cluster_status } = useRayStatus();
   console.log("cluster_status: ", cluster_status);
-  const customResource = cluster_status?.data
+  const logicalResource = cluster_status?.data
     ? formatResourcesStatus(cluster_status.data?.clusterStatus)
     : "";
 
-  console.log("customResource: ", customResource);
+  console.log("logicalResource: ", logicalResource);
   return (
     <TableRow>
       <TableCell>
@@ -163,8 +159,8 @@ export const NodeRow = ({
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
       <TableCell align="center">
-        <CodeDialogButton title={"Custom Resource"} code="">
-          {customResource}
+        <CodeDialogButton title={"Logical Resource"} code="">
+          {logicalResource}
         </CodeDialogButton>
       </TableCell>
     </TableRow>

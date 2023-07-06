@@ -102,9 +102,9 @@ const columns = [
   { label: "Sent" },
   { label: "Received" },
   {
-    label: "Custom Resources",
+    label: "Logical Resource",
     helpInfo: `
-  By viewing custom resources, you can access the same logical usage and task scheduling information found in the "Resources" section of the CLI command "ray status -v."`,
+  By viewing logical resource, you can access the same logical usage and task scheduling information found in the "Resources" section of the CLI command "ray status -v".`,
   },
 ];
 
