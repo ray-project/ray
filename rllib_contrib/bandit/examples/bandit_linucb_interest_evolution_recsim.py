@@ -28,7 +28,7 @@ if __name__ == "__main__":
             "ray.rllib.examples.env.recommender_system_envs_with_recsim.InterestEvolutionRecSimEnv",  # noqa
             env_config={
                 "config": {
-                    # Each step, sample `num_candidates` documents using the 
+                    # Each step, sample `num_candidates` documents using the
                     # env-internal
                     # document sampler model (a logic that creates n documents to select
                     # the slate from).
