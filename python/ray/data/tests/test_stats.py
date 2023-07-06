@@ -1099,10 +1099,11 @@ def test_summarize_blocks(ray_start_regular_shared, stage_two_block):
     calculated_stats = stats.to_summary()
     summarized_lines = calculated_stats.to_string().split("\n")
 
-    block_max_time = max(m.exec_stats.wall_time_s for m in block_meta_list)
+    latest_end_time = max(m.exec_stats.end_time_s for m in block_meta_list)
+    earliest_start_time = min(m.exec_stats.start_time_s for m in block_meta_list)
     assert (
         "Stage 0 Read: 2/2 blocks executed in {}s".format(
-            max(round(block_max_time, 2), 0)
+            max(round(latest_end_time - earliest_start_time, 2), 0)
         )
         == summarized_lines[0]
     )

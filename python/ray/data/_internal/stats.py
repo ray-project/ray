@@ -508,8 +508,12 @@ class StageStatsSummary:
         else:
             if exec_stats:
                 # Calculate the total execution time of stage as
-                # the maximum wall time from all blocks' stats.
-                time_total_s = max(s.wall_time_s for s in exec_stats)
+                # the difference between the latest end time and
+                # the earliest start time of all blocks in the stage.
+                earliest_start_time = min(s.start_time_s for s in exec_stats)
+                latest_end_time = max(s.end_time_s for s in exec_stats)
+                time_total_s = latest_end_time - earliest_start_time
+
                 rounded_total = round(time_total_s, 2)
                 if rounded_total <= 0:
                     # Handle -0.0 case.

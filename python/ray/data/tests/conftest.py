@@ -1,6 +1,7 @@
 import copy
 import os
 import posixpath
+import time
 
 import numpy as np
 import pandas as pd
@@ -468,6 +469,10 @@ def stage_two_block():
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
         block_exec_stats = BlockExecStats()
+        block_exec_stats.start_time_s = time.perf_counter() + i * 20
+        block_exec_stats.end_time_s = (
+            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]
