@@ -70,8 +70,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
 
     @routes.get("/api/cluster_status")
-
-    ## add one query, node_id
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
 
@@ -83,11 +81,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
         """
-        logger.info("Got cluster status request.{}".format(req.query))
-        if node_id in req.query:
-            logger.info("Got node_id, {}".format(req.query["node_id"]))
-
-        ## call ??? function with node_id to get the logical resource of a specific node
         return_formatted_output = req.query.get("format", "0") == "1"
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(

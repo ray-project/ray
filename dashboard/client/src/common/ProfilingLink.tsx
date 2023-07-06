@@ -24,12 +24,12 @@ export const TaskCpuProfilingLink = ({
   }
   return (
     <Link
-      href={`task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}`}
+      href={`task/cpu_profile?task_id=${taskId}&attempt_number=${attemptNumber}`}
       target="_blank"
       title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
       rel="noreferrer"
     >
-      Stack&nbsp;Trace
+      CPU&nbsp;Flame&nbsp;Graph
     </Link>
   );
 };
@@ -43,12 +43,12 @@ export const TaskCpuStackTraceLink = ({
   }
   return (
     <Link
-      href={`task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}`}
+      href={`task/stacktrace?task_id=${taskId}&attempt_number=${attemptNumber}`}
       target="_blank"
       title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
     >
-      CPU&nbsp;Flame&nbsp;Graph
+      Stack&nbsp;Trace
     </Link>
   );
 };
