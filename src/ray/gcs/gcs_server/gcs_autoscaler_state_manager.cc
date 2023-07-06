@@ -199,12 +199,21 @@ void GcsAutoscalerStateManager::GetNodeStates(
     // THe node is alive. We need to check if the node is idle.
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
         scheduling::NodeID(node_state_proto->node_id()));
-    if (node_resource_data.idle_resource_timestamp_ms > 0) {
-      // The node is idle.
+    if (node_resource_data.idle_resource_duration_ms > 0) {
+      // The node was reported idle.
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::IDLE);
+
+      // We approximate the idle duration by the time since the last idle report
+      // plus the idle duration reported by the node:
+      //  idle_dur = <idle-dur-reported-by-raylet> + <time-since-last-reported-on-gcs>
+      //
+      // This is because with lightweight resource update, we don't keep reporting
+      // the idle time duration when there's no resource change. We also don't want to
+      // use raylet reported idle timestamp since there might be clock skew.
       node_state_proto->set_idle_duration_ms(
-          absl::ToUnixMillis(absl::Now()) -
-          node_resource_data.idle_resource_timestamp_ms);
+          node_resource_data.idle_resource_duration_ms +
+          absl::ToInt64Milliseconds(absl::Now() -
+                                    node_resource_data.last_resource_update_time));
     } else {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
     }
