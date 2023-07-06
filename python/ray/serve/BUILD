@@ -187,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -203,6 +203,14 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -307,6 +315,14 @@ py_test(
 py_test(
     name = "test_schema",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_request_timeout",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -494,38 +510,20 @@ py_test(
    deps = [":serve_lib"],
 )
 
-# Runs a subset of the tests with experimental streaming turned on.
-py_test(
-   name = "test_experimental_streaming",
-   size = "large",
-   srcs = glob(["tests/test_experimental_streaming.py",
-               "tests/test_api.py",
-               "tests/test_failure.py",
-               "tests/test_fastapi.py",
-               "tests/test_http_adapters.py",
-               "tests/test_http_headers.py",
-               "**/conftest.py"]),
-   tags = ["exclusive", "team:serve"],
-   deps = [":serve_lib"],
-   env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
-)
-
 py_test(
     name = "test_streaming_response",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test(
     name = "test_websockets",
-    size = "large",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test(
@@ -613,7 +611,7 @@ py_test(
 
 py_test(
     name = "test_gradio",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

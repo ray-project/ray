@@ -2237,6 +2237,12 @@ class Dataset:
 
         Time complexity: O(dataset size / parallelism), O(1) for parquet
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> ds.count()
+            10
+
         Returns:
             The number of records in the dataset.
         """
@@ -2266,6 +2272,14 @@ class Dataset:
     def schema(self, fetch_if_missing: bool = True) -> Optional["Schema"]:
         """Return the schema of the dataset.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> ds.schema()
+            Column  Type
+            ------  ----
+            id      int64
+
         Time complexity: O(1)
 
         Args:
@@ -2274,7 +2288,7 @@ class Dataset:
                 Default is True.
 
         Returns:
-            The ``ray.data.Schema`` class of the records, or None if the
+            The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
 
@@ -2290,6 +2304,7 @@ class Dataset:
         # of this Dataset, which we then execute to get its schema.
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema:
+            self._plan.cache_schema(base_schema)
             return Schema(base_schema)
         else:
             return None
@@ -2334,6 +2349,12 @@ class Dataset:
         may be dynamically adjusted to respect memory limits, increasing the
         number of blocks at runtime.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(100).repartition(10)
+            >>> ds.num_blocks()
+            10
+
         Time complexity: O(1)
 
         Returns:
@@ -2344,6 +2365,12 @@ class Dataset:
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def size_bytes(self) -> int:
         """Return the in-memory size of the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> ds.size_bytes()
+            80
 
         Time complexity: O(1)
 
@@ -2359,6 +2386,12 @@ class Dataset:
     @ConsumptionAPI(if_more_than_read=True, pattern="Time complexity:")
     def input_files(self) -> List[str]:
         """Return the list of input files for the dataset.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> ds.input_files()
+            ['ray-example-data/iris.csv']
 
         Time complexity: O(num input files)
 
@@ -2389,16 +2422,21 @@ class Dataset:
         """Write the dataset to parquet.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
         id for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_parquet("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_parquet("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2452,16 +2490,21 @@ class Dataset:
         """Write the dataset to json.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {self._uuid}_{block_idx}.json, where ``uuid`` is an
         unique id for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_json("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_json("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2516,16 +2559,21 @@ class Dataset:
         """Write the dataset to csv.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
         for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_csv("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_csv("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2586,19 +2634,21 @@ class Dataset:
             and will error if the dataset contains unsupported types.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
         for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.from_items([
-            ...     { "name": "foo", "score": 42 },
-            ...     { "name": "bar", "score": 43 },
-            ... ])
-            >>> ds.write_tfrecords("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_tfrecords("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2654,19 +2704,21 @@ class Dataset:
             and will error if the dataset contains unsupported types.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use ``.repartition()``.
+        To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
         for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.from_items([
-            ...     { "name": "foo", "score": 42 },
-            ...     { "name": "bar", "score": 43 },
-            ... ])
-            >>> ds.write_webdataset("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_webdataset("s3://bucket/folder/")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2714,16 +2766,21 @@ class Dataset:
 
         This is only supported for datasets convertible to Arrow records that
         contain a TensorArray column. To control the number of files, use
-        ``.repartition()``.
+        :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
         files will be {self._uuid}_{block_idx}.npy, where ``uuid`` is an unique
         id for the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.write_numpy("s3://bucket/path") # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_numpy("s3://bucket/folder/", column="id")
 
         Time complexity: O(dataset size / parallelism)
 
@@ -2770,7 +2827,7 @@ class Dataset:
         """Write the dataset to a MongoDB datasource.
 
         This is only supported for datasets convertible to Arrow records.
-        To control the number of parallel write tasks, use ``.repartition()``
+        To control the number of parallel write tasks, use :meth:`Dataset.repartition``
         before calling this method.
 
         .. note::
@@ -2787,16 +2844,18 @@ class Dataset:
             auto generate one at insertion.
 
         Examples:
-            >>> import ray
-            >>> import pandas as pd
-            >>> docs = [{"title": "MongoDB Datasource test"} for key in range(4)]
-            >>> ds = ray.data.from_pandas(pd.DataFrame(docs))
-            >>> ds.write_mongo( # doctest: +SKIP
-            >>>     MongoDatasource(), # doctest: +SKIP
-            >>>     uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin", # noqa: E501 # doctest: +SKIP
-            >>>     database="my_db", # doctest: +SKIP
-            >>>     collection="my_collection", # doctest: +SKIP
-            >>> ) # doctest: +SKIP
+
+            .. testcode::
+                :skipif: True
+
+                import ray
+
+                ds = ray.data.range(100)
+                ds.write_mongo(
+                    uri="mongodb://username:password@mongodb0.example.com:27017/?authSource=admin",
+                    database="my_db",
+                    collection="my_collection"
+                )
 
         Args:
             uri: The URI to the destination MongoDB where the dataset will be
@@ -2818,7 +2877,7 @@ class Dataset:
             collection=collection,
         )
 
-    @ConsumptionAPI
+    @ConsumptionAPI(pattern="Time complexity:")
     def write_datasource(
         self,
         datasource: Datasource,
@@ -2828,14 +2887,8 @@ class Dataset:
     ) -> None:
         """Write the dataset to a custom datasource.
 
-        Examples:
-            >>> import ray
-            >>> from ray.data.datasource import Datasource
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> class CustomDatasource(Datasource): # doctest: +SKIP
-            ...     # define custom data source
-            ...     pass # doctest: +SKIP
-            >>> ds.write_datasource(CustomDatasource(...)) # doctest: +SKIP
+        For an example of how to use this method, see
+        :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3252,7 +3305,7 @@ class Dataset:
         ``Dataset`` will be treated as the label, and the output label tensor
         will be ``None``.
 
-        Note that you probably want to call ``.split()`` on this dataset if
+        Note that you probably want to call :meth:`Dataset.split` on this dataset if
         there are to be multiple Torch workers consuming the data.
 
         Time complexity: O(1)
@@ -3362,12 +3415,12 @@ class Dataset:
 
             If your model accepts a single tensor as input, specify a single feature column.
 
-            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")  # doctest: +SKIP
+            >>> ds.to_tf(feature_columns="sepal length (cm)", label_columns="target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your model accepts a dictionary as input, specify a list of feature columns.
 
-            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")  # doctest: +SKIP
+            >>> ds.to_tf(["sepal length (cm)", "sepal width (cm)"], "target")
             <_OptionsDataset element_spec=({'sepal length (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), 'sepal width (cm)': TensorSpec(shape=(None,), dtype=tf.float64, name='sepal width (cm)')}, TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
             If your dataset contains multiple features but your model accepts a single
@@ -3390,7 +3443,7 @@ class Dataset:
                      target: int64
                   }
                )
-            >>> ds.to_tf("features", "target")  # doctest: +SKIP
+            >>> ds.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
         Args:
@@ -3582,15 +3635,15 @@ class Dataset:
         """Convert this dataset into a Modin dataframe.
 
         This works by first converting this dataset into a distributed set of
-        Pandas dataframes (using ``.to_pandas_refs()``). Please see caveats
+        Pandas dataframes (using :meth:`Dataset.to_pandas_refs`). Please see caveats
         there. Then the individual dataframes are used to create the modin
         DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or
-        ``.get_internal_block_refs()``.
+        underlying data, consider using :meth:`Dataset.to_arrow` or
+        :meth:`.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3627,8 +3680,17 @@ class Dataset:
 
         This is only supported for datasets convertible to Arrow or Pandas
         records. An error is raised if the number of records exceeds the
-        provided limit. Note that you can use ``.limit()`` on the dataset
+        provided limit. Note that you can use :meth:`.limit` on the dataset
         beforehand to truncate the dataset manually.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.from_items([{"a": i} for i in range(3)])
+            >>> ds.to_pandas()
+               a
+            0  0
+            1  1
+            2  2
 
         Time complexity: O(dataset size)
 
@@ -3662,8 +3724,8 @@ class Dataset:
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or
-        ``.get_internal_block_refs()``.
+        underlying data, consider using :meth:`Dataset.to_arrow` or
+        :meth:`Dataset.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -3682,8 +3744,8 @@ class Dataset:
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using ``.to_arrow()`` or
-        ``.get_internal_block_refs()``.
+        underlying data, consider using :meth:`Dataset.to_arrow` or
+        :meth:`Dataset.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
@@ -4073,6 +4135,13 @@ class Dataset:
         Note that this does not mutate the original Dataset. Only the blocks of the
         returned MaterializedDataset class are pinned in memory.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10)
+            >>> materialized_ds = ds.materialize()
+            >>> materialized_ds
+            MaterializedDataset(num_blocks=..., num_rows=10, schema={id: int64})
+
         Returns:
             A MaterializedDataset holding the materialized data blocks.
         """
@@ -4114,6 +4183,30 @@ class Dataset:
 
         Note that this does not trigger execution, so if the dataset has not yet
         executed, an empty string will be returned.
+
+        Examples:
+
+        .. testcode::
+
+            import ray
+
+            ds = ray.data.range(10)
+            assert ds.stats() == ""
+
+            ds = ds.materialize()
+            print(ds.stats())
+
+        .. testoutput::
+
+            Stage 0 Read: .../... blocks executed in ...
+            * Remote wall time: ... min, ... max, ... mean, ... total
+            * Remote cpu time: ... min, ... max, ... mean, ... total
+            * Peak heap memory usage (MiB): ... min, ... max, ... mean
+            * Output num rows: ... min, ... max, ... mean, ... total
+            * Output size bytes: ... min, ... max, ... mean, ... total
+            * Tasks per node: ... min, ... max, ... mean; ... nodes used
+            <BLANKLINE>
+
         """
         return self._get_stats_summary().to_string()
 
@@ -4127,6 +4220,12 @@ class Dataset:
 
         This function can be used for zero-copy access to the data. It blocks
         until the underlying blocks are computed.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(1)
+            >>> ds.get_internal_block_refs()
+            [ObjectRef(...)]
 
         Time complexity: O(1)
 
@@ -4167,6 +4266,14 @@ class Dataset:
         deserialization time, e.g. data external to this Ray cluster such as persistent
         cloud object stores, support lineage-based serialization. All of the
         ray.data.read_*() APIs support lineage-based serialization.
+
+        Examples:
+
+            >>> import ray
+            >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
+            False
+            >>> ray.data.read_csv("example://iris.csv").has_serializable_lineage()
+            True
         """
         return self._plan.has_lazy_input()
 
@@ -4186,6 +4293,32 @@ class Dataset:
         .. note::
             Unioned and zipped datasets, produced by :py:meth`Dataset.union` and
             :py:meth:`Dataset.zip`, are not lineage-serializable.
+
+        Examples:
+
+            .. testcode::
+
+                import ray
+
+                ds = ray.data.read_csv("example://iris.csv")
+                serialized_ds = ds.serialize_lineage()
+                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+                print(ds)
+
+            .. testoutput::
+
+                Dataset(
+                   num_blocks=...,
+                   num_rows=150,
+                   schema={
+                      sepal.length: double,
+                      sepal.width: double,
+                      petal.length: double,
+                      petal.width: double,
+                      variety: string
+                   }
+                )
+
 
         Returns:
             Serialized bytes containing the lineage of this dataset.
@@ -4243,6 +4376,31 @@ class Dataset:
 
         This assumes that the provided serialized bytes were serialized using
         :py:meth:`Dataset.serialize_lineage`.
+
+        Examples:
+
+            .. testcode::
+
+                import ray
+
+                ds = ray.data.read_csv("example://iris.csv")
+                serialized_ds = ds.serialize_lineage()
+                ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
+                print(ds)
+
+            .. testoutput::
+
+                Dataset(
+                   num_blocks=...,
+                   num_rows=150,
+                   schema={
+                      sepal.length: double,
+                      sepal.width: double,
+                      petal.length: double,
+                      petal.width: double,
+                      variety: string
+                   }
+                )
 
         Args:
             serialized_ds: The serialized Dataset that we wish to deserialize.

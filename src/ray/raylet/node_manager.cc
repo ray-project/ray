@@ -389,8 +389,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
-  node_manager_server_.RegisterService(node_manager_service_);
-  node_manager_server_.RegisterService(agent_manager_service_);
+  node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
+  node_manager_server_.RegisterService(agent_manager_service_, false /* token_auth */);
   if (RayConfig::instance().use_ray_syncer()) {
     node_manager_server_.RegisterService(ray_syncer_service_);
   }

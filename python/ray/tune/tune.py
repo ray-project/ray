@@ -257,7 +257,7 @@ def _resolve_and_validate_storage_path(
         assert local_path == local_dir
         warnings.warn(
             "Passing a `local_dir` is deprecated and will be removed "
-            "in the future. Pass `storage_path` instead or set the"
+            "in the future. Pass `storage_path` instead or set the "
             "`RAY_AIR_LOCAL_CACHE_DIR` environment variable instead."
         )
         local_path = local_dir
