@@ -5,7 +5,7 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.logical.operators.all_to_all_operator import RandomizeBlocks
+from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlocks
 from ray.data._internal.stats import StatsDict
 
 

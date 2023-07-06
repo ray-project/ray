@@ -45,7 +45,6 @@ from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data._internal.logical.operators.all_to_all_operator import (
-    RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
@@ -61,7 +60,7 @@ from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Zip
-from ray.data._internal.logical.operators.one_to_one_operator import Limit
+from ray.data._internal.logical.operators.one_to_one_operator import Limit, RandomizeBlocks
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -1013,6 +1012,7 @@ class Dataset:
     def randomize_block_order(
         self,
         *,
+        window_size: Optional[int] = None,
         seed: Optional[int] = None,
     ) -> "Dataset":
         """Randomly shuffle the blocks of this dataset.
@@ -1039,6 +1039,7 @@ class Dataset:
         if logical_plan is not None:
             op = RandomizeBlocks(
                 logical_plan.dag,
+                window_size=window_size,
                 seed=seed,
             )
             logical_plan = LogicalPlan(op)

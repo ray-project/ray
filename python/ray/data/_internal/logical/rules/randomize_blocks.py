@@ -4,8 +4,8 @@ from collections import deque
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
-    RandomizeBlocks,
 )
+from ray.data._internal.logical.operators.one_to_one_operator import RandomizeBlocks
 
 
 class ReorderRandomizeBlocksRule(Rule):
@@ -53,9 +53,7 @@ class ReorderRandomizeBlocksRule(Rule):
                     # dependencies.
                     assert len(upstream_ops[i].input_dependencies) == 1
                     upstream_ops[i] = upstream_ops[i].input_dependencies[0]
-            if isinstance(current_op, AbstractAllToAll) and not isinstance(
-                current_op, RandomizeBlocks
-            ):
+            if isinstance(current_op, AbstractAllToAll):
                 # If this operator is a an AllToAll Operator, then insert
                 # RandomizeBlocks right before this operator rather than the end of the
                 # DAG.

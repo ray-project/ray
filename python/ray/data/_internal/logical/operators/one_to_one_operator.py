@@ -51,3 +51,20 @@ class Limit(AbstractOneToOne):
     @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+
+class RandomizeBlocks(AbstractOneToOne):
+    """Logical operator for randomize_block_order."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        window_size: Optional[int] = None,
+        seed: Optional[int] = None,
+    ):
+        super().__init__(
+            "RandomizeBlockOrder",
+            input_op,
+        )
+        self._window_size = window_size
+        self._seed = seed

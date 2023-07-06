@@ -36,21 +36,6 @@ class AbstractAllToAll(LogicalOperator):
         self._sub_progress_bar_names = sub_progress_bar_names
 
 
-class RandomizeBlocks(AbstractAllToAll):
-    """Logical operator for randomize_block_order."""
-
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        seed: Optional[int] = None,
-    ):
-        super().__init__(
-            "RandomizeBlockOrder",
-            input_op,
-        )
-        self._seed = seed
-
-
 class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""
 

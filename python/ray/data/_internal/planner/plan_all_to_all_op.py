@@ -5,7 +5,6 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.logical.operators.all_to_all_operator import (
     AbstractAllToAll,
     Aggregate,
-    RandomizeBlocks,
     RandomShuffle,
     Repartition,
     Sort,
@@ -26,9 +25,7 @@ def _plan_all_to_all_op(
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
-    if isinstance(op, RandomizeBlocks):
-        fn = generate_randomize_blocks_fn(op)
-    elif isinstance(op, RandomShuffle):
+    if isinstance(op, RandomShuffle):
         fn = generate_random_shuffle_fn(op._seed, op._num_outputs, op._ray_remote_args)
     elif isinstance(op, Repartition):
         fn = generate_repartition_fn(op._num_outputs, op._shuffle)
