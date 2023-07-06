@@ -935,7 +935,7 @@ def read_json(
     Examples:
         >>> import ray
         >>> # Read a file in remote storage.
-        >>> ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
         >>> ds.schema()
         Column     Type
         ------     ----
@@ -1100,6 +1100,7 @@ def read_csv(
         >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv("example://different-extensions/",
         ...     partition_filter=FileExtensionFilter("csv"))
+        Dataset(num_blocks=..., num_rows=1, schema={a: int64, b: int64})
 
     Args:
         paths: A single file or directory, or a list of file or directory paths.
