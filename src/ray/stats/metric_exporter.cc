@@ -111,6 +111,7 @@ OpenCensusProtoExporter::OpenCensusProtoExporter(const int port,
                                                  const std::string address,
                                                  const WorkerID &worker_id)
     : client_call_manager_(io_service), worker_id_(worker_id) {
+  absl::MutexLock l(&mu_);
   client_.reset(new rpc::MetricsAgentClient(address, port, client_call_manager_));
 };
 
@@ -201,17 +202,19 @@ void OpenCensusProtoExporter::ExportViewData(
       break;
     }
   }
-  std::this_thread::sleep_for(std::chrono::seconds(5));
 
-  client_->ReportOCMetrics(
-      request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
-        RAY_UNUSED(reply);
-        if (!status.ok()) {
-          RAY_LOG_EVERY_N(WARNING, 10000)
-              << "Export metrics to agent failed: " << status
-              << ". This won't affect Ray, but you can lose metrics from the cluster.";
-        }
-      });
+  {
+    absl::MutexLock l(&mu_);
+    client_->ReportOCMetrics(
+        request_proto, [](const Status &status, const rpc::ReportOCMetricsReply &reply) {
+          RAY_UNUSED(reply);
+          if (!status.ok()) {
+            RAY_LOG_EVERY_N(WARNING, 10000)
+                << "Export metrics to agent failed: " << status
+                << ". This won't affect Ray, but you can lose metrics from the cluster.";
+          }
+        });
+  }
 }
 
 }  // namespace stats
