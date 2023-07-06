@@ -89,6 +89,10 @@ namespace rpc {
 class CoreWorkerServiceHandler {
  public:
   virtual ~CoreWorkerServiceHandler() {}
+
+  /// Blocks until the service is ready to serve RPCs.
+  virtual void WaitUntilInitialized() = 0;
+
   /// Handlers. For all of the following handlers, the implementations can
   /// handle the request asynchronously. When handling is done, the
   /// `send_reply_callback` should be called. See
@@ -100,6 +104,30 @@ class CoreWorkerServiceHandler {
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The callback to be called when the request is done.
   RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
+};
+
+/// The `ServerCallFactory` for `CoreWorkerService`. It waits until the
+/// `CoreWorkerServiceHandler` is initialized before creating a new call.
+class CoreWorkerServerCallFactory : public ServerCallFactory {
+ public:
+  /// Constructor.
+  CoreWorkerServerCallFactory(std::unique_ptr<ServerCallFactory> delegate,
+                              CoreWorkerServiceHandler &service_handler)
+      : delegate_(std::move(delegate)), service_handler_(service_handler) {}
+
+  void CreateCall() const override {
+    service_handler_.WaitUntilInitialized();
+    delegate_->CreateCall();
+  }
+
+  /// Get the maximum request number to handle at the same time. -1 means no limit.
+  virtual int64_t GetMaxActiveRPCs() const override {
+    return delegate_->GetMaxActiveRPCs();
+  }
+
+ private:
+  std::unique_ptr<ServerCallFactory> delegate_;
+  CoreWorkerServiceHandler &service_handler_;
 };
 
 /// The `GrpcServer` for `CoreWorkerService`.
@@ -120,10 +148,20 @@ class CoreWorkerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    RAY_CORE_WORKER_RPC_HANDLERS
+    std::vector<std::unique_ptr<ServerCallFactory>> tmp_server_call_factories;
+    InitServerCallFactoriesImpl(cq, &tmp_server_call_factories, cluster_id);
+    for (auto &factory : tmp_server_call_factories) {
+      server_call_factories->emplace_back(std::make_unique<CoreWorkerServerCallFactory>(
+          std::move(factory), service_handler_));
+    }
   }
 
  private:
+  void InitServerCallFactoriesImpl(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id){RAY_CORE_WORKER_RPC_HANDLERS}
+
   /// The grpc async service object.
   CoreWorkerService::AsyncService service_;
 

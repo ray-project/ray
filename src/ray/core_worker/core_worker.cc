@@ -2874,7 +2874,6 @@ void CoreWorker::HandleReportGeneratorItemReturns(
     rpc::ReportGeneratorItemReturnsRequest request,
     rpc::ReportGeneratorItemReturnsReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   task_manager_->HandleReportGeneratorItemReturns(request);
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -3019,7 +3018,6 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received Handle Push Task "
                  << TaskID::FromBinary(request.task_spec().task_id());
-  WaitUntilInitialized();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -3079,7 +3077,6 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
     rpc::DirectActorCallArgWaitCompleteRequest request,
     rpc::DirectActorCallArgWaitCompleteReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -3101,7 +3098,6 @@ void CoreWorker::HandleRayletNotifyGCSRestart(
     rpc::RayletNotifyGCSRestartRequest request,
     rpc::RayletNotifyGCSRestartReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   gcs_client_->AsyncResubscribe();
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -3109,7 +3105,6 @@ void CoreWorker::HandleRayletNotifyGCSRestart(
 void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
                                        rpc::GetObjectStatusReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   if (HandleWrongRecipient(WorkerID::FromBinary(request.owner_worker_id()),
                            send_reply_callback)) {
     RAY_LOG(INFO) << "Handling GetObjectStatus for object produced by a previous worker "
@@ -3189,7 +3184,6 @@ void CoreWorker::HandleWaitForActorOutOfScope(
     rpc::WaitForActorOutOfScopeRequest request,
     rpc::WaitForActorOutOfScopeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   // Currently WaitForActorOutOfScope is only used when GCS actor service is enabled.
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
@@ -3317,7 +3311,6 @@ void CoreWorker::ProcessPubsubCommands(const Commands &commands,
 void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG) << "Got a long polling request from a node " << subscriber_id;
   object_info_publisher_->ConnectToSubscriber(
@@ -3327,7 +3320,6 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   const auto subscriber_id = NodeID::FromBinary(request.subscriber_id());
   ProcessPubsubCommands(request.commands(), subscriber_id);
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3337,7 +3329,6 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     rpc::UpdateObjectLocationBatchRequest request,
     rpc::UpdateObjectLocationBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   const auto &worker_id = request.intended_worker_id();
   if (HandleWrongRecipient(WorkerID::FromBinary(worker_id), send_reply_callback)) {
     return;
@@ -3473,7 +3464,6 @@ void CoreWorker::HandleGetObjectLocationsOwner(
     rpc::GetObjectLocationsOwnerRequest request,
     rpc::GetObjectLocationsOwnerReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   auto &object_location_request = request.object_location_request();
   if (HandleWrongRecipient(
           WorkerID::FromBinary(object_location_request.intended_worker_id()),
@@ -3513,7 +3503,6 @@ void CoreWorker::ProcessSubscribeForRefRemoved(
 void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
                                         rpc::RemoteCancelTaskReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   auto status = CancelTask(ObjectID::FromBinary(request.remote_object_id()),
                            request.force_kill(),
                            request.recursive());
@@ -3523,7 +3512,6 @@ void CoreWorker::HandleRemoteCancelTask(rpc::RemoteCancelTaskRequest request,
 void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
                                   rpc::CancelTaskReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   TaskID task_id = TaskID::FromBinary(request.intended_task_id());
   bool requested_task_running;
   {
@@ -3578,7 +3566,6 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
 void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
                                  rpc::KillActorReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   ActorID intended_actor_id = ActorID::FromBinary(request.intended_actor_id());
   if (intended_actor_id != worker_context_.GetCurrentActorID()) {
     std::ostringstream stream;
@@ -3610,7 +3597,6 @@ void CoreWorker::HandleKillActor(rpc::KillActorRequest request,
 void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request,
                                           rpc::GetCoreWorkerStatsReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   absl::MutexLock lock(&mutex_);
   auto limit = request.has_limit() ? request.limit() : -1;
   auto stats = reply->mutable_core_worker_stats();
@@ -3670,7 +3656,6 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
 void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
                                rpc::LocalGCReply *reply,
                                rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   if (options_.gc_collect != nullptr) {
     options_.gc_collect(request.triggered_by_global_gc());
     send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3683,7 +3668,6 @@ void CoreWorker::HandleLocalGC(rpc::LocalGCRequest request,
 void CoreWorker::HandleDeleteObjects(rpc::DeleteObjectsRequest request,
                                      rpc::DeleteObjectsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   std::vector<ObjectID> object_ids;
   for (const auto &obj_id : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(obj_id));
@@ -3715,7 +3699,6 @@ Status CoreWorker::DeleteImpl(const std::vector<ObjectID> &object_ids, bool loca
 void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
                                     rpc::SpillObjectsReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   if (options_.spill_objects != nullptr) {
     auto object_refs =
         VectorFromProtobuf<rpc::ObjectReference>(request.object_refs_to_spill());
@@ -3733,7 +3716,6 @@ void CoreWorker::HandleSpillObjects(rpc::SpillObjectsRequest request,
 void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest request,
                                              rpc::RestoreSpilledObjectsReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   if (options_.restore_spilled_objects != nullptr) {
     // Get a list of object ids.
     std::vector<rpc::ObjectReference> object_refs_to_restore;
@@ -3764,7 +3746,6 @@ void CoreWorker::HandleRestoreSpilledObjects(rpc::RestoreSpilledObjectsRequest r
 void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest request,
                                             rpc::DeleteSpilledObjectsReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   if (options_.delete_spilled_objects != nullptr) {
     std::vector<std::string> spilled_objects_url;
     spilled_objects_url.reserve(request.spilled_objects_url_size());
@@ -3784,7 +3765,6 @@ void CoreWorker::HandleDeleteSpilledObjects(rpc::DeleteSpilledObjectsRequest req
 void CoreWorker::HandleExit(rpc::ExitRequest request,
                             rpc::ExitReply *reply,
                             rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   bool own_objects = reference_counter_->OwnObjects();
   int64_t pins_in_flight = local_raylet_client_->GetPinsInFlight();
   // We consider the worker to be idle if it doesn't own any objects and it doesn't have
@@ -3821,7 +3801,6 @@ void CoreWorker::HandleExit(rpc::ExitRequest request,
 void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
                                          rpc::AssignObjectOwnerReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   const auto &borrower_address = request.borrower_address();
   std::string call_site = request.call_site();
@@ -3849,7 +3828,6 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
 void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
                                        rpc::NumPendingTasksReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   RAY_LOG(DEBUG) << "Received NumPendingTasks request.";
   reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3924,7 +3902,6 @@ void CoreWorker::PlasmaCallback(SetResultCallback success,
 void CoreWorker::HandlePlasmaObjectReady(rpc::PlasmaObjectReadyRequest request,
                                          rpc::PlasmaObjectReadyReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
-  WaitUntilInitialized();
   std::vector<std::function<void(void)>> callbacks;
   {
     absl::MutexLock lock(&plasma_mutex_);

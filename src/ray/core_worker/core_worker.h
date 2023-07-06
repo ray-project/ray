@@ -1521,7 +1521,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   /// Wait until the worker is initialized.
-  void WaitUntilInitialized() {
+  void WaitUntilInitialized() override {
     absl::MutexLock lock(&initialize_mutex_);
     while (!initialized_) {
       intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
