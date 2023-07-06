@@ -162,6 +162,12 @@ export const NodeRow = ({
         <CodeDialogButton title={"Logical Resource"} code="">
           {logicalResource}
         </CodeDialogButton>
+
+        {/* {message ? (
+          <CodeDialogButtonWithPreview title="Message details" code={message} />
+        ) : (
+          "-"
+        )} */}
       </TableCell>
     </TableRow>
   );
@@ -263,6 +269,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
+      <TableCell align="center">-</TableCell>
     </TableRow>
   );
 };
