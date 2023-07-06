@@ -568,8 +568,12 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
 
 # TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
 def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
-    """Checks that an error is raised when default syncing is disabled, and a
-    checkpoint cannot be found on the driver (since it was not synced)."""
+    """Checks that an error is raised when head node syncing not enabled by default,
+    and a checkpoint cannot be found on the driver (since it was not synced).
+
+    Also checks that no error is raised if the checkpoint does exist on the local node.
+    This covers the single-node case where all trials write to local disk.
+    Only force the user to switch to cloud storage / NFS in the multi-node case."""
     syncer_callback = SyncerCallback(sync_period=0)
     trial = MockTrial(trial_id="a", logdir=None)
 

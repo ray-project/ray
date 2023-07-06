@@ -787,8 +787,8 @@ class SyncerCallback(Callback):
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
     ) -> bool:
-        if not os.environ.get("AIR_ENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
-            return True
+        if not os.environ.get("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+            return False
 
         if not self._enabled or trial.uses_cloud_checkpointing:
             return False
@@ -893,10 +893,8 @@ class SyncerCallback(Callback):
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
-        if self._sync_trial_dir(
-            trial, force=trial.sync_on_checkpoint, wait=True
-        ) and not os.path.exists(checkpoint.dir_or_data):
-            if not os.environ.get("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+        if not os.environ.get("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE"):
+            if not os.path.exists(checkpoint.dir_or_data):
                 raise DeprecationWarning(
                     "Ray AIR no longer supports the synchronization of the trial "
                     "directory from worker nodes to the head node. This means that the "
@@ -915,13 +913,21 @@ class SyncerCallback(Callback):
                     "Other notes:\n"
                     "- See here for a thread explaining why this functionality is "
                     "being removed: <LINK>\n"
-                    # TODO(justinvyu): put in the link to the REP
+                    # TODO(justinvyu): put in the link to the REP/issue
                     "- To re-enable the head node syncing behavior, set the "
                     "environment variable AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE=1\n"
                     "  - **Note that this functionality will be fully removed in "
                     "Ray 2.7.**"
                 )
-            else:
+            # else:
+            #   No need to raise an error about syncing,
+            #   since the checkpoint lives on the head node.
+        else:
+            # Old head node syncing codepath
+            synced = self._sync_trial_dir(
+                trial, force=trial.sync_on_checkpoint, wait=True
+            )
+            if synced and not os.path.exists(checkpoint.dir_or_data):
                 raise TuneError(
                     f"Trial {trial}: Checkpoint path {checkpoint.dir_or_data} not "
                     "found after successful sync down."
