@@ -1,4 +1,5 @@
 import itertools
+import queue
 import threading
 import time
 from typing import Iterator, List, Tuple
@@ -98,20 +99,25 @@ def test_restore_from_original_order():
 
 
 def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
+    """Tests that finalize_fn is not run with multiple threads."""
     block_refs_iter = itertools.starmap(
         lambda block, metadata: (ray.put(block), metadata),
         block_generator(num_blocks=20, num_rows=2),
     )
 
-    lock = threading.Lock()
+    q = queue.Queue()
+    semaphore = threading.Semaphore(value=1)
 
     def finalize_enforce_single_thread(batch):
-        lock.acquire()
+        already_acquired = not semaphore.acquire(blocking=False)
+        if already_acquired:
+            e = AssertionError("finalize_fn is being run concurrently.")
+            q.put(e, block=True)
+        semaphore.release()
         return batch
 
     # Test that finalize_fn is called in a single thread,
     # even if prefetch_batches is set.
-
     output_batches = iter_batches(
         block_refs_iter,
         collate_fn=lambda batch: batch,
@@ -122,6 +128,12 @@ def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
     # Force execution of the iterator.
     # This step should not raise an exception.
     list(output_batches)
+
+    try:
+        e = q.get(block=False, timeout=0.1)
+        raise e
+    except queue.Empty:
+        pass
 
 
 # Test for 3 cases

@@ -152,7 +152,6 @@ def iter_batches(
             stats=stats,
             batch_format=batch_format,
             collate_fn=collate_fn,
-            finalize_fn=finalize_fn,
             num_threadpool_workers=prefetch_batches,
         )
 
@@ -186,7 +185,6 @@ def _format_in_threadpool(
     stats: DatasetStats,
     batch_format: Optional[str],
     collate_fn: Optional[Callable[[DataBatch], Any]],
-    finalize_fn: Optional[Callable[[Any], Any]],
     num_threadpool_workers: int,
 ) -> Iterator[Batch]:
     """Executes the batching, formatting, and collation logic in a threadpool.
