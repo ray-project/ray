@@ -40,63 +40,54 @@ class Partitioning:
     For example, to read a dataset with
     `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_:
 
-        .. testcode::
-
-            import ray
-            from ray.data.datasource.partitioning import Partitioning
-            ds = ray.data.read_csv(
-                "example://iris.csv",
-                partitioning=Partitioning("hive"),
-            )
-            ds
-
-        .. testoutput::
-            Dataset(
-                num_blocks=20,
-                num_rows=150,
-                schema={
-                    sepal.length: double,
-                    sepal.width: double,
-                    petal.length: double,
-                    petal.width: double,
-                    variety: string
-                }
-            )
+        >>> import ray
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> ds = ray.data.read_csv(
+        ...     "example://iris.csv",
+        ...     partitioning=Partitioning("hive"),
+        ... )
+        >>> ds
+        Dataset(
+           num_blocks=20,
+           num_rows=150,
+           schema={
+              sepal.length: double,
+              sepal.width: double,
+              petal.length: double,
+              petal.width: double,
+              variety: string
+           }
+        )
 
     Instead, if your files are arranged in a directory structure such as:
 
-        .. code::
+    .. code::
 
-            root/dog/dog_0.jpeg
-            root/dog/dog_1.jpeg
-            ...
+        root/dog/dog_0.jpeg
+        root/dog/dog_1.jpeg
+        ...
 
-            root/cat/cat_0.jpeg
-            root/cat/cat_1.jpeg
-            ...
+        root/cat/cat_0.jpeg
+        root/cat/cat_1.jpeg
+        ...
 
     Then you can use directory-based partitioning:
 
-        .. testcode::
-            root = "s3://anonymous@air-example-data/cifar-10/images"
-            partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
-            dataset = ray.data.read_images(root, partitioning=partitioning)
-            ds
-
-        .. testoutput::
-
-            Dataset(
-                num_blocks=20,
-                num_rows=150,
-                schema={
-                    sepal.length: double,
-                    sepal.width: double,
-                    petal.length: double,
-                    petal.width: double,
-                    variety: string
-                }
-            )
-
+        >>> root = "s3://anonymous@air-example-data/cifar-10/images"
+        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+        >>> dataset = ray.data.read_images(root, partitioning=partitioning)
+        >>> ds
+        Dataset(
+           num_blocks=20,
+           num_rows=150,
+           schema={
+              sepal.length: double,
+              sepal.width: double,
+              petal.length: double,
+              petal.width: double,
+              variety: string
+           }
+        )
     """
 
     #: The partition style - may be either HIVE or DIRECTORY.
