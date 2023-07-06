@@ -571,6 +571,7 @@
     - (cd rllib_contrib/alpha_zero && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/alpha_zero/tests/
+    - python alpha_zero/examples/alpha_zero_cartpole_sparse_rewards.py --run-as-test
 
 - label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
