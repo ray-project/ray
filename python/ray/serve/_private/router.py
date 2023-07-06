@@ -363,6 +363,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         for r in replicas:
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
+            print(r.replica_id)
             for model_id in r.multiplexed_model_ids:
                 new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
 

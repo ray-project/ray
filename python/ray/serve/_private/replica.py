@@ -1,6 +1,7 @@
 import aiorwlock
 import asyncio
 from contextlib import asynccontextmanager
+from functools import wraps
 from importlib import import_module
 import inspect
 import logging
@@ -65,6 +66,23 @@ from ray.serve._private.version import DeploymentVersion
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def wrap_generator_function_in_async_if_needed(
+    f: Callable,
+) -> Callable[[Any], AsyncGenerator]:
+    if inspect.isasyncgenfunction(f):
+        return f
+    elif inspect.isgeneratorfunction(f):
+
+        @wraps(f)
+        async def async_gen_wrapper(*args, **kwargs):
+            for result in f(*args, **kwargs):
+                yield result
+
+        return async_gen_wrapper
+    else:
+        raise TypeError(f"Method '{f.__name__}' is not a generator.")
 
 
 def _format_replica_actor_name(deployment_name: str):
@@ -709,6 +727,14 @@ class RayServeReplica:
             runner_method = None
             try:
                 runner_method = self.get_runner_method(request_metadata)
+                if inspect.isgeneratorfunction(
+                    runner_method
+                ) or inspect.isasyncgenfunction(runner_method):
+                    raise TypeError(
+                        f"Method '{runner_method.__name__}' is a generator. You must "
+                        "use `handle.options(stream=True)` to call generator methods "
+                        "on a deployment."
+                    )
                 method_to_call = sync_to_async(runner_method)
 
                 # Edge case to support empty HTTP handlers: don't pass the Request
@@ -755,7 +781,9 @@ class RayServeReplica:
                 not request_metadata.is_http_request
             ), "HTTP requests should go through `call_user_method`."
             user_method = self.get_runner_method(request_metadata)
-            async for result in user_method(*request_args, **request_kwargs):
+            method_to_call = wrap_generator_function_in_async_if_needed(user_method)
+
+            async for result in method_to_call(*request_args, **request_kwargs):
                 yield result
 
     async def prepare_for_shutdown(self):
