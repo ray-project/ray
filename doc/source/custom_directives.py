@@ -84,8 +84,6 @@ MOCK_MODULES = [
     "kubernetes",
     "mlflow",
     "modin",
-    "mxnet",
-    "mxnet.model",
     "optuna",
     "optuna.distributions",
     "optuna.samplers",

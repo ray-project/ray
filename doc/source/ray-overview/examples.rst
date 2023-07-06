@@ -639,13 +639,6 @@ Ray Examples
             How To Tune PyTorch Lightning Models
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
-        .. button-ref:: tune-mxnet-example
-
-            How To Tune MXNet Models
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning serving
 
         .. button-ref:: /tune/examples/tune-serve-integration-mnist

@@ -5,18 +5,6 @@ External library integrations for Ray Tune
 
 .. currentmodule:: ray
 
-.. _tune-integration-mxnet:
-
-MXNet (tune.integration.mxnet)
-------------------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    ~tune.integration.mxnet.TuneReportCallback
-    ~tune.integration.mxnet.TuneCheckpointCallback
-
-
 .. _tune-integration-pytorch-lightning:
 
 PyTorch Lightning (tune.integration.pytorch_lightning)
