@@ -23,8 +23,7 @@ class Datasource:
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
     To write to a writable datasource, use :meth:`~ray.data.Dataset.write_datasource`.
 
-    See :class:`~ray.data.datasource.RangeDatasource` and
-    :class:`~ray.data.datasource.DummyOutputDatasource` for examples
+    See ``RangeDatasource`` and ``DummyOutputDatasource`` for examples
     of how to implement readable and writable datasources.
 
     For an example of subclassing :class:`~ray.data.Datasource`, read

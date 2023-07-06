@@ -48,6 +48,7 @@ class Partitioning:
                 "example://iris.csv",
                 partitioning=Partitioning("hive"),
             )
+            ds
 
         .. testoutput::
             Dataset(
