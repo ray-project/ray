@@ -128,7 +128,7 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(endpoint,).options(
+                self.handles[endpoint] = self._get_handle(endpoint).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING

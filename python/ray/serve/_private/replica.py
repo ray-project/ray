@@ -664,15 +664,13 @@ class RayServeReplica:
         user_exception = None
         try:
             # TODO: WTF is up with this thing.
-            async with self.rwlock.reader:
-                yield
+            # with self.rwlock.reader:
+            yield
         except Exception as e:
             user_exception = e
             logger.exception(f"Request failed due to {type(e).__name__}:")
             if ray.util.pdb._is_ray_debugger_enabled():
                 ray.util.pdb._post_mortem()
-            if isinstance(e, RuntimeError):
-                print(e)
 
         latency_ms = (time.time() - start_time) * 1000
         self.processing_latency_tracker.observe(
@@ -708,24 +706,25 @@ class RayServeReplica:
                 else:
                     request_args = (Request(scope, receive, send),)
 
-            user_method = None
+            runner_method = None
             try:
-                user_method = sync_to_async(self.get_runner_method(request_metadata))
+                runner_method = self.get_runner_method(request_metadata)
+                method_to_call = sync_to_async(runner_method)
 
                 # Edge case to support empty HTTP handlers: don't pass the Request
                 # argument if the callable has no parameters.
                 if (
                     request_metadata.is_http_request
-                    and len(inspect.signature(user_method).parameters) == 0
+                    and len(inspect.signature(runner_method).parameters) == 0
                 ):
                     request_args, request_kwargs = tuple(), {}
 
-                result = await user_method(*request_args, **request_kwargs)
+                result = await method_to_call(*request_args, **request_kwargs)
 
             except Exception as e:
                 function_name = "unknown"
-                if user_method is not None:
-                    function_name = user_method.__name__
+                if runner_method is not None:
+                    function_name = runner_method.__name__
                 e = wrap_to_ray_error(function_name, e)
                 if request_metadata.is_http_request:
                     error_message = f"Unexpected error, traceback: {e}."
