@@ -125,6 +125,8 @@ class ExecutionPlan:
         self._stages_after_snapshot = []
         # Cache of optimized stages.
         self._last_optimized_stages = None
+        # Cached schema.
+        self._schema = None
 
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
@@ -381,7 +383,14 @@ class ExecutionPlan:
         """
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
+        if self._schema is not None:
+            return self._schema
+
         if self._stages_after_snapshot:
+            # TODO(swang): There are several other stage types that could
+            # inherit the schema or we can compute the schema without having to
+            # execute any of the dataset: limit, filter, map_batches for
+            # add/drop columns, etc.
             if fetch_if_missing:
                 if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
                     # TODO(ekl): this is a hack to optimize the case where we have a
@@ -412,7 +421,11 @@ class ExecutionPlan:
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        return self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        self._schema = self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        return self._schema
+
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._schema = schema
 
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False
