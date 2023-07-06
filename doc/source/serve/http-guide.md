@@ -284,3 +284,8 @@ This pattern is useful for prototyping, but isn't sufficient for production. In 
 * Exponential backoff: To avoid bombarding the Serve application with retries during a transient error, apply an exponential backoff on failure. Each retry should wait exponentially longer than the previous one before running. For example, the first retry may happen 0.1 seconds after a failure, the next one 0.4s (4 x 0.1), then 1.6s, 6.4s, 25.6s, etc.
 * Timeouts: add a timeout to each retry to prevent your requests from hanging. The timeout should be longer than the latency of your application to give your application enough time to process requests.
 
+```{literalinclude} doc_code/http_guide/requests_best_practices.py
+:start-after: __production_code_start__
+:end-before: __production_code_end__
+:language: python
+```

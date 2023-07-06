@@ -1,8 +1,10 @@
 from ray import serve
 
+
 @serve.deployment
 def f(*args):
     return "Hi there!"
+
 
 serve.run(f.bind())
 
@@ -15,19 +17,25 @@ result = response.json()
 
 assert result == "Hi there"
 
-# __prototype_code_start__
+# __production_code_start__
 import requests
 from requests.adapters import HTTPAdapter, Retry
 
 session = requests.Session()
 
 retries = Retry(
-    total=5,                          # 5 retries total
-    backoff_factor=0.1,               # Exponential backoff
-    status_forcelist=[500, 502, 503]  # Retry on server errors
+    total=5,  # 5 retries total
+    backoff_factor=1,  # Exponential backoff
+    status_forcelist=[  # Retry on server errors
+        500,
+        501,
+        502,
+        503,
+        504,
+    ],
 )
 
 session.mount("http://", HTTPAdapter(max_retries=retries))
 
 response = session.get("http://localhost:8000/", timeout=10)  # Add timeout
-# __prototype_code_end__
+# __production_code_end__
