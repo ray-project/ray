@@ -106,23 +106,6 @@ async def test_aio_publish_and_subscribe_logs(ray_start_regular):
     await subscriber.close()
 
 
-def test_publish_and_subscribe_function_keys(ray_start_regular):
-    address_info = ray_start_regular
-    gcs_server_addr = address_info["gcs_address"]
-
-    subscriber = ray._raylet.GcsFunctionKeySubscriber(address=gcs_server_addr)
-    subscriber.subscribe()
-
-    publisher = ray._raylet.GcsPublisher(address=gcs_server_addr)
-    publisher.publish_function_key(b"111")
-    publisher.publish_function_key(b"222")
-
-    assert subscriber.poll() == b"111"
-    assert subscriber.poll() == b"222"
-
-    subscriber.close()
-
-
 @pytest.mark.asyncio
 async def test_aio_publish_and_subscribe_resource_usage(ray_start_regular):
     address_info = ray_start_regular

@@ -154,9 +154,6 @@ class FunctionActorManager:
         # One optimization is that we can use importer counter since
         # it's sure keys before this counter has been allocated.
         with self._export_lock:
-            self._num_exported = max(
-                self._num_exported, self._worker.import_thread.num_imported
-            )
             while True:
                 self._num_exported += 1
                 holder = make_export_key(

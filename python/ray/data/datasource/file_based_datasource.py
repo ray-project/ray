@@ -1,5 +1,4 @@
 import itertools
-import logging
 import pathlib
 import posixpath
 import sys
@@ -22,6 +21,7 @@ import numpy as np
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
 from ray.air._internal.remote_storage import _is_local_windows_path
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer
@@ -48,7 +48,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-logger = logging.getLogger(__name__)
+logger = DatasetLogger(__name__)
 
 
 # We should parallelize file size fetch operations beyond this threshold.
@@ -250,26 +250,6 @@ class FileBasedDatasource(Datasource):
             "Subclasses of FileBasedDatasource must implement _read_file()."
         )
 
-    def _convert_block_to_tabular_block(
-        self, block: Block, column_name: Optional[str] = None
-    ) -> Union["pyarrow.Table", "pd.DataFrame"]:
-        """Convert block returned by `_read_file` or `_read_stream` to a tabular block.
-
-        If your `_read_file` or `_read_stream` implementation returns a list,
-        then you need to implement this method. Otherwise, `FileBasedDatasource` won't
-        be able to include partition data.
-        """
-        import pandas as pd
-        import pyarrow as pa
-
-        if isinstance(block, (pd.DataFrame, pa.Table)):
-            return block
-
-        raise NotImplementedError(
-            "If your `_read_file` or `_read_stream` implementation returns a list, "
-            "then you need to implement `_convert_block_to_tabular_block."
-        )
-
     def write(
         self,
         blocks: Iterable[Block],
@@ -285,6 +265,22 @@ class FileBasedDatasource(Datasource):
         **write_args,
     ) -> WriteResult:
         """Write blocks for a file-based datasource."""
+        file_format = self._FILE_EXTENSION
+        if isinstance(file_format, list):
+            file_format = file_format[0]
+
+        builder = DelegatingBlockBuilder()
+        for block in blocks:
+            builder.add_block(block)
+        block = builder.build()
+
+        total_num_rows = BlockAccessor.for_block(block).num_rows()
+        if total_num_rows == 0:
+            logger.get_logger().warning(
+                f"Skipping writing empty dataset with UUID {dataset_uuid} at {path}",
+            )
+            return "skip"
+
         path, filesystem = _resolve_paths_and_filesystem(path, filesystem)
         path = path[0]
         if try_create_dir:
@@ -300,30 +296,23 @@ class FileBasedDatasource(Datasource):
             open_stream_args = {}
 
         def write_block(write_path: str, block: Block):
-            logger.debug(f"Writing {write_path} file.")
+            logger.get_logger().debug(f"Writing {write_path} file.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             if _block_udf is not None:
                 block = _block_udf(block)
 
+            block = BlockAccessor.for_block(block)
+            assert block.num_rows() > 0, "Cannot write an empty block."
             with fs.open_output_stream(write_path, **open_stream_args) as f:
                 _write_block_to_file(
                     f,
-                    BlockAccessor.for_block(block),
+                    block,
                     writer_args_fn=write_args_fn,
                     **write_args,
                 )
             # TODO: decide if we want to return richer object when the task
             # succeeds.
             return "ok"
-
-        file_format = self._FILE_EXTENSION
-        if isinstance(file_format, list):
-            file_format = file_format[0]
-
-        builder = DelegatingBlockBuilder()
-        for block in blocks:
-            builder.add_block(block)
-        block = builder.build()
 
         if not block_path_provider:
             block_path_provider = DefaultBlockWritePathProvider()
@@ -433,8 +422,6 @@ class _FileBasedDatasourceReader(Reader):
 
         paths, file_sizes = self._paths, self._file_sizes
         read_stream = self._delegate._read_stream
-        convert_block_to_tabular_block = self._delegate._convert_block_to_tabular_block
-        column_name = reader_args.get("column_name", None)
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
 
         if open_stream_args is None:
@@ -447,7 +434,7 @@ class _FileBasedDatasourceReader(Reader):
             fs: Union["pyarrow.fs.FileSystem", _S3FileSystemWrapper],
         ) -> Iterable[Block]:
             DataContext._set_current(ctx)
-            logger.debug(f"Reading {len(read_paths)} files.")
+            logger.get_logger().debug(f"Reading {len(read_paths)} files.")
             fs = _unwrap_s3_serialization_workaround(filesystem)
             output_buffer = BlockOutputBuffer(
                 block_udf=_block_udf, target_max_block_size=ctx.target_max_block_size
@@ -490,7 +477,6 @@ class _FileBasedDatasourceReader(Reader):
                 with open_input_source(fs, read_path, **open_stream_args) as f:
                     for data in read_stream(f, read_path, **reader_args):
                         if partitions:
-                            data = convert_block_to_tabular_block(data, column_name)
                             data = _add_partitions(data, partitions)
 
                         output_buffer.add_block(data)

@@ -48,7 +48,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+                          const ClusterID &cluster_id);
+
+  /// Handle register rpc request come from raylet.
+  void HandleGetClusterId(rpc::GetClusterIdRequest request,
+                          rpc::GetClusterIdReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(rpc::RegisterNodeRequest request,
@@ -167,6 +173,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Raylet client pool.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// Cluster ID to be shared with clients when connecting.
+  const ClusterID cluster_id_;
 
   // Debug info.
   enum CountType {

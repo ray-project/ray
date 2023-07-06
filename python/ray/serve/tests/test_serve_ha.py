@@ -3,6 +3,8 @@ import sys
 import threading
 from time import sleep
 from ray.tests.conftest_docker import *  # noqa
+from ray._private.test_utils import wait_for_condition
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 scripts = """
 import ray
@@ -12,7 +14,7 @@ app = FastAPI()
 from ray import serve
 ray.init(address="auto", namespace="g")
 
-@serve.deployment(name="Counter", route_prefix="/api", version="v1")
+@serve.deployment(num_replicas={num_replicas})
 @serve.ingress(app)
 class Counter:
     def __init__(self):
@@ -37,9 +39,8 @@ class Counter:
         import os
         return {{"pid": os.getpid()}}
 
-serve.start(detached=True)
-
-Counter.options(num_replicas={num_replicas}).deploy()
+counter_app = Counter.bind()
+serve.run(target=counter_app, name="Counter", route_prefix="/api")
 """
 
 check_script = """
@@ -60,6 +61,13 @@ print(pids)
 assert len(pids) == {num_replicas}
 """
 
+check_ray_nodes_script = """
+import ray
+
+ray.init(address="auto")
+print(ray.nodes())
+"""
+
 
 @pytest.mark.skipif(sys.platform != "linux", reason="Only works on linux.")
 def test_ray_serve_basic(docker_cluster):
@@ -78,7 +86,7 @@ def test_ray_serve_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
-    assert b"Adding 1 replica to deployment Counter." in output.output
+    assert b"Adding 1 replica to deployment Counter_Counter." in output.output
     # somehow this is not working and the port is not exposed to the host.
     # worker_cli = worker.client()
     # print(worker_cli.request("GET", "/api/incr"))
@@ -108,6 +116,16 @@ def test_ray_serve_basic(docker_cluster):
     head.restart()
 
     t.join()
+
+    # Ensure head node is up before calling check_script on the worker again
+    def check_for_head_node_come_back_up():
+        _output = head.exec_run(cmd=f"python -c '{check_ray_nodes_script}'")
+        return (
+            _output.exit_code == 0
+            and bytes(HEAD_NODE_RESOURCE_NAME, "utf-8") in _output.output
+        )
+
+    wait_for_condition(check_for_head_node_come_back_up)
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0

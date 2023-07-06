@@ -325,6 +325,13 @@ def test_get_ray_address_from_environment(monkeypatch):
     )
 
 
+# https://github.com/ray-project/ray/issues/36431
+def test_temp_dir_must_be_absolute(shutdown_only):
+    # This test fails with a relative path _temp_dir.
+    with pytest.raises(ValueError):
+        ray.init(_temp_dir="relative_path")
+
+
 if __name__ == "__main__":
     import sys
 

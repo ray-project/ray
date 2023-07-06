@@ -7,7 +7,7 @@ Implementing a Custom Datasource
 .. note::
 
   This MongoDatasource guide below is for education only. For production use of MongoDB
-  in Ray Data, see :ref:`Creating Dataset from MongoDB <dataset_mongo_db>`.
+  in Ray Data, see :ref:`Creating Dataset from MongoDB <reading_mongodb>`.
 
 Ray Data supports multiple ways to :ref:`create a dataset <loading_data>`,
 allowing you to easily ingest data of common formats from popular sources. However, if the
@@ -16,7 +16,8 @@ a custom one for your use case. This guide walks through building
 a custom datasource, using `MongoDB <https://www.mongodb.com/docs/manual/introduction/>`__ as an example.
 By the end of the guide, you will have a ``MongoDatasource`` that you can use to create dataset as follows:
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     # Read from custom MongoDB datasource to create a dataset.
     ds = ray.data.read_datasource(
@@ -56,7 +57,7 @@ Here are the key design choices we will make in this guide:
 For example, suppose you have a MongoDB collection with 4 documents, which have a ``partition_field`` with values 0, 1, 2, 3.
 You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadTask`) as follows to read the collection in parallel:
 
-.. code-block:: python
+.. testcode::
 
     # A list of pipelines. Each pipeline is a series of stages, typed as List[Dict].
     my_pipelines = [
@@ -65,7 +66,7 @@ You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadT
           {
             "$match": {
                 "partition_field": {
-                    "$gte": 0
+                    "$gte": 0,
                     "$lt": 2
                 }
             }
@@ -76,7 +77,7 @@ You can compose two MongoDB pipelines (each handled by a :class:`~ray.data.ReadT
           {
             "$match": {
                 "partition_field": {
-                    "$gte": 2
+                    "$gte": 2,
                     "$lt": 4
                 }
 
@@ -101,7 +102,7 @@ First, let's handle a single MongoDB pipeline, which is the unit of execution in
 and then convert results into Arrow format. We use ``PyMongo`` and  ``PyMongoArrow``
 to achieve this.
 
-.. literalinclude:: ./doc_code/custom_datasource.py
+.. literalinclude:: ../doc_code/custom_datasource.py
     :language: python
     :start-after: __read_single_partition_start__
     :end-before: __read_single_partition_end__
@@ -121,7 +122,7 @@ a wrapper of ``_read_single_partition``.
 A list of :class:`~ray.data.ReadTask` objects are returned by ``get_read_tasks``, and these
 tasks are executed on remote workers. You can find more details about `Dataset read execution here <https://docs.ray.io/en/master/data/key-concepts.html#reading-data>`__.
 
-.. literalinclude:: ./doc_code/custom_datasource.py
+.. literalinclude:: ../doc_code/custom_datasource.py
     :language: python
     :start-after: __mongo_datasource_reader_start__
     :end-before: __mongo_datasource_reader_end__
@@ -136,7 +137,7 @@ Write support
 Similar to read support, we start with handling a single block. Again
 the ``PyMongo`` and  ``PyMongoArrow`` are used for MongoDB interactions.
 
-.. literalinclude:: ./doc_code/custom_datasource.py
+.. literalinclude:: ../doc_code/custom_datasource.py
     :language: python
     :start-after: __write_single_block_start__
     :end-before: __write_single_block_end__
@@ -150,7 +151,7 @@ will later be used in the implementation of :meth:`~ray.data.Datasource.do_write
 In short, the below function spawns multiple :ref:`Ray remote tasks <ray-remote-functions>`
 and returns :ref:`their futures (object refs) <objects-in-ray>`.
 
-.. literalinclude:: ./doc_code/custom_datasource.py
+.. literalinclude:: ../doc_code/custom_datasource.py
     :language: python
     :start-after: __write_multiple_blocks_start__
     :end-before: __write_multiple_blocks_end__
@@ -164,7 +165,7 @@ ready to implement :meth:`create_reader() <ray.data.Datasource.create_reader>`
 and :meth:`do_write() <ray.data.Datasource.do_write>`, and put together
 a ``MongoDatasource``.
 
-.. literalinclude:: ./doc_code/custom_datasource.py
+.. literalinclude:: ../doc_code/custom_datasource.py
     :language: python
     :start-after: __mongo_datasource_start__
     :end-before: __mongo_datasource_end__
@@ -172,7 +173,8 @@ a ``MongoDatasource``.
 Now you can create a Dataset from and write back to MongoDB, just like
 any other datasource.
 
-.. code-block:: python
+.. testcode::
+    :skipif: True
 
     # Read from MongoDB datasource and create a dataset.
     # The args are passed to MongoDatasource.create_reader().

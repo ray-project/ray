@@ -134,7 +134,7 @@ SERVE_GRAFANA_PANELS = [
     ),
     Panel(
         id=2,
-        title="Deployments",
+        title="Replicas per deployment",
         description='Number of replicas per deployment. Ignores "Route" variable.',
         unit="replicas",
         targets=[

@@ -13,8 +13,9 @@ from ray.autoscaler._private.cli_logger import add_click_logging_options, cf, cl
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.dashboard.modules.job.cli_utils import add_common_job_options
+from ray.dashboard.modules.job.utils import redact_url_password
 from ray.util.annotations import PublicAPI
-from ray._private.utils import parse_resources_json
+from ray._private.utils import parse_resources_json, parse_metadata_json
 
 
 def _get_sdk_client(
@@ -24,7 +25,9 @@ def _get_sdk_client(
 ) -> JobSubmissionClient:
     client = JobSubmissionClient(address, create_cluster_if_needed, verify=verify)
     client_address = client.get_address()
-    cli_logger.labeled_value("Job submission server address", client_address)
+    cli_logger.labeled_value(
+        "Job submission server address", redact_url_password(client_address)
+    )
     return client
 
 
@@ -127,6 +130,13 @@ def job_cli_group():
     ),
 )
 @click.option(
+    "--metadata-json",
+    type=str,
+    default=None,
+    required=False,
+    help="JSON-serialized dictionary of metadata to attach to the job.",
+)
+@click.option(
     "--entrypoint-num-cpus",
     required=False,
     type=float,
@@ -165,6 +175,7 @@ def submit(
     submission_id: Optional[str],
     runtime_env: Optional[str],
     runtime_env_json: Optional[str],
+    metadata_json: Optional[str],
     working_dir: Optional[str],
     entrypoint: Tuple[str],
     entrypoint_num_cpus: Optional[Union[int, float]],
@@ -186,6 +197,10 @@ def submit(
         entrypoint_resources = parse_resources_json(
             entrypoint_resources, cli_logger, cf, command_arg="entrypoint-resources"
         )
+    if metadata_json is not None:
+        metadata_json = parse_metadata_json(
+            metadata_json, cli_logger, cf, command_arg="metadata-json"
+        )
 
     submission_id = submission_id or job_id
 
@@ -197,6 +212,7 @@ def submit(
             submission_id=submission_id,
             runtime_env=runtime_env,
             runtime_env_json=runtime_env_json,
+            metadata_json=metadata_json,
             working_dir=working_dir,
             entrypoint=entrypoint,
             entrypoint_num_cpus=entrypoint_num_cpus,
@@ -216,6 +232,7 @@ def submit(
         entrypoint=list2cmdline(entrypoint),
         submission_id=submission_id,
         runtime_env=final_runtime_env,
+        metadata=metadata_json,
         entrypoint_num_cpus=entrypoint_num_cpus,
         entrypoint_num_gpus=entrypoint_num_gpus,
         entrypoint_resources=entrypoint_resources,

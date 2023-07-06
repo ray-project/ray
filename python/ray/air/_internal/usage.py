@@ -28,6 +28,7 @@ AIR_TRAINERS = {
     "TensorflowTrainer",
     "TorchTrainer",
     "XGBoostTrainer",
+    "HuggingFaceTrainer",  # Deprecated: Remove in 2.7.
 }
 
 # searchers implemented by Ray Tune.
@@ -54,7 +55,6 @@ TUNE_SEARCHER_WRAPPERS = {
 
 TUNE_SCHEDULERS = {
     "FIFOScheduler",
-    "AsyncHyperBandScheduler",
     "AsyncHyperBandScheduler",
     "MedianStoppingRule",
     "HyperBandScheduler",

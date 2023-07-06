@@ -3,6 +3,7 @@ import os
 import signal
 import sys
 import tempfile
+import time
 import urllib.request
 from uuid import uuid4
 
@@ -164,6 +165,88 @@ async def test_get_all_job_info(call_ray_start, tmp_path):  # noqa: F811
             assert job_info.driver_node_id != ""
 
     assert found
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head"],
+    indirect=True,
+)
+async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: F811
+    """Test the is_running_tasks bit in the GCS get_all_job_info API."""
+
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+
+    @ray.remote
+    def sleep_forever():
+        while True:
+            time.sleep(1)
+
+    object_ref = sleep_forever.remote()
+
+    async def check_is_running_tasks(job_id, expected_is_running_tasks):
+        """Return True if the driver indicated by job_id is currently running tasks."""
+        found = False
+        for job_table_entry in (await gcs_aio_client.get_all_job_info()).job_info_list:
+            if job_table_entry.job_id.hex() == job_id:
+                found = True
+                return job_table_entry.is_running_tasks == expected_is_running_tasks
+        assert found
+
+    # Get the job id for this driver.
+    job_id = ray.get_runtime_context().get_job_id()
+
+    # Task should be running.
+    assert await check_is_running_tasks(job_id, True)
+
+    # Kill the task.
+    ray.cancel(object_ref)
+
+    # Task should not be running.
+    await async_wait_for_condition_async_predicate(
+        lambda: check_is_running_tasks(job_id, False), timeout=30
+    )
+
+    # Shutdown and start a new driver.
+    ray.shutdown()
+    ray.init(address=call_ray_start)
+
+    old_job_id = job_id
+    job_id = ray.get_runtime_context().get_job_id()
+    assert old_job_id != job_id
+
+    new_object_ref = sleep_forever.remote()
+
+    # Tasks should still not be running for the old driver.
+    assert await check_is_running_tasks(old_job_id, False)
+
+    # Task should be running for the new driver.
+    assert await check_is_running_tasks(job_id, True)
+
+    # Start an actor that will run forever.
+    @ray.remote
+    class Actor:
+        pass
+
+    actor = Actor.remote()
+
+    # Cancel the task.
+    ray.cancel(new_object_ref)
+
+    # The actor is still running, so is_running_tasks should be true.
+    assert await check_is_running_tasks(job_id, True)
+
+    # Kill the actor.
+    ray.kill(actor)
+
+    # The actor is no longer running, so is_running_tasks should be false.
+    await async_wait_for_condition_async_predicate(
+        lambda: check_is_running_tasks(job_id, False), timeout=30
+    )
 
 
 @pytest.fixture(scope="module")

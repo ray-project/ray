@@ -22,24 +22,13 @@
 
 #include "ray/common/ray_config.h"
 #include "ray/rpc/common.h"
-#include "ray/rpc/grpc_server.h"
 #include "ray/stats/metric.h"
 #include "ray/util/util.h"
 
 namespace ray {
 namespace rpc {
 
-GrpcServer::GrpcServer(std::string name,
-                       const uint32_t port,
-                       bool listen_to_localhost_only,
-                       int num_threads,
-                       int64_t keepalive_time_ms)
-    : name_(std::move(name)),
-      port_(port),
-      listen_to_localhost_only_(listen_to_localhost_only),
-      is_closed_(true),
-      num_threads_(num_threads),
-      keepalive_time_ms_(keepalive_time_ms) {
+void GrpcServer::Init() {
   RAY_CHECK(num_threads_ > 0) << "Num of threads in gRPC must be greater than 0";
   cqs_.resize(num_threads_);
   // Enable built in health check implemented by gRPC:
@@ -166,11 +155,14 @@ void GrpcServer::RegisterService(grpc::Service &service) {
   services_.emplace_back(service);
 }
 
-void GrpcServer::RegisterService(GrpcService &service) {
+void GrpcServer::RegisterService(GrpcService &service, bool token_auth) {
   services_.emplace_back(service.GetGrpcService());
 
   for (int i = 0; i < num_threads_; i++) {
-    service.InitServerCallFactories(cqs_[i], &server_call_factories_);
+    if (token_auth && cluster_id_.IsNil()) {
+      RAY_LOG(FATAL) << "Expected cluster ID for token auth!";
+    }
+    service.InitServerCallFactories(cqs_[i], &server_call_factories_, cluster_id_);
   }
 }
 

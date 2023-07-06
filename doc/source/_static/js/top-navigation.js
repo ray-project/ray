@@ -76,7 +76,7 @@ topNavContentLeft.append(useCasesLink)
 let examplesLink = document.createElement("a")
 examplesLink.innerText = "Examples"
 // since we surgically remove the nav bar for the examples, we need to resort to a trick.
-let examplesURL = getNavURL("ray-overview/use-cases.html").replace("use-cases.html", "examples.html")
+let examplesURL = getNavURL("ray-overview/use-cases.html").replace("use-cases.html", "examples.html").replace(/#$/, "")
 examplesLink.setAttribute("href", examplesURL)
 if (is_examples) {
     examplesLink.style.borderBottom = "2px solid #007bff"

@@ -72,7 +72,7 @@ class TestCQL(unittest.TestCase):
         num_iterations = 4
 
         # Test for tf/torch frameworks.
-        for fw in framework_iterator(config, with_eager_tracing=True):
+        for fw in framework_iterator(config):
             algo = config.build()
             for i in range(num_iterations):
                 results = algo.train()
@@ -90,7 +90,7 @@ class TestCQL(unittest.TestCase):
             if fw == "tf":
                 pol.get_session().__enter__()
 
-            # Example on how to do evaluation on the trained Trainer
+            # Example on how to do evaluation on the trained Algorithm
             # using the data from CQL's global replay buffer.
             # Get a sample (MultiAgentBatch).
 
@@ -119,7 +119,7 @@ class TestCQL(unittest.TestCase):
                 )
 
             # The estimated Q-values for the new actions computed
-            # by our trainer policy.
+            # by our policy.
             actions_new = pol.compute_actions_from_input_dict({"obs": obs})[0]
             if fw == "torch":
                 q_values_new = cql_model.get_q_values(
