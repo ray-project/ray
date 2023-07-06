@@ -1,5 +1,6 @@
 import os
 import sys
+import time
 
 # coding: utf-8
 from dataclasses import dataclass
@@ -102,7 +103,7 @@ def test_request_cluster_resources_basic(shutdown_only):
 
 
 def test_node_state_lifecycle_basic(ray_start_cluster):
-
+    start_s = time.perf_counter()
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
@@ -174,13 +175,22 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
     # Kill the node.
     cluster.remove_node(node)
 
+    # Sleep for a bit so head node should be idle longer than this.
+    time.sleep(3)
+
     def verify_cluster_no_node():
         state = get_cluster_resource_state(stub)
+        now_s = time.perf_counter()
+        test_dur_ms = (now_s - start_s) * 1000
         assert_node_states(
             state,
             [
                 NodeState(node_id, NodeStatus.DEAD),
-                NodeState(head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0),
+                NodeState(
+                    head_node_id,
+                    NodeStatus.IDLE,
+                    lambda idle_ms: idle_ms > 3 * 1000 and idle_ms < test_dur_ms,
+                ),
             ],
         )
         return True
