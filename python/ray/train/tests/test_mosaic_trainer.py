@@ -62,7 +62,7 @@ def trainer_init_per_worker(config):
     evaluator = Evaluator(
         dataloader=test_dataloader,
         label="my_evaluator",
-        metrics=Accuracy(Accuracy(task="multiclass", num_classes=10)),
+        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
     )
 
     # prepare optimizer

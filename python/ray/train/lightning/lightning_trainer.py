@@ -273,7 +273,7 @@ class LightningTrainer(TorchTrainer):
                     self.fc1 = torch.nn.Linear(28 * 28, feature_dim)
                     self.fc2 = torch.nn.Linear(feature_dim, 10)
                     self.lr = lr
-                    self.accuracy = Accuracy(task="multiclass", num_classes=10)
+                    self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
                     self.val_loss = []
                     self.val_acc = []
 

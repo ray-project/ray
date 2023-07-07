@@ -18,7 +18,7 @@ torchtext==0.14.0; python_version <= '3.7'
 torchvision==0.14.0; python_version <= '3.7'
 
 torch==2.0.1; python_version > '3.7'
-torchmetrics==0.11.4; python_version > '3.7'
+torchmetrics==0.10.3; python_version > '3.7'
 torchtext==0.15.2; python_version > '3.7'
 torchvision==0.15.2; python_version > '3.7'
 
