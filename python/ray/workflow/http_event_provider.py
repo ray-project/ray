@@ -213,16 +213,23 @@ class HTTPListener(EventListener):
     Example Usage
     =============
 
-    .. code-block:: python
+    .. testcode::
 
-        from ray.workflow.http_event_provider import HTTPEventProvider, HTTPListener
+        import tempfile
+        from ray import workflow
+        from ray.workflow.http_event_provider import HTTPListener
 
-        ray.init(address='auto', namespace='serve')
+        temp_dir = tempfile.TemporaryDirectory()
+        ray.init(storage=f"file://{temp_dir.name}")
 
         serve.start(detached=True)
         event_node = workflow.wait_for_event(HTTPListener, event_key='')
-        handle_event = ...
-        workflow.run(handle_event.bind(event_node))
+
+        @ray.remote
+        def handle_event(arg):
+            return arg
+
+        workflow.run_async(handle_event.bind(event_node), workflow_id="http_listener")
     """
 
     def __init__(self):
