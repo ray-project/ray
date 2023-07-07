@@ -1,7 +1,8 @@
 import inspect
-import json
 from typing import List
 from collections import OrderedDict
+
+from ray import cloudpickle
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -16,7 +17,6 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve._private.json_serde import DAGNodeEncoder
 from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.schema import DeploymentSchema
 
@@ -389,8 +389,7 @@ def generate_executor_dag_driver_deployment(
                 DeploymentFunctionExecutorNode,
             ),
         ):
-            serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
-            return RayServeDAGHandle(serve_dag_root_json)
+            return RayServeDAGHandle(cloudpickle.dumps(node))
 
     (
         replaced_deployment_init_args,
