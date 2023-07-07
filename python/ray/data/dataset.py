@@ -2444,7 +2444,7 @@ class Dataset:
             path: The path to the destination root directory, where
                 parquet files are written to.
             filesystem: The pyarrow filesystem implementation to write to.
-                These filesystems are specified in the 
+                These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
                 /python/api/filesystems.html#filesystem-implementations>`_.
                 Specify this if you need to provide specific configurations to the
@@ -2962,7 +2962,7 @@ class Dataset:
             uri: The URI to the destination MongoDB where the dataset is
                 written to. For the URI format, see details in the
                 `MongoDB docs <https://www.mongodb.com/docs/manual/reference\
-                    connection-string/>`_.
+                    /connection-string/>`_.
             database: The name of the database. This database must exist otherwise
                 a ValueError is raised.
             collection: The name of the collection in the database. This collection

@@ -495,13 +495,13 @@ def read_mongo(
     Args:
         uri: The URI of the source MongoDB where the dataset is
             read from. For the URI format, see details in the `MongoDB docs <https:/\
-                www.mongodb.com/docs/manual/reference/connection-string/>`_.
+                /www.mongodb.com/docs/manual/reference/connection-string/>`_.
         database: The name of the database hosted in the MongoDB. This database
             must exist otherwise ValueError is raised.
         collection: The name of the collection in the database. This collection
             must exist otherwise ValueError is raised.
         pipeline: A `MongoDB pipeline <https://www.mongodb.com/docs/manual/core\
-            aggregation-pipeline/>`_, which is executed on the given collection
+            /aggregation-pipeline/>`_, which is executed on the given collection
             with results used to create Dataset. If None, the entire collection will
             be read.
         schema: The schema used to read the collection. If None, it'll be inferred from
@@ -514,7 +514,7 @@ def read_mongo(
             <read_parallelism>`.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         mongo_args: kwargs passed to `aggregate_arrow_all() <https://mongo-arrow\
-            readthedocs.io/en/pymongoarrow-0.1.1/api/api.html#pymongoarrow.api\
+            .readthedocs.io/en/latest/api/api.html#pymongoarrow.api\
             aggregate_arrow_all>`_ in pymongoarrow in producing
             Arrow-formatted results.
 
@@ -1104,7 +1104,7 @@ def read_csv(
         By default, :meth:`~ray.data.read_csv` reads all files from file paths. If you want to filter
         files by file extensions, set the ``partition_filter`` parameter.
 
-        Read only *.csv files from a directory.
+        Read only ``*.csv`` files from a directory.
 
         >>> from ray.data.datasource import FileExtensionFilter
         >>> ray.data.read_csv("example://different-extensions/",
@@ -2065,33 +2065,52 @@ def from_huggingface(
 
     Example:
 
-    .. doctest::
+        ..
+            The following `testoutput` is mocked to avoid illustrating download
+            logs like "Downloading and preparing dataset 162.17 MiB".
 
-        >>> import ray
-        >>> import datasets
-        >>> hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-        >>> ray_ds = ray.data.from_huggingface(hf_dataset)
-        >>> ray_ds
-        {'train': MaterializedDataset(
-           num_blocks=...,
-           num_rows=3257,
-           schema={text: string, label: int64}
-        ), 'test': MaterializedDataset(
-           num_blocks=...,
-           num_rows=1421,
-           schema={text: string, label: int64}
-        ), 'validation': MaterializedDataset(
-           num_blocks=...,
-           num_rows=374,
-           schema={text: string, label: int64}
-        )}
-        >>> ray_ds = ray.data.from_huggingface(hf_dataset["train"])
-        >>> ray_ds
-        MaterializedDataset(
-           num_blocks=...,
-           num_rows=3257,
-           schema={text: string, label: int64}
-        )
+        .. testcode::
+
+            import ray
+            import datasets
+
+            hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
+            ray_ds = ray.data.from_huggingface(hf_dataset)
+
+            print(ray_ds)
+
+        .. testoutput::
+            :options: +MOCK
+
+            {'train': MaterializedDataset(
+                num_blocks=...,
+                num_rows=3257,
+                schema={text: string, label: int64}
+            ), 'test': MaterializedDataset(
+                num_blocks=...,
+                num_rows=1421,
+                schema={text: string, label: int64}
+            ), 'validation': MaterializedDataset(
+                num_blocks=...,
+                num_rows=374,
+                schema={text: string, label: int64}
+            )}
+
+        Load only a single split of the Huggingface Dataset.
+
+        .. testcode::
+
+            ray_ds = ray.data.from_huggingface(hf_dataset["train"])
+            print(ray_ds)
+
+        .. testoutput::
+            :options: +MOCK
+
+            MaterializedDataset(
+                num_blocks=...,
+                num_rows=3257,
+                schema={text: string, label: int64}
+            )
 
     Args:
         dataset: A Hugging Face Dataset, or DatasetDict. IterableDataset is not
