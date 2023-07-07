@@ -189,8 +189,8 @@ def from_items(
 def range(n: int, *, parallelism: int = -1) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from a range of integers [0..n).
 
-    This function allows for easy creation of synthetic datasets for testing or benchmarking
-    :ref:`Ray Data <data>`.
+    This function allows for easy creation of synthetic datasets for testing or
+    benchmarking :ref:`Ray Data <data>`.
 
     Examples:
 
@@ -643,8 +643,8 @@ def read_parquet(
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
-            tensors (ndarrays) as their elements to PyArrow tensors. This function assumes that
-            the tensors are serialized in the raw
+            tensors (ndarrays) as their elements to PyArrow tensors. This function
+            assumes that the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g., via
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
@@ -879,8 +879,8 @@ def read_parquet_bulk(
             when opening input files to read.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
-            tensors (ndarrays) as their elements to PyArrow tensors. This function assumes that
-            the tensors are serialized in the raw
+            tensors (ndarrays) as their elements to PyArrow tensors. This function
+            assumes that the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
@@ -1401,8 +1401,8 @@ def read_tfrecords(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read. To read a compressed TFRecord file,
-            pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``), use
-            ``arrow_open_stream_args={'compression_type': 'gzip'}``).
+            pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
+            use ``arrow_open_stream_args={'compression_type': 'gzip'}``).
         meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
             metadata providers may be able to resolve file metadata more quickly and/or
             accurately. In most cases, you do not need to set this.
