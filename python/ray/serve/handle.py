@@ -386,12 +386,12 @@ class RayServeDeploymentHandle:
 
     def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
-            handle = serve._private.api.get_deployment(
-                self.deployment_name
-            )._get_handle(sync=False)
-            self.handle = handle.options(
-                method_name=self.handle_options.method_name,
-                stream=self.handle_options.stream,
+            self.handle = (
+                serve._private.api.get_deployment(self.deployment_name)
+                ._get_handle(sync=False)
+                .options(
+                    method_name=self.handle_options.method_name,
+                )
             )
         return self.handle.remote(*args, **kwargs)
 
