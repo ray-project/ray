@@ -48,11 +48,6 @@ from ray.exceptions import (
 from ray.util import serialization_addons
 from ray.util import inspect_serializability
 
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
-
 logger = logging.getLogger(__name__)
 
 
@@ -277,9 +272,7 @@ class SerializationContext:
                     return b""
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
-                assert (
-                    pa is not None
-                ), "pyarrow should be imported while deserializing arrow objects"
+                import pyarrow as pa
                 reader = pa.BufferReader(data)
                 return pa.ipc.open_stream(reader).read_all()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
@@ -473,6 +466,11 @@ class SerializationContext:
             # use a special metadata to indicate it's raw binary. So
             # that this object can also be read by Java.
             return RawSerializedObject(value)
+
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pa = None
 
         # Check whether arrow is installed. If so, use Arrow IPC format
         # to serialize this object, then it can also be read by Java.

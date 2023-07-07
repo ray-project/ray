@@ -420,7 +420,7 @@ def test_omp_threads_set_third_party(ray_start_cluster, monkeypatch):
         cluster.add_node(num_cpus=4)
         ray.init(address=cluster.address)
 
-        @ray.remote(num_cpus=1)
+        @ray.remote(num_cpus=2)
         def f():
             # Assert numpy using 2 threads for it's parallelism backend.
             import numpy  # noqa: F401

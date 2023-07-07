@@ -308,7 +308,6 @@ def set_omp_num_threads_if_unset() -> bool:
 
     """
     num_threads_from_env = os.environ.get("OMP_NUM_THREADS")
-
     if num_threads_from_env is not None:
         # No ops if it's set
         return False

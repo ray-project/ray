@@ -538,15 +538,12 @@ cdef class RawSerializedObject(SerializedObject):
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
 
 
-try:
-    import pyarrow as pa
-except ImportError:
-    pa = None
-
 cdef class ArrowSerializedObject(SerializedObject):
     cdef:
         object value
         int64_t _total_bytes
+
+    import pyarrow as pa
 
     def __init__(self, value):
         super(ArrowSerializedObject,
