@@ -18,7 +18,7 @@ from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve.drivers_utils import load_http_adapter
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve._private.constants import DEFAULT_GRPC_PORT, SERVE_LOGGER_NAME
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import install_serve_encoders_to_fastapi, record_serve_tag
@@ -71,7 +71,7 @@ class DAGDriver(ASGIAppReplicaWrapper):
                 endpoint_create_func()
 
         else:
-            assert isinstance(dags, (RayServeDAGHandle, RayServeDeploymentHandle))
+            assert isinstance(dags, (RayServeDAGHandle, RayServeHandle))
             self.dags = {self.MATCH_ALL_ROUTE_PREFIX: dags}
 
             # Single dag case, we will receive all prefix route
