@@ -225,10 +225,8 @@ class Test(dict):
         if branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
-        byod_type = self.get_byod_type()
-        image_suffix = f"-{byod_type}" if byod_type != "cpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}{image_suffix}"
+        return f"{ray_version}-{python_version}-{self.get_byod_type()}"
 
     def get_byod_image_tag(self) -> str:
         """
