@@ -72,7 +72,7 @@ class HandleOptions:
     """
 
     method_name: str = "__call__"
-    multiplexed_model_id: Optional[str] = None
+    multiplexed_model_id: str = ""
     stream: bool = False
 
     def copy_and_update(

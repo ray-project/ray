@@ -491,7 +491,9 @@ class HTTPProxy:
             start_time = time.time()
             for key, value in scope.get("headers", []):
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                    request_context_info["multiplexed_model_id"] = value.decode()
+                    multiplexed_model_id = value.decode()
+                    handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+                    request_context_info["multiplexed_model_id"] = multiplexed_model_id
                 if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
@@ -506,9 +508,6 @@ class HTTPProxy:
                     scope,
                     receive,
                     send,
-                    multiplexed_model_id=request_context_info.get(
-                        "multiplexed_model_id", None
-                    ),
                 )
             else:
                 status_code = await self.send_request_to_replica_unary(
@@ -516,9 +515,6 @@ class HTTPProxy:
                     scope,
                     receive,
                     send,
-                    multiplexed_model_id=request_context_info.get(
-                        "multiplexed_model_id", None
-                    ),
                 )
 
             self.request_counter.inc(
@@ -575,7 +571,6 @@ class HTTPProxy:
         scope: Scope,
         receive: Receive,
         send: Send,
-        multiplexed_model_id: Optional[str] = None,
     ) -> str:
         http_body_bytes = await receive_http_body(scope, receive, send)
 
@@ -595,9 +590,7 @@ class HTTPProxy:
         # We have received all the http request conent. The next `receive`
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
-            assignment_task: asyncio.Task = handle.options(
-                multiplexed_model_id=multiplexed_model_id,
-            ).remote(request)
+            assignment_task: asyncio.Task = handle.remote(request)
             client_disconnection_task = loop.create_task(receive())
             done, _ = await asyncio.wait(
                 [assignment_task, client_disconnection_task],

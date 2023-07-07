@@ -529,6 +529,7 @@ class TestRequestContextMetrics:
             "serve_num_router_requests",
             "serve_deployment_processing_latency_ms_sum",
         ]:
+            print(metric_name)
             metrics_route, metrics_app_name = self._generate_metrics_summary(
                 get_metric_dictionaries(metric_name)
             )
