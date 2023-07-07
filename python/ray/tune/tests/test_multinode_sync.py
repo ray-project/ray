@@ -3,7 +3,6 @@ import os
 import sys
 import time
 import unittest
-from unittest.mock import patch
 from typing import List
 
 import ray
