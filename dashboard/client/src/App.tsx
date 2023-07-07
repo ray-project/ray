@@ -81,6 +81,10 @@ export type GlobalContextType = {
    * The name of the currently running ray session.
    */
   sessionName: string | undefined;
+  /**
+   * The name of the current selected datasource.
+   */
+  dashboardDatasource: string | undefined;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -92,6 +96,7 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   dashboardUids: undefined,
   prometheusHealth: undefined,
   sessionName: undefined,
+  dashboardDatasource: undefined,
 });
 
 const App = () => {
@@ -105,6 +110,7 @@ const App = () => {
     dashboardUids: undefined,
     prometheusHealth: undefined,
     sessionName: undefined,
+    dashboardDatasource: undefined,
   });
   useEffect(() => {
     getNodeList().then((res) => {
@@ -131,8 +137,13 @@ const App = () => {
   // Detect if grafana is running
   useEffect(() => {
     const doEffect = async () => {
-      const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
-        await getMetricsInfo();
+      const {
+        grafanaHost,
+        sessionName,
+        prometheusHealth,
+        dashboardUids,
+        dashboardDatasource,
+      } = await getMetricsInfo();
       setContext((existingContext) => ({
         ...existingContext,
         metricsContextLoaded: true,
@@ -140,6 +151,7 @@ const App = () => {
         dashboardUids,
         sessionName,
         prometheusHealth,
+        dashboardDatasource,
       }));
     };
     doEffect();
