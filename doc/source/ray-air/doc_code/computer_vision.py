@@ -289,6 +289,8 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     from ray.air import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
+    # The following transform operation is lazy.
+    # It will be re-run every epoch.
     dataset = per_epoch_preprocessor.transform(dataset)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop_per_worker,
