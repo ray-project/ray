@@ -36,6 +36,8 @@ do
 
     pip install -U ray=="${RAY_VERSION}"
     pip install -U ray[default]=="${RAY_VERSION}"
+    # pydantic 2.0 brings breaking changes. Today, we force users to downgrade.
+    pip install "pydantic<2"
 
     printf "\n\n\n"
     echo "========================================================="
