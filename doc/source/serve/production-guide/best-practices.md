@@ -4,7 +4,7 @@
 
 This section helps you:
 
-* Understand best practice when operating Serve in production
+* Understand best practices when operating Serve in production
 * Learn more about managing Serve with the Serve CLI
 * Configure your HTTP requests when querying Serve
 
