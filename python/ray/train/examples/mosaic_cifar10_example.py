@@ -117,6 +117,8 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    runtime_env = {"pip": ["mosaicml==0.15.0", "composer==0.15.0"]}
+    runtime_env = {
+        "pip": ["mosaicml==0.15.0", "composer==0.15.0", "torchvision==0.14.1"]
+    }
     ray.init(address=args.address, runtime_env=runtime_env)
     train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)
