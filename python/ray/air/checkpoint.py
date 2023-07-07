@@ -324,14 +324,14 @@ class Checkpoint:
         return None
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "ray.air.checkpoint.Checkpoint":
+    def from_bytes(cls, data: bytes) -> "Checkpoint":
         """Create a checkpoint from the given byte string.
 
         Args:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -353,14 +353,14 @@ class Checkpoint:
         return pickle.dumps(data_dict)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "ray.air.checkpoint.Checkpoint":
+    def from_dict(cls, data: dict) -> "Checkpoint":
         """Create checkpoint object from dictionary.
 
         Args:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -446,7 +446,7 @@ class Checkpoint:
         return checkpoint_data
 
     @classmethod
-    def from_directory(cls, path: Union[str, os.PathLike]) -> "ray.air.checkpoint.Checkpoint":
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
@@ -455,7 +455,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -473,7 +473,7 @@ class Checkpoint:
 
     @classmethod
     @DeveloperAPI
-    def from_checkpoint(cls, other: "ray.air.checkpoint.Checkpoint") -> "ray.air.checkpoint.Checkpoint":
+    def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
         """Create a checkpoint from a generic :class:`ray.air.checkpoint.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
@@ -715,7 +715,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         try:
