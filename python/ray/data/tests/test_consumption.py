@@ -241,6 +241,22 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan.execute()._num_computed() == 0
 
 
+def test_schema_cached(ray_start_regular_shared):
+    def check_schema_cached(ds):
+        schema = ds.schema()
+        assert schema.names == ["a"]
+        cached_schema = ds.schema(fetch_if_missing=False)
+        assert cached_schema is not None
+        assert schema == cached_schema
+
+    ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
+    check_schema_cached(ds)
+
+    # Add a map_batches stage so that we are forced to compute the schema.
+    ds = ds.map_batches(lambda x: x)
+    check_schema_cached(ds)
+
+
 def test_columns(ray_start_regular_shared):
     ds = ray.data.range(1)
     assert ds.columns() == ds.schema().names
