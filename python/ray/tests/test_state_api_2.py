@@ -1,8 +1,12 @@
 import asyncio
 import json
 import os
+import sys
+from pathlib import Path
+import tempfile
 
 from collections import defaultdict
+from ray._private.test_utils import check_call_subprocess
 
 import ray
 import requests
@@ -277,7 +281,7 @@ def test_experimental_import_deprecation():
         from ray.experimental.state.util import convert_string_to_type  # noqa: F401
 
 
-def test_actor_task_with_repr_name():
+def test_actor_task_with_repr_name(ray_start_with_dashboard):
     @ray.remote
     class ReprActor:
         def __init__(self, x) -> None:
@@ -336,6 +340,40 @@ def test_actor_task_with_repr_name():
         return True
 
     wait_for_condition(verify)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Release test not expected to work on non-linux."
+)
+def test_state_api_scale_smoke(shutdown_only):
+    ray.init()
+    release_test_file_path = (
+        "../../release/nightly_tests/stress_tests/test_state_api_scale.py"
+    )
+    full_path = Path(ray.__file__).parents[0] / release_test_file_path
+    assert full_path.exists()
+
+    check_call_subprocess(["python", str(full_path), "--smoke-test"])
+
+
+def test_ray_timeline(shutdown_only):
+    ray.init(num_cpus=8)
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get(f.remote())
+
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        filename = os.path.join(tmpdirname, "timeline.json")
+        ray.timeline(filename)
+
+        with open(filename, "r") as f:
+            dumped = json.load(f)
+        # TODO(swang): Check actual content. It doesn't seem to match the
+        # return value of chrome_tracing_dump in above tests?
+        assert len(dumped) > 0
 
 
 if __name__ == "__main__":

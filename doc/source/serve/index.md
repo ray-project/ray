@@ -38,15 +38,7 @@ Define a simple "hello world" application, run it locally, and query it over HTT
 :language: python
 ```
 
-::::{tab-set} 
-
-:::{tab-item} More examples
-
-For more examples, select from the tabs.
-
-:::
-
-::::
+## More examples
 
 ::::{tab-set}
 
@@ -265,22 +257,6 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
             :expand:
         
             Learn Key Concepts
-    
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-        
-        **User Guides**
-        ^^^
-        Learn best practices for common patterns like :ref:`scaling and resource allocation <serve-scaling-and-resource-allocation>` and :ref:`model composition <serve-model-composition>`.
-        Learn how to :ref:`develop Serve applications locally <serve-dev-workflow>` and :ref:`go to production <serve-in-production>`.
-        
-        +++
-        .. button-ref:: serve-user-guides
-            :color: primary
-            :outline:
-            :expand:
-        
-            Start Using Ray Serve
         
     .. grid-item-card::
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
@@ -314,21 +290,6 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         
             Read the API Reference
         
-    .. grid-item-card::
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-            
-        **Serve Architecture**
-        ^^^
-        
-        Understand how each component in Ray Serve works.
-        
-        +++
-        .. button-ref:: serve-architecture
-            :color: primary
-            :outline:
-            :expand:
-        
-            Understand Serve Architecture
 ```
 
 For more, see the following blog posts about Ray Serve:

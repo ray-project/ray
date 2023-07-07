@@ -21,9 +21,8 @@ load("@bazel_skylib//lib:versions.bzl", "versions")
 # TODO (shrekris-anyscale): Update the min version to 4.2.2 once Windows uses
 # it in CI.
 
-# When the bazel version is updated, make sure to update it
-# in setup.py as well.
-versions.check(minimum_bazel_version = "5.4.0")
+# Please keep this in sync with the .bazeliskrc file.
+versions.check(minimum_bazel_version = "5.4.1")
 
 # Tools to generate `compile_commands.json` to enable awesome tooling of the C language family.
 # Just run `bazel run @hedron_compile_commands//:refresh_all`

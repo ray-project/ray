@@ -1,7 +1,7 @@
 (serve-gradio-dag-visualization)=
 # Visualizing a Deployment Graph with Gradio
 
-You can visualize the [deployment graph](serve-model-composition-deployment-graph) you built with [Gradio](https://gradio.app/). This integration allows you to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
+You can visualize the [deployment graph](serve-deployment-graphs) you built with [Gradio](https://gradio.app/). This integration allows you to interactively run your deployment graph through the Gradio UI and see the intermediate outputs of each node in real time as they finish evaluation.
 
 To access this feature, you need to install Gradio. 
 :::{note} 

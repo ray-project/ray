@@ -47,6 +47,7 @@ from ray.serve._private.utils import (
     install_serve_encoders_to_fastapi,
     guarded_deprecation_warning,
     record_serve_tag,
+    get_random_letters,
     extract_self_if_method_call,
 )
 
@@ -467,12 +468,6 @@ def run(
             "deployment like: `app = Deployment.bind(my_dag_output)`. "
         raise TypeError(msg)
 
-    # when name provided, keep all existing applications
-    # otherwise, delete all of them.
-    remove_past_deployments = True
-    if name:
-        remove_past_deployments = False
-
     parameter_group = []
 
     for deployment in deployments:
@@ -491,7 +486,7 @@ def run(
             "init_kwargs": deployment.init_kwargs,
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
-            "version": deployment._version,
+            "version": deployment._version or get_random_letters(),
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
@@ -502,10 +497,13 @@ def run(
         name,
         parameter_group,
         _blocking=_blocking,
-        remove_past_deployments=remove_past_deployments,
     )
 
     if ingress is not None:
+        # The deployment state is not guaranteed to be created after
+        # deploy_application returns; the application state manager will
+        # need another reconcile iteration to create it.
+        client._wait_for_deployment_created(ingress.name)
         return ingress._get_handle()
 
 

@@ -70,7 +70,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         the initialization is done, and before actually training starts.
 
         Args:
-            algorithm: Reference to the trainer instance.
+            algorithm: Reference to the Algorithm instance.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -382,14 +382,6 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """
         pass
 
-    @Deprecated(
-        old="on_trainer_init(trainer, **kwargs)",
-        new="on_algorithm_init(algorithm, **kwargs)",
-        error=True,
-    )
-    def on_trainer_init(self, *args, **kwargs):
-        raise DeprecationWarning
-
 
 class MemoryTrackingCallbacks(DefaultCallbacks):
     """MemoryTrackingCallbacks can be used to trace and track memory usage
@@ -668,8 +660,6 @@ def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
         def on_train_result(self, *, algorithm=None, result: dict, **kwargs) -> None:
 
             for callback in self._callback_list:
-                # TODO: Remove `trainer` arg at some point to fully deprecate the old
-                #  term.
                 callback.on_train_result(algorithm=algorithm, result=result, **kwargs)
 
     return _MultiCallbacks
@@ -735,9 +725,8 @@ class RE3UpdateCallbacks(DefaultCallbacks):
     @override(DefaultCallbacks)
     def on_train_result(self, *, result: dict, algorithm=None, **kwargs) -> None:
         # TODO(gjoliver): Remove explicit _step tracking and pass
-        # trainer._iteration as a parameter to on_learn_on_batch() call.
+        #  Algorithm._iteration as a parameter to on_learn_on_batch() call.
         RE3UpdateCallbacks._step = result["training_iteration"]
-        # TODO: Remove `trainer` arg at some point to fully deprecate the old term.
         super().on_train_result(algorithm=algorithm, result=result, **kwargs)
 
 

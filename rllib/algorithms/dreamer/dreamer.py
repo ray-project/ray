@@ -239,7 +239,7 @@ class DreamerConfig(AlgorithmConfig):
                 f"Received {self.dreamer_train_iters} instead."
             )
         if self.env_config.get("frame_skip", 0) > 1:
-            self.horizon /= self.env_config["frame_skip"]
+            self.imagine_horizon //= self.env_config["frame_skip"]
 
 
 def _postprocess_gif(gif: np.ndarray):

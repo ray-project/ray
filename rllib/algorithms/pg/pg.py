@@ -104,9 +104,9 @@ class PGConfig(AlgorithmConfig):
 
 
 class PG(Algorithm):
-    """Policy Gradient (PG) Trainer.
+    """Policy Gradient (PG) Algorithm.
 
-    Defines the distributed Trainer class for policy gradients.
+    Defines the distributed Algorithm class for policy gradients.
     See `pg_[tf|torch]_policy.py` for the definition of the policy losses for
     TensorFlow and PyTorch.
 

@@ -167,7 +167,7 @@ async def get_driver_jobs(
         if not job_submission_id:
             driver = DriverInfo(
                 id=job_id,
-                node_ip_address=job_table_entry.driver_ip_address,
+                node_ip_address=job_table_entry.driver_address.ip_address,
                 pid=job_table_entry.driver_pid,
             )
             job = JobDetails(
@@ -189,7 +189,7 @@ async def get_driver_jobs(
         else:
             driver = DriverInfo(
                 id=job_id,
-                node_ip_address=job_table_entry.driver_ip_address,
+                node_ip_address=job_table_entry.driver_address.ip_address,
                 pid=job_table_entry.driver_pid,
             )
             submission_job_drivers[job_submission_id] = driver

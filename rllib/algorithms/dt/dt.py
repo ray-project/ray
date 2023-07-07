@@ -81,7 +81,7 @@ class DTConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
-        # Overwriting the trainer config default
+        # Overwriting the Algorithm config default
         # Number of training_step calls between evaluation rollouts.
         self.min_train_timesteps_per_iteration = 5000
 

@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 import numpy as np
 
-import ray
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
@@ -36,13 +35,7 @@ class NumpyDatasource(FileBasedDatasource):
         data = f.readall()
         buf.write(data)
         buf.seek(0)
-        ctx = ray.data.DataContext.get_current()
-        if ctx.strict_mode:
-            return BlockAccessor.batch_to_block(
-                {"data": np.load(buf, allow_pickle=True)}
-            )
-        else:
-            return BlockAccessor.batch_to_block(np.load(buf, allow_pickle=True))
+        return BlockAccessor.batch_to_block({"data": np.load(buf, allow_pickle=True)})
 
     def _convert_block_to_tabular_block(
         self, block: Block, column_name: Optional[str] = None

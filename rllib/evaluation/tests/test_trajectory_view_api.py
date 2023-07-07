@@ -129,7 +129,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             view_req_policy = policy.view_requirements
             # 7=obs, prev-a + r, 2x state-in, 2x state-out.
             assert len(view_req_model) == 7, view_req_model
-            assert len(view_req_policy) == 22, (len(view_req_policy), view_req_policy)
+            assert len(view_req_policy) == 23, (len(view_req_policy), view_req_policy)
             for key in [
                 SampleBatch.OBS,
                 SampleBatch.ACTIONS,

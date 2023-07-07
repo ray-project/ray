@@ -285,7 +285,19 @@ class RLModule(abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        # Make sure, `setup()` is only called once, no matter what. In some cases
+        # of multiple inheritance (and with our __post_init__ functionality in place,
+        # this might get called twice.
+        if hasattr(self, "_is_setup") and self._is_setup:
+            raise RuntimeError(
+                "`RLModule.setup()` called twice within your RLModule implementation "
+                f"{self}! Make sure you are using the proper inheritance order "
+                "(TorchRLModule before [Algo]RLModule) or (TfRLModule before "
+                "[Algo]RLModule) and that you are using `super().__init__(...)` in "
+                "your custom constructor."
+            )
         self.setup()
+        self._is_setup = True
 
     def __init_subclass__(cls, **kwargs):
         # Automatically add a __post_init__ method to all subclasses of RLModule.

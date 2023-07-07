@@ -2,7 +2,7 @@
 Decentralized Distributed PPO (DD-PPO)
 ======================================
 
-Unlike APPO or PPO, learning is no longer done centralized in the trainer
+Unlike APPO or PPO, learning is no longer done centralized in the Algorithm
 process. Instead, gradients are computed remotely on each rollout worker and
 all-reduced to sync them at each mini-batch. This allows each worker's GPU
 to be used both for sampling and for training.
@@ -147,7 +147,7 @@ class DDPPOConfig(PPOConfig):
         Args:
             keep_local_weights_in_sync: Download weights between each training step.
                 This adds a bit of overhead but allows the user to access the weights
-                from the trainer.
+                from the Algorithm.
             torch_distributed_backend: The communication backend for PyTorch
                 distributed.
 

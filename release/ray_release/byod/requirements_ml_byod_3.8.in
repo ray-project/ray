@@ -1,0 +1,27 @@
+# Python requirements to run release tests from anyscale byod (gpu type)
+ale-py
+boto3
+cmake
+crc32c
+cupy-cuda113
+fastapi
+filelock
+gcsfs
+gsutil
+gym
+gymnasium[atari,mujoco]
+mujoco-py
+modin
+numpy
+petastorm
+pyarrow
+pytest
+tblib
+tensorboardX
+torch 
+torchvision
+tqdm
+urllib3
+uvicorn
+validators
+xgboost

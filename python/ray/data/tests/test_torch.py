@@ -318,8 +318,10 @@ def test_torch_trainer_crash(ray_start_10_cpus_shared):
     def train_loop_per_worker():
         it = session.get_dataset_shard("train")
         for i in range(2):
+            count = 0
             for batch in it.iter_batches():
-                pass
+                count += len(batch["data"])
+            assert count == 50
 
     my_trainer = TorchTrainer(
         train_loop_per_worker,

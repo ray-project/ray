@@ -830,6 +830,10 @@ pyasn1-modules==0.3.0 \
     # via
     #   google-auth
     #   oauth2client
+pybuildkite==1.2.2 \
+    --hash=sha256:338ff4edd3e32e8f32480fe92d3bedd485052ed0c4bb09ddaa10dc1a9eed8006 \
+    --hash=sha256:9079f2d2ec6f429dd3b66f4e3cee26a364b408af25c92cee9516abad6938219a
+    # via -r release/requirements_buildkite.in
 pycparser==2.21 \
     --hash=sha256:8ee45429555515e1f6b185e78100aea234072576aa43ab53aefcae078162fca9 \
     --hash=sha256:e644fdec12f7872f86c58ff790da456218b10f863970249516d60a5eaca77206
@@ -993,6 +997,7 @@ requests==2.31.0 \
     #   anyscale
     #   google-api-core
     #   google-cloud-storage
+    #   pybuildkite
     #   pygithub
 retry==0.9.2 \
     --hash=sha256:ccddf89761fa2c726ab29391837d4327f819ea14d244c232a1d24c67a2f98606 \

@@ -94,7 +94,7 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type n1-standard-8
 
 # Install NVIDIA GPU device driver
-kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded.yaml
+kubectl apply -f https://raw.githubusercontent.com/GoogleCloudPlatform/container-engine-accelerators/master/nvidia-driver-installer/cos/daemonset-preloaded-latest.yaml
 ```
 
 ## Step 2: Deploy a Ray cluster on Kubernetes with the KubeRay operator.

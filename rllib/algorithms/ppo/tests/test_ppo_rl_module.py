@@ -50,7 +50,7 @@ def get_expected_module_config(
 def dummy_torch_ppo_loss(module, batch, fwd_out):
     """Dummy PPO loss function for testing purposes.
 
-    Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
+    Will eventually use the actual PPO loss function implemented in PPO.
 
     Args:
         batch: SampleBatch used for training.
@@ -78,7 +78,7 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
 def dummy_tf_ppo_loss(module, batch, fwd_out):
     """Dummy PPO loss function for testing purposes.
 
-    Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
+    Will eventually use the actual PPO loss function implemented in PPO.
 
     Args:
         module: PPOTfRLModule

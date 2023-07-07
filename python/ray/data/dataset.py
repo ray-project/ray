@@ -1,4 +1,5 @@
 import collections
+import copy
 import html
 import itertools
 import logging
@@ -27,7 +28,6 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BlockFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.block_list import BlockList
@@ -40,6 +40,7 @@ from ray.data._internal.compute import (
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.legacy_compat import _block_list_to_bundles
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -50,14 +51,17 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Sort,
 )
 from ray.data._internal.logical.operators.input_data_operator import InputData
-from ray.data._internal.logical.operators.limit_operator import Limit
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
     MapBatches,
     MapRows,
 )
+from ray.data._internal.logical.operators.n_ary_operator import (
+    Union as UnionLogicalOperator,
+)
 from ray.data._internal.logical.operators.n_ary_operator import Zip
+from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockSchema
@@ -87,14 +91,12 @@ from ray.data._internal.util import (
 )
 from ray.data.aggregate import AggregateFn, Max, Mean, Min, Std, Sum
 from ray.data.block import (
-    STRICT_MODE_EXPLANATION,
     VALID_BATCH_FORMATS,
     Block,
     BlockAccessor,
     BlockMetadata,
     BlockPartition,
     DataBatch,
-    StrictModeError,
     T,
     U,
     UserDefinedFunction,
@@ -241,11 +243,8 @@ class Dataset:
         The constructor is not part of the Dataset API. Use the ``ray.data.*``
         read methods to construct a dataset.
         """
-        assert isinstance(plan, ExecutionPlan)
+        assert isinstance(plan, ExecutionPlan), type(plan)
         usage_lib.record_library_usage("dataset")  # Legacy telemetry name.
-
-        if ray.util.log_once("strict_mode_explanation"):
-            logger.warning(STRICT_MODE_EXPLANATION)
 
         self._plan = plan
         self._uuid = uuid4().hex
@@ -347,7 +346,6 @@ class Dataset:
                 flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_map_rows_fn()
 
@@ -399,8 +397,7 @@ class Dataset:
         This applies the ``fn`` in parallel with map tasks, with each task handling
         a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
 
-        To learn more about writing functions for :meth:`~Dataset.map_batches`, read
-        :ref:`writing user-defined functions <transform_datasets_writing_udfs>`.
+        To learn more, see the :ref:`Transforming batches user guide <transforming_batches>`.
 
         .. tip::
             If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
@@ -437,7 +434,7 @@ class Dataset:
 
             Here ``fn`` returns the same batch type as the input, but your ``fn`` can
             also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`Transforming Data <transforming_data>`.
+            :ref:`Transforming batches <transforming_batches>`.
 
             >>> from typing import Dict
             >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -483,7 +480,7 @@ class Dataset:
             >>> ds = ds.map_batches(map_fn_with_large_output)
             >>> ds
             MapBatches(map_fn_with_large_output)
-            +- Dataset(num_blocks=1, num_rows=1, schema={item: int64})
+            +- Dataset(num_blocks=..., num_rows=1, schema={item: int64})
 
 
         Args:
@@ -756,7 +753,7 @@ class Dataset:
             >>> ds
             MapBatches(<lambda>)
             +- Dataset(
-                  num_blocks=10,
+                  num_blocks=...,
                   num_rows=10,
                   schema={col1: int64, col2: int64, col3: int64}
                )
@@ -833,7 +830,6 @@ class Dataset:
                 :meth:`~Dataset.map_batches` instead.
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_flat_map_fn()
 
@@ -891,7 +887,6 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
         validate_compute(fn, compute)
-        self._warn_slow()
 
         transform_fn = generate_filter_fn()
 
@@ -959,6 +954,11 @@ class Dataset:
     ) -> "Dataset":
         """Randomly shuffle the elements of this dataset.
 
+        .. tip::
+
+            ``random_shuffle`` can be slow. For better performance, try
+            `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
@@ -981,7 +981,7 @@ class Dataset:
 
         Returns:
             The shuffled dataset.
-        """
+        """  # noqa: E501
 
         plan = self._plan.with_stage(
             RandomShuffleStage(seed, num_blocks, ray_remote_args)
@@ -1224,20 +1224,29 @@ class Dataset:
         if locality_hints is None:
             blocks = np.array_split(block_refs, n)
             meta = np.array_split(metadata, n)
-            return [
-                MaterializedDataset(
-                    ExecutionPlan(
-                        BlockList(
-                            b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
-                        ),
-                        stats,
-                        run_by_consumer=owned_by_consumer,
-                    ),
-                    self._epoch,
-                    self._lazy,
+
+            split_datasets = []
+            for b, m in zip(blocks, meta):
+                block_list = BlockList(
+                    b.tolist(), m.tolist(), owned_by_consumer=owned_by_consumer
                 )
-                for b, m in zip(blocks, meta)
-            ]
+                logical_plan = self._plan._logical_plan
+                if logical_plan is not None:
+                    ref_bundles = _block_list_to_bundles(block_list, owned_by_consumer)
+                    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                split_datasets.append(
+                    MaterializedDataset(
+                        ExecutionPlan(
+                            block_list,
+                            stats,
+                            run_by_consumer=owned_by_consumer,
+                        ),
+                        self._epoch,
+                        self._lazy,
+                        logical_plan,
+                    )
+                )
+            return split_datasets
 
         metadata_mapping = {b: m for b, m in zip(block_refs, metadata)}
 
@@ -1346,18 +1355,25 @@ class Dataset:
             # equalize the splits
             per_split_block_lists = _equalize(per_split_block_lists, owned_by_consumer)
 
-        return [
-            MaterializedDataset(
-                ExecutionPlan(
-                    block_split,
-                    stats,
-                    run_by_consumer=owned_by_consumer,
-                ),
-                self._epoch,
-                self._lazy,
+        split_datasets = []
+        for block_split in per_split_block_lists:
+            logical_plan = self._plan._logical_plan
+            if logical_plan is not None:
+                ref_bundles = _block_list_to_bundles(block_split, owned_by_consumer)
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            split_datasets.append(
+                MaterializedDataset(
+                    ExecutionPlan(
+                        block_split,
+                        stats,
+                        run_by_consumer=owned_by_consumer,
+                    ),
+                    self._epoch,
+                    self._lazy,
+                    logical_plan,
+                )
             )
-            for block_split in per_split_block_lists
-        ]
+        return split_datasets
 
     @ConsumptionAPI
     def split_at_indices(self, indices: List[int]) -> List["MaterializedDataset"]:
@@ -1404,20 +1420,31 @@ class Dataset:
         split_duration = time.perf_counter() - start_time
         parent_stats = self._plan.stats()
         splits = []
+
         for bs, ms in zip(blocks, metadata):
             stats = DatasetStats(stages={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
+
+            split_block_list = BlockList(
+                bs, ms, owned_by_consumer=block_list._owned_by_consumer
+            )
+            logical_plan = self._plan._logical_plan
+            if logical_plan is not None:
+                ref_bundles = _block_list_to_bundles(
+                    split_block_list, block_list._owned_by_consumer
+                )
+                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+
             splits.append(
                 MaterializedDataset(
                     ExecutionPlan(
-                        BlockList(
-                            bs, ms, owned_by_consumer=block_list._owned_by_consumer
-                        ),
+                        split_block_list,
                         stats,
                         run_by_consumer=block_list._owned_by_consumer,
                     ),
                     self._epoch,
                     self._lazy,
+                    logical_plan,
                 )
             )
         return splits
@@ -1583,14 +1610,25 @@ class Dataset:
         if has_nonlazy:
             blocks = []
             metadata = []
-            for bl in bls:
+            ops_to_union = []
+            for idx, bl in enumerate(bls):
                 if isinstance(bl, LazyBlockList):
                     bs, ms = bl._get_blocks_with_metadata()
                 else:
+                    assert isinstance(bl, BlockList), type(bl)
                     bs, ms = bl._blocks, bl._metadata
+                op_logical_plan = getattr(datasets[idx]._plan, "_logical_plan", None)
+                if isinstance(op_logical_plan, LogicalPlan):
+                    ops_to_union.append(op_logical_plan.dag)
+                else:
+                    ops_to_union.append(None)
                 blocks.extend(bs)
                 metadata.extend(ms)
             blocklist = BlockList(blocks, metadata, owned_by_consumer=owned_by_consumer)
+
+            logical_plan = None
+            if all(ops_to_union):
+                logical_plan = LogicalPlan(UnionLogicalOperator(*ops_to_union))
         else:
             tasks: List[ReadTask] = []
             block_partition_refs: List[ObjectRef[BlockPartition]] = []
@@ -1618,6 +1656,16 @@ class Dataset:
                 owned_by_consumer=owned_by_consumer,
             )
 
+            logical_plan = self._logical_plan
+            logical_plans = [
+                getattr(union_ds, "_logical_plan", None) for union_ds in datasets
+            ]
+            if all(logical_plans):
+                op = UnionLogicalOperator(
+                    *[plan.dag for plan in logical_plans],
+                )
+                logical_plan = LogicalPlan(op)
+
         epochs = [ds._get_epoch() for ds in datasets]
         max_epoch = max(*epochs)
         if len(set(epochs)) > 1:
@@ -1637,6 +1685,7 @@ class Dataset:
             ExecutionPlan(blocklist, stats, run_by_consumer=owned_by_consumer),
             max_epoch,
             self._lazy,
+            logical_plan,
         )
 
     def groupby(self, key: Optional[str]) -> "GroupedData":
@@ -1649,7 +1698,7 @@ class Dataset:
             ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
             ...     "A").count()
             Aggregate
-            +- Dataset(num_blocks=100, num_rows=100, schema={A: int64, B: int64})
+            +- Dataset(num_blocks=..., num_rows=100, schema={A: int64, B: int64})
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1667,6 +1716,47 @@ class Dataset:
             _validate_key_fn(self.schema(fetch_if_missing=True), key)
 
         return GroupedData(self, key)
+
+    def unique(self, column: str) -> List[Any]:
+        """List of unique elements in the given column.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.from_items([1, 2, 3, 2, 3])
+            >>> ds.unique("item")
+            [1, 2, 3]
+
+            This function is very useful for computing labels
+            in a machine learning dataset:
+
+            >>> import ray
+            >>> ds = ray.data.read_csv("example://iris.csv")
+            >>> ds.unique("variety")
+            ['Setosa', 'Versicolor', 'Virginica']
+
+            One common use case is to convert the class labels
+            into integers for training and inference:
+
+            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> def preprocessor(df, classes):
+            ...     df["variety"] = df["variety"].map(classes)
+            ...     return df
+            >>> train_ds = ds.map_batches(
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
+            [{'sepal.length': 4.3, ..., 'variety': 0}]
+
+        Time complexity: O(dataset size * log(dataset size / parallelism))
+
+        Args:
+            column: The column to collect unique elements over.
+
+        Returns:
+            A list with unique elements in the given column.
+        """
+        ds = self.groupby(column).count().select_columns([column])
+        return [item[column] for item in ds.take_all()]
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
@@ -2175,15 +2265,22 @@ class Dataset:
             The ``ray.data.Schema`` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        ctx = DataContext.get_current()
-        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
-        if ctx.strict_mode:
-            if base_schema:
-                return Schema(base_schema)
-            else:
-                return None
+
+        # First check if the schema is already known from materialized blocks.
+        base_schema = self._plan.schema(fetch_if_missing=False)
+        if base_schema is not None:
+            return Schema(base_schema)
+        if not fetch_if_missing:
+            return None
+
+        # Lazily execute only the first block to minimize computation.
+        # We achieve this by appending a Limit[1] operation to a copy
+        # of this Dataset, which we then execute to get its schema.
+        base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
+        if base_schema:
+            return Schema(base_schema)
         else:
-            return base_schema
+            return None
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -2632,13 +2729,11 @@ class Dataset:
                 write each dataset block to a custom output path.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
         """
-        context = DataContext.get_current()
-        if context.strict_mode and not column:
-            raise StrictModeError(
+        if column is None:
+            raise ValueError(
                 "In Ray 2.5, the column must be specified "
                 "(e.g., `write_numpy(column='data')`)."
             )
-        column = column or TENSOR_COLUMN_NAME
 
         self.write_datasource(
             NumpyDatasource(),
@@ -3244,7 +3339,7 @@ class Dataset:
             >>> ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
             >>> ds
             Dataset(
-               num_blocks=1,
+               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -3275,7 +3370,7 @@ class Dataset:
             >>> ds
             Concatenator
             +- Dataset(
-                  num_blocks=1,
+                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,
@@ -3988,12 +4083,20 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-
-        # Create a new logical plan whose input is the existing data
-        # from the the old Dataset.
-        copy._logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
-
-        return copy
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        output = MaterializedDataset(
+            ExecutionPlan(
+                blocks,
+                copy._plan.stats(),
+                run_by_consumer=False,
+            ),
+            copy._epoch,
+            copy._lazy,
+            logical_plan,
+        )
+        output._plan.execute()  # No-op that marks the plan as fully executed.
+        output._plan._in_stats.dataset_uuid = self._get_uuid()
+        return output
 
     @ConsumptionAPI(pattern="timing information.", insert_after=True)
     def stats(self) -> str:
@@ -4096,7 +4199,8 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy(preserve_uuid=True)
-        ds = Dataset(plan_copy, self._get_epoch(), self._lazy)
+        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        ds = Dataset(plan_copy, self._get_epoch(), self._lazy, logical_plan_copy)
         ds._plan.clear_block_refs()
         ds._set_uuid(self._get_uuid())
 
@@ -4165,58 +4269,11 @@ class Dataset:
 
     @Deprecated(message="The batch format is no longer exposed as a public API.")
     def default_batch_format(self) -> Type:
-        context = DataContext.get_current()
-        if context.strict_mode:
-            raise StrictModeError("default_batch_format() is not allowed in Ray 2.5")
-
-        import pandas as pd
-        import pyarrow as pa
-
-        schema = self.schema()
-        assert isinstance(schema, (type, PandasBlockSchema, pa.Schema))
-
-        if isinstance(schema, type):
-            return list
-
-        if isinstance(schema, (PandasBlockSchema, pa.Schema)):
-            if schema.names == [TENSOR_COLUMN_NAME]:
-                return np.ndarray
-            return pd.DataFrame
+        raise ValueError("default_batch_format() is not allowed in Ray 2.5")
 
     @Deprecated(message="The dataset format is no longer exposed as a public API.")
     def dataset_format(self) -> BlockFormat:
-        context = DataContext.get_current()
-        if context.strict_mode:
-            raise StrictModeError("dataset_format() is not allowed in Ray 2.5")
-
-        if context.use_streaming_executor:
-            raise DeprecationWarning(
-                "`dataset_format` is deprecated for streaming execution. To use "
-                "`dataset_format`, you must explicitly enable bulk execution by "
-                "setting `use_streaming_executor` to False in the `DataContext`"
-            )
-
-        # We need schema to properly validate, so synchronously
-        # fetch it if necessary.
-        schema = self.schema(fetch_if_missing=True)
-        if schema is None:
-            raise ValueError(
-                "Dataset is empty or cleared, can't determine the format of "
-                "the dataset."
-            )
-
-        try:
-            import pyarrow as pa
-
-            if isinstance(schema, pa.Schema):
-                return BlockFormat.ARROW
-        except ModuleNotFoundError:
-            pass
-        from ray.data._internal.pandas_block import PandasBlockSchema
-
-        if isinstance(schema, PandasBlockSchema):
-            return BlockFormat.PANDAS
-        return BlockFormat.SIMPLE
+        raise ValueError("dataset_format() is not allowed in Ray 2.5")
 
     def _aggregate_on(
         self, agg_cls: type, on: Optional[Union[str, List[str]]], *args, **kwargs
@@ -4395,14 +4452,6 @@ class Dataset:
 
     def _set_epoch(self, epoch: int) -> None:
         self._epoch = epoch
-
-    def _warn_slow(self):
-        if ray.util.log_once("dataset_slow_warned"):
-            logger.warning(
-                "The `map`, `flat_map`, and `filter` operations are unvectorized and "
-                "can be very slow. If you're using a vectorized transformation, "
-                "consider using `.map_batches()` instead."
-            )
 
     def _synchronize_progress_bar(self):
         """Flush progress bar output by shutting down the current executor.

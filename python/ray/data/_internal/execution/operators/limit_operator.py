@@ -4,13 +4,16 @@ from typing import Deque, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.operators.base_physical_operator import (
+    OneToOneOperator,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
 
 
-class LimitOperator(PhysicalOperator):
+class LimitOperator(OneToOneOperator):
     """Physical operator for limit."""
 
     def __init__(
@@ -21,12 +24,12 @@ class LimitOperator(PhysicalOperator):
         self._limit = limit
         self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
-        self._name = f"Limit[limit={limit}]"
+        self._name = f"limit={limit}"
         self._output_metadata: List[BlockMetadata] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, [input_op])
+        super().__init__(self._name, input_op)
         if self._limit <= 0:
-            self.inputs_done()
+            self.all_inputs_done()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
@@ -76,7 +79,7 @@ class LimitOperator(PhysicalOperator):
         )
         self._buffer.append(out_refs)
         if self._limit_reached():
-            self.inputs_done()
+            self.all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0

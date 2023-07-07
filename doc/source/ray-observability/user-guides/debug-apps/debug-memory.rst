@@ -167,7 +167,7 @@ Each task uses about 18GB / 15 == 1.2 GB. To reduce the parallelism:
 .. _troubleshooting-out-of-memory-profile:
 
 Profiling Task and Actor memory usage
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 It is also possible tasks and actors use more memory than you expect. For example, actors or tasks can have a memory leak or have unnecessary copies.
 
@@ -177,7 +177,7 @@ View the instructions below to learn how to memory profile individual actors and
 .. _memray-profiling:
 
 Memory Profiling Ray tasks and actors
--------------------
+--------------------------------------
 
 To memory profile Ray tasks or actors, use `memray <https://bloomberg.github.io/memray/>`_.
 Note that you can also use other memory profiling tools if it supports a similar API.

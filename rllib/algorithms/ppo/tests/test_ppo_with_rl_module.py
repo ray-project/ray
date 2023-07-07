@@ -113,9 +113,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
@@ -168,9 +166,7 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        for _ in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
-        ):
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             # Default Agent should be setup with StochasticSampling.
             algo = config.build()
             # explore=False, always expect the same (deterministic) action.

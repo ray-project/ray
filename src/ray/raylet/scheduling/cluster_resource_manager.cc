@@ -292,4 +292,15 @@ BundleLocationIndex &ClusterResourceManager::GetBundleLocationIndex() {
   return bundle_location_index_;
 }
 
+void ClusterResourceManager::SetNodeLabels(
+    const scheduling::NodeID &node_id,
+    const absl::flat_hash_map<std::string, std::string> &labels) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    NodeResources node_resources;
+    it = nodes_.emplace(node_id, node_resources).first;
+  }
+  it->second.GetMutableLocalView()->labels = labels;
+}
+
 }  // namespace ray

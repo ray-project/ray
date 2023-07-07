@@ -55,8 +55,8 @@ class SimpleQConfig(AlgorithmConfig):
         >>>         "capacity":  40000,
         >>>     }
         >>> )
-        >>> config.training(replay_buffer_config=replay_config)\
-        ...       .resources(num_gpus=1)\
+        >>> config.training(replay_buffer_config=replay_config)
+        ...       .resources(num_gpus=1)
         ...       .rollouts(num_rollout_workers=3)
 
     Example:
@@ -82,8 +82,8 @@ class SimpleQConfig(AlgorithmConfig):
         >>>         "final_epsilon": 0.01,
         >>>         "epsilon_timesteps": 5000,
         >>>     })
-        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)\
-        >>>                         .exploration(exploration_config=explore_config)\
+        >>> config = SimpleQConfig().rollouts(rollout_fragment_length=32)
+        >>>                         .exploration(exploration_config=explore_config)
 
     Example:
         >>> from ray.rllib.algorithms.simple_q import SimpleQConfig

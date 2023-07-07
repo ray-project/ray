@@ -1,7 +1,7 @@
 .. _observability-getting-started:
 
-Getting Started
-===============
+Ray Dashboard
+=============
 
 Ray provides a web-based dashboard for monitoring and debugging Ray applications.
 The visual representation of the system state, allows users to track the performance
@@ -15,7 +15,7 @@ of applications and troubleshoot issues.
 
 
 Set up Dashboard
-------
+------------------
 
 To access the dashboard, use `ray[default]`, `ray[air]`, or :ref:`other installation commands <installation>` that include the Ray Dashboard component. For example:
 
