@@ -115,7 +115,7 @@ This pattern is useful for prototyping, but it isn't sufficient for production. 
 
 * Retries: Requests may occasionally fail due to transient issues (e.g., slow network, node failure, power outage, spike in traffic, etc.). Retry failed requests a handful of times to account for these issues.
 * Exponential backoff: To avoid bombarding the Serve application with retries during a transient error, apply an exponential backoff on failure. Each retry should wait exponentially longer than the previous one before running. For example, the first retry may happen 0.1s after a failure, and subsequent retries happen 0.4s (4 x 0.1), 1.6s, 6.4s, 25.6s, etc. after the failure.
-* Timeouts: add a timeout to each retry to prevent your requests from hanging. The timeout should be longer than the your application's latency to give your application enough time to process requests. Additionally, we recommend setting an [end-to-end timeout](serve-performance-e2e-timeout) in the Serve application, so slow requests don't bottleneck replicas.
+* Timeouts: Add a timeout to each retry to prevent requests from hanging. The timeout should be longer than the application's latency to give your application enough time to process requests. Additionally, set an [end-to-end timeout](serve-performance-e2e-timeout) in the Serve application, so slow requests don't bottleneck replicas.
 
 ```{literalinclude} ../doc_code/requests_best_practices.py
 :start-after: __production_code_start__
