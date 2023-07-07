@@ -96,7 +96,7 @@ _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "https://docs.ray.io/en/master/tune/tutorials/tune-storage.html\n\n"
     "Other notes:\n"
     "- See here for a thread explaining why this functionality is "
-    "being removed: <LINK>\n"
+    "being removed: https://github.com/ray-project/ray/issues/37177\n"
     # TODO(justinvyu): put in the link to the REP/issue
     "- To re-enable the head node syncing behavior, set the "
     f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
