@@ -210,16 +210,6 @@ def py_object_store_get_and_check(table):
     for column_name in table.column_names:
         column1 = table[column_name]
         column2 = expected_table[column_name]
-
-        indices = pa.compute.equal(column1, column2).to_pylist()
-        differing_rows = [i for i, index in enumerate(indices) if not index]
-
-        if differing_rows:
-            print(f"Differences in column '{column_name}':")
-            for row in differing_rows:
-                value1 = column1[row].as_py()
-                value2 = column2[row].as_py()
-                print(f"Row {row}: {value1} != {value2}")
-            raise RuntimeError("Check failed, two tables are not equal!")
+        assert(column1.equals(column2))
 
     return table
