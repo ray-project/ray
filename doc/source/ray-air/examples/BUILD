@@ -15,6 +15,7 @@ filegroup(
 py_test_run_all_subdirectory(
     size = "medium",
     include = ["*.py"],
+    exclude = [],
     extra_srcs = [],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
