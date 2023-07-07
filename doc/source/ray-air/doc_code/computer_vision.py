@@ -187,7 +187,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
     from ray import train
     from ray.air import session
-    from ray.air.config import  ScalingConfig
+    from ray.air.config import ScalingConfig
     from ray.train.torch import TorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
