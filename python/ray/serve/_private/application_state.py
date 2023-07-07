@@ -177,8 +177,19 @@ class ApplicationState:
 
     def delete(self):
         """Delete the application"""
-        logger.info(f"Deleting application '{self._name}'")
+        logger.info(
+            f"Deleting application '{self._name}'",
+            extra={"log_to_stderr": False},
+        )
         self._set_target_state(deleting=True)
+
+    def is_deleted(self) -> bool:
+        """Check whether the application is already deleted.
+
+        For an application to be considered deleted, the target state has to be set to
+        deleting and all deployments have to be deleted.
+        """
+        return self._target_state.deleting and len(self._get_live_deployments()) == 0
 
     def apply_deployment_info(
         self, deployment_name: str, deployment_info: DeploymentInfo
@@ -412,7 +423,7 @@ class ApplicationState:
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
-            return len(self._get_live_deployments()) == 0
+            return self.is_deleted()
         return False
 
     def get_checkpoint_data(self) -> ApplicationTargetState:
@@ -638,6 +649,16 @@ class ApplicationStateManager:
     def shutdown(self) -> None:
         for app_state in self._application_states.values():
             app_state.delete()
+
+    def is_ready_for_shutdown(self) -> bool:
+        """Return whether all applications have shut down.
+
+        Iterate through all application states and check if all their applications
+        are deleted.
+        """
+        return all(
+            app_state.is_deleted() for app_state in self._application_states.values()
+        )
 
     def _save_checkpoint_func(
         self, *, writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]]

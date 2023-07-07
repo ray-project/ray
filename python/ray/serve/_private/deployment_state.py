@@ -1279,7 +1279,10 @@ class DeploymentState:
         self._curr_status_info = DeploymentStatusInfo(
             self._name, DeploymentStatus.UPDATING
         )
-        logger.info(f"Deleting deployment {self._name}.")
+        logger.info(
+            f"Deleting deployment {self._name}.",
+            extra={"log_to_stderr": False},
+        )
 
     def _set_target_state(self, target_info: DeploymentInfo) -> None:
         """Set the target state for the deployment to the provided info."""
@@ -2283,6 +2286,16 @@ class DeploymentStateManager:
 
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
+
+    def is_ready_for_shutdown(self) -> bool:
+        """Return whether all deployments are shutdown.
+
+        Check there are no deployment states and no checkpoints.
+        """
+        return (
+            len(self._deployment_states) == 0
+            and self._kv_store.get(CHECKPOINT_KEY) is None
+        )
 
     def _save_checkpoint_func(
         self, *, writeahead_checkpoints: Optional[Dict[str, Tuple]]
