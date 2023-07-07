@@ -543,9 +543,8 @@ cdef class ArrowSerializedObject(SerializedObject):
         object value
         int64_t _total_bytes
 
-    import pyarrow as pa
-
     def __init__(self, value):
+        import pyarrow as pa
         super(ArrowSerializedObject,
               self).__init__(ray_constants.OBJECT_METADATA_TYPE_ARROW)
         self.value = value
@@ -563,6 +562,7 @@ cdef class ArrowSerializedObject(SerializedObject):
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
         with gil:
+            import pyarrow as pa
             sink = pa.FixedSizeBufferWriter(pa.py_buffer(buffer))
             writer = pa.ipc.new_stream(sink, self.value.schema)
             writer.write(self.value)
