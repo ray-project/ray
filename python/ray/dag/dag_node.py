@@ -323,9 +323,11 @@ class DAGNode(DAGNodeBase):
         return instance
 
     def __getstate__(self):
+        """Required due to overriding `__getattr__` else pickling fails."""
         return self.__dict__
 
     def __setstate__(self, d: Dict[str, Any]):
+        """Required due to overriding `__getattr__` else pickling fails."""
         self.__dict__.update(d)
 
     def __getattr__(self, attr: str):
