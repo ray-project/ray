@@ -11,7 +11,6 @@ import warnings
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import _join_path_or_uri
 
-from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
