@@ -46,6 +46,11 @@ def ray_start_2_cpus():
     ray.shutdown()
 
 
+@pytest.fixture(autouse=True)
+def enable_legacy_head_node_syncing(monkeypatch):
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "1")
+
+
 @pytest.fixture
 def temp_data_dirs():
     tmp_source = os.path.realpath(tempfile.mkdtemp())
@@ -617,7 +622,8 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
 
 
 # TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
-def test_head_node_syncing_disabled_warning(propagate_logs, caplog):
+def test_head_node_syncing_disabled_warning(propagate_logs, caplog, monkeypatch):
+    monkeypatch.delenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, raising=False)
     syncer_callback = SyncerCallback(sync_period=0)
     remote_trial_a = MockTrial(trial_id="a", logdir=None, runner_ip="remote")
     remote_trial_b = MockTrial(trial_id="b", logdir=None, runner_ip="remote")
