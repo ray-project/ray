@@ -91,17 +91,15 @@ _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
     "(2) A network filesystem mounted on all nodes: "
     "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
-    "See here for a full guide on how to configure these "
-    "persistent storage options: "
-    "https://docs.ray.io/en/master/tune/tutorials/tune-storage.html\n\n"
-    "Other notes:\n"
-    "- See here for a thread explaining why this functionality is "
-    "being removed: https://github.com/ray-project/ray/issues/37177\n"
-    # TODO(justinvyu): put in the link to the REP/issue
-    "- To re-enable the head node syncing behavior, set the "
+    "See this Github issue for more details on transitioning to cloud storage/NFS "
+    "as well as an explanation on why this functionality is "
+    "being removed: https://github.com/ray-project/ray/issues/37177\n\n"
+    "Other temporary workarounds:\n"
+    "- If you want to avoid errors/warnings and continue running with "
+    "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
+    "- Or, to re-enable the head node syncing behavior, set the "
     f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
-    "  - **Note that this functionality will be fully removed in "
-    "Ray 2.7.**"
+    "  - **Note that this functionality will be fully removed in Ray 2.7.**"
 )
 
 
