@@ -322,13 +322,11 @@ class DAGNode(DAGNodeBase):
         instance._stable_uuid = self._stable_uuid
         return instance
 
-    def __reduce__(self):
-        """We disallow serialization to prevent inadvertent closure-capture.
+    def __getstate__(self):
+        return self.__dict__
 
-        Use ``.to_json()`` and ``.from_json()`` to convert DAGNodes to a
-        serializable form.
-        """
-        raise ValueError(f"DAGNode cannot be serialized. DAGNode: {str(self)}")
+    def __setstate__(self, d: Dict[str, Any]):
+        self.__dict__.update(d)
 
     def __getattr__(self, attr: str):
         if attr == "bind":
