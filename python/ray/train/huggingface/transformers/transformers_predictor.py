@@ -281,8 +281,6 @@ class TransformersPredictor(Predictor):
         feature_columns: Optional[List[str]] = None,
         **pipeline_call_kwargs,
     ) -> "pd.DataFrame":
-        if feature_columns:
-            data = data[feature_columns]
 
         data = data[feature_columns] if feature_columns else data
 

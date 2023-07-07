@@ -131,7 +131,7 @@ def _s3_fs(aws_credentials, s3_server, s3_path):
         if "@" in s3_path:
             s3_path = s3_path.split("@")[-1]
         else:
-            s3_path = s3_path[len("s3://") :]
+            s3_path = s3_path[len("s3://"):]
     s3_path = urllib.parse.quote(s3_path)
     fs.create_dir(s3_path)
     yield fs

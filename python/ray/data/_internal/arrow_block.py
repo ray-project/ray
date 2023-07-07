@@ -114,7 +114,9 @@ class ArrowBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
-            if isinstance(next(iter(col), None), np.ndarray):
+            if isinstance(
+                next(iter(col), None), np.ndarray
+            ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
                 columns[col_name] = ArrowTensorArray.from_numpy(col)
@@ -176,7 +178,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return pa.Table.from_pydict(new_batch)
 
     @staticmethod
-    def _build_tensor_row(row: ArrowRow, col_name: str) -> np.ndarray:
+    def _build_tensor_row(
+        row: ArrowRow, col_name: str
+    ) -> np.ndarray:
         from pkg_resources._vendor.packaging.version import parse as parse_version
 
         element = row[col_name][0]

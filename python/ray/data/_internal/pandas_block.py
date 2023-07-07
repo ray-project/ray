@@ -89,7 +89,9 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
-            if isinstance(next(iter(value), None), np.ndarray):
+            if isinstance(
+                next(iter(value), None), np.ndarray
+            ):
                 from ray.data.extensions.tensor_extension import TensorArray
 
                 columns[key] = TensorArray(value)

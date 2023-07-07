@@ -5,7 +5,6 @@ import warnings
 import numpy as np
 
 from ray.air.data_batch_type import DataBatchType
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -64,9 +63,7 @@ def _convert_batch_type_to_pandas(
     """
     pd = _lazy_import_pandas()
 
-    if isinstance(data, np.ndarray):
-        data = pd.DataFrame({TENSOR_COLUMN_NAME: _ndarray_to_column(data)})
-    elif isinstance(data, dict):
+    if isinstance(data, dict):
         tensor_dict = {}
         for col_name, col in data.items():
             if not isinstance(col, np.ndarray):
