@@ -1,7 +1,6 @@
 import time
 from typing import Any, List, Optional
 import tempfile
-import sys
 
 from fastapi import (
     Cookie,
@@ -31,7 +30,6 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
 from ray.exceptions import GetTimeoutError
 from ray.serve.exceptions import RayServeException
-from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.http_util import make_fastapi_class_based_view
 from ray.serve._private.utils import DEFAULT
@@ -661,10 +659,6 @@ def test_fastapi_same_app_multiple_deployments(serve_instance):
         assert requests.get("http://localhost:8000" + path).status_code == 404, path
 
 
-@pytest.mark.skipif(
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and sys.platform == "win32",
-    reason="https://github.com/ray-project/ray/issues/35775",
-)
 def test_fastapi_custom_serializers(serve_instance):
     app = FastAPI()
 
