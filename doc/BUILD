@@ -314,7 +314,8 @@ doctest(
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
-            "source/workflows/*.rst"
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
         ]
     ),
     size = "large",
@@ -325,7 +326,10 @@ doctest(
 doctest(
     name="doctest[workflow]",
     files = glob(
-        include=["source/workflows/*.rst"]
+        include=[
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
+        ]
     ),
     tags = ["team:core"]
 )

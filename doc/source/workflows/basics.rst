@@ -21,7 +21,7 @@ taken on it:
 
     temp_dir = tempfile.TemporaryDirectory()
 
-    ray.init(storage=f"file://{temp_dir.name}")
+    ray.init(num_gpus=1, storage=f"file://{temp_dir.name}")
 
 .. testcode::
 
@@ -485,10 +485,9 @@ Setting custom resources for tasks
 You can assign resources (e.g., CPUs, GPUs to tasks via the same ``num_cpus``, ``num_gpus``, and ``resources`` arguments that Ray tasks take):
 
 .. testcode::
-    :skipif: True
 
-    @ray.remote(num_gpus=1)
-    def train_model() -> Model:
+    @ray.remote
+    def train_model():
         pass  # This task is assigned to a GPU by Ray.
 
-    workflow.run(train_model.bind())
+    workflow.run(train_model.options(num_gpus=1).bind())

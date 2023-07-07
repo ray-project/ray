@@ -129,16 +129,13 @@ After the workflow finishes checkpointing the event, the event listener will be 
 
 
 .. testcode::
-    :skipif: True
 
     KafkaEventType = ...
 
     class QueueEventListener:
-
         def __init__(self):
             # Initialize the poll consumer.
             self.consumer = Consumer({'enable.auto.commit': False})
-
 
         async def poll_for_event(self, topic) -> KafkaEventType:
             self.consumer.subscribe(topic)
@@ -147,7 +144,7 @@ After the workflow finishes checkpointing the event, the event listener will be 
             return message
 
         async def event_checkpointed(self, event: KafkaEventType) -> None:
-             self.consuemr.commit(event, asynchronous=False)
+             self.consumer.commit(event, asynchronous=False)
 
 
 (Advanced) Event listener semantics
