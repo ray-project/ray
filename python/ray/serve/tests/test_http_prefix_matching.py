@@ -6,8 +6,18 @@ from ray.serve._private.http_proxy import LongestPrefixRouter
 
 @pytest.fixture
 def mock_longest_prefix_router() -> LongestPrefixRouter:
+    class MockHandle:
+        def __init__(self, name: str):
+            self._name = name
+
+        def options(self, *args, **kwargs):
+            return self
+
+        def __eq__(self, other_name: str):
+            return self._name == other_name
+
     def mock_get_handle(name, *args, **kwargs):
-        return name
+        return MockHandle(name)
 
     yield LongestPrefixRouter(mock_get_handle)
 
