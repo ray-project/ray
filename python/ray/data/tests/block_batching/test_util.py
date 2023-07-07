@@ -13,6 +13,7 @@ from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
     blocks_to_batches,
     collate,
+    finalize_batches,
     format_batches,
     make_async_gen,
     resolve_block_refs,
@@ -89,6 +90,21 @@ def test_collate():
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = collate(batches, collate_fn=collate_fn)
+
+    for i, batch in enumerate(batch_iter):
+        assert batch.batch_idx == i
+        assert batch.data == pa.table({"bar": [1] * 2})
+
+
+def test_finalize():
+    def finalize_fn(batch):
+        return pa.table({"bar": [1] * 2})
+
+    batches = [
+        Batch(i, data)
+        for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
+    ]
+    batch_iter = finalize_batches(batches, finalize_fn=finalize_fn)
 
     for i, batch in enumerate(batch_iter):
         assert batch.batch_idx == i
