@@ -114,8 +114,6 @@ class ApplicationState:
                 called in self._set_target_state() before actually
                 setting the target state so that the controller can
                 properly recover application states if it crashes.
-            build_app_obj_ref: Task ObjRef of building application.
-            deployment_time: Deployment timestamp.
         """
 
         self._name = name
