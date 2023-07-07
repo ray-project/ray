@@ -46,18 +46,6 @@ class Partitioning:
         ...     "example://iris.csv",
         ...     partitioning=Partitioning("hive"),
         ... )
-        >>> ds
-        Dataset(
-           num_blocks=8,
-           num_rows=150,
-           schema={
-              sepal.length: double,
-              sepal.width: double,
-              petal.length: double,
-              petal.width: double,
-              variety: string
-           }
-        )
 
     Instead, if your files are arranged in a directory structure such as:
 
