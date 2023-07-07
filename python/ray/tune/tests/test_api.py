@@ -17,6 +17,7 @@ import ray
 from ray import tune
 from ray.air import CheckpointConfig, ScalingConfig
 from ray.air._internal.remote_storage import _ensure_directory
+from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.tune import (
     register_env,
@@ -39,9 +40,7 @@ from ray.tune.result import (
     NODE_IP,
     PID,
     EPISODES_TOTAL,
-    TRAINING_ITERATION,
     TIMESTEPS_THIS_ITER,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
     TRIAL_ID,
     EXPERIMENT_TAG,

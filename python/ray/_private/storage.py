@@ -36,10 +36,10 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
     Examples:
         # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> fs, path = storage.get_filesystem()
-        >>> print(fs)
+        >>> fs, path = storage.get_filesystem()  # doctest: +SKIP
+        >>> print(fs)  # doctest: +SKIP
         <pyarrow._fs.LocalFileSystem object at 0x7fd745dd9830>
-        >>> print(path)
+        >>> print(path)  # doctest: +SKIP
         cluster_1/storage
 
     Returns:
@@ -64,8 +64,8 @@ def get_client(prefix: str) -> "KVClient":
 
     Examples:
         # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> client = storage.get_client("foo")
-        >>> client.put("foo", b"bar")
+        >>> client = storage.get_client("foo")  # doctest: +SKIP
+        >>> client.put("foo", b"bar")  # doctest: +SKIP
 
     Returns:
         KVClient.
@@ -108,8 +108,8 @@ class KVClient:
 
         Examples:
             # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.put("path/foo.txt", b"bar")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.put("path/foo.txt", b"bar")  # doctest: +SKIP
 
         Args:
             path: Relative directory of the blobs.
@@ -131,10 +131,10 @@ class KVClient:
 
         Examples:
             # Loads value from <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.get("path/foo.txt")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.get("path/foo.txt")  # doctest: +SKIP
             b"bar"
-            >>> client.get("invalid")
+            >>> client.get("invalid")  # doctest: +SKIP
             None
 
         Args:
@@ -159,8 +159,8 @@ class KVClient:
 
         Examples:
             # Deletes blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.delete("path/foo.txt")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.delete("path/foo.txt")  # doctest: +SKIP
             True
 
         Args:
@@ -185,8 +185,8 @@ class KVClient:
 
         Examples:
             # Deletes dir at <storage_prefix>/my_app/path/
-            >>> client = storage.get_client("my_app")
-            >>> client.delete_dir("path")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.delete_dir("path")  # doctest: +SKIP
             True
 
         Args:
@@ -211,12 +211,12 @@ class KVClient:
 
         Examples:
             # Inspect blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.get_info("path/foo.txt")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.get_info("path/foo.txt")  # doctest: +SKIP
             <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File>
 
             # Non-existent blob.
-            >>> client.get_info("path/does_not_exist.txt")
+            >>> client.get_info("path/does_not_exist.txt")  # doctest: +SKIP
             None
             <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
 
@@ -242,17 +242,17 @@ class KVClient:
 
         Examples:
             # List created blobs and dirs at <storage_prefix>/my_app/path
-            >>> client = storage.get_client("my_app")
-            >>> client.list("path")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.list("path")  # doctest: +SKIP
             [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
              <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
 
             # Non-existent path.
-            >>> client.get_info("does_not_exist")
+            >>> client.get_info("does_not_exist")  # doctest: +SKIP
             FileNotFoundError: ...
 
             # Not a directory.
-            >>> storage.get_info("path/foo.txt")
+            >>> storage.get_info("path/foo.txt")  # doctest: +SKIP
             NotADirectoryError: ...
 
         Args:

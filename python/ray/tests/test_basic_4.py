@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def test_actor_scheduling(shutdown_only):
-    ray.init()
+    ray.init(num_cpus=1)
 
     @ray.remote
     class A:
@@ -32,7 +32,7 @@ def test_actor_scheduling(shutdown_only):
 
     a = A.remote()
     a.run_fail.remote()
-    with pytest.raises(Exception):
+    with pytest.raises(ray.exceptions.RayActorError, match="exit_actor"):
         ray.get([a.get.remote()])
 
 

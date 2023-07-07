@@ -84,8 +84,6 @@ MOCK_MODULES = [
     "kubernetes",
     "mlflow",
     "modin",
-    "mxnet",
-    "mxnet.model",
     "optuna",
     "optuna.distributions",
     "optuna.samplers",
@@ -286,16 +284,15 @@ def build_gallery(app):
         source = yaml.safe_load((Path(app.srcdir) / gallery).read_text())
 
         meta = source["meta"]
-        is_titled = True if meta.get("section-titles") else False
-        meta.pop("section-titles")
+        grid = meta.pop("grid")
         projects = source["projects"]
-        buttons = source["buttons"]
+        classes = source["classes"]
 
         for item in projects:
-            ref = ":type: url"
+            ref = "button-link"
             website = item["website"]
             if "://" not in website:  # if it has no http/s protocol, it's a "ref"
-                ref = ref.replace("url", "ref")
+                ref = ref.replace("link", "ref")
 
             if not item.get("image"):
                 item["image"] = "https://docs.ray.io/_images/ray_logo.png"
@@ -308,40 +305,37 @@ def build_gallery(app):
                         gh_stars = (
                             f".. image:: https://img.shields.io/github/"
                             f"stars/{org}/{repo}?style=social)]\n"
-                            f"\t\t:target: {item['repo']}"
+                            f"\t\t\t:target: {item['repo']}"
                         )
                 except Exception:
                     pass
 
             item = f"""
-        ---
+    .. grid-item-card::
         :img-top: {item["image"]}
+        :class-img-top: {classes["class-img-top"]}
 
         {gh_stars}
 
         {item["description"]}
 
         +++
-        .. link-button:: {item["website"]}
-            {ref}
-            :text: {item["name"]}
-            :classes: {buttons["classes"]}
+        .. {ref}:: {item["website"]}
+            :color: primary
+            :outline:
+            :expand:
+
+            {item["name"]}
             """
+
             panel_items.append(item)
 
-        panel_header = ".. panels::\n"
+        panel_header = f".. grid:: {grid}\n"
         for k, v in meta.items():
-            panel_header += f"\t:{k}: {v}\n"
+            panel_header += f"    :{k}: {v}\n"
 
-        if is_titled:
-            panels = ""
-            for item, panel in zip(projects, panel_items):
-                title = item["section_title"]
-                underline_title = "-" * len(title)
-                panels += f"{title}\n{underline_title}\n\n{panel_header}{panel}\n\n"
-        else:
-            panel_items = "\n".join(panel_items)
-            panels = panel_header + panel_items
+        panel_items = "\n".join(panel_items)
+        panels = panel_header + panel_items
 
         gallery_out = gallery.replace(".yml", ".txt")
         (Path(app.srcdir) / gallery_out).write_text(panels)

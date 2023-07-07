@@ -10,6 +10,7 @@ from numpy import nan
 import ray
 from ray import tune
 from ray.air._internal.remote_storage import upload_to_uri
+from ray.air.config import CheckpointConfig
 from ray.tune import ExperimentAnalysis
 import ray.tune.registry
 from ray.tune.tests.utils.experiment import create_test_experiment_checkpoint
@@ -44,7 +45,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             name=self.test_name,
             storage_path=self.test_dir,
             stop={"training_iteration": 1},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             num_samples=self.num_samples,
             config={
                 "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
@@ -201,7 +202,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             name=self.test_name,
             storage_path=self.test_dir,
             stop={"training_iteration": 2},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             config={
                 "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
                 "height": tune.sample_from(lambda spec: int(100 * random.random())),
@@ -220,7 +221,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             storage_path=self.test_dir,
             restore=last_checkpoint,
             stop={"training_iteration": 3},
-            checkpoint_freq=1,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             config={
                 "width": tune.sample_from(lambda spec: 10 + int(90 * random.random())),
                 "height": tune.sample_from(lambda spec: int(100 * random.random())),
@@ -258,7 +259,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 1},
             num_samples=1,
             config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_at_end=True,
+            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
         )
         logdir = analysis.get_best_logdir(self.metric, mode="max")
         checkpoints_metrics = analysis.get_trial_checkpoints_paths(logdir)
@@ -274,7 +275,7 @@ class ExperimentAnalysisSuite(unittest.TestCase):
             stop={"training_iteration": 2},
             num_samples=1,
             config={"test": tune.grid_search([[1, 2], [3, 4]])},
-            checkpoint_at_end=True,
+            checkpoint_config=CheckpointConfig(checkpoint_at_end=True),
         )
         logdir = analysis.get_best_logdir(self.metric, mode="max")
 

@@ -1,16 +1,16 @@
-import pytest
 from typing import List
 from unittest import mock
 
 import pyarrow as pa
+import pytest
 
-from ray.data.block import Block
 from ray.data._internal.block_batching.block_batching import (
     BlockPrefetcher,
+    _prefetch_blocks,
     batch_block_refs,
     batch_blocks,
-    _prefetch_blocks,
 )
+from ray.data.block import Block
 
 
 def block_generator(num_rows: int, num_blocks: int):

@@ -100,7 +100,7 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
         scaling_config=scale_config,
         label_column="target",
         params=params,
-        num_boost_round=5,
+        num_boost_round=10,
         datasets={TRAIN_DATASET_KEY: train_dataset, "valid": valid_dataset},
         resume_from_checkpoint=resume_from,
     )
@@ -161,7 +161,7 @@ def test_preprocessor_in_checkpoint(ray_start_6_cpus, tmpdir):
             super().__init__()
             self.is_same = True
 
-        def fit(self, dataset):
+        def _fit(self, dataset):
             self.fitted_ = True
 
         def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":

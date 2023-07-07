@@ -1,11 +1,12 @@
-# extracted from aioboto3
-#    https://github.com/terrycain/aioboto3/blob/16a1a1085191ebe6d40ee45d9588b2173738af0c/tests/mock_server.py
-import pytest
-import requests
 import shutil
 import signal
 import subprocess as sp
 import time
+
+# extracted from aioboto3
+#    https://github.com/terrycain/aioboto3/blob/16a1a1085191ebe6d40ee45d9588b2173738af0c/tests/mock_server.py
+import pytest
+import requests
 
 _proxy_bypass = {
     "http": None,
@@ -67,7 +68,7 @@ def stop_process(process):
 # being unreachable). This appears to only be an issue when using the tmp_dir
 # fixture as the S3 dir path. We should fix this since "session" scope should
 # reduce a lot of the per-test overhead (2x faster execution for IO methods in
-# test_datastream.py).
+# test_dataset.py).
 @pytest.fixture(scope="function")
 def s3_server():
     host = "localhost"

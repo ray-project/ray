@@ -54,7 +54,7 @@ def train_loop_per_worker(config):
     epochs = config["num_epochs"]
     num_features = config["num_features"]
 
-    # Get the Datastream shard for this data parallel worker,
+    # Get the Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
     train_data = session.get_dataset_shard("train")
     # Create model.
@@ -98,8 +98,8 @@ trainer = TorchTrainer(
     preprocessor=preprocessor,
 )
 # Execute training.
-result = trainer.fit()
-print(f"Last result: {result.metrics}")
+best_result = trainer.fit()
+print(f"Last result: {best_result.metrics}")
 # Last result: {'loss': 0.6559339960416158, ...}
 # __air_pytorch_train_end__
 

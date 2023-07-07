@@ -101,9 +101,9 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             >>> print(len(foo_dict))  # 3
             >>> # Iterating:
             >>> foo_dict.keys()  # dict_keys(['a', ('b', 'c'), ('b', 'd')])
-            >>> foo_dict.items() # dict_items([('a', 100), (('b', 'c'), 200), (('b',
-            'd'), 300)])
+            >>> foo_dict.items() # dict_items([('a', 100), (('b', 'c'), 200), (('b', 'd'), 300)])
             >>> foo_dict.shallow_keys()  # dict_keys(['a', 'b'])
+
         Filter:
             >>> dict1 = NestedDict([
                 (('foo', 'a'), 10), (('foo', 'b'), 11),
@@ -116,7 +116,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
             >>> dict1.filter(dict2).asdict()   # {'foo': {'a': 10}}
             >>> dict1.filter(dict4).asdict()   # {'bar': {'c': 11}, 'foo': {'a': 10}}
             >>> dict1.filter(dict3).asdict()   # KeyError - ('bar', 'd') not in dict1
-    """
+    """  # noqa: E501
 
     def __init__(
         self,
@@ -124,7 +124,7 @@ class NestedDict(Generic[T], MutableMapping[str, Union[T, "NestedDict"]]):
     ):
         # shallow dict
         self._data = dict()  # type: Dict[str, Union[T, NestedDict[T]]]
-        x = x or {}
+        x = x if x is not None else {}
         if isinstance(x, NestedDict):
             self._data = x._data
         elif isinstance(x, abc.Mapping):

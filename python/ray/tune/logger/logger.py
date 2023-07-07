@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Dict, Iterable, List, Optional, Set, Type
 import yaml
 from ray.air._internal.json import SafeFallbackEncoder
 from ray.tune.callback import Callback
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401
@@ -18,7 +18,17 @@ logger = logging.getLogger(__name__)
 # Apply flow style for sequences of this length
 _SEQUENCE_LEN_FLOW_STYLE = 3
 
+_LOGGER_DEPRECATION_WARNING = (
+    "The `{old} interface is deprecated in favor of the "
+    "`{new}` interface and will be removed in Ray 2.7."
+)
 
+
+@Deprecated(
+    message=_LOGGER_DEPRECATION_WARNING.format(
+        old="Logger", new="ray.tune.logger.LoggerCallback"
+    ),
+)
 @DeveloperAPI
 class Logger(abc.ABC):
     """Logging interface for ray.tune.

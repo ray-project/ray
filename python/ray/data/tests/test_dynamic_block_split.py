@@ -10,8 +10,7 @@ from ray.data._internal.lazy_block_list import LazyBlockList
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.csv_datasource import CSVDatasource
-from ray.data.datasource.datasource import ReadTask, Reader
-
+from ray.data.datasource.datasource import Reader, ReadTask
 from ray.tests.conftest import *  # noqa
 
 

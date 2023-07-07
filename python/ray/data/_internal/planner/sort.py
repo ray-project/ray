@@ -6,11 +6,11 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
-    PushBasedShuffleTaskScheduler,
-)
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
+)
+from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
+    PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKeyT, SortTaskSpec
 from ray.data._internal.stats import StatsDict
@@ -62,7 +62,7 @@ def generate_sort_fn(
         else:
             scheduler = PullBasedShuffleTaskScheduler(sort_spec)
 
-        return scheduler.execute(refs, num_outputs)
+        return scheduler.execute(refs, num_outputs, ctx)
 
     # NOTE: use partial function to pass parameters to avoid error like
     # "UnboundLocalError: local variable ... referenced before assignment",

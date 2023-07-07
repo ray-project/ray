@@ -1,8 +1,8 @@
 import pytest
 
 import ray
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
-from ray.data.tests.util import extract_values, column_udf
 
 NUM_REPEATS = 10
 NUM_TASKS = 10

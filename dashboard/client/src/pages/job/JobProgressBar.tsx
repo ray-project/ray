@@ -15,7 +15,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 type JobProgressBarProps = {
-  jobId: string;
+  jobId: string | undefined;
   job: Pick<UnifiedJob, "status">;
 } & Pick<AdvancedProgressBarProps, "onClickLink">;
 

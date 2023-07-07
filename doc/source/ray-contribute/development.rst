@@ -19,21 +19,23 @@ Clone the repository
 
 To build Ray locally you will need to have the Git repository, so first, fork it on GitHub. Then you can clone it to your machine:
 
-.. tab-item:: Git SSH
+.. tab-set::
 
-    To clone the repository using Git with SSH (the default) run:
+    .. tab-item:: Git SSH
 
-    .. code-block:: shell
+        To clone the repository using Git with SSH (the default) run:
 
-        git clone git@github.com:[your username]/ray.git
+        .. code-block:: shell
 
-.. tab-item:: Git HTTPS
+            git clone git@github.com:[your username]/ray.git
 
-    To clone the repository using Git with HTTPS run:
+    .. tab-item:: Git HTTPS
 
-    .. code-block:: shell
+        To clone the repository using Git with HTTPS run:
 
-        git clone https://github.com/[your username]/ray.git
+        .. code-block:: shell
+
+            git clone https://github.com/[your username]/ray.git
 
 Then you can enter into the Ray git repository directory:
 
@@ -73,7 +75,7 @@ Every time you want to update your local version you can pull the changes from t
 Prepare the Python environment
 ------------------------------
 
-You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``. 
+You probably want some type of Python virtual environment. For example, you can use Anaconda's ``conda``.
 
 .. tab-set::
 
@@ -341,9 +343,9 @@ You can tweak the build with the following environment variables (when running `
   python packages
 - ``RAY_DEBUG_BUILD``: Can be set to ``debug``, ``asan``, or ``tsan``. Any
   other value will be ignored
-- ``BAZEL_LIMIT_CPUS``: If set, it must be an integers. This will be fed to the
-  ``--local_cpu_resources`` argument for the call to Bazel, which will limit the
-  number of CPUs used during Bazel steps.
+- ``BAZEL_ARGS``: If set, pass a space-separated set of arguments to Bazel. This can be useful
+  for restricting resource usage during builds, for example. See https://bazel.build/docs/user-manual
+  for more information about valid arguments.
 - ``IS_AUTOMATED_BUILD``: Used in CI to tweak the build for the CI machines
 - ``SRC_DIR``: Can be set to the root of the source checkout, defaults to
   ``None`` which is ``cwd()``
@@ -358,13 +360,13 @@ Dependencies for the linter (``scripts/format.sh``) can be installed with:
 
 .. code-block:: shell
 
- pip install -r python/requirements_linters.txt
+ pip install -r python/requirements/lint-requirements.txt
 
 Dependencies for running Ray unit tests under ``python/ray/tests`` can be installed with:
 
 .. code-block:: shell
 
- pip install -c python/requirements.txt -r python/requirements_test.txt
+ pip install -c python/requirements.txt -r python/requirements/test-requirements.txt
 
 Requirement files for running Ray Data / ML library tests are under ``python/requirements/``.
 
@@ -380,7 +382,7 @@ run the following (via ``-c`` ``fastbuild``/``dbg``/``opt``, respectively):
  bazel build -c fastbuild //:ray_pkg
 
 This will rebuild Ray with the appropriate options (which may take a while).
-If you need to build all targets, you can use ``"//:*"`` instead of
+If you need to build all targets, you can use ``"//:all"`` instead of
 ``//:ray_pkg``.
 
 To make this change permanent, you can add an option such as the following

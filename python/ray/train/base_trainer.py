@@ -17,6 +17,7 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal import usage as air_usage
+from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
 from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
@@ -27,16 +28,16 @@ from ray.util.annotations import DeveloperAPI
 from ray._private.dict import merge_dicts
 
 if TYPE_CHECKING:
-    from ray.data import Datastream
+    from ray.data import Dataset
     from ray.data.preprocessor import Preprocessor
 
     from ray.tune import Trainable
 
 _TRAINER_PKL = "trainer.pkl"
 
-# A type representing either a ray.data.Datastream or a function that returns a
-# ray.data.Datastream and accepts no arguments.
-GenDataset = Union["Datastream", Callable[[], "Datastream"]]
+# A type representing either a ray.data.Dataset or a function that returns a
+# ray.data.Dataset and accepts no arguments.
+GenDataset = Union["Dataset", Callable[[], "Dataset"]]
 
 
 logger = logging.getLogger(__name__)
@@ -82,9 +83,8 @@ class BaseTrainer(abc.ABC):
       called in sequence on the remote actor.
     - ``trainer.setup()``: Any heavyweight Trainer setup should be
       specified here.
-    - ``trainer.preprocess_datasets()``: The provided
-      ray.data.Datastream are preprocessed with the provided
-      ray.data.Preprocessor.
+    - ``trainer.preprocess_datasets()``: The datasets passed to the Trainer will be
+      setup here.
     - ``trainer.train_loop()``: Executes the main training logic.
     - Calling ``trainer.fit()`` will return a ``ray.result.Result``
       object where you can access metrics from your training run, as well
@@ -95,7 +95,7 @@ class BaseTrainer(abc.ABC):
     Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
-    .. code-block:: python
+    .. testcode::
 
         import torch
 
@@ -113,7 +113,6 @@ class BaseTrainer(abc.ABC):
             def training_loop(self):
                 # You can access any Trainer attributes directly in this method.
                 # self.datasets["train"] has already been
-                # preprocessed by self.preprocessor
                 dataset = self.datasets["train"]
 
                 torch_ds = dataset.iter_torch_batches(dtypes=torch.float)
@@ -122,8 +121,12 @@ class BaseTrainer(abc.ABC):
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
+                    torch_ds = dataset.iter_torch_batches(
+                        dtypes=torch.float, batch_size=2
+                    )
                     for batch in torch_ds:
-                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
+                        X = torch.unsqueeze(batch["x"], 1)
+                        y = torch.unsqueeze(batch["y"], 1)
                         # Compute prediction error
                         pred = self.model(X)
                         batch_loss = loss_fn(pred, y)
@@ -141,28 +144,24 @@ class BaseTrainer(abc.ABC):
                     # results.
                     session.report({"loss": loss, "epoch": epoch_idx})
 
-    **How do I use an existing Trainer or one of my custom Trainers?**
 
-    Initialize the Trainer, and call Trainer.fit()
-
-    .. code-block:: python
-
+        # Initialize the Trainer, and call Trainer.fit()
         import ray
         train_dataset = ray.data.from_items(
-            [{"x": i, "y": i} for i in range(3)])
+            [{"x": i, "y": i} for i in range(10)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
 
+    .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datastreams to use for training. Use the key "train"
-            to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
-        preprocessor: A preprocessor to preprocess the provided datasets.
+        datasets: Any Datasets to use for training. Use the key "train"
+            to denote which dataset is the training dataset.
         resume_from_checkpoint: A checkpoint to resume training from.
     """
 
@@ -183,8 +182,9 @@ class BaseTrainer(abc.ABC):
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
-        preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
+        # Deprecated.
+        preprocessor: Optional["Preprocessor"] = None,
     ):
         self.scaling_config = (
             scaling_config if scaling_config is not None else ScalingConfig()
@@ -200,6 +200,14 @@ class BaseTrainer(abc.ABC):
         self._validate_attributes()
 
         air_usage.tag_air_trainer(self)
+
+        if preprocessor:
+            logger.warning(
+                "The `preprocessor` arg to Trainer is deprecated. Apply "
+                "preprocessor transformations ahead of time by calling "
+                "`preprocessor.transform(ds)`. Support for the preprocessor "
+                "arg will be dropped in a future release."
+            )
 
     @PublicAPI(stability="alpha")
     @classmethod
@@ -221,9 +229,10 @@ class BaseTrainer(abc.ABC):
         :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
         attempt to resume on both experiment-level and trial-level failures:
 
-        .. code-block:: python
+        .. testcode::
 
             import os
+            import ray
             from ray import air
             from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
@@ -259,6 +268,11 @@ class BaseTrainer(abc.ABC):
                 )
 
             result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
 
         Args:
             path: The path to the experiment directory of the training run to restore.
@@ -407,7 +421,7 @@ class BaseTrainer(abc.ABC):
         if not isinstance(self.datasets, dict):
             raise ValueError(
                 f"`datasets` should be a dict mapping from a string to "
-                f"`ray.data.Datastream` objects, "
+                f"`ray.data.Dataset` objects, "
                 f"found {type(self.datasets)} with value `{self.datasets}`."
             )
         else:
@@ -415,18 +429,18 @@ class BaseTrainer(abc.ABC):
                 if isinstance(dataset, ray.data.DatasetPipeline):
                     raise ValueError(
                         f"The Dataset under '{key}' key is a "
-                        f"`ray.data.DatasetPipeline`. Only `ray.data.Datastream` are "
+                        f"`ray.data.DatasetPipeline`. Only `ray.data.Dataset` are "
                         f"allowed to be passed in.  Pipelined/streaming ingest can be "
                         f"configured via the `dataset_config` arg. See "
                         "https://docs.ray.io/en/latest/ray-air/check-ingest.html#enabling-streaming-ingest"  # noqa: E501
                         "for an example."
                     )
-                elif not isinstance(dataset, ray.data.Datastream) and not callable(
+                elif not isinstance(dataset, ray.data.Dataset) and not callable(
                     dataset
                 ):
                     raise ValueError(
-                        f"The Datastream under '{key}' key is not a "
-                        "`ray.data.Datastream`. "
+                        f"The Dataset under '{key}' key is not a "
+                        "`ray.data.Dataset`. "
                         f"Received {dataset} instead."
                     )
 
@@ -538,9 +552,10 @@ class BaseTrainer(abc.ABC):
 
         Example:
 
-        .. code-block:: python
+        .. testcode::
 
             from ray.train.trainer import BaseTrainer
+            from ray.air import session
 
             class MyTrainer(BaseTrainer):
                 def training_loop(self):
@@ -578,7 +593,10 @@ class BaseTrainer(abc.ABC):
             )
         else:
             tuner = Tuner(
-                trainable=trainable, param_space=param_space, run_config=self.run_config
+                trainable=trainable,
+                param_space=param_space,
+                run_config=self.run_config,
+                _entrypoint=AirEntrypoint.TRAINER,
             )
 
         experiment_path = Path(
@@ -623,7 +641,7 @@ class BaseTrainer(abc.ABC):
         of parameters can be passed in again), that parameter will be loaded
         from the saved copy.
 
-        Datastreams should not be saved as part of the state. Instead, we save the
+        Datasets should not be saved as part of the state. Instead, we save the
         keys and replace the dataset values with dummy functions that will
         raise an error if invoked. The error only serves as a guardrail for
         misuse (e.g., manually unpickling and constructing the Trainer again)

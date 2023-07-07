@@ -17,45 +17,52 @@ class InputNode(DAGNode):
     entrypoints, but only one instance of InputNode exists per DAG, shared
     among all DAGNodes.
 
-    >>> Example:
-    >>>            m1.forward
-    >>>            /       \
-    >>>    dag_input     ensemble -> dag_output
-    >>>            \       /
-    >>>            m2.forward
+    Example:
+
+    .. code-block::
+
+                m1.forward
+                /       \
+        dag_input     ensemble -> dag_output
+                \       /
+                m2.forward
 
     In this pipeline, each user input is broadcasted to both m1.forward and
     m2.forward as first stop of the DAG, and authored like
 
-    >>> @ray.remote
-    >>> class Model:
-    ...     def __init__(self, val):
-    ...         self.val = val
-    ...     def forward(self, input):
-    ...         return self.val * input
+    .. code-block:: python
 
-    >>> @ray.remote
-    >>> def combine(a, b):
-    ...     return a + b
+        import ray
 
-    >>> with InputNode() as dag_input:
-    >>>     m1 = Model.bind(1)
-    >>>     m2 = Model.bind(2)
-    >>>     m1_output = m1.forward.bind(dag_input[0])
-    >>>     m2_output = m2.forward.bind(dag_input.x)
-    >>>     ray_dag = combine.bind(m1_output, m2_output)
+        @ray.remote
+        class Model:
+            def __init__(self, val):
+                self.val = val
+            def forward(self, input):
+                return self.val * input
 
-    >>> # Pass mix of args and kwargs as input.
-    >>> ray_dag.execute(1, x=2) # 1 sent to m1, 2 sent to m2
+        @ray.remote
+        def combine(a, b):
+            return a + b
 
-    >>> # Alternatively user can also pass single data object, list or dict
-    >>> # and access them via list index, object attribute or dict key str.
-    >>> ray_dag.execute(UserDataObject(m1=1, m2=2))
-    ...     # dag_input.m1, dag_input.m2
-    >>> ray_dag.execute([1, 2]))
-    ...     # dag_input[0], dag_input[1]
-    >>> ray_dag.execute({"m1": 1, "m2": 2})
-    ...     # dag_input["m1"], dag_input["m2"]
+        with InputNode() as dag_input:
+            m1 = Model.bind(1)
+            m2 = Model.bind(2)
+            m1_output = m1.forward.bind(dag_input[0])
+            m2_output = m2.forward.bind(dag_input.x)
+            ray_dag = combine.bind(m1_output, m2_output)
+
+        # Pass mix of args and kwargs as input.
+        ray_dag.execute(1, x=2) # 1 sent to m1, 2 sent to m2
+
+        # Alternatively user can also pass single data object, list or dict
+        # and access them via list index, object attribute or dict key str.
+        ray_dag.execute(UserDataObject(m1=1, m2=2))
+            # dag_input.m1, dag_input.m2
+        ray_dag.execute([1, 2])
+            # dag_input[0], dag_input[1]
+        ray_dag.execute({"m1": 1, "m2": 2})
+            # dag_input["m1"], dag_input["m2"]
     """
 
     def __init__(
@@ -195,26 +202,29 @@ class InputAttributeNode(DAGNode):
      object attribute or dict key (str).
 
     Examples:
-        >>> with InputNode() as dag_input:
-        >>>     a = dag_input[0]
-        >>>     b = dag_input.x
-        >>>     ray_dag = add.bind(a, b)
 
-        >>> # This makes a = 1 and b = 2
-        >>> ray_dag.execute(1, x=2)
+        .. code-block:: python
 
-        >>> with InputNode() as dag_input:
-        >>>     a = dag_input[0]
-        >>>     b = dag_input[1]
-        >>>     ray_dag = add.bind(a, b)
+            with InputNode() as dag_input:
+                a = dag_input[0]
+                b = dag_input.x
+                ray_dag = add.bind(a, b)
 
-        >>> # This makes a = 2 and b = 3
-        >>> ray_dag.execute(2, 3)
+            # This makes a = 1 and b = 2
+            ray_dag.execute(1, x=2)
 
-        >>> # Alternatively, you can input a single object
-        >>> # and the inputs are automatically indexed from the object:
-        >>> # This makes a = 2 and b = 3
-        >>> ray_dag.execute([2, 3])
+            with InputNode() as dag_input:
+                a = dag_input[0]
+                b = dag_input[1]
+                ray_dag = add.bind(a, b)
+
+            # This makes a = 2 and b = 3
+            ray_dag.execute(2, 3)
+
+            # Alternatively, you can input a single object
+            # and the inputs are automatically indexed from the object:
+            # This makes a = 2 and b = 3
+            ray_dag.execute([2, 3])
     """
 
     def __init__(

@@ -23,7 +23,9 @@ concurrency group, which has a default concurrency of 1000 in Python and
 
         You can define concurrency groups for asyncio actors using the ``concurrency_group`` decorator argument:
 
-        .. code-block:: python
+        .. testcode::
+
+            import ray
 
             @ray.remote(concurrency_groups={"io": 2, "compute": 4})
             class AsyncIOActor:
@@ -125,7 +127,7 @@ The concurrency of the default group can be changed by setting the ``max_concurr
         The following AsyncIOActor has 2 concurrency groups: "io" and "default".
         The max concurrency of "io" is 2, and the max concurrency of "default" is 10.
 
-        .. code-block:: python
+        .. testcode::
 
             @ray.remote(concurrency_groups={"io": 2})
             class AsyncIOActor:
@@ -175,7 +177,7 @@ The following snippet demonstrates setting the concurrency group of the
 
         You can use the ``.options`` method.
 
-        .. code-block:: python
+        .. testcode::
 
             # Executed in the "io" group (as defined in the actor class).
             a.f2.options().remote()

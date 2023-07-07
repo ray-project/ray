@@ -1,22 +1,23 @@
 import threading
-import pytest
 import time
 
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pytest
 
 import ray
+from ray.data._internal.block_batching.interfaces import Batch
 from ray.data._internal.block_batching.util import (
     Queue,
     _calculate_ref_hits,
-    make_async_gen,
     blocks_to_batches,
-    format_batches,
     collate,
+    finalize_batches,
+    format_batches,
+    make_async_gen,
     resolve_block_refs,
 )
-from ray.data._internal.block_batching.interfaces import Batch
 
 
 def block_generator(num_rows: int, num_blocks: int):
@@ -49,15 +50,15 @@ def test_blocks_to_batches(block_size, drop_last):
         full_batches = 0
         leftover_batches = 0
 
-        datastream_size = block_size * num_blocks
+        dataset_size = block_size * num_blocks
         for batch in batch_iter:
             if len(batch.data) == batch_size:
                 full_batches += 1
-            if len(batch.data) == (datastream_size % batch_size):
+            if len(batch.data) == (dataset_size % batch_size):
                 leftover_batches += 1
 
         assert leftover_batches == 1
-        assert full_batches == (datastream_size // batch_size)
+        assert full_batches == (dataset_size // batch_size)
 
     assert [batch.batch_idx for batch in batch_iter] == list(range(len(batch_iter)))
 
@@ -89,6 +90,21 @@ def test_collate():
         for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
     ]
     batch_iter = collate(batches, collate_fn=collate_fn)
+
+    for i, batch in enumerate(batch_iter):
+        assert batch.batch_idx == i
+        assert batch.data == pa.table({"bar": [1] * 2})
+
+
+def test_finalize():
+    def finalize_fn(batch):
+        return pa.table({"bar": [1] * 2})
+
+    batches = [
+        Batch(i, data)
+        for i, data in enumerate(block_generator(num_rows=2, num_blocks=2))
+    ]
+    batch_iter = finalize_batches(batches, finalize_fn=finalize_fn)
 
     for i, batch in enumerate(batch_iter):
         assert batch.batch_idx == i

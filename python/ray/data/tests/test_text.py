@@ -4,18 +4,17 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data.tests.util import Counter
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
+    Partitioning,
     PartitionStyle,
     PathPartitionEncoder,
     PathPartitionFilter,
-    Partitioning,
 )
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 

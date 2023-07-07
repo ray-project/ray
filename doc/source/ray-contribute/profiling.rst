@@ -1,9 +1,9 @@
 .. _ray-core-internal-profiling:
 
-Profiling (internal)
-====================
+Profiling for Ray Developers
+============================
 
-This document details, for Ray developers, how to analyze Ray performance.
+This guide helps contributors to the Ray project analyze Ray performance.
 
 Getting a stack trace of Ray C++ processes
 ------------------------------------------

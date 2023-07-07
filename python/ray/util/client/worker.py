@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 import grpc
 
-import ray._private.utils
+import ray._private.tls_utils
 import ray.cloudpickle as cloudpickle
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.core.generated.ray_client_pb2_grpc as ray_client_pb2_grpc
@@ -176,7 +176,7 @@ class Worker:
                     server_cert_chain,
                     private_key,
                     ca_cert,
-                ) = ray._private.utils.load_certs_from_env()
+                ) = ray._private.tls_utils.load_certs_from_env()
                 credentials = grpc.ssl_channel_credentials(
                     certificate_chain=server_cert_chain,
                     private_key=private_key,

@@ -1,10 +1,9 @@
-from typing import Tuple, Callable, Any, Union
 from types import ModuleType
+from typing import Any, Callable, Tuple, Union
 
 import numpy as np
 
-from ray.data.block import T, U, Block, KeyType, AggType
-
+from ray.data.block import AggType, Block, KeyType, T, U
 
 WrappedAggType = Tuple[AggType, int]
 
@@ -15,7 +14,7 @@ WrappedAggType = Tuple[AggType, int]
 #                                                     aggregation of non-null values.
 #   2. Mix of values and nulls - ignore_nulls=False:  Return None.
 #   3. All nulls:                                     Return None.
-#   4. Empty datastream:                              Return None.
+#   4. Empty dataset:                              Return None.
 #
 # This is accomplished by checking rows for null values and by propagating nulls
 # if found AND if we're not ignoring them. If not ignoring nulls, in order to delineate

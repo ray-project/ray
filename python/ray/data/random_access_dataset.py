@@ -3,14 +3,15 @@ import logging
 import random
 import time
 from collections import defaultdict
+from typing import TYPE_CHECKING, Any, List, Optional
+
 import numpy as np
-from typing import List, Any, Optional, TYPE_CHECKING
 
 import ray
-from ray.types import ObjectRef
-from ray.data.block import BlockAccessor
-from ray.data.context import DataContext, DEFAULT_SCHEDULING_STRATEGY
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
+from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
 
 try:
@@ -19,21 +20,21 @@ except ImportError:
     pa = None
 
 if TYPE_CHECKING:
-    from ray.data import Datastream
+    from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="alpha")
 class RandomAccessDataset:
-    """A class that provides distributed, random access to a Datastream.
+    """A class that provides distributed, random access to a Dataset.
 
-    See: ``Datastream.to_random_access_dataset()``.
+    See: ``Dataset.to_random_access_dataset()``.
     """
 
     def __init__(
         self,
-        ds: "Datastream",
+        ds: "Dataset",
         key: str,
         num_workers: int,
     ):
@@ -47,7 +48,7 @@ class RandomAccessDataset:
             raise ValueError("RandomAccessDataset only supports Arrow-format blocks.")
 
         start = time.perf_counter()
-        logger.info("[setup] Indexing datastream by sort key.")
+        logger.info("[setup] Indexing dataset by sort key.")
         sorted_ds = ds.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
         blocks = sorted_ds.get_internal_block_refs()
@@ -66,10 +67,7 @@ class RandomAccessDataset:
 
         logger.info("[setup] Creating {} random access workers.".format(num_workers))
         ctx = DataContext.get_current()
-        if ctx.scheduling_strategy != DEFAULT_SCHEDULING_STRATEGY:
-            scheduling_strategy = ctx.scheduling_strategy
-        else:
-            scheduling_strategy = "SPREAD"
+        scheduling_strategy = ctx.scheduling_strategy
         self._workers = [
             _RandomAccessWorker.options(scheduling_strategy=scheduling_strategy).remote(
                 key

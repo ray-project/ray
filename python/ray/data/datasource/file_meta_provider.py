@@ -1,31 +1,24 @@
 import itertools
 import logging
-import pathlib
 import os
+import pathlib
 import re
-from typing import (
-    List,
-    Optional,
-    Union,
-    Iterator,
-    Tuple,
-    Any,
-    TYPE_CHECKING,
-)
-
-if TYPE_CHECKING:
-    import pyarrow
+from typing import TYPE_CHECKING, Any, Iterator, List, Optional, Tuple, Union
 
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    import pyarrow
+
 
 logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
 class FileMetadataProvider:
-    """Abstract callable that provides metadata for the files of a single datastream block.
+    """Abstract callable that provides metadata for the files of a single dataset block.
 
     Current subclasses:
         BaseFileMetadataProvider
@@ -40,10 +33,10 @@ class FileMetadataProvider:
     ) -> BlockMetadata:
         """Resolves and returns block metadata for files in the given paths.
 
-        All file paths provided should belong to a single datastream block.
+        All file paths provided should belong to a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block.
+            paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given paths,
                 if any.
 
@@ -80,10 +73,10 @@ class BaseFileMetadataProvider(FileMetadataProvider):
         rows_per_file: Optional[int],
         file_sizes: List[Optional[int]],
     ) -> BlockMetadata:
-        """Resolves and returns block metadata for files of a single datastream block.
+        """Resolves and returns block metadata for files of a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block. These
+            paths: The file paths for a single dataset block. These
                 paths will always be a subset of those previously returned from
                 `expand_paths()`.
             schema: The user-provided or inferred schema for the given file
@@ -206,7 +199,7 @@ class FastFileMetadataProvider(DefaultFileMetadataProvider):
 class ParquetMetadataProvider(FileMetadataProvider):
     """Abstract callable that provides block metadata for Arrow Parquet file fragments.
 
-    All file fragments should belong to a single datastream block.
+    All file fragments should belong to a single dataset block.
 
     Supports optional pre-fetching of ordered metadata for all file fragments in
     a single batch to help optimize metadata resolution.
@@ -223,10 +216,10 @@ class ParquetMetadataProvider(FileMetadataProvider):
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
         prefetched_metadata: Optional[List[Any]],
     ) -> BlockMetadata:
-        """Resolves and returns block metadata for files of a single datastream block.
+        """Resolves and returns block metadata for files of a single dataset block.
 
         Args:
-            paths: The file paths for a single datastream block.
+            paths: The file paths for a single dataset block.
             schema: The user-provided or inferred schema for the given file
                 paths, if any.
             pieces: The Parquet file fragments derived from the input file paths.
@@ -269,7 +262,7 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
     """The default file metadata provider for ParquetDatasource.
 
     Aggregates total block bytes and number of rows using the Parquet file metadata
-    associated with a list of Arrow Parquet datastream file fragments.
+    associated with a list of Arrow Parquet dataset file fragments.
     """
 
     def _get_block_metadata(
@@ -310,14 +303,14 @@ class DefaultParquetMetadataProvider(ParquetMetadataProvider):
         pieces: List["pyarrow.dataset.ParquetFileFragment"],
         **ray_remote_args,
     ) -> Optional[List["pyarrow.parquet.FileMetaData"]]:
+        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
         from ray.data.datasource.parquet_datasource import (
             PARALLELIZE_META_FETCH_THRESHOLD,
             PIECES_PER_META_FETCH,
-            _SerializedPiece,
-            _fetch_metadata_serialization_wrapper,
             _fetch_metadata,
+            _fetch_metadata_serialization_wrapper,
+            _SerializedPiece,
         )
-        from ray.data.datasource.file_based_datasource import _fetch_metadata_parallel
 
         if len(pieces) > PARALLELIZE_META_FETCH_THRESHOLD:
             # Wrap Parquet fragments in serialization workaround.
@@ -362,7 +355,7 @@ def _handle_read_os_error(error: OSError, paths: Union[str, List[str]]) -> str:
                 "You can also run AWS CLI command to get more detailed error message "
                 "(e.g., aws s3 ls <file-name>). "
                 "See https://awscli.amazonaws.com/v2/documentation/api/latest/reference/s3/index.html "  # noqa
-                "and https://docs.ray.io/en/latest/data/creating-datastreams.html#reading-from-remote-storage "  # noqa
+                "and https://docs.ray.io/en/latest/data/creating-datasets.html#reading-from-remote-storage "  # noqa
                 "for more information."
             )
         )
@@ -378,6 +371,7 @@ def _expand_paths(
 ) -> Iterator[Tuple[str, int]]:
     """Get the file sizes for all provided file paths."""
     from pyarrow.fs import LocalFileSystem
+
     from ray.data.datasource.file_based_datasource import (
         FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
         _unwrap_protocol,
@@ -390,7 +384,6 @@ def _expand_paths(
     #    if using partitioning), fetch all file infos at this prefix and filter to the
     #    provided paths on the client; this should be a single file info request.
     # 3. If more than threshold requests required, parallelize them via Ray tasks.
-
     # 1. Small # of paths case.
     if (
         len(paths) < FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD
@@ -461,9 +454,9 @@ def _get_file_infos_parallel(
 ) -> Iterator[Tuple[str, int]]:
     from ray.data.datasource.file_based_datasource import (
         PATHS_PER_FILE_SIZE_FETCH_TASK,
-        _wrap_s3_serialization_workaround,
-        _unwrap_s3_serialization_workaround,
         _fetch_metadata_parallel,
+        _unwrap_s3_serialization_workaround,
+        _wrap_s3_serialization_workaround,
     )
 
     # Capture the filesystem in the fetcher func closure, but wrap it in our

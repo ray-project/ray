@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     wait_for_condition,
 )
-from ray.experimental.state.api import list_workers
+from ray.util.state import list_workers
 
 
 @pytest.mark.parametrize(

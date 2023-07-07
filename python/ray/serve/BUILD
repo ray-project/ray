@@ -1,3 +1,19 @@
+load("//bazel:python.bzl", "doctest")
+
+doctest(
+    files = glob(
+        ["**/*.py"],
+        exclude=[
+            "examples/**",
+            "tests/**",
+            "benchmarks/**",
+            # FIXME: Failing on Windows
+            "gradio_integrations.py"
+        ]
+    ),
+    tags = ["team:serve"]
+)
+
 # This is a dummy test dependency that causes the above tests to be
 # re-run if any of these files changes.
 py_library(
@@ -106,6 +122,14 @@ py_test(
 )
 
 py_test(
+    name = "test_http_util",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_advanced",
     size = "small",
     srcs = serve_tests_srcs,
@@ -163,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -179,6 +203,14 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -255,6 +287,15 @@ py_test(
     deps = [":serve_lib"],
 )
 
+
+py_test(
+    name = "test_replica_scheduler",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
 py_test(
     name = "test_regression",
     size = "medium",
@@ -274,6 +315,14 @@ py_test(
 py_test(
     name = "test_schema",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_request_timeout",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -448,6 +497,7 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
+
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
    name = "test_controller_crashes",
@@ -458,6 +508,22 @@ py_test(
                "**/conftest.py"]),
    tags = ["exclusive", "team:serve"],
    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_streaming_response",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_websockets",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
 )
 
 py_test(
@@ -545,17 +611,17 @@ py_test(
 
 py_test(
     name = "test_gradio",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "py37"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_gradio_visualization",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve", "py37"],
+    tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
 
@@ -569,6 +635,38 @@ py_test(
 
 py_test(
     name = "test_common",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_multiplex",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_serve_ha",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_callback",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_headers",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],

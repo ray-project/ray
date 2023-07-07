@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 from functools import partial
+
 import pandas as pd
 import pyarrow as pa
 import pyarrow.json as pajson
@@ -10,8 +11,6 @@ from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.data.block import BlockAccessor
-from ray.data.datasource.file_based_datasource import _unwrap_protocol
-
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -19,10 +18,10 @@ from ray.data.datasource import (
     PathPartitionEncoder,
     PathPartitionFilter,
 )
-
-from ray.data.tests.util import Counter
+from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 

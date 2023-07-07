@@ -165,6 +165,7 @@ RayTask CreateTask(
                                  address,
                                  0,
                                  /*returns_dynamic=*/false,
+                                 /*is_streaming_generator*/ false,
                                  required_resources,
                                  {},
                                  "",

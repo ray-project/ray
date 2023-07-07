@@ -16,10 +16,10 @@ import ray
 from ray import tune
 from ray.air import CheckpointConfig
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune import Trainable, PlacementGroupFactory
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import (
     FIFOScheduler,
     HyperBandScheduler,
@@ -733,8 +733,8 @@ class BOHBSuite(unittest.TestCase):
             metric="episode_reward_mean", mode="max", max_t=3, reduction_factor=3
         )
         runner = _MockTrialRunner(sched)
-        runner._search_alg = MagicMock()
-        runner._search_alg.searcher = MagicMock()
+        runner.search_alg = MagicMock()
+        runner.search_alg.searcher = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
             runner.add_trial(t)
@@ -748,8 +748,8 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.STOP)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
-        self.assertEqual(runner._search_alg.searcher.on_unpause.call_count, 1)
+        self.assertEqual(runner.search_alg.searcher.on_pause.call_count, 2)
+        self.assertEqual(runner.search_alg.searcher.on_unpause.call_count, 1)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
@@ -761,8 +761,8 @@ class BOHBSuite(unittest.TestCase):
             metric="episode_reward_mean", mode="min", max_t=3, reduction_factor=3
         )
         runner = _MockTrialRunner(sched)
-        runner._search_alg = MagicMock()
-        runner._search_alg.searcher = MagicMock()
+        runner.search_alg = MagicMock()
+        runner.search_alg.searcher = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
             runner.add_trial(t)
@@ -776,7 +776,7 @@ class BOHBSuite(unittest.TestCase):
         decision = sched.on_trial_result(runner, trials[-1], spy_result)
         self.assertEqual(decision, TrialScheduler.CONTINUE)
         sched.choose_trial_to_run(runner)
-        self.assertEqual(runner._search_alg.searcher.on_pause.call_count, 2)
+        self.assertEqual(runner.search_alg.searcher.on_pause.call_count, 2)
         self.assertTrue("hyperband_info" in spy_result)
         self.assertEqual(spy_result["hyperband_info"]["budget"], 1)
 
@@ -788,8 +788,8 @@ class BOHBSuite(unittest.TestCase):
             metric="episode_reward_mean", mode="min", max_t=10, reduction_factor=3
         )
         runner = _MockTrialRunner(sched)
-        runner._search_alg = MagicMock()
-        runner._search_alg.searcher = MagicMock()
+        runner.search_alg = MagicMock()
+        runner.search_alg.searcher = MagicMock()
         trials = [Trial("__fake") for i in range(3)]
         for t in trials:
             runner.add_trial(t)
@@ -844,6 +844,45 @@ class BOHBSuite(unittest.TestCase):
         )
         assert 32 in counter
         assert counter[32] > 1
+
+    def testBOHBProcessing(self):
+        trials = [Trial("foo", stub=True) for i in range(5)]
+        bohb = HyperBandForBOHB(max_t=10, metric="metric", mode="max")
+
+        for trial in trials:
+            bohb.on_trial_add(None, trial)
+            trial.status = Trial.RUNNING
+
+        mock = MagicMock()
+
+        bohb.on_trial_result(mock, trials[0], {"training_iteration": 10, "metric": 40})
+        trials[0].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[1], {"training_iteration": 10, "metric": 30})
+        trials[1].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[2], {"training_iteration": 10, "metric": 20})
+        trials[2].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[3], {"training_iteration": 10, "metric": 10})
+        trials[3].status = Trial.PAUSED
+        bohb.on_trial_result(mock, trials[4], {"training_iteration": 10, "metric": 0})
+        trials[4].status = Trial.PAUSED
+
+        def set_status(trial, status):
+            trial.status = status
+            return None
+
+        def stop_trial(trial):
+            # See TrialRunner.stop_trial()
+            if trial.status in [Trial.PENDING, Trial.PAUSED]:
+                bohb.on_trial_remove(mock, trial)
+                trial.status = Trial.TERMINATED
+            return None
+
+        mock._set_trial_status.side_effect = set_status
+        mock.stop_trial.side_effect = stop_trial
+
+        assert not bohb._hyperbands[0][0].is_being_processed
+        bohb.choose_trial_to_run(mock, allow_recurse=False)
+        assert bohb._hyperbands[0][0].is_being_processed
 
 
 class _MockTrial(Trial):
@@ -2029,7 +2068,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             train,
             num_samples=3,
             scheduler=pbt,
-            checkpoint_freq=3,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             config=trial_hyperparams,
             stop={"training_iteration": 30},
         )
@@ -2068,7 +2107,7 @@ class E2EPopulationBasedTestingSuite(unittest.TestCase):
             train_dict,
             num_samples=3,
             scheduler=pbt,
-            checkpoint_freq=3,
+            checkpoint_config=CheckpointConfig(checkpoint_frequency=3),
             config=trial_hyperparams,
             stop={"training_iteration": 30},
         )
@@ -2344,8 +2383,8 @@ class AsyncHyperBandSuite(unittest.TestCase):
         scheduler = HyperBandForBOHB(metric="episode_reward_mean", mode="max")
 
         runner = _MockTrialRunner(scheduler)
-        runner._search_alg = MagicMock()
-        runner._search_alg.searcher = MagicMock()
+        runner.search_alg = MagicMock()
+        runner.search_alg.searcher = MagicMock()
 
         t1, t2, t3 = self.nanInfSetup(scheduler, runner)
         # skip trial complete in this mock setting

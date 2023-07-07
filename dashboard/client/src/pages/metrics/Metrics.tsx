@@ -195,11 +195,18 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
 
 export const Metrics = () => {
   const classes = useStyles();
-  const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    sessionName,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+  } = useContext(GlobalContext);
 
   const grafanaDefaultDashboardUid =
     dashboardUids?.default ?? "rayDefaultDashboard";
+
+  const grafanaDefaultDatasource = dashboardDatasource ?? "Prometheus";
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
@@ -232,7 +239,7 @@ export const Metrics = () => {
         <div>
           <Paper className={classes.topBar}>
             <Button
-              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}`}
+              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}/?var-datasource=${grafanaDefaultDatasource}`}
               target="_blank"
               rel="noopener noreferrer"
               endIcon={<RiExternalLinkLine />}
@@ -274,7 +281,7 @@ export const Metrics = () => {
                   {contents.map(({ title, pathParams }) => {
                     const path =
                       `/d-solo/${grafanaDefaultDashboardUid}?${pathParams}` +
-                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}`;
+                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
                     return (
                       <Paper
                         key={pathParams}

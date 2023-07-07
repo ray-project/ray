@@ -8,8 +8,8 @@ from transformers import AutoTokenizer
 
 
 def get_train_dataset(args, image_resolution=512):
-    """Build a Datastream for fine-tuning DreamBooth model."""
-    # Load images into Datastream
+    """Build a Dataset for fine-tuning DreamBooth model."""
+    # Load images into Dataset
     instance_dataset = read_images(args.instance_images_dir)
     class_dataset = read_images(args.class_images_dir)
 
@@ -19,7 +19,7 @@ def get_train_dataset(args, image_resolution=512):
     # prior preserving loss in one pass.
     dup_times = class_dataset.count() // instance_dataset.count()
     instance_dataset = instance_dataset.map_batches(
-        lambda df: pd.concat([df] * dup_times)
+        lambda df: pd.concat([df] * dup_times), batch_format="pandas"
     )
 
     # Load tokenizer for tokenizing the image prompts.

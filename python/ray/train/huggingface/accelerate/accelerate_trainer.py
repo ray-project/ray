@@ -4,25 +4,16 @@ import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
-try:
-    from packaging.version import Version
-except ImportError:
-    from distutils.version import LooseVersion as Version
-
-import accelerate
-
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
 
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
-    from ray.tune.trainable import Trainable
-
 from ray.train.torch import TorchTrainer, get_device
 from ray.train.torch.config import _set_torch_distributed_env_vars
+
+ACCELERATE_IMPORT_ERROR: Optional[ImportError] = None
 
 try:
     from ray.train.huggingface.accelerate._accelerate_utils import (
@@ -32,12 +23,15 @@ try:
         load_accelerate_config,
     )
 except ImportError as e:
-    if "AccelerateTrainer requires accelerate" not in e.msg:
-        raise
+    ACCELERATE_IMPORT_ERROR = e
     launch_command = None
     AccelerateDefaultNamespace = None
     AccelerateConfigWrapper = None
     load_accelerate_config = None
+
+if TYPE_CHECKING:
+    from ray.data.preprocessor import Preprocessor
+    from ray.tune.trainable import Trainable
 
 
 class AccelerateTrainer(TorchTrainer):
@@ -71,7 +65,7 @@ class AccelerateTrainer(TorchTrainer):
             # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Session returns the Datastream shard for the given key.
+            # Session returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
@@ -113,7 +107,6 @@ class AccelerateTrainer(TorchTrainer):
     - Type of launcher
 
     This Trainer requires ``accelerate>=0.17.0`` package.
-    It is tested with ``accelerate==0.17.1``.
 
     Example:
         .. testcode::
@@ -125,7 +118,7 @@ class AccelerateTrainer(TorchTrainer):
 
             import ray
             from ray.air import session, Checkpoint
-            from ray.train.huggingface.accelerate import AccelerateTrainer
+            from ray.train.huggingface import AccelerateTrainer
             from ray.air.config import ScalingConfig
             from ray.air.config import RunConfig
             from ray.air.config import CheckpointConfig
@@ -137,7 +130,7 @@ class AccelerateTrainer(TorchTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 30
             num_workers = 3
 
             # Define your network structure
@@ -153,6 +146,7 @@ class AccelerateTrainer(TorchTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
                 # Initialize the Accelerator
                 accelerator = Accelerator()
@@ -204,9 +198,9 @@ class AccelerateTrainer(TorchTrainer):
                         ),
                     )
 
-            torch.manual_seed(42)
+
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
@@ -231,11 +225,10 @@ class AccelerateTrainer(TorchTrainer):
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
 
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
+        .. testoutput::
+            :hide:
 
-        ...
+            ...
 
     Args:
         train_loop_per_worker: The training function to execute.
@@ -252,7 +245,7 @@ class AccelerateTrainer(TorchTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datastreams to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -277,11 +270,8 @@ class AccelerateTrainer(TorchTrainer):
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
 
-        if Version(accelerate.__version__) < Version("0.17.0.dev0"):
-            raise RuntimeError(
-                "AccelerateTrainer requires accelerate>=0.17.0, "
-                f"got {accelerate.__version__}"
-            )
+        if ACCELERATE_IMPORT_ERROR is not None:
+            raise ACCELERATE_IMPORT_ERROR
 
         self.accelerate_config = accelerate_config
         (

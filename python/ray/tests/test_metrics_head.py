@@ -97,7 +97,7 @@ def test_metrics_folder_with_dashboard_override(
             for panel in contents["panels"]:
                 for target in panel["targets"]:
                     # Check for standard_global_filters
-                    assert 'SessionName="$SessionName"' in target["expr"]
+                    assert 'SessionName=~"$SessionName"' in target["expr"]
                     # Check for custom global_filters
                     assert global_filters in target["expr"]
             for variable in contents["templating"]["list"]:

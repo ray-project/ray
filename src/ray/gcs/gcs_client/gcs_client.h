@@ -31,8 +31,10 @@
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
 #include "ray/util/logging.h"
+#include "src/ray/protobuf/experimental/autoscaler.grpc.pb.h"
 
 namespace ray {
+
 namespace gcs {
 
 /// \class GcsClientOptions
@@ -79,6 +81,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
+  /// \param instrumented_io_context IO execution service.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service);
@@ -222,17 +225,33 @@ class RAY_EXPORT PythonGcsClient {
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
   Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData> &result);
 
+  // For rpc::autoscaler::AutoscalerStateService
+  Status RequestClusterResourceConstraint(
+      int64_t timeout_ms,
+      const std::vector<std::unordered_map<std::string, double>> &bundles);
+
  private:
   GcsClientOptions options_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;
   std::unique_ptr<rpc::NodeInfoGcsService::Stub> node_info_stub_;
   std::unique_ptr<rpc::JobInfoGcsService::Stub> job_info_stub_;
+  std::unique_ptr<rpc::autoscaler::AutoscalerStateService::Stub> autoscaler_stub_;
   std::shared_ptr<grpc::Channel> channel_;
 };
 
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info);
+
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+    const rpc::GcsNodeInfo &node_info);
+
+Status PythonCheckGcsHealth(const std::string &gcs_address,
+                            const int gcs_port,
+                            const int64_t timeout_ms,
+                            const std::string &ray_version,
+                            const bool skip_version_check,
+                            bool &is_healthy);
 
 }  // namespace gcs
 

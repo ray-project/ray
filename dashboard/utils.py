@@ -58,7 +58,7 @@ class DashboardAgentModule(abc.ABC):
     def is_minimal_module():
         """
         Return True if the module is minimal, meaning it
-        should work with `pip install ray` that doesn't requires additonal
+        should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 
@@ -87,7 +87,7 @@ class DashboardHeadModule(abc.ABC):
     def is_minimal_module():
         """
         Return True if the module is minimal, meaning it
-        should work with `pip install ray` that doesn't requires additonal
+        should work with `pip install ray` that doesn't requires additional
         dependencies.
         """
 

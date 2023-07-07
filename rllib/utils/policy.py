@@ -185,6 +185,8 @@ def local_policy_inference(
     terminated: Optional[bool] = None,
     truncated: Optional[bool] = None,
     info: Optional[Mapping] = None,
+    explore: bool = None,
+    timestep: Optional[int] = None,
 ) -> TensorStructType:
     """Run a connector enabled policy using environment observation.
 
@@ -215,6 +217,9 @@ def local_policy_inference(
             require this extra information.
         info: Info that is potentially used durin inference. If not required,
             may be left empty. Some policies have ViewRequirements that require this.
+        explore: Whether to pick an exploitation or exploration action
+            (default: None -> use self.config["explore"]).
+        timestep: The current (sampling) time step.
 
     Returns:
         List of outputs from policy forward pass.
@@ -247,7 +252,11 @@ def local_policy_inference(
     ac_outputs: List[AgentConnectorsOutput] = policy.agent_connectors(acd_list)
     outputs = []
     for ac in ac_outputs:
-        policy_output = policy.compute_actions_from_input_dict(ac.data.sample_batch)
+        policy_output = policy.compute_actions_from_input_dict(
+            ac.data.sample_batch,
+            explore=explore,
+            timestep=timestep,
+        )
 
         # Note (Kourosh): policy output is batched, the AgentConnectorDataType should
         # not be batched during inference. This is the assumption made in AgentCollector

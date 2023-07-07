@@ -65,7 +65,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     raylet_client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_);
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(
         io_service_,
         gcs_table_storage_,
@@ -125,6 +125,11 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     (*node->mutable_resources_total())["CPU"] = cpu_num;
     gcs_node_manager_->AddNode(node);
     gcs_resource_manager_->OnNodeAdd(*node);
+  }
+
+  void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()));
+    gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
   }
 
   void ScheduleFailedWithZeroNodeTest(rpc::PlacementStrategy strategy) {
@@ -1050,10 +1055,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
   auto bundles_on_node0 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles_on_node0.size());
   auto bundles_on_node1 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
   // All nodes are dead, reschedule the placement group.
   placement_group->GetMutableBundle(0)->clear_node_id();
@@ -1105,10 +1110,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommit) 
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
   auto bundles_on_node0 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles_on_node0.size());
   auto bundles_on_node1 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
   // All nodes are dead, reschedule the placement group.
   placement_group->GetMutableBundle(0)->clear_node_id();
@@ -1162,10 +1167,10 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPGCancelledDuringReschedulingCommitPr
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
   auto bundles_on_node0 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles_on_node0.size());
   auto bundles_on_node1 =
-      scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles_on_node1.size());
   // All nodes are dead, reschedule the placement group.
   placement_group->GetMutableBundle(0)->clear_node_id();
@@ -1213,12 +1218,13 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
       std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(1)));
   scheduler_->Initialize(group_to_bundles);
 
-  auto bundles = scheduler_->GetBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+  auto bundles =
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
   ASSERT_EQ(1, bundles.size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
   ASSERT_EQ(0, bundles[placement_group->GetPlacementGroupID()][0]);
 
-  bundles = scheduler_->GetBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+  bundles = scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_EQ(1, bundles.size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()].size());
   ASSERT_EQ(1, bundles[placement_group->GetPlacementGroupID()][0]);
@@ -1403,6 +1409,46 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles) {
   ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 0);
   ASSERT_EQ(node_resources.available.Get(scheduling::ResourceID::CPU()),
             node_resources.total.Get(scheduling::ResourceID::CPU()));
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead) {
+  auto node = Mocker::GenNodeInfo();
+  AddNode(node);
+  ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(
+      create_placement_group_request, "", counter_);
+
+  // Schedule the placement_group with 1 available node, and the lease request should be
+  // send to the node.
+  scheduler_->ScheduleUnplacedBundles(
+      placement_group,
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
+             bool is_insfeasble) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        failure_placement_groups_.emplace_back(std::move(placement_group));
+      },
+      [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+        absl::MutexLock lock(&placement_group_requests_mutex_);
+        success_placement_groups_.emplace_back(std::move(placement_group));
+      });
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(0, GcsPlacementGroupStatus::FAILURE);
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+
+  // Remove the node.
+  RemoveNode(node);
+
+  // Remove the placement group.
+  const auto &placement_group_id = placement_group->GetPlacementGroupID();
+  scheduler_->DestroyPlacementGroupBundleResourcesIfExists(placement_group_id);
+
+  // There shouldn't be any remaining bundles to be removed since the node is
+  // already removed. The bundles are already removed when the node is removed.
+  ASSERT_EQ(scheduler_->GetWaitingRemovedBundlesSize(), 0);
 }
 
 }  // namespace ray
