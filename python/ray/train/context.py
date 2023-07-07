@@ -7,7 +7,6 @@ from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
