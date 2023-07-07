@@ -18,6 +18,8 @@ If your transformation isn't vectorized, there's no performance benefit.
 Optimizing reads
 ----------------
 
+.. _read_parallelism:
+
 Tuning read parallelism
 ~~~~~~~~~~~~~~~~~~~~~~~
 
