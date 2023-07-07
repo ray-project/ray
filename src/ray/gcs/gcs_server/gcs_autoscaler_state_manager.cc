@@ -100,6 +100,14 @@ void GcsAutoscalerStateManager::HandleRequestClusterResourceConstraint(
   send_reply_callback(ray::Status::OK(), nullptr, nullptr);
 }
 
+void GcsAutoscalerStateManager::HandleGetClusterStatus(
+    rpc::autoscaler::GetClusterStatusRequest request,
+    rpc::autoscaler::GetClusterStatusReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  // TODO
+  throw std::runtime_error("Unimplemented");
+}
+
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     rpc::autoscaler::ClusterResourceState *state) {
   // Get the gang resource requests from the placement group load.
@@ -118,7 +126,8 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         << "Placement group load should only include pending/rescheduling PGs. ";
 
     const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
-        pg_data.placement_group_id(), pg_data.strategy());
+        PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex(),
+        pg_data.strategy());
 
     // Copy the PG's bundles to the request.
     for (const auto &bundle : pg_data.bundles()) {
@@ -175,41 +184,63 @@ void GcsAutoscalerStateManager::GetPendingResourceRequests(
 
 void GcsAutoscalerStateManager::GetNodeStates(
     rpc::autoscaler::ClusterResourceState *state) {
-  auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info,
-                                 rpc::autoscaler::NodeStatus status) {
+  auto populate_node_state = [&](const rpc::GcsNodeInfo &gcs_node_info) {
     auto node_state_proto = state->add_node_states();
     node_state_proto->set_node_id(gcs_node_info.node_id());
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
     node_state_proto->set_ray_node_type_name(gcs_node_info.node_type_name());
     node_state_proto->set_node_state_version(last_cluster_resource_state_version_);
-    node_state_proto->set_status(status);
 
-    if (status == rpc::autoscaler::RUNNING) {
-      auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
-          scheduling::NodeID(node_state_proto->node_id()));
+    if (gcs_node_info.state() == rpc::GcsNodeInfo::DEAD) {
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
+      // We don't need populate other info for a dead node.
+      return;
+    }
 
-      // Copy resource available
-      const auto &available = node_resource_data.available.ToResourceMap();
-      node_state_proto->mutable_available_resources()->insert(available.begin(),
-                                                              available.end());
+    // THe node is alive. We need to check if the node is idle.
+    auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
+        scheduling::NodeID(node_state_proto->node_id()));
+    if (node_resource_data.idle_resource_duration_ms > 0) {
+      // The node was reported idle.
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::IDLE);
 
-      // Copy total resources
-      const auto &total = node_resource_data.total.ToResourceMap();
-      node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+      // We approximate the idle duration by the time since the last idle report
+      // plus the idle duration reported by the node:
+      //  idle_dur = <idle-dur-reported-by-raylet> + <time-since-gcs-gets-last-report>
+      //
+      // This is because with lightweight resource update, we don't keep reporting
+      // the idle time duration when there's no resource change. We also don't want to
+      // use raylet reported idle timestamp since there might be clock skew.
+      RAY_CHECK(node_resource_data.last_resource_update_time != absl::nullopt);
+      node_state_proto->set_idle_duration_ms(
+          node_resource_data.idle_resource_duration_ms +
+          absl::ToInt64Milliseconds(
+              absl::Now() - node_resource_data.last_resource_update_time.value()));
+    } else {
+      node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
+    }
 
-      // Add dynamic PG labels.
-      const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
-          NodeID::FromBinary(gcs_node_info.node_id()));
-      for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
-        node_state_proto->mutable_dynamic_labels()->insert(
-            {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
-      }
+    // Copy resource available
+    const auto &available = node_resource_data.available.ToResourceMap();
+    node_state_proto->mutable_available_resources()->insert(available.begin(),
+                                                            available.end());
+
+    // Copy total resources
+    const auto &total = node_resource_data.total.ToResourceMap();
+    node_state_proto->mutable_total_resources()->insert(total.begin(), total.end());
+
+    // Add dynamic PG labels.
+    const auto &pgs_on_node = gcs_placement_group_manager_.GetBundlesOnNode(
+        NodeID::FromBinary(gcs_node_info.node_id()));
+    for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
+      node_state_proto->mutable_dynamic_labels()->insert(
+          {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
     }
   };
 
   const auto &alive_nodes = gcs_node_manager_.GetAllAliveNodes();
   std::for_each(alive_nodes.begin(), alive_nodes.end(), [&](const auto &gcs_node_info) {
-    populate_node_state(*gcs_node_info.second, rpc::autoscaler::RUNNING);
+    populate_node_state(*gcs_node_info.second);
   });
 
   // This might be large if there are many nodes for a long-running cluster.
@@ -219,7 +250,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
   // https://github.com/ray-project/ray/issues/35874
   const auto &dead_nodes = gcs_node_manager_.GetAllDeadNodes();
   std::for_each(dead_nodes.begin(), dead_nodes.end(), [&](const auto &gcs_node_info) {
-    populate_node_state(*gcs_node_info.second, rpc::autoscaler::DEAD);
+    populate_node_state(*gcs_node_info.second);
   });
 }
 

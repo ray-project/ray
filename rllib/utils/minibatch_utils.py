@@ -2,6 +2,7 @@ import math
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
 from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.policy.sample_batch import SampleBatch
 
 
 @DeveloperAPI
@@ -69,11 +70,33 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 n_steps = self._minibatch_size
 
                 samples_to_concat = []
-                # cycle through the batch until we have enough samples
-                while n_steps >= len(module_batch) - s:
+
+                # get_len is a function that returns the length of a batch
+                # if we are not slicing the batch in the batch dimension B, then
+                # the length of the batch is simply the length of the batch
+                # o.w the length of the batch is the length list of seq_lens.
+                if module_batch._slice_seq_lens_in_B:
+                    assert module_batch.get(SampleBatch.SEQ_LENS) is not None, (
+                        "MiniBatchCyclicIterator requires SampleBatch.SEQ_LENS"
+                        "to be present in the batch for slicing a batch in the batch "
+                        "dimension B."
+                    )
+
+                    def get_len(b):
+                        return len(b[SampleBatch.SEQ_LENS])
+
+                else:
+
+                    def get_len(b):
+                        return len(b)
+
+                # Cycle through the batch until we have enough samples
+                while n_steps >= get_len(module_batch) - s:
                     sample = module_batch[s:]
                     samples_to_concat.append(sample)
-                    n_steps -= len(sample)
+                    len_sample = get_len(sample)
+                    assert len_sample > 0, "Length of a sample must be > 0!"
+                    n_steps -= len_sample
                     s = 0
                     self._num_covered_epochs[module_id] += 1
 
@@ -84,14 +107,13 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                 # concatenate all the samples, we should have minibatch_size of sample
                 # after this step
                 minibatch[module_id] = concat_samples(samples_to_concat)
-                # roll miniback to zero when we reach the end of the batch
+                # roll minibatch to zero when we reach the end of the batch
                 self._start[module_id] = e
 
-            # TODO (Kourosh): len(batch) is not correct here. However it's also not
-            # clear what the correct value should be. Since training does not depend on
-            # this it will be fine for now.
-            length = max(len(b) for b in minibatch.values())
-            minibatch = MultiAgentBatch(minibatch, length)
+            # Note (Kourosh): env_steps is the total number of env_steps that this
+            # multi-agent batch is covering. It should be simply inherited from the
+            # original multi-agent batch.
+            minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
 
 

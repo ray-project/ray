@@ -47,6 +47,10 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
       rpc::autoscaler::RequestClusterResourceConstraintReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleGetClusterStatus(rpc::autoscaler::GetClusterStatusRequest request,
+                              rpc::autoscaler::GetClusterStatusReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
+
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
