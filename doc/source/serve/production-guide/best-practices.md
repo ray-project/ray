@@ -10,7 +10,7 @@ This section helps you:
 
 ## CLI best practices
 
-This section summarizes the best practices when deploying to production using the Serve CLI:
+This section summarizes the best practices for deploying to production using the Serve CLI:
 
 * Use `serve run` to manually test and improve your deployment graph locally.
 * Use `serve build` to create a Serve config file for your deployment graph.
