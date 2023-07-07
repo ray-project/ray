@@ -1,13 +1,17 @@
-from typing import List
+from typing import List, Optional
 
 import ray
+from ray._raylet import GcsClient
+from ray.core.generated.experimental.autoscaler_pb2 import GetClusterStatusReply
 
 DEFAULT_RPC_TIMEOUT_S = 10
 
 
-def get_gcs_client():
-    """Get GCS client from the worker"""
-    return ray.worker.global_worker.node.get_gcs_client()
+def get_gcs_client(gcs_address: Optional[str] = None):
+    """Get the GCS client."""
+    if gcs_address is None:
+        gcs_address = ray.get_runtime_context().gcs_address
+    return GcsClient(address=gcs_address)
 
 
 def request_cluster_resources(
@@ -33,3 +37,19 @@ def request_cluster_resources(
 
     """
     get_gcs_client().request_cluster_resource_constraint(to_request, timeout=timeout)
+
+
+def _get_cluster_status(
+    gcs_address: Optional[str] = None, timeout: int = DEFAULT_RPC_TIMEOUT_S
+) -> GetClusterStatusReply:
+    """
+    Get the cluster status from the autoscaler.
+
+    TODO(rickyx): Parse it into a ClusterStatus object.
+    """
+
+    str_reply = get_gcs_client(gcs_address).get_cluster_status(timeout=timeout)
+    reply = GetClusterStatusReply()
+    reply.ParseFromString(str_reply)
+
+    return reply

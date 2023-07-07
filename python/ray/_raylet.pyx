@@ -2326,6 +2326,19 @@ cdef class GcsClient:
             check_status(self.inner.get().RequestClusterResourceConstraint(
                 timeout_ms, bundles))
 
+    @_auto_reconnect
+    def get_cluster_status(
+            self,
+            timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().GetClusterStatus(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
+
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends
     #############################################################
