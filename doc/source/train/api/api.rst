@@ -52,29 +52,12 @@ Train Backend Base Classes
     ~train.backend.Backend
     ~train.backend.BackendConfig
 
-
-.. TODO(pcm): Replace "air." with "train." after the classes have been removed from the Ray AIR reference
-
-Ray Train Results
------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    ~air.Checkpoint
-    ~air.Result
-
 Ray Train Config
 ----------------
 
 .. autosummary::
-    :toctree: doc/
 
-    ~air.CheckpointConfig
-    ~train.DataConfig
-    ~air.FailureConfig
-    ~air.RunConfig
-    ~air.ScalingConfig
+    ~ray.train.DataConfig
 
 
 Ray Train Loop
