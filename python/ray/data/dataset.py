@@ -314,7 +314,7 @@ class Dataset:
             ...    def __call__(self, batch):
             ...        return self.model(batch)
             >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute=ActorPoolStrategy(size=8) the transform will be applied on a
+            >>> # compute=ActorPoolStrategy(size=8) the transform is applied on a
             >>> # pool of 8 Ray actors, each allocated 1 GPU by Ray.
             >>> ds.map(CachedModel, # doctest: +SKIP
             ...        compute=ray.data.ActorPoolStrategy(size=8),
@@ -417,9 +417,9 @@ class Dataset:
         .. note::
             The size of the batches provided to ``fn`` may be smaller than the provided
             ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
-            a given map task. When ``batch_size`` is specified, each map task will be
+            a given map task. When ``batch_size`` is specified, each map task is
             sent a single block if the block is equal to or larger than ``batch_size``,
-            and will be sent a bundle of blocks up to (but not exceeding)
+            and is sent a bundle of blocks up to (but not exceeding)
             ``batch_size`` if blocks are smaller than ``batch_size``.
 
         Examples:
@@ -510,10 +510,10 @@ class Dataset:
                 exactly as is with no additional formatting.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
-                ``batch_format`` conversion, the batch will be a zero-copy, read-only
+                ``batch_format`` conversion, the batch is a zero-copy, read-only
                 view on data in Ray's object store, which can decrease memory
                 utilization and improve performance. If this is ``False``, the batch
-                will be writable, which will require an extra copy to guarantee.
+                is writable, which will require an extra copy to guarantee.
                 If ``fn`` mutates its input, this will need to be ``False`` in order to
                 avoid "assignment destination is read-only" or "buffer source array is
                 read-only" errors. Default is ``False``.
@@ -673,7 +673,7 @@ class Dataset:
 
         Args:
             col: Name of the column to add. If the name already exists, the
-                column will be overwritten.
+                column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
             compute: The compute strategy, either "tasks" (default) to use Ray
@@ -721,7 +721,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception will be raised.
+                an exception is raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
@@ -769,7 +769,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to select. If any name is not included in the
-                dataset schema, an exception will be raised.
+                dataset schema, an exception is raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
                 pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
@@ -992,7 +992,7 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            seed: Fix the random seed to use, otherwise one will be chosen
+            seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
             num_blocks: The number of output blocks after the shuffle, or None
                 to retain the number of blocks.
@@ -1032,7 +1032,7 @@ class Dataset:
             >>> ds.randomize_block_order(seed=12345) # doctest: +SKIP
 
         Args:
-            seed: Fix the random seed to use, otherwise one will be chosen
+            seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
 
         Returns:
@@ -1159,7 +1159,7 @@ class Dataset:
             n: Number of output iterators to return.
             equal: If True, each output iterator will see an exactly equal number
                 of rows, dropping data if necessary. If False, some iterators may see
-                slightly more or less rows than other, but no data will be dropped.
+                slightly more or less rows than other, but no data is dropped.
             locality_hints: Specify the node ids corresponding to each iterator
                 location. Dataset will try to minimize data movement based on the
                 iterator output locations. This list must have length ``n``. You can
@@ -1415,8 +1415,8 @@ class Dataset:
 
         Args:
             indices: List of sorted integers which indicate where the dataset
-                will be split. If an index exceeds the length of the dataset,
-                an empty dataset will be returned.
+                is split. If an index exceeds the length of the dataset,
+                an empty dataset is returned.
 
         Returns:
             The dataset splits.
@@ -1477,9 +1477,9 @@ class Dataset:
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
         See also ``Dataset.train_test_split`` for a higher level abstraction.
 
-        The indices to split at will be calculated in such a way so that all splits
+        The indices to split at is calculated in such a way so that all splits
         always contains at least one element. If that is not possible,
-        an exception will be raised.
+        an exception is raised.
 
         This is equivalent to caulculating the indices manually and calling
         ``Dataset.split_at_indices``.
@@ -1564,7 +1564,7 @@ class Dataset:
             shuffle: Whether or not to globally shuffle the dataset before splitting.
                 Defaults to False. This may be a very expensive operation with large
                 dataset.
-            seed: Fix the random seed to use for shuffle, otherwise one will be chosen
+            seed: Fix the random seed to use for shuffle, otherwise one is chosen
                 based on system randomness. Ignored if ``shuffle=False``.
 
         Returns:
@@ -1820,8 +1820,8 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the sum; if ``False``,
-                if a null value is encountered, the output will be None.
+                values are ignored when computing the sum; if ``False``,
+                if a null value is encountered, the output is None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1838,7 +1838,7 @@ class Dataset:
               containing the column-wise sum of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is None.
         """
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1861,8 +1861,8 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the min; if ``False``,
-                if a null value is encountered, the output will be None.
+                values are ignored when computing the min; if ``False``,
+                if a null value is encountered, the output is None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1879,7 +1879,7 @@ class Dataset:
               containing the column-wise min of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is None.
         """
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1902,8 +1902,8 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the max; if ``False``,
-                if a null value is encountered, the output will be None.
+                values are ignored when computing the max; if ``False``,
+                if a null value is encountered, the output is None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1920,7 +1920,7 @@ class Dataset:
               containing the column-wise max of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is None.
         """
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1943,8 +1943,8 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the mean; if ``False``,
-                if a null value is encountered, the output will be None.
+                values are ignored when computing the mean; if ``False``,
+                if a null value is encountered, the output is None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -1961,7 +1961,7 @@ class Dataset:
               containing the column-wise mean of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is None.
         """
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1997,8 +1997,8 @@ class Dataset:
             ddof: Delta Degrees of Freedom. The divisor used in calculations
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values will be ignored when computing the std; if ``False``,
-                if a null value is encountered, the output will be None.
+                values are ignored when computing the std; if ``False``,
+                if a null value is encountered, the output is None.
                 We consider np.nan, None, and pd.NaT to be null values.
                 Default is ``True``.
 
@@ -2015,7 +2015,7 @@ class Dataset:
               containing the column-wise std of the provided columns.
 
             If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output will be None.
+            AND ``ignore_nulls`` is ``False``, then the output is None.
         """
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
@@ -2058,11 +2058,11 @@ class Dataset:
     def zip(self, other: "Dataset") -> "Dataset":
         """Materialize and zip this dataset with the elements of another.
 
-        The datasets must have the same number of rows. Their column sets will be
+        The datasets must have the same number of rows. Their column sets are
         merged, and any duplicate column names disambiguated with _1, _2, etc. suffixes.
 
         .. note::
-            The smaller of the two datasets will be repartitioned to align the number
+            The smaller of the two datasets are repartitioned to align the number
             of rows per block with the larger dataset.
 
         .. note::
@@ -2425,46 +2425,66 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **arrow_parquet_args,
     ) -> None:
-        """Write the dataset to parquet.
+        """Writes the :class:`~ray.data.Dataset` to parquet files under the provided ``path``.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.parquet, where ``uuid`` is an unique
-        id for the dataset.
+        If pyarrow can't represent your data, this method errors.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.parquet``,
+        where ``uuid`` is a unique
+        id for the dataset. To modify this behavior, implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_parquet("s3://bucket/folder/")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_parquet("local:///tmp/data/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where Parquet
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            path: The path to the destination root directory, where
+                parquet files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default, the format of the output files is
+                ``{uuid}_{block_idx}.parquet``, where ``uuid`` is a unique id for the
+                dataset.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
-                arguments to use when writing each block to a file. Overrides
-                any duplicate keys from arrow_parquet_args. This should be used
-                instead of arrow_parquet_args if any of your write arguments
-                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments that are provided to `pyarrow.parquet.write_table() <https:/\
+                    /arrow.apache.org/docs/python/generated/\
+                        pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>`_
+                when writing each block to a file. Overrides
+                any duplicate keys from ``arrow_parquet_args``. Use this argument
+                instead of ``arrow_parquet_args`` if any of your write arguments
+                can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             arrow_parquet_args: Options to pass to
-                pyarrow.parquet.write_table(), which is used to write out each
+                `pyarrow.parquet.write_table() <https://arrow.apache.org/docs/python\
+                    /generated/pyarrow.parquet.write_table.html\
+                        #pyarrow.parquet.write_table>`_, which is used to write out each
                 block to a file.
         """
         self.write_datasource(
@@ -2493,47 +2513,70 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
-        """Write the dataset to json.
+        """Writes the :class:`~ray.data.Dataset` to JSON files.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {self._uuid}_{block_idx}.json, where ``uuid`` is an
-        unique id for the dataset.
+        This method is only supported for datasets with records that are convertible to
+        pandas dataframes.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.json``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.file_based_datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
+            Write the dataset as JSON files to a local directory.
 
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_json("s3://bucket/folder/")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_json("local:///tmp/data")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where json
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            path: The path to the destination root directory, where
+                the JSON files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default, the format of the output files is
+                ``{uuid}_{block_idx}.json``, where ``uuid`` is a unique id for the
+                dataset.
             pandas_json_args_fn: Callable that returns a dictionary of write
-                arguments to use when writing each block to a file. Overrides
-                any duplicate keys from pandas_json_args. This should be used
-                instead of pandas_json_args if any of your write arguments
-                cannot be pickled, or if you'd like to lazily resolve the write
+                arguments that are provided to
+                `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
+                    api/pandas.DataFrame.to_json.html>`_
+                when writing each block to a file. Overrides
+                any duplicate keys from ``pandas_json_args``. Use this parameter
+                instead of ``pandas_json_args`` if any of your write arguments
+                can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            pandas_json_args: These args will be passed to
-                pandas.DataFrame.to_json(), which we use under the hood to
-                write out each Dataset block. These
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            pandas_json_args: These args are passed to
+                `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
+                    api/pandas.DataFrame.to_json.html>`_,
+                which is used under the hood to write out each
+                :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
         self.write_datasource(
@@ -2562,45 +2605,74 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
-        """Write the dataset to csv.
+        """Writes the :class:`~ray.data.Dataset` to CSV files.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.csv, where ``uuid`` is an unique id
-        for the dataset.
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.csv``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
+            Write the dataset as CSV files to a local directory.
 
-            .. testcode::
-                :skipif: True
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_csv("local:///tmp/data")
 
-                import ray
+            Write the dataset as CSV files to S3.
 
-                ds = ray.data.range(100)
-                ds.write_csv("s3://bucket/folder/")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_csv("s3://bucket/folder/)  # doctest: +SKIP
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where csv
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            path: The path to the destination root directory, where
+                the CSV files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path if ``True``. Does nothing if all directories already
+                exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files is
+                ``{uuid}_{block_idx}.csv``, where ``uuid`` is a unique id for the
+                dataset.
             arrow_csv_args_fn: Callable that returns a dictionary of write
-                arguments to use when writing each block to a file. Overrides
-                any duplicate keys from arrow_csv_args. This should be used
-                instead of arrow_csv_args if any of your write arguments
-                cannot be pickled, or if you'd like to lazily resolve the write
-                arguments for each dataset block.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            arrow_csv_args: Other CSV write options to pass to pyarrow.
+                arguments that are provided to `pyarrow.write.write_csv <https://\
+                arrow.apache.org/docs/python/generated/\
+                pyarrow.csv.write_csv.html#pyarrow.csv.write_csv>`_ when writing each
+                block to a file. Overrides any duplicate keys from ``arrow_csv_args``.
+                Use this argument instead of ``arrow_csv_args`` if any of your write
+                arguments cannot be pickled, or if you'd like to lazily resolve the
+                write arguments for each dataset block.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            arrow_csv_args: Options to pass to `pyarrow.write.write_csv <https://\
+                arrow.apache.org/docs/python/generated/pyarrow.csv.write_csv.html\
+                    #pyarrow.csv.write_csv>`_
+                when writing each block to a file.
         """
         self.write_datasource(
             CSVDatasource(),
@@ -2627,11 +2699,12 @@ class Dataset:
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """Write the dataset to TFRecord files.
+        """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
-        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/Example>`_ # noqa: E501
+        files contain
+        `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/\
+            Example>`_
         records, with one Example record for each row in the dataset.
 
         .. warning::
@@ -2639,36 +2712,52 @@ class Dataset:
             so this function only supports datasets with these data types,
             and will error if the dataset contains unsupported types.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of files, use :meth:`Dataset.repartition`.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {uuid}_{block_idx}.tfrecords, where ``uuid`` is an unique id
-        for the dataset.
+        This method is only supported for datasets with records that are convertible to
+        pyarrow tables.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.tfrecords``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.file_based_datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_tfrecords("s3://bucket/folder/")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_tfrecords("local:///tmp/data/")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             path: The path to the destination root directory, where tfrecords
-                files will be written to.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+                files are written to.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in the
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default, the format of the output files is
+                ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id for the
+                dataset.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
 
         """
 
@@ -2697,7 +2786,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
-        """Write the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
+        """Writes the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
@@ -2713,7 +2802,7 @@ class Dataset:
         To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
-        files will be ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is an unique id
+        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
         for the dataset.
 
         Examples:
@@ -2730,10 +2819,11 @@ class Dataset:
 
         Args:
             path: The path to the destination root directory, where tfrecords
-                files will be written to.
+                files are written to.
             filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            try_create_dir: If ``True``, attempts to create all
+                directories in the destination path. Does nothing if all directories
+                already exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 ``pyarrow.fs.FileSystem.open_output_stream``
             block_path_provider: :class:`~ray.data.datasource.BlockWritePathProvider`
@@ -2761,54 +2851,64 @@ class Dataset:
         self,
         path: str,
         *,
-        column: Optional[str] = None,
+        column: str,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         try_create_dir: bool = True,
         arrow_open_stream_args: Optional[Dict[str, Any]] = None,
         block_path_provider: BlockWritePathProvider = DefaultBlockWritePathProvider(),
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """Write a tensor column of the dataset to npy files.
+        """Writes a column of the :class:`~ray.data.Dataset` to .npy files.
 
-        This is only supported for datasets convertible to Arrow records that
-        contain a TensorArray column. To control the number of files, use
-        :meth:`Dataset.repartition`.
+        This is only supported for columns in the datasets that can be converted to
+        NumPy arrays.
 
-        Unless a custom block path provider is given, the format of the output
-        files will be {self._uuid}_{block_idx}.npy, where ``uuid`` is an unique
-        id for the dataset.
+        The number of files is determined by the number of blocks in the dataset.
+        To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        By default, the format of the output files is ``{uuid}_{block_idx}.npy``,
+        where ``uuid`` is a unique id for the dataset. To modify this behavior,
+        implement a custom
+        :class:`~ray.data.datasource.BlockWritePathProvider`
+        and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-
-            .. testcode::
-                :skipif: True
-
-                import ray
-
-                ds = ray.data.range(100)
-                ds.write_numpy("s3://bucket/folder/", column="id")
+            >>> import ray
+            >>> ds = ray.data.range(100)
+            >>> ds.write_numpy("local:///tmp/data/", column="id")
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            path: The path to the destination root directory, where npy
-                files will be written to.
-            column: The name of the table column that contains the tensor to
+            path: The path to the destination root directory, where
+                the npy files are written to.
+            column: The name of the column that contains the data to
                 be written.
-            filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if True. Does nothing if all directories already exist.
+            filesystem: The pyarrow filesystem implementation to write to.
+                These filesystems are specified in the
+                `pyarrow docs <https://arrow.apache.org/docs\
+                /python/api/filesystems.html#filesystem-implementations>`_.
+                Specify this if you need to provide specific configurations to the
+                filesystem. By default, the filesystem is automatically selected based
+                on the scheme of the paths. For example, if the path begins with
+                ``s3://``, the ``S3FileSystem`` is used.
+            try_create_dir: If ``True``, attempts to create all directories in
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
+                /docs/python/generated/pyarrow.fs.FileSystem.html\
+                #pyarrow.fs.FileSystem.open_output_stream>`_, which is used when
+                opening the file to write to.
+            block_path_provider: A
+                :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation specifying the filename structure for each output
+                parquet file. By default,  the format of the output files is
+                ``{uuid}_{block_idx}.npy``, where ``uuid`` is a unique id for the
+                dataset.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
         """
-        if column is None:
-            raise ValueError(
-                "In Ray 2.5, the column must be specified "
-                "(e.g., `write_numpy(column='data')`)."
-            )
 
         self.write_datasource(
             NumpyDatasource(),
@@ -2830,22 +2930,24 @@ class Dataset:
         collection: str,
         ray_remote_args: Dict[str, Any] = None,
     ) -> None:
-        """Write the dataset to a MongoDB datasource.
+        """Writes the :class:`~ray.data.Dataset` to a MongoDB database.
 
-        This is only supported for datasets convertible to Arrow records.
-        To control the number of parallel write tasks, use :meth:`Dataset.repartition``
-        before calling this method.
+        This method is only supported for datasets convertible to pyarrow tables.
 
-        .. note::
-            Currently, this supports only a subset of the pyarrow's types, due to the
+        The number of parallel writes is determined by the number of blocks in the
+        dataset. To control the number of number of blocks, call
+        :meth:`~ray.data.Dataset.repartition`.
+
+        .. warning::
+            This method supports only a subset of the PyArrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
-            types will fail on type checking. See all the supported types at:
+            types fails on type checking. See all the supported types at:
             https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
 
         .. note::
-            The records will be inserted into MongoDB as new documents. If a record has
+            The records are inserted into MongoDB as new documents. If a record has
             the _id field, this _id must be non-existent in MongoDB, otherwise the write
-            will be rejected and fail (hence preexisting documents are protected from
+            is rejected and fail (hence preexisting documents are protected from
             being mutated). It's fine to not have _id field in record and MongoDB will
             auto generate one at insertion.
 
@@ -2864,14 +2966,19 @@ class Dataset:
                 )
 
         Args:
-            uri: The URI to the destination MongoDB where the dataset will be
-                written to. For the URI format, see details in
-                https://www.mongodb.com/docs/manual/reference/connection-string/.
+            uri: The URI to the destination MongoDB where the dataset is
+                written to. For the URI format, see details in the
+                `MongoDB docs <https://www.mongodb.com/docs/manual/reference\
+                    /connection-string/>`_.
             database: The name of the database. This database must exist otherwise
-                ValueError will be raised.
+                a ValueError is raised.
             collection: The name of the collection in the database. This collection
-                must exist otherwise ValueError will be raised.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                must exist otherwise a ValueError is raised.
+            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+
+        Raises:
+            ValueError: if ``database`` doesn't exist.
+            ValueError: if ``collection`` doesn't exist.
         """
         from ray.data.datasource import MongoDatasource
 
@@ -2891,7 +2998,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
     ) -> None:
-        """Write the dataset to a custom :class:`~ray.data.Datasource`.
+        """Writes the dataset to a custom :class:`~ray.data.Datasource`.
 
         For an example of how to use this method, see
         :ref:`Implementing a Custom Datasource <custom_datasources>`.
@@ -3059,7 +3166,7 @@ class Dataset:
 
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
@@ -3074,11 +3181,11 @@ class Dataset:
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained.
+                the buffer, the remaining rows in the buffer is drained.
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
@@ -3135,7 +3242,7 @@ class Dataset:
 
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
@@ -3144,10 +3251,10 @@ class Dataset:
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
-                will be inferred from the tensor data.
-            device: The device on which the tensor should be placed; if None, the Torch
-                tensor will be constructed on the CPU.
+            dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the dtype
+                is inferred from the tensor data.
+            device: The device on which the tensor should be placed; if ``None``, the
+                torch tensor is constructed on the CPU.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
                 Potential use cases include collating along a dimension other than the
                 first, padding sequences of various lengths, or generally handling
@@ -3156,11 +3263,11 @@ class Dataset:
                 arrays to a batch of PyTorch tensors. This API is still experimental
                 and is subject to change.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
+                the buffer, the remaining rows in the buffer is drained. This
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
@@ -3219,7 +3326,7 @@ class Dataset:
 
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
@@ -3228,14 +3335,14 @@ class Dataset:
                 as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            dtypes: The TensorFlow dtype(s) for the created tensor(s); if None, the
-                dtype will be inferred from the tensor data.
+            dtypes: The TensorFlow dtype(s) for the created tensor(s); if ``None``, the
+                dtype is inferred from the tensor data.
             drop_last: Whether to drop the last batch if it's incomplete.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
+                the buffer, the remaining rows in the buffer is drained. This
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
@@ -3285,7 +3392,7 @@ class Dataset:
         It is recommended to use the returned ``IterableDataset`` directly
         instead of passing it into a torch ``DataLoader``.
 
-        Each element in ``IterableDataset`` will be a tuple consisting of 2
+        Each element in ``IterableDataset`` is a tuple consisting of 2
         elements. The first item contains the feature tensor(s), and the
         second item is the label tensor. Those can take on different
         forms, depending on the specified arguments.
@@ -3293,25 +3400,25 @@ class Dataset:
         For the features tensor (N is the ``batch_size`` and n, m, k
         are the number of features per tensor):
 
-        * If ``feature_columns`` is a ``List[str]``, the features will be
+        * If ``feature_columns`` is a ``List[str]``, the features is
           a tensor of shape (N, n), with columns corresponding to
           ``feature_columns``
 
-        * If ``feature_columns`` is a ``List[List[str]]``, the features will be
+        * If ``feature_columns`` is a ``List[List[str]]``, the features is
           a list of tensors of shape [(N, m),...,(N, k)], with columns of each
           tensor corresponding to the elements of ``feature_columns``
 
         * If ``feature_columns`` is a ``Dict[str, List[str]]``, the features
-          will be a dict of key-tensor pairs of shape
+          is a dict of key-tensor pairs of shape
           {key1: (N, m),..., keyN: (N, k)}, with columns of each
           tensor corresponding to the value of ``feature_columns`` under the
           key.
 
-        If ``unsqueeze_label_tensor=True`` (default), the label tensor will be
-        of shape (N, 1). Otherwise, it will be of shape (N,).
+        If ``unsqueeze_label_tensor=True`` (default), the label tensor is
+        of shape (N, 1). Otherwise, it is of shape (N,).
         If ``label_column`` is specified as ``None``, then no column from the
-        ``Dataset`` will be treated as the label, and the output label tensor
-        will be ``None``.
+        ``Dataset`` is treated as the label, and the output label tensor
+        is ``None``.
 
         Note that you probably want to call :meth:`Dataset.split` on this dataset if
         there are to be multiple Torch workers consuming the data.
@@ -3326,19 +3433,19 @@ class Dataset:
             feature_columns: The names of the columns
                 to use as the features. Can be a list of lists or
                 a dict of string-list pairs for multi-tensor output.
-                If None, then use all columns except the label column as
+                If ``None``, then use all columns except the label column as
                 the features.
             label_column_dtype: The torch dtype to
-                use for the label column. If None, then automatically infer
+                use for the label column. If ``None``, then automatically infer
                 the dtype.
             feature_column_dtypes: The dtypes to use for the feature
                 tensors. This should match the format of ``feature_columns``,
-                or be a single dtype, in which case it will be applied to
-                all tensors. If None, then automatically infer the dtype.
+                or be a single dtype, in which case it is applied to
+                all tensors. If ``None``, then automatically infer the dtype.
             batch_size: How many samples per batch to yield at a time.
                 Defaults to 1.
             prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
@@ -3346,24 +3453,24 @@ class Dataset:
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
-                size, then the last batch will be smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                size, then the last batch is smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
+                the buffer, the remaining rows in the buffer is drained. This
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
             local_shuffle_seed: The seed to use for the local random shuffle.
             unsqueeze_label_tensor: If set to True, the label tensor
-                will be unsqueezed (reshaped to (N, 1)). Otherwise, it will
+                is unsqueezed (reshaped to (N, 1)). Otherwise, it will
                 be left as is, that is (N, ). In general, regression loss
                 functions expect an unsqueezed tensor, while classification
                 loss functions expect a squeezed one. Defaults to True.
             unsqueeze_feature_tensors: If set to True, the features tensors
-                will be unsqueezed (reshaped to (N, 1)) before being concatenated into
-                the final features tensor. Otherwise, they will be left as is, that is
+                are unsqueezed (reshaped to (N, 1)) before being concatenated into
+                the final features tensor. Otherwise, they are left as is, that is
                 (N, ). Defaults to True.
 
         Returns:
@@ -3463,7 +3570,7 @@ class Dataset:
                 string, the target data is a tensor. If this is a list, the target data
                 is a ``dict`` that maps column names to their tensor representation.
             prefetch_batches: The number of batches to fetch ahead of the current batch
-                to fetch. If set to greater than 0, a separate threadpool will be used
+                to fetch. If set to greater than 0, a separate threadpool is used
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
@@ -3472,12 +3579,12 @@ class Dataset:
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
                 False and the size of the stream is not divisible by the batch
-                size, then the last batch will be smaller. Defaults to False.
-            local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
+                size, then the last batch is smaller. Defaults to False.
+            local_shuffle_buffer_size: If non-None, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
                 minimum number of rows that must be in the local in-memory shuffle
                 buffer in order to yield a batch. When there are no more rows to add to
-                the buffer, the remaining rows in the buffer will be drained. This
+                the buffer, the remaining rows in the buffer is drained. This
                 buffer size must be greater than or equal to ``batch_size``, and
                 therefore ``batch_size`` must also be specified when using local
                 shuffling.
@@ -3533,7 +3640,7 @@ class Dataset:
                 iterable of ``(name, dtype)`` can be provided (note that the order of
                 the names should match the order of the columns). Instead of a series, a
                 tuple of ``(name, dtype)`` can be used.
-                By default, this will be inferred from the underlying Dataset schema,
+                By default, this is inferred from the underlying Dataset schema,
                 with this argument supplying an optional override.
 
         Returns:
@@ -3649,7 +3756,7 @@ class Dataset:
         `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
         This works by first converting this dataset into a distributed set of
-        Pandas DataFrames (using :meth:`~ray.data.Dataset.to_pandas_refs`).
+        Pandas DataFrames (using :meth:`Dataset.to_pandas_refs`).
         See caveats there. Then the individual DataFrames are used to
         create the Modin DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
@@ -3696,11 +3803,10 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
-        """Convert this dataset into a single Pandas DataFrame.
+        """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
 
-        This is only supported for datasets convertible to Arrow or Pandas
-        records. An error is raised if the number of records exceeds the
-        provided limit. Note that you can use :meth:`.limit` on the dataset
+        This method errors if the number of rows exceeds the
+        provided ``limit``. You can use :meth:`.limit` on the dataset
         beforehand to truncate the dataset manually.
 
         Examples:
@@ -3715,12 +3821,16 @@ class Dataset:
         Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return. An error will be
-                raised if the limit is exceeded.
+            limit: The maximum number of records to return. An error is
+                raised if the dataset has more rows than this limit.
 
         Returns:
-            A Pandas DataFrame created from this dataset, containing a limited
+            A pandas DataFrame created from this dataset, containing a limited
             number of records.
+
+        Raises:
+            ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
+            ``limit``.
         """
         count = self.count()
         if count > limit:
@@ -3740,17 +3850,26 @@ class Dataset:
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_pandas_refs(self) -> List[ObjectRef["pandas.DataFrame"]]:
-        """Convert this dataset into a distributed set of Pandas dataframes.
+        """Converts this :class:`~ray.data.Dataset` into a distributed set of Pandas
+        dataframes.
 
-        This is only supported for datasets convertible to Arrow records.
+        One DataFrame is created for each block in this Dataset.
+
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow` or
         :meth:`Dataset.get_internal_block_refs`.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10, parallelism=2)
+            >>> refs = ds.to_pandas_refs()
+            >>> len(refs)
+            2
+
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A list of remote Pandas dataframes created from this dataset.
+            A list of remote pandas DataFrames created from this dataset.
         """
 
         block_to_df = cached_remote_fn(_block_to_df)
@@ -3760,19 +3879,27 @@ class Dataset:
     def to_numpy_refs(
         self, *, column: Optional[str] = None
     ) -> List[ObjectRef[np.ndarray]]:
-        """Convert this dataset into a distributed set of NumPy ndarrays.
+        """Converts this :class:`~ray.data.Dataset` into a distributed set of NumPy
+        ndarrays or dictionary of NumPy ndarrays.
 
         This is only supported for datasets convertible to NumPy ndarrays.
         This function induces a copy of the data. For zero-copy access to the
         underlying data, consider using :meth:`Dataset.to_arrow` or
         :meth:`Dataset.get_internal_block_refs`.
 
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10, parallelism=2)
+            >>> refs = ds.to_numpy_refs()
+            >>> len(refs)
+            2
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            column: The name of the column to convert to numpy, or None to specify the
-            entire row. If not specified for Arrow or Pandas blocks, each returned
-            future will represent a dict of column ndarrays.
+            column: The name of the column to convert to numpy. If ``None``, all columns
+                are used. If multiple columns are specified, each returned
+            future represents a dict of ndarrays. Defaults to None.
 
         Returns:
             A list of remote NumPy ndarrays created from this dataset.
@@ -3786,16 +3913,26 @@ class Dataset:
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
     def to_arrow_refs(self) -> List[ObjectRef["pyarrow.Table"]]:
-        """Convert this dataset into a distributed set of Arrow tables.
+        """Convert this :class:`~ray.data.Dataset` into a distributed set of PyArrow
+        tables.
 
-        This is only supported for datasets convertible to Arrow records.
-        This function is zero-copy if the existing data is already in Arrow
-        format. Otherwise, the data will be converted to Arrow format.
+        One PyArrow table is created for each block in this Dataset.
+
+        This method is only supported for datasets convertible to PyArrow tables.
+        This function is zero-copy if the existing data is already in PyArrow
+        format. Otherwise, the data is converted to PyArrow format.
+
+        Examples:
+            >>> import ray
+            >>> ds = ray.data.range(10, parallelism=2)
+            >>> refs = ds.to_arrow_refs()
+            >>> len(refs)
+            2
 
         Time complexity: O(1) unless conversion is required.
 
         Returns:
-            A list of remote Arrow tables created from this dataset.
+            A list of remote PyArrow tables created from this dataset.
         """
         import pyarrow as pa
 
@@ -3984,7 +4121,7 @@ class Dataset:
                 length of the pipeline. Setting this to infinity effectively
                 disables pipelining.
             bytes_per_window: Specify the window size in bytes instead of blocks.
-                This will be treated as an upper bound for the window size, but each
+                This is treated as an upper bound for the window size, but each
                 window will still include at least one block. This is mutually
                 exclusive with ``blocks_per_window``.
         """
@@ -4202,7 +4339,7 @@ class Dataset:
         """Returns a string containing execution timing information.
 
         Note that this does not trigger execution, so if the dataset has not yet
-        executed, an empty string will be returned.
+        executed, an empty string is returned.
 
         Examples:
 
@@ -4304,7 +4441,7 @@ class Dataset:
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
-        Note that this will drop all computed data, and that everything will be
+        Note that this will drop all computed data, and that everything is
         recomputed from scratch after deserialization.
 
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized
@@ -4518,7 +4655,7 @@ class Dataset:
         """Return a mimebundle with an ipywidget repr and a simple text repr.
 
         Depending on the frontend where the data is being displayed,
-        different mimetypes will be used from this bundle.
+        different mimetypes are used from this bundle.
         See https://ipython.readthedocs.io/en/stable/config/integrating.html
         for information about this method, and
         https://ipywidgets.readthedocs.io/en/latest/embedding.html
@@ -4698,7 +4835,7 @@ class Schema:
     Attributes:
         names: List of column names of this Dataset.
         types: List of Arrow types of the Dataset. Note that the "object" type is
-            not Arrow compatible and hence will be returned as `object`.
+            not Arrow compatible and hence is returned as `object`.
         base_schema: The underlying Arrow or Pandas schema.
     """
 
@@ -4796,7 +4933,7 @@ def _sliding_window(iterable: Iterable, n: int):
     returned.
 
     Args:
-        iterable: The iterable on which the sliding window will be
+        iterable: The iterable on which the sliding window is
             created.
         n: The width of the sliding window.
 
