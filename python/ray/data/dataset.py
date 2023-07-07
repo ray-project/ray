@@ -2451,7 +2451,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: If True, attempts to create all directories in the
+            try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2542,7 +2542,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: If True, attempts to create all directories in the
+            try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2640,7 +2640,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
+            try_create_dir: If ``True``, attempts to create all directories in the
                 destination path if ``True``. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2737,7 +2737,7 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: If True, attempts to create all directories in the
+            try_create_dir: If ``True``, attempts to create all directories in the
                 destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
@@ -2815,8 +2815,9 @@ class Dataset:
             path: The path to the destination root directory, where tfrecords
                 files are written to.
             filesystem: The filesystem implementation to write to.
-            try_create_dir: Try to create all directories in destination path
-                if ``True``. Does nothing if all directories already exist.
+            try_create_dir: If ``True``, attempts to create all
+                directories in the destination path. Does nothing if all directories
+                already exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 pyarrow.fs.FileSystem.open_output_stream
             block_path_provider: BlockWritePathProvider implementation to
@@ -2886,9 +2887,9 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
-                destination path if True. Does nothing if all directories already
-                exist. Defaults to True.
+            try_create_dir: If ``True``, attempts to create all directories in
+                destination path. Does nothing if all directories already
+                exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
                 /docs/python/generated/pyarrow.fs.FileSystem.html\
@@ -2932,9 +2933,9 @@ class Dataset:
         :meth:`~ray.data.Dataset.repartition`.
 
         .. warning::
-            Currently, this supports only a subset of the pyarrow's types, due to the
+            This method supports only a subset of the PyArrow's types, due to the
             limitation of pymongoarrow which is used underneath. Writing unsupported
-            types will fail on type checking. See all the supported types at:
+            types fails on type checking. See all the supported types at:
             https://mongo-arrow.readthedocs.io/en/latest/data_types.html.
 
         .. note::
