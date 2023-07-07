@@ -210,6 +210,6 @@ def py_object_store_get_and_check(table):
     for column_name in table.column_names:
         column1 = table[column_name]
         column2 = expected_table[column_name]
-        assert(column1.equals(column2))
+        assert column1.equals(column2)
 
     return table
