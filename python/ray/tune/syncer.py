@@ -838,14 +838,8 @@ class SyncerCallback(Callback):
             # Only log a warning for remote trials, since
             # this only affects artifacts that are saved on worker nodes.
             if source_ip != ray.util.get_node_ip_address():
-                if log_once(f"sync_trial_dir_{trial.trial_id}"):
-                    logger.warning(
-                        "The contents of the trial directory for trial "
-                        f"{trial.trial_id}, "
-                        "which includes checkpoints and artifacts, were not synced "
-                        "to the head node. See below for more info:\n\n"
-                        + _SYNC_TO_HEAD_DEPRECATION_MESSAGE
-                    )
+                if log_once(f"deprecated_head_node_sync"):
+                    logger.warning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             return False
 
         sync_process = self._get_trial_sync_process(trial)

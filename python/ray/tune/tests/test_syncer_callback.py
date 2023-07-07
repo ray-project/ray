@@ -16,6 +16,7 @@ from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
 from ray.tune.result import TIME_TOTAL_S
 from ray.tune.syncer import (
+    _SYNC_TO_HEAD_DEPRECATION_MESSAGE,
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
     SyncerCallback,
@@ -630,28 +631,30 @@ def test_head_node_syncing_disabled_warning(propagate_logs, caplog, monkeypatch)
     local_trial_c = MockTrial(trial_id="c", logdir=None)
 
     with caplog.at_level(logging.WARNING):
+        # The log should only be displayed once for the first remote trial.
+        syncer_callback._sync_trial_dir(local_trial_c)
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 0
+
         # Any attempts to sync from remote trials should no-op.
         # Instead, print a warning message to the user explaining that
         # no checkpoints or artifacts are pulled to the head node.
         syncer_callback._sync_trial_dir(remote_trial_a)
-        syncer_callback._sync_trial_dir(remote_trial_b)
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 1
 
-        # Syncing multiple times shouldn't spam the logs
+        # More sync attempts shouldn't add any extra warnings.
+        syncer_callback._sync_trial_dir(remote_trial_b)
         syncer_callback._sync_trial_dir(remote_trial_a)
-        syncer_callback._sync_trial_dir(remote_trial_b)
-
-        # No warning for attempting to sync a local trial dir
         syncer_callback._sync_trial_dir(local_trial_c)
 
-        assert caplog.text.count("The contents of the trial directory for trial a") == 1
-        assert caplog.text.count("The contents of the trial directory for trial b") == 1
-        assert caplog.text.count("The contents of the trial directory for trial c") == 0
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 1
 
     disabled_syncer_callback = SyncerCallback(enabled=False)
     remote_trial_d = MockTrial(trial_id="d", logdir=None, runner_ip="remote")
+    caplog.clear()
     with caplog.at_level(logging.WARNING):
+        # No warning if syncing is explicitly disabled
         disabled_syncer_callback._sync_trial_dir(remote_trial_d)
-        assert caplog.text.count("The contents of the trial directory for trial d") == 0
+        assert caplog.text.count(_SYNC_TO_HEAD_DEPRECATION_MESSAGE) == 0
 
 
 if __name__ == "__main__":
