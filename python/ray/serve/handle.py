@@ -16,7 +16,6 @@ from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
     SERVE_HANDLE_JSON_KEY,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     ServeHandleType,
 )
 from ray.serve._private.utils import (
@@ -29,12 +28,6 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
-
-# Feature flag to revert to legacy behavior of synchronous deployment
-# handle in dynamic dispatch. This is here as an escape hatch and last resort.
-FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
-    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
-)
 
 
 def _wrap_into_async_task(async_func):
@@ -397,8 +390,11 @@ class RayServeDeploymentHandle:
         if not self.handle:
             handle = serve._private.api.get_deployment(
                 self.deployment_name
-            )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
-            self.handle = handle.options(method_name=self.handle_options.method_name)
+            )._get_handle(sync=False)
+            self.handle = handle.options(
+                method_name=self.handle_options.method_name,
+                stream=self.handle_options.stream,
+            )
         return self.handle.remote(*args, **kwargs)
 
     @classmethod
