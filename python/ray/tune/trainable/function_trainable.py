@@ -155,10 +155,6 @@ class _StatusReporter:
         # to throw an error if `tune.report()` is called as well
         self._air_session_has_reported = False
 
-        # Temporary checkpoint directory used for restoring in `restore_from_object`.
-        # When the next checkpoint is saved, we will remove this directory.
-        self._tmp_restore_dir = None
-
     def reset(self, trial_name=None, trial_id=None, logdir=None, trial_resources=None):
         self._trial_name = trial_name
         self._trial_id = trial_id
@@ -229,14 +225,19 @@ class _StatusReporter:
                     "make_checkpoint_dir."
                 )
                 raise
+        previous_checkpoint = self._last_checkpoint
         self._last_checkpoint = checkpoint
         if is_new:
             self._fresh_checkpoint = True
 
-        # Delete temporary checkpoint folder from `restore_from_object`, if set.
-        if self._tmp_restore_dir:
-            shutil.rmtree(self._tmp_restore_dir, ignore_errors=True)
-            self._tmp_restore_dir = None
+        # Delete temporary checkpoint folder from `restore_from_object`
+        if previous_checkpoint and FuncCheckpointUtil.is_temp_checkpoint_dir(
+            previous_checkpoint
+        ):
+            previous_checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                previous_checkpoint
+            )
+            shutil.rmtree(previous_checkpoint_dir, ignore_errors=True)
 
     def has_new_checkpoint(self):
         return self._fresh_checkpoint
@@ -528,9 +529,6 @@ class FunctionTrainable(Trainable):
         checkpoint.to_directory(self.temp_checkpoint_dir)
 
         self.restore(self.temp_checkpoint_dir)
-        # Set tmp restore dir - this directory will be deleted once a new checkpoint
-        # is written or set.
-        self._status_reporter._tmp_restore_dir = self.temp_checkpoint_dir
 
     def cleanup(self):
         # Trigger thread termination
