@@ -818,6 +818,10 @@ def format_info_string(
                 f"{attempted_time.minute:02d}:"
                 f"{attempted_time.second:02d}"
             )
+            line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
+            if verbose:
+                line += f" - {description}"
+            failure_lines.append(line)
 
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
     failure_report = "Recent failures:\n"
