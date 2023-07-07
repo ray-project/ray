@@ -928,6 +928,9 @@ class SyncerCallback(Callback):
         checkpoint: _TrackedCheckpoint,
         **info,
     ):
+        if not self._enabled or trial.uses_cloud_checkpointing:
+            return
+
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
