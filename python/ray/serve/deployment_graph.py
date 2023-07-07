@@ -1,4 +1,3 @@
-import json
 import ray
 from ray import cloudpickle
 from ray.util.annotations import PublicAPI

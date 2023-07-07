@@ -3,7 +3,6 @@ import concurrent.futures
 from dataclasses import dataclass
 from functools import wraps
 import inspect
-from typing import Coroutine, Dict, Optional, Union
 import threading
 from typing import Coroutine, Optional, Union
 
@@ -14,8 +13,6 @@ from ray import serve
 from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
-    SERVE_HANDLE_JSON_KEY,
-    ServeHandleType,
 )
 from ray.serve._private.utils import (
     get_random_letters,
