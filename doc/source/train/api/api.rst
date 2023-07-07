@@ -53,23 +53,39 @@ Train Backend Base Classes
     ~train.backend.BackendConfig
 
 
-Ray Train Checkpoints
----------------------
-
-.. autosummary::
-    :toctree: doc/
-
-    ~train.Checkpoint
-
-
-Ray Train Context
+Ray Train Results
 -----------------
 
 .. autosummary::
     :toctree: doc/
 
-    ~train.get_context
+    ~train.Checkpoint
+    ~train.Result
+
+
+Ray Train Config
+----------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.CheckpointConfig
+    ~train.DataConfig
+    ~train.FailureConfig
+    ~train.RunConfig
+    ~train.ScalingConfig
+
+
+Ray Train Loop
+--------------
+
+.. autosummary::
+    :toctree: doc/
+
     ~train.context.TrainContext
+    ~train.get_context
+    ~train.get_dataset_shard
+    ~train.report
 
 
 .. _train-integration-api:

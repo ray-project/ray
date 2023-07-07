@@ -72,13 +72,6 @@ class TrainContext:
     def get_node_rank(self) -> int:
         return session.get_node_rank()
 
-    @_copy_doc(session.get_dataset_shard)
-    def get_dataset_shard(
-        self,
-        dataset_name: Optional[str] = None,
-    ) -> Optional["DataIterator"]:
-        return session.get_dataset_shard(dataset_name)
-
 
 @PublicAPI(stability="beta")
 def get_context() -> TrainContext:
