@@ -584,7 +584,7 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
     trial = MockTrial(trial_id="a", logdir=None)
 
     # Raise a deprecation error if checkpointing in a multi-node cluster
-    monkeypatch.delenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, raising=False)
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
     with pytest.raises(DeprecationWarning):
         syncer_callback.on_checkpoint(
             iteration=1,
@@ -609,7 +609,7 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
 
     # Make sure we don't raise an error if running on a single node or using NFS,
     # where the checkpoint can be accessed from the driver.
-    monkeypatch.delenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, raising=False)
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
     path_that_exists = tmp_path / "exists"
     path_that_exists.mkdir()
     syncer_callback.on_checkpoint(
@@ -624,7 +624,7 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
 
 # TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
 def test_head_node_syncing_disabled_warning(propagate_logs, caplog, monkeypatch):
-    monkeypatch.delenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, raising=False)
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
     syncer_callback = SyncerCallback(sync_period=0)
     remote_trial_a = MockTrial(trial_id="a", logdir=None, runner_ip="remote")
     remote_trial_b = MockTrial(trial_id="b", logdir=None, runner_ip="remote")

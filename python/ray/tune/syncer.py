@@ -834,7 +834,7 @@ class SyncerCallback(Callback):
 
         self._trial_ips[trial.trial_id] = source_ip
 
-        if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
+        if not bool(int(os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE))):
             # Only log a warning for remote trials, since
             # this only affects artifacts that are saved on worker nodes.
             if source_ip != ray.util.get_node_ip_address():
@@ -928,7 +928,7 @@ class SyncerCallback(Callback):
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             return
 
-        if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
+        if not bool(int(os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE))):
             # If we have saved a checkpoint, but it's not accessible on the driver,
             # that means that it lives on some other node and would be synced to head
             # prior to Ray 2.6.
