@@ -12,8 +12,6 @@ from ray.air import session
 
 try:
     import dagshub
-
-    from dagshub.common import config as dagshub_sys_config
 except Exception:
     dagshub = None
 
