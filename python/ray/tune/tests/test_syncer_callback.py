@@ -641,6 +641,12 @@ def test_head_node_syncing_disabled_warning(propagate_logs, caplog):
         assert caplog.text.count("The contents of the trial directory for trial b") == 1
         assert caplog.text.count("The contents of the trial directory for trial c") == 0
 
+    disabled_syncer_callback = SyncerCallback(enabled=False)
+    remote_trial_d = MockTrial(trial_id="d", logdir=None, runner_ip="remote")
+    with caplog.at_level(logging.WARNING):
+        disabled_syncer_callback._sync_trial_dir(remote_trial_d)
+        assert caplog.text.count("The contents of the trial directory for trial d") == 0
+
 
 if __name__ == "__main__":
     import sys
