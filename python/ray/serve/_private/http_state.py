@@ -241,12 +241,13 @@ class HTTPProxyState:
             return False
 
         try:
-            finished, _ = ray.wait(
-                [self._actor_handle.check_health.remote()], timeout=0
-            )
-            ray.get(finished[0])
+            ray.get(self._actor_handle.check_health.remote(), timeout=0.001)
         except ray.exceptions.RayActorError:
+            # The actor is dead, so it's ready for shutdown.
             return True
+        except ray.exceptions.GetTimeoutError:
+            # The actor is still alive, so it's not ready for shutdown.
+            return False
 
         return False
 
