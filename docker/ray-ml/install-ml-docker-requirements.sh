@@ -19,16 +19,10 @@ pip --no-cache-dir install -U pip pip-tools
 # Install requirements
 pip --no-cache-dir install -U -r requirements.txt
 
-if [ -f "requirements_compiled.txt" ]; then
-  CONSTRAINT="-c requirements.txt -c requirements_compiled.txt"
-else
-  CONSTRAINT="-c requirements.txt"
-fi
-
 # Install other requirements. Keep pinned requirements bounds as constraints
-# shellcheck disable=SC2086
 pip --no-cache-dir install -U \
-           $CONSTRAINT \
+           -c requirements.txt \
+           -c requirements_compiled.txt \
            -r core-requirements.txt \
            -r data-requirements.txt \
            -r rllib-requirements.txt \
@@ -40,9 +34,9 @@ pip --no-cache-dir install -U \
            -r ray-docker-requirements.txt
 
 # explicitly install (overwrite) pytorch with CUDA support
-# shellcheck disable=SC2086
 pip --no-cache-dir install -U \
-           $CONSTRAINT \
+           -c requirements.txt \
+           -c requirements_compiled.txt \
            -r dl-gpu-requirements.txt
 
 sudo apt-get clean
