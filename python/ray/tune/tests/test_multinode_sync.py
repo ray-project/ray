@@ -169,7 +169,6 @@ class MultiNodeSyncTest(unittest.TestCase):
             callbacks=[FailureInjectionCallback()],
         )
 
-    @patch.dict(os.environ, {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE: "1"})
     def testCheckpointSync(self):
         """Test that checkpoints are correctly synced.
 
@@ -209,7 +208,11 @@ class MultiNodeSyncTest(unittest.TestCase):
         )
         # Connect via Ray client and wait until all nodes are there
         self.cluster.start()
-        self.cluster.connect(client=True, timeout=120)
+        self.cluster.connect(
+            client=True,
+            timeout=120,
+            runtime_env={"env_vars": {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE: "1"}},
+        )
         self.cluster.wait_for_resources({"CPU": 12})
 
         # This train function trains for 10 iterations per run
