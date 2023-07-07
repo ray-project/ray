@@ -1,20 +1,13 @@
 import argparse
 
-import numpy as np
-import pandas as pd
 import tensorflow as tf
 
 import ray
 from ray.air import session
 from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.air.result import Result
-from ray.data import Dataset
 from ray.data.preprocessors import Concatenator
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.tensorflow import (
-    TensorflowPredictor,
-    TensorflowTrainer,
-)
+from ray.train.tensorflow import TensorflowTrainer
 from ray.air.config import ScalingConfig
 
 
@@ -75,24 +68,6 @@ def train_tensorflow_regression(num_workers: int = 2, use_gpu: bool = False) -> 
     return results
 
 
-def predict_regression(result: Result) -> Dataset:
-    batch_predictor = BatchPredictor.from_checkpoint(
-        result.checkpoint, TensorflowPredictor, model_definition=build_model
-    )
-
-    df = pd.DataFrame(
-        [[np.random.uniform(0, 1, size=100)] for i in range(100)], columns=["x"]
-    )
-    prediction_dataset = ray.data.from_pandas(df)
-
-    predictions = batch_predictor.predict(prediction_dataset, dtype=tf.float32)
-
-    print("PREDICTIONS")
-    predictions.show()
-
-    return predictions
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -127,4 +102,4 @@ if __name__ == "__main__":
         result = train_tensorflow_regression(
             num_workers=args.num_workers, use_gpu=args.use_gpu
         )
-    predict_regression(result)
+    print(result)
