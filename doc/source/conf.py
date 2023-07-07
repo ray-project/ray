@@ -131,6 +131,11 @@ sphinx_tabs_disable_tab_closing = True
 # of imports.
 # autodoc_mock_imports = ["ray.experimental.tf_utils"]
 
+# This is needed until the https://github.com/ray-project/ray/pull/36706 migration is finished
+autodoc_default_options = {
+    'ignore-module-all': True
+}
+
 # This is used to suppress warnings about explicit "toctree" directives.
 suppress_warnings = ["etoc.toctree"]
 
