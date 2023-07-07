@@ -375,10 +375,67 @@ class RayServeSyncHandle(RayServeHandle):
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
 
-@Deprecated(
-    message="RayServeDeploymentHandle is no longer used, use RayServeHandle instead."
-)
-class RayServeDeploymentHandle(RayServeHandle):
-    # We had some examples using this class for type hinting. To avoid breakig them,
-    # leave this as an alias.
-    pass
+@DeveloperAPI
+class RayServeDeploymentHandle:
+    """Send requests to a deployment. This class should not be manually created."""
+
+    # """Lazily initialized handle that only gets fulfilled upon first execution."""
+    def __init__(
+        self,
+        deployment_name: str,
+        handle_options: Optional[HandleOptions] = None,
+    ):
+        self.deployment_name = deployment_name
+        self.handle_options = handle_options or HandleOptions()
+        # For Serve DAG we need placeholder in DAG binding and building without
+        # requirement of serve.start; Thus handle is fulfilled at runtime.
+        self.handle: RayServeHandle = None
+
+    def options(
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ) -> "RayServeDeploymentHandle":
+        new_options_dict = self.handle_options.__dict__.copy()
+        user_modified_options_dict = {
+            key: value
+            for key, value in [
+                ("method_name", method_name),
+                ("stream", stream),
+            ]
+            if value != DEFAULT.VALUE
+        }
+        new_options_dict.update(user_modified_options_dict)
+        new_options = HandleOptions(**new_options_dict)
+        return self.__class__(self.deployment_name, new_options)
+
+    def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
+        if not self.handle:
+            self.handle = (
+                serve._private.api.get_deployment(self.deployment_name)
+                ._get_handle(sync=False)
+                .options(
+                    method_name=self.handle_options.method_name,
+                    stream=self.handle_options.stream,
+                )
+            )
+        return self.handle.remote(*args, **kwargs)
+
+    @classmethod
+    def _deserialize(cls, kwargs):
+        """Required for this class's __reduce__ method to be picklable."""
+        return cls(**kwargs)
+
+    def __reduce__(self):
+        serialized_data = {
+            "deployment_name": self.deployment_name,
+            "handle_options": self.handle_options,
+        }
+        return RayServeDeploymentHandle._deserialize, (serialized_data,)
+
+    def __getattr__(self, name):
+        return self.options(method_name=name)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"

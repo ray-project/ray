@@ -17,7 +17,7 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import RayServeDeploymentHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -384,12 +384,13 @@ def generate_executor_dag_driver_deployment(
     def replace_with_handle(node):
         if isinstance(node, DeploymentExecutorNode):
             return node._deployment_handle
-        elif isinstance(node, DeploymentFunctionExecutorNode):
-            if len(node.get_args()) == 0 and len(node.get_kwargs()) == 0:
-                return node._deployment_function_handle
-            else:
-                return RayServeDAGHandle(cloudpickle.dumps(node))
-        elif isinstance(node, DeploymentMethodExecutorNode):
+        elif isinstance(
+            node,
+            (
+                DeploymentMethodExecutorNode,
+                DeploymentFunctionExecutorNode,
+            ),
+        ):
             return RayServeDAGHandle(cloudpickle.dumps(node))
 
     (
