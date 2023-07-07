@@ -735,7 +735,7 @@ class options:
 
     Examples:
 
-        .. code-block:: python
+        .. testcode::
 
             import ray
             from ray import workflow
