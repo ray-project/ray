@@ -123,7 +123,7 @@ for path in .whl/*.whl; do
 done
 
 # Clean the build output so later operations is on a clean directory.
-git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
 
 echo "--- Build JAR"
 if [ "${BUILD_JAR-}" == "1" ]; then
