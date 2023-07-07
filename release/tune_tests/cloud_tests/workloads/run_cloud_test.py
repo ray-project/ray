@@ -1040,7 +1040,7 @@ def test_head_node_syncing_disabled_error():
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
         run_config=air.RunConfig(
-            storage_path=None, failure_config=air.FailureConfig(fail_fast=True)
+            storage_path=None, failure_config=air.FailureConfig(fail_fast="raise")
         ),
         tune_config=tune.TuneConfig(num_samples=4),
     )
@@ -1053,7 +1053,7 @@ def test_head_node_syncing_disabled_error():
         tune.with_resources(train_fn, {"CPU": 2.0}),
         run_config=air.RunConfig(
             storage_path=None,
-            failure_config=air.FailureConfig(fail_fast=True),
+            failure_config=air.FailureConfig(fail_fast="raise"),
             sync_config=tune.SyncConfig(syncer=None),
         ),
         tune_config=tune.TuneConfig(num_samples=4),
@@ -1068,7 +1068,7 @@ def test_head_node_syncing_disabled_error():
     tuner = tune.Tuner(
         tune.with_resources(train_fn_no_checkpoint, {"CPU": 2.0}),
         run_config=air.RunConfig(
-            storage_path=None, failure_config=air.FailureConfig(fail_fast=True)
+            storage_path=None, failure_config=air.FailureConfig(fail_fast="raise")
         ),
         tune_config=tune.TuneConfig(num_samples=4),
     )
