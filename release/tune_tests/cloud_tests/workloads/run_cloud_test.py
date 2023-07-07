@@ -1035,7 +1035,7 @@ def test_head_node_syncing_disabled_error():
 
     # Raise an error for checkpointing + no storage path
     def train_fn(config):
-        session.report({"score": 1}, Checkpoint.from_dict({"dummy": 1}))
+        session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
 
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
