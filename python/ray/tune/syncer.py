@@ -79,6 +79,31 @@ _EXCLUDE_FROM_SYNC = [
     f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
+_SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
+    "Ray AIR no longer supports the synchronization of checkpoints and other "
+    "artifacts from worker nodes to the head node. This means that the "
+    "checkpoints and artifacts saved by trials scheduled on worker nodes will not be "
+    "accessible during the run (e.g., resuming from a checkpoint "
+    "after a failure) or after the run "
+    "(e.g., loading the checkpoint of a trial that ran on an already "
+    "terminated worker node).\n\n"
+    "To fix this issue, configure AIR to use either:\n"
+    "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
+    "(2) A network filesystem mounted on all nodes: "
+    "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
+    "See here for a full guide on how to configure these "
+    "persistent storage options: "
+    "https://docs.ray.io/en/master/tune/tutorials/tune-storage.html\n\n"
+    "Other notes:\n"
+    "- See here for a thread explaining why this functionality is "
+    "being removed: <LINK>\n"
+    # TODO(justinvyu): put in the link to the REP/issue
+    "- To re-enable the head node syncing behavior, set the "
+    f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
+    "  - **Note that this functionality will be fully removed in "
+    "Ray 2.7.**"
+)
+
 
 @PublicAPI
 @dataclass
@@ -791,18 +816,7 @@ class SyncerCallback(Callback):
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
     ) -> bool:
-        if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
-            return False
-
         if not self._enabled or trial.uses_cloud_checkpointing:
-            return False
-
-        sync_process = self._get_trial_sync_process(trial)
-
-        # Always run if force=True
-        # Otherwise, only run if we should sync (considering sync period)
-        # and if there is no sync currently still running.
-        if not force and (not self._should_sync(trial) or sync_process.is_running):
             return False
 
         source_ip = self._trial_ips.get(trial.trial_id, None)
@@ -821,6 +835,28 @@ class SyncerCallback(Callback):
                 return False
 
         self._trial_ips[trial.trial_id] = source_ip
+
+        if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
+            # Only log a warning for remote trials, since
+            # this only affects artifacts that are saved on worker nodes.
+            if source_ip != ray.util.get_node_ip_address():
+                if log_once(f"sync_trial_dir_{trial.trial_id}"):
+                    logger.warning(
+                        "The contents of the trial directory for trial "
+                        f"{trial.trial_id}, "
+                        "which includes checkpoints and artifacts, were not synced "
+                        "to the head node. See below for more info:\n\n"
+                        + _SYNC_TO_HEAD_DEPRECATION_MESSAGE
+                    )
+            return False
+
+        sync_process = self._get_trial_sync_process(trial)
+
+        # Always run if force=True
+        # Otherwise, only run if we should sync (considering sync period)
+        # and if there is no sync currently still running.
+        if not force and (not self._should_sync(trial) or sync_process.is_running):
+            return False
 
         try:
             sync_process.wait()
@@ -898,34 +934,16 @@ class SyncerCallback(Callback):
             return
 
         if not os.environ.get(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE):
+            # If we have saved a checkpoint, but it's not accessible on the driver,
+            # that means that it lives on some other node and would be synced to head
+            # prior to Ray 2.6.
             if not os.path.exists(checkpoint.dir_or_data):
-                raise DeprecationWarning(
-                    "Ray AIR no longer supports the synchronization of the trial "
-                    "directory from worker nodes to the head node. This means that the "
-                    "checkpoints of trials scheduled on worker nodes will not be "
-                    "accessible during the run (e.g., resuming from a checkpoint "
-                    "after a failure) or after the run "
-                    "(e.g., loading the checkpoint of a trial that ran on an already "
-                    "terminated worker node).\n\n"
-                    "To fix this issue, configure AIR to use either:\n"
-                    "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
-                    "(2) A network filesystem mounted on all nodes: "
-                    "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
-                    "See here for a full guide on how to configure these "
-                    "persistent storage options: "
-                    "https://docs.ray.io/en/master/tune/tutorials/tune-storage.html\n\n"
-                    "Other notes:\n"
-                    "- See here for a thread explaining why this functionality is "
-                    "being removed: <LINK>\n"
-                    # TODO(justinvyu): put in the link to the REP/issue
-                    "- To re-enable the head node syncing behavior, set the "
-                    f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
-                    "  - **Note that this functionality will be fully removed in "
-                    "Ray 2.7.**"
-                )
+                raise DeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             # else:
-            #   No need to raise an error about syncing,
-            #   since the checkpoint lives on the head node.
+            #   No need to raise an error about syncing, since the driver can find
+            #   the checkpoint, because either:
+            #   - the checkpoint lives on the head node
+            #   - a shared filesystem is used
         else:
             # Old head node syncing codepath
             synced = self._sync_trial_dir(
