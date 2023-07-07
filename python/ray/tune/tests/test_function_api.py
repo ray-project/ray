@@ -292,10 +292,11 @@ class FunctionCheckpointingTest(unittest.TestCase):
 
         new_trainable2 = wrapped(logger_creator=self.logger_creator)
         new_trainable2.restore_from_object(checkpoint_obj)
+        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 1
         checkpoint_obj = new_trainable2.save_to_object()
         new_trainable2.train()
         result = new_trainable2.train()
-        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 1
+        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 0
         new_trainable2.stop()
         assert sum("tmp" in path for path in os.listdir(self.logdir)) == 0
         assert result[TRAINING_ITERATION] == 4
