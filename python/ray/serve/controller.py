@@ -179,6 +179,9 @@ class ServeController:
             worker_id=ray.get_runtime_context().get_worker_id(),
             log_file_path=get_component_logger_file_path(),
         )
+        self._shutting_down = False
+        self._shutdown = asyncio.Event()
+        self._shutdown_start_time = None
 
         run_background_task(self.run_control_loop())
 
@@ -299,6 +302,12 @@ class ServeController:
         recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
         start_time = time.time()
         while True:
+            if self._shutting_down:
+                try:
+                    self.shutdown()
+                except Exception:
+                    logger.exception("Exception during shutdown.")
+
             if (
                 not self.done_recovering_event.is_set()
                 and time.time() - start_time > recovering_timeout
@@ -431,14 +440,83 @@ class ServeController:
                 )
         return http_config.root_url
 
+    def config_checkpoint_deleted(self) -> bool:
+        """Returns whether the config checkpoint has been deleted.
+
+        Get the config checkpoint from the kv store. If it is None, then it has been
+        deleted.
+        """
+        return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
+
     def shutdown(self):
-        """Shuts down the serve instance completely."""
+        """Shuts down the serve instance completely.
+
+        This method will only be triggered when `self._shutting_down` is true. It
+        deletes the kv store for config checkpoints, sets application state to deleting,
+        delete all deployments, and shuts down all HTTP proxies. Once all these
+        resources are released, it then kills the controller actor.
+        """
+        if not self._shutting_down:
+            return
+
+        if self._shutdown_start_time is None:
+            self._shutdown_start_time = time.time()
+
+        logger.info("Controller shutdown started!", extra={"log_to_stderr": False})
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
         if self.http_state:
             self.http_state.shutdown()
+
+        config_checkpoint_deleted = self.config_checkpoint_deleted()
+        application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
+        deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
+        endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
+        http_state_is_shutdown = (
+            self.http_state is None or self.http_state.is_ready_for_shutdown()
+        )
+        if (
+            config_checkpoint_deleted
+            and application_is_shutdown
+            and deployment_is_shutdown
+            and endpoint_is_shutdown
+            and http_state_is_shutdown
+        ):
+            logger.warning(
+                "All resources have shut down, shutting down controller!",
+                extra={"log_to_stderr": False},
+            )
+            _controller_actor = ray.get_runtime_context().current_actor
+            self._shutdown.set()
+            ray.kill(_controller_actor, no_restart=True)
+        elif time.time() - self._shutdown_start_time > 10:
+            if not config_checkpoint_deleted:
+                logger.warning(
+                    f"{CONFIG_CHECKPOINT_KEY} not yet deleted",
+                    extra={"log_to_stderr": False},
+                )
+            if not application_is_shutdown:
+                logger.warning(
+                    "application not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
+            if not deployment_is_shutdown:
+                logger.warning(
+                    "deployment not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
+            if not endpoint_is_shutdown:
+                logger.warning(
+                    "endpoint not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
+            if not http_state_is_shutdown:
+                logger.warning(
+                    "http_state not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
 
     def deploy(
         self,
@@ -810,6 +888,20 @@ class ServeController:
         """
         self.deployment_state_manager.record_multiplexed_replica_info(info)
 
+    async def graceful_shutdown(self, wait: bool = True):
+        """Set the shutting down flag on controller to signal shutdown in
+        run_control_loop().
+
+        This is used to signal to the controller that it should proceed with shutdown
+        process, so it can shut down gracefully. It also waits until the shutdown
+        event is triggered if wait is true.
+        """
+        self._shutting_down = True
+        if not wait:
+            return
+
+        await self._shutdown.wait()
+
 
 @ray.remote(num_cpus=0)
 class ServeControllerAvatar:
@@ -832,7 +924,7 @@ class ServeControllerAvatar:
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(controller_name, namespace="serve")
+            self._controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
         except ValueError:
             self._controller = None
         if self._controller is None:
@@ -845,7 +937,7 @@ class ServeControllerAvatar:
                 max_restarts=-1,
                 max_task_retries=-1,
                 resources={HEAD_NODE_RESOURCE_NAME: 0.001},
-                namespace="serve",
+                namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
                 controller_name,
