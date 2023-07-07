@@ -4,8 +4,8 @@ from dataclasses import dataclass
 from functools import wraps
 import inspect
 import os
-from typing import Coroutine, Optional, Union
 import threading
+from typing import Coroutine, Optional, Union
 
 import ray
 from ray._private.utils import get_or_create_event_loop
