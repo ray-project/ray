@@ -532,7 +532,7 @@ class TestDeployApp:
         client.deploy_apps(config)
         self.check_single_app()
 
-    def test_deploy_multi_app(self, client: ServeControllerClient):
+    def test_deploy_multi_app_basic(self, client: ServeControllerClient):
         config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
         client.deploy_apps(config)
         self.check_multi_app()
@@ -1105,7 +1105,7 @@ class TestDeployApp:
         wait_for_condition(
             lambda: len(
                 list_tasks(
-                    filters=[("func_or_class_name", "=", "deploy_serve_application")],
+                    filters=[("func_or_class_name", "=", "build_serve_application")],
                 )
             )
             > 0

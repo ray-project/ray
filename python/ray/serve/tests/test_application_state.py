@@ -1,7 +1,7 @@
 import pytest
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import Mock, patch, PropertyMock
+from unittest.mock import patch, PropertyMock, Mock, MagicMock
 
 from ray.exceptions import RayTaskError
 
@@ -402,9 +402,18 @@ def test_app_unhealthy(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
+@patch(
+    "ray.serve._private.application_state.override_deployment_info",
+    MagicMock(side_effect=lambda _a, deployment_infos, _b: deployment_infos),
+)
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=([deployment_params("a")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
-@patch("ray.get")
-def test_deploy_through_config_succeed(get, check_obj_ref_ready_nowait):
+def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
     Deploy obj ref finishes successfully, so status should transition to running.
     """
@@ -413,19 +422,22 @@ def test_deploy_through_config_succeed(get, check_obj_ref_ready_nowait):
     app_state_manager = ApplicationStateManager(
         deployment_state_manager, MockEndpointState(), kv_store
     )
-    # Create application state
-    app_state_manager.create_application_state(name="test_app", deploy_obj_ref=Mock())
+
+    # Deploy config
+    app_state_manager.deploy_config(name="test_app", app_config=Mock())
     app_state = app_state_manager._application_states["test_app"]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before object ref is ready
     check_obj_ref_ready_nowait.return_value = False
     app_state.update()
+    assert app_state._build_app_task_info
+    assert app_state.status == ApplicationStatus.DEPLOYING
+    app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
-    # Object ref is ready, and the task has called apply_deployment_args
+    # Object ref is ready
     check_obj_ref_ready_nowait.return_value = True
-    app_state.apply_deployment_args([deployment_params("a")])
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state.target_deployments == ["a"]
@@ -436,9 +448,14 @@ def test_deploy_through_config_succeed(get, check_obj_ref_ready_nowait):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(side_effect=RayTaskError(None, "intentionally failed", None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
-@patch("ray.get", side_effect=RayTaskError(None, "intentionally failed", None))
-def test_deploy_through_config_fail(get, check_obj_ref_ready_nowait):
+def test_deploy_through_config_fail(check_obj_ref_ready_nowait):
     """Test fail to deploy through config.
     Deploy obj ref errors out, so status should transition to deploy failed.
     """
@@ -447,13 +464,16 @@ def test_deploy_through_config_fail(get, check_obj_ref_ready_nowait):
     app_state_manager = ApplicationStateManager(
         deployment_state_manager, MockEndpointState(), kv_store
     )
-    # Create application state
-    app_state_manager.create_application_state(name="test_app", deploy_obj_ref=Mock())
+    # Deploy config
+    app_state_manager.deploy_config(name="test_app", app_config=Mock())
     app_state = app_state_manager._application_states["test_app"]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Before object ref is ready
     check_obj_ref_ready_nowait.return_value = False
+    app_state.update()
+    assert app_state._build_app_task_info
+    assert app_state.status == ApplicationStatus.DEPLOYING
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
 
