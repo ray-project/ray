@@ -253,9 +253,14 @@ class Test(dict):
         """
         Returns the ray docker image to use for this test.
         """
-        ray_project = "ray" if self.get_byod_type() == "cpu" else "ray-ml"
+        config = get_global_config()
+        ray_project = (
+            config["byod_ray_cr_repo"]
+            if self.get_byod_type() == "cpu"
+            else config["byod_ray_ml_cr_repo"]
+        )
         return (
-            f"{get_global_config()['byod_ray_ecr']}/"
+            f"{config['byod_ray_ecr']}/"
             f"{ray_project}:{self.get_byod_base_image_tag()}"
         )
 
