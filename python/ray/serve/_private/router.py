@@ -983,7 +983,6 @@ class Router:
                 "application": request_meta.app_name,
             },
         )
-        print("IN ROUTER", request_meta.multiplexed_model_id)
 
         query = Query(
             args=list(request_args),

@@ -515,13 +515,11 @@ class ServeControllerClient:
 
         if sync:
             handle = RayServeSyncHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
         else:
             handle = RayServeHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
             )

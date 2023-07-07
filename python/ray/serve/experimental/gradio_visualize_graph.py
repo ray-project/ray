@@ -276,7 +276,7 @@ class GraphVisualizer:
         else:
             args = input_values
 
-        self.handle.predict.remote(*args, _ray_cache_refs=True, **kwargs)
+        self.handle.predict.remote(*args, **kwargs)
         self.cache = await self.handle.get_intermediate_object_refs.remote()
 
         # Set state to track the inference process

@@ -83,12 +83,10 @@ class DAGDriver(ASGIAppReplicaWrapper):
         frozen_app = cloudpickle.loads(cloudpickle.dumps(app))
         super().__init__(frozen_app)
 
-    async def predict(self, *args, _ray_cache_refs: bool = False, **kwargs):
+    async def predict(self, *args, **kwargs):
         """Perform inference directly without HTTP."""
         return await (
-            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(
-                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
-            )
+            await self.dags[self.MATCH_ALL_ROUTE_PREFIX].remote(*args, **kwargs)
         )
 
     async def predict_with_route(self, route_path, *args, **kwargs):

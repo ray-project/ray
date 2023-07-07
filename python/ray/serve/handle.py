@@ -197,7 +197,7 @@ class RayServeHandle:
         )
         return self.__class__(
             self.deployment_name,
-            new_handle_options,
+            handle_options=new_handle_options,
             _router=self._router,
             _is_for_http_requests=self._is_for_http_requests,
         )
@@ -330,6 +330,8 @@ class RayServeSyncHandle(RayServeHandle):
                 event_loop=_create_or_get_async_loop_in_thread(),
                 _use_new_routing=RAY_SERVE_ENABLE_NEW_ROUTING,
             )
+
+        return self._router
 
     def options(
         self,
