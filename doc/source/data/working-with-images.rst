@@ -118,7 +118,13 @@ To view the full list of supported file formats, see the
 
             print(ds.schema())
 
+        ..
+            The following `testoutput` is mocked because the order of column names can
+            be non-deterministic. For an example, see
+            https://buildkite.com/ray-project/oss-ci-build-branch/builds/4849#01892c8b-0cd0-4432-bc9f-9f86fcd38edd.
+
         .. testoutput::
+            :options: +MOCK
 
             Column  Type
             ------  ----

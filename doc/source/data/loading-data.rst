@@ -620,7 +620,12 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 
             print(ds)
 
+        ..
+            The following `testoutput` is mocked to avoid illustrating download logs like
+            "Downloading and preparing dataset 162.17 MiB".
+
         .. testoutput::
+            :options: +MOCK
 
             MaterializedDataset(
                num_blocks=...,
