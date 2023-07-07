@@ -823,14 +823,19 @@ cc_library(
         "src/ray/core_worker/store_provider/*.h",
         "src/ray/core_worker/store_provider/memory_store/*.h",
         "src/ray/core_worker/transport/*.h",
-    ]),
+    ]) + [
+        "src/ray/object_manager/plugin_manager.h",
+    ] + glob([
+        "src/ray/object_manager/plasma/*.h",
+    ])
+    ,
     copts = COPTS,
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
         ":gcs",
         ":gcs_client_lib",
-        ":plasma_client",
+        ":plugin_manager",
         ":ray_common",
         ":ray_util",
         ":raylet_client_lib",
@@ -2371,13 +2376,30 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
+cc_library(
+    name = "plugin_manager",
+    srcs = [
+        "src/ray/object_manager/plugin_manager.cc",
+    ],
+    hdrs = [
+        "src/ray/object_manager/plugin_manager.h",
+    ],
+    copts = PLASMA_COPTS,
+    linkopts = PLASMA_LINKOPTS,
+    strip_include_prefix = "src",
+    deps = [
+        ":plasma_client",
+        ":plasma_store_server_lib",
+    ],
+)
 cc_library(
     name = "object_manager",
-    srcs = glob([
-        "src/ray/object_manager/*.cc",
-        "src/ray/object_manager/notification/*.cc",
-    ]),
+    srcs = glob(
+        [
+            "src/ray/object_manager/*.cc",
+            "src/ray/object_manager/notification/*.cc",
+        ]
+    ),
     hdrs = glob([
         "src/ray/object_manager/*.h",
         "src/ray/object_manager/notification/*.h",

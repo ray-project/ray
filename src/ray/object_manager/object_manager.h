@@ -45,6 +45,7 @@
 #include "ray/rpc/object_manager/object_manager_server.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
+#include "ray/object_manager/plugin_manager.h"
 
 namespace ray {
 
@@ -106,42 +107,6 @@ class ObjectStoreRunner {
 
  private:
   std::thread store_thread_;
-};
-
-struct PluginManagerObjectStore{
-  std::shared_ptr<plasma::ObjectStoreClientInterface> client_;
-  std::unique_ptr<plasma::ObjectStoreRunnerInterface> runner_;
-};
-
-
-class PluginManager {
- public:
-//   using ObjectStoreRunnerCreator = std::unique_ptr<ObjectStoreRunnerInterface> (*)();
-//   using ObjectStoreClientCreator = std::shared_ptr<ObjectStoreClientInterface> (*)();
-
-
-  std::unique_ptr<plasma::ObjectStoreRunnerInterface> CreateObjectStoreRunnerInstance(const std::string& name);
-  std::shared_ptr<plasma::ObjectStoreClientInterface> CreateObjectStoreClientInstance(const std::string& name);
-  void LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_params);
-  void SetObjectStores(const ObjectManagerConfig config);
-
-  static PluginManager& GetInstance(const ObjectManagerConfig config) {
-  //object manager config AS PARAMETERS, AND set default runner/client as parameters?
-  // add it inside object_manager.cc/h , not as a separate files.
-    static PluginManager instance;
-    instance.SetObjectStores(config);
-    return instance;
-  }
-  PluginManager(){}
-  ~PluginManager(){}
-
- private:
-  PluginManager(const PluginManager&) = delete;
-  PluginManager& operator=(const PluginManager&) = delete;
-  // const ObjectManagerConfig config_;
-
-  //PluginManagerObjectStore plugin_manager_object_store_;
-  std::map<std::string, PluginManagerObjectStore> object_stores_;
 };
 
 class ObjectManagerInterface {
@@ -298,6 +263,8 @@ class ObjectManager : public ObjectManagerInterface,
 
   bool PullManagerHasPullsQueued() const { return pull_manager_->HasPullsQueued(); }
 
+  //std::shared_ptr<plasma::ObjectStoreClientInterface> CreateObjectStoreClientInstance();
+
  private:
   friend class TestObjectManager;
 
@@ -444,7 +411,7 @@ class ObjectManager : public ObjectManagerInterface,
   /// The object directory interface to access object information.
   IObjectDirectory *object_directory_;
 
-  PluginManager &plugin_manager_;
+  //PluginManager &plugin_manager_;
 
   /// Object store runner.
   std::unique_ptr<ObjectStoreRunner> object_store_internal_;
@@ -455,7 +422,8 @@ class ObjectManager : public ObjectManagerInterface,
   std::shared_ptr<plasma::ObjectStoreClientInterface> buffer_pool_store_client_;
 
   /// Manages accesses to local objects for object transfers.
-  ObjectBufferPool buffer_pool_;
+  //ObjectBufferPool buffer_pool_;
+  std::shared_ptr<ObjectBufferPool> buffer_pool_;
 
   /// Multi-thread asio service, deal with all outgoing and incoming RPC request.
   instrumented_io_context rpc_service_;
@@ -536,6 +504,8 @@ class ObjectManager : public ObjectManagerInterface,
   /// plasma.
   size_t num_chunks_received_failed_due_to_plasma_ = 0;
 };
+
+// extern PluginManager& plugin_manager_;
 
 }  // namespace ray
 

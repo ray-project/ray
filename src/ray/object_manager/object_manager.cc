@@ -24,82 +24,7 @@ namespace asio = boost::asio;
 
 namespace ray {
 
-
-void PluginManager::LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_params) {
-  using ObjectStoreRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)();
-  using ObjectStoreClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
-
-  RAY_LOG(INFO) << " yiweizh: Calling LoadOBjectStorePlugin with name " << plugin_name;
-  void *handle = dlopen(plugin_name.c_str(), RTLD_NOW);
-  if (!handle) {
-    std::cerr << "Failed to load shared library: " << dlerror() << std::endl;
-    return;
-  }
-
-  ObjectStoreClientCreator client_creator = reinterpret_cast<ObjectStoreClientCreator>(dlsym(handle, "CreateNewStoreClient"));
-  //std::shared_ptr<plasma::ObjectStoreClientInterface> client_creator =
-      //reinterpret_cast<std::shared_ptr<plasma::ObjectStoreClientInterface>>(dlsym(handle, "CreateNewStoreClient"));
-  if (!client_creator) {
-    std::cerr << "Failed to get CreateNewStoreClient function: " << dlerror()
-              << std::endl;
-    dlclose(handle);
-    return;
-  }
-
-  ObjectStoreRunnerCreator runner_creator = reinterpret_cast<ObjectStoreRunnerCreator>(dlsym(handle, "CreateNewStoreRunner"));
-
-  //std::unique_ptr<plasma::ObjectStoreRunnerInterface> runner_creator =
-      //reinterpret_cast<std::unique_ptr<plasma::ObjectStoreRunnerInterface>>(dlsym(handle, "CreateNewStoreRunner"));
-  if (!runner_creator) {
-    std::cerr << "Failed to get CreateNewStoreRunner function: " << dlerror()
-              << std::endl;
-    dlclose(handle);
-    return;
-  }
-
-  std::shared_ptr<plasma::ObjectStoreClientInterface> client = client_creator();
-  std::unique_ptr<plasma::ObjectStoreRunnerInterface> runner = std::move(runner_creator());
-//   PluginManagerObjectStore plugin_object_store;
-//   plugin_object_store.client_ = client_creator;
-//   plugin_object_store.runner_ = std::move(runner_creator);
-//   object_stores_[plugin_name] = plugin_object_store;
-  object_stores_[plugin_name] = PluginManagerObjectStore{
-    client,
-    std::move(runner)
-  };
-  dlclose(handle);
-  return;
-}
-
-std::shared_ptr<plasma::ObjectStoreClientInterface> PluginManager::CreateObjectStoreClientInstance(
-    const std::string &name) {
-  return object_stores_[name].client_; 
-}
-
-std::unique_ptr<plasma::ObjectStoreRunnerInterface> PluginManager::CreateObjectStoreRunnerInstance(
-    const std::string &name) {
-  return std::move(object_stores_[name].runner_);
-}
-
-void PluginManager::SetObjectStores(const ObjectManagerConfig config) {
-    RAY_LOG(INFO) << "Entering PluginManager::SetDefaultObjectStore " << config.plugin_name ;
-    // i
-    object_stores_["default"] = PluginManagerObjectStore{
-        std::make_shared<plasma::PlasmaClient>(),
-        std::make_unique<plasma::PlasmaStoreRunner>(config.store_socket_name,
-                                                    config.object_store_memory,
-                                                    config.huge_pages,
-                                                    config.plasma_directory,
-                                                    config.fallback_directory)
-    };
-    // LoadPlugin
-    if (config.plugin_name != "default"){
-        LoadObjectStorePlugin(config.plugin_path, config.plugin_params);
-    }
-    // object_stores_[config.plugin_name] = Plugin
-}
-
-
+// PluginManager& plugin_manager_ = PluginManager::GetInstance()
 
 ObjectStoreRunner::ObjectStoreRunner(const ObjectManagerConfig &config,
                                      std::unique_ptr<plasma::ObjectStoreRunnerInterface> store_runner,
@@ -153,10 +78,55 @@ ObjectManager::ObjectManager(
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(object_directory),
-      plugin_manager_(PluginManager::GetInstance(config)),
-      object_store_internal_(std::make_unique<ObjectStoreRunner>(
+      //plugin_manager_(PluginManager::GetInstance(config)),
+    //   object_store_internal_(std::make_unique<ObjectStoreRunner>(
+    //       config,
+    //       std::move(plugin_manager_.CreateObjectStoreRunnerInstance(config.plugin_name)),
+    //       spill_objects_callback,
+    //       object_store_full_callback,
+    //       /*add_object_callback=*/
+    //       [this, add_object_callback = std::move(add_object_callback)](
+    //           const ObjectInfo &object_info) {
+    //         main_service_->post(
+    //             [this, object_info, &add_object_callback]() {
+    //               HandleObjectAdded(object_info);
+    //               add_object_callback(object_info);
+    //             },
+    //             "ObjectManager.ObjectAdded");
+    //       },
+    //       /*delete_object_callback=*/
+    //       [this, delete_object_callback = std::move(delete_object_callback)](
+    //           const ObjectID &object_id) {
+    //         main_service_->post(
+    //             [this, object_id, &delete_object_callback]() {
+    //               HandleObjectDeleted(object_id);
+    //               delete_object_callback(object_id);
+    //             },
+    //             "ObjectManager.ObjectDeleted");
+    //       })),
+      // buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
+      //buffer_pool_store_client_(plugin_manager_.CreateObjectStoreClientInstance(config.plugin_name)),
+      //buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
+      rpc_work_(rpc_service_),
+      object_manager_server_("ObjectManager",
+                             config_.object_manager_port,
+                             config_.object_manager_address == "127.0.0.1",
+                             config_.rpc_service_threads_number),
+      object_manager_service_(rpc_service_, *this),
+      client_call_manager_(main_service, config_.rpc_service_threads_number),
+      restore_spilled_object_(restore_spilled_object),
+      get_spilled_object_url_(get_spilled_object_url),
+      pull_retry_timer_(*main_service_,
+                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
+  RAY_CHECK(config_.rpc_service_threads_number > 0);
+  PluginManager& plugin_manager = PluginManager::GetInstance();
+  plugin_manager.SetObjectStores(config.plugin_name, config.store_socket_name,
+                                 config.object_store_memory, config.huge_pages,
+                                 config.plasma_directory, config.fallback_directory,
+                                 config.plugin_path, config.plugin_params);
+  object_store_internal_ = std::make_unique<ObjectStoreRunner>(
           config,
-          std::move(plugin_manager_.CreateObjectStoreRunnerInstance(config.plugin_name)),
+          std::move(plugin_manager.CreateObjectStoreRunnerInstance(config.plugin_name)),
           spill_objects_callback,
           object_store_full_callback,
           /*add_object_callback=*/
@@ -178,29 +148,11 @@ ObjectManager::ObjectManager(
                   delete_object_callback(object_id);
                 },
                 "ObjectManager.ObjectDeleted");
-          })),
-      // buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
-      buffer_pool_store_client_(plugin_manager_.CreateObjectStoreClientInstance(config.plugin_name)),
-      buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
-      rpc_work_(rpc_service_),
-      object_manager_server_("ObjectManager",
-                             config_.object_manager_port,
-                             config_.object_manager_address == "127.0.0.1",
-                             config_.rpc_service_threads_number),
-      object_manager_service_(rpc_service_, *this),
-      client_call_manager_(main_service, config_.rpc_service_threads_number),
-      restore_spilled_object_(restore_spilled_object),
-      get_spilled_object_url_(get_spilled_object_url),
-      pull_retry_timer_(*main_service_,
-                        boost::posix_time::milliseconds(config.timer_freq_ms)) {
-  RAY_CHECK(config_.rpc_service_threads_number > 0);
-
-  // RAY_LOG(INFO) << "yiweizh: Starting ObjectManager with ID " << self_node_id;
+          });
+  buffer_pool_store_client_ = plugin_manager.CreateObjectStoreClientInstance(config.plugin_name);
+  buffer_pool_ = std::make_shared<ObjectBufferPool>(buffer_pool_store_client_, config_.object_chunk_size);
   RAY_LOG(INFO) << "yiweizh: Start to initialize PluginManager, plugin_name input: " << config_.plugin_name ;
-  // auto &plugin_manager_ = PluginManager::GetInstance();
-  // plugin_manager_.LoadObjectStorePlugin(config_.plugin_name);
-  //buffer_pool_store_client_ = plugin_manager_.CreateObjectStoreClientInstance(config_.plugin_name);
-  //buffer_pool_ = ObjectBufferPool(buffer_pool_store_client_, config_.object_chunk_size);
+  RAY_LOG(INFO) << buffer_pool_store_client_->DebugString();
 
   push_manager_.reset(new PushManager(/* max_chunks_in_flight= */ std::max(
       static_cast<int64_t>(1L),
@@ -219,7 +171,7 @@ ObjectManager::ObjectManager(
     // We must abort this object because it may have only been partially
     // created and will cause a leak if we never receive the rest of the
     // object. This is a no-op if the object is already sealed or evicted.
-    buffer_pool_.AbortCreate(object_id);
+    buffer_pool_->AbortCreate(object_id);
   };
   const auto &get_time = []() { return absl::GetCurrentTimeNanos() / 1e9; };
   int64_t available_memory = config.object_store_memory;
@@ -246,6 +198,13 @@ ObjectManager::ObjectManager(
 }
 
 ObjectManager::~ObjectManager() { StopRpcService(); }
+
+// std::shared_ptr<plasma::ObjectStoreClientInterface> ObjectManager::CreateObjectStoreClientInstance() {
+//     if(config_.plugin_name == "default"){
+//         return std::make_shared<plasma::PlasmaClient>();
+//     }
+//     return plugin_manager_.client_creators_[config_.plugin_name]();
+// };
 
 void ObjectManager::Stop() {
   plasma::plasma_store_runner->Stop();
@@ -483,7 +442,7 @@ void ObjectManager::PushLocalObject(const ObjectID &object_id, const NodeID &nod
   owner_address.set_worker_id(object_info.owner_worker_id.Binary());
 
   std::pair<std::shared_ptr<MemoryObjectReader>, ray::Status> reader_status =
-      buffer_pool_.CreateObjectReader(object_id, owner_address);
+      buffer_pool_->CreateObjectReader(object_id, owner_address);
   Status status = reader_status.second;
   if (!status.ok()) {
     RAY_LOG_EVERY_N_OR_DEBUG(INFO, 100)
@@ -695,7 +654,7 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     // This object is no longer being actively pulled. Do not create the object.
     return false;
   }
-  auto chunk_status = buffer_pool_.CreateChunk(
+  auto chunk_status = buffer_pool_->CreateChunk(
       object_id, owner_address, data_size, metadata_size, chunk_index);
   if (!pull_manager_->IsObjectActive(object_id)) {
     num_chunks_received_cancelled_++;
@@ -705,13 +664,13 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
     // the chunk.
     RAY_LOG(INFO) << "Aborting object creation because it is no longer actively pulled: "
                   << object_id;
-    buffer_pool_.AbortCreate(object_id);
+    buffer_pool_->AbortCreate(object_id);
     return false;
   }
 
   if (chunk_status.ok()) {
     // Avoid handling this chunk if it's already being handled by another process.
-    buffer_pool_.WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
+    buffer_pool_->WriteChunk(object_id, data_size, metadata_size, chunk_index, data);
     return true;
   } else {
     num_chunks_received_failed_due_to_plasma_++;
@@ -749,7 +708,7 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
-  buffer_pool_.FreeObjects(object_ids);
+  buffer_pool_->FreeObjects(object_ids);
   if (!local_only) {
     const auto remote_connections = object_directory_->LookupAllRemoteConnections();
     std::vector<std::shared_ptr<rpc::ObjectManagerClient>> rpc_clients;
@@ -825,7 +784,7 @@ std::string ObjectManager::DebugString() const {
   result << "\nEvent stats:" << rpc_service_.stats().StatsString();
   result << "\n" << push_manager_->DebugString();
   result << "\n" << object_directory_->DebugString();
-  result << "\n" << buffer_pool_.DebugString();
+  result << "\n" << buffer_pool_->DebugString();
   result << "\n" << pull_manager_->DebugString();
   return result.str();
 }
@@ -897,4 +856,5 @@ void ObjectManager::Tick(const boost::system::error_code &e) {
 }
 
 }  // namespace ray
+
 

@@ -22,6 +22,8 @@
 namespace ray {
 namespace core {
 
+ray::PluginManager& plugin_manager = ray::PluginManager::GetInstance();
+
 void BufferTracker::Record(const ObjectID &object_id,
                            TrackedBuffer *buffer,
                            const std::string &call_site) {
@@ -61,6 +63,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
+      store_client_(plugin_manager.CreateCurrentClientInstance()),
       reference_counter_(reference_counter),
       check_signals_(check_signals) {
   if (get_current_call_site != nullptr) {
@@ -70,14 +73,14 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  RAY_CHECK_OK(store_client_.Connect(store_socket));
+  RAY_CHECK_OK(store_client_->Connect(store_socket,""));
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());
   }
 }
 
 CoreWorkerPlasmaStoreProvider::~CoreWorkerPlasmaStoreProvider() {
-  RAY_IGNORE_EXPR(store_client_.Disconnect());
+  RAY_IGNORE_EXPR(store_client_->Disconnect());
 }
 
 Status CoreWorkerPlasmaStoreProvider::Put(const RayObject &object,
@@ -119,7 +122,7 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
     source = plasma::flatbuf::ObjectSource::RestoredFromStorage;
   }
   Status status =
-      store_client_.CreateAndSpillIfNeeded(object_id,
+      store_client_->CreateAndSpillIfNeeded(object_id,
                                            owner_address,
                                            data_size,
                                            metadata ? metadata->Data() : nullptr,
@@ -154,11 +157,11 @@ Status CoreWorkerPlasmaStoreProvider::Create(const std::shared_ptr<Buffer> &meta
 }
 
 Status CoreWorkerPlasmaStoreProvider::Seal(const ObjectID &object_id) {
-  return store_client_.Seal(object_id);
+  return store_client_->Seal(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Release(const ObjectID &object_id) {
-  return store_client_.Release(object_id);
+  return store_client_->Release(object_id);
 }
 
 Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
@@ -179,7 +182,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
                                          task_id));
 
   std::vector<plasma::ObjectBuffer> plasma_results;
-  RAY_RETURN_NOT_OK(store_client_.Get(batch_ids,
+  RAY_RETURN_NOT_OK(store_client_->Get(batch_ids,
                                       timeout_ms,
                                       &plasma_results,
                                       /*is_from_worker=*/true));
@@ -220,7 +223,7 @@ Status CoreWorkerPlasmaStoreProvider::GetIfLocal(
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results) {
   std::vector<plasma::ObjectBuffer> plasma_results;
   // Since this path is used only for spilling, we should set is_from_worker: false.
-  RAY_RETURN_NOT_OK(store_client_.Get(object_ids,
+  RAY_RETURN_NOT_OK(store_client_->Get(object_ids,
                                       /*timeout_ms=*/0,
                                       &plasma_results,
                                       /*is_from_worker=*/false));
@@ -370,7 +373,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
 Status CoreWorkerPlasmaStoreProvider::Contains(const ObjectID &object_id,
                                                bool *has_object) {
-  return store_client_.Contains(object_id, has_object);
+  return store_client_->Contains(object_id, has_object);
 }
 
 Status CoreWorkerPlasmaStoreProvider::Wait(
@@ -430,7 +433,7 @@ Status CoreWorkerPlasmaStoreProvider::Delete(
 }
 
 std::string CoreWorkerPlasmaStoreProvider::MemoryUsageString() {
-  return store_client_.DebugString();
+  return store_client_->DebugString();
 }
 
 absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>>
@@ -483,3 +486,4 @@ Status CoreWorkerPlasmaStoreProvider::WarmupStore() {
 
 }  // namespace core
 }  // namespace ray
+
