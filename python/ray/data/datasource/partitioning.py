@@ -78,18 +78,6 @@ class Partitioning:
         >>> root = "s3://anonymous@air-example-data/cifar-10/images"
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, partitioning=partitioning)
-        >>> ds
-        Dataset(
-           num_blocks=20,
-           num_rows=150,
-           schema={
-              sepal.length: double,
-              sepal.width: double,
-              petal.length: double,
-              petal.width: double,
-              variety: string
-           }
-        )
     """
 
     #: The partition style - may be either HIVE or DIRECTORY.
