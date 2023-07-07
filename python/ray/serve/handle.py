@@ -3,7 +3,6 @@ import concurrent.futures
 from dataclasses import dataclass
 from functools import wraps
 import inspect
-import os
 from typing import Coroutine, Dict, Optional, Union
 import threading
 
@@ -27,7 +26,6 @@ from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 _global_async_loop = None
-
 
 
 def _wrap_into_async_task(async_func):
