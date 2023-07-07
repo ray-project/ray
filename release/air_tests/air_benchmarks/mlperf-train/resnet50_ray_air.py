@@ -6,6 +6,8 @@ import time
 import logging
 import csv
 import json
+import torchvision
+import torch
 
 import ray
 from ray.air import session
@@ -148,12 +150,12 @@ def train_loop_for_worker(config):
         tf_dataset = _tf_dataset
     elif config["data_loader"] == RAY_DATA:
         assert dataset_shard is not None
-        tf_dataset = dataset_shard.to_tf(
-            feature_columns="image", label_columns="label", batch_size=config["batch_size"]
+        #tf_dataset = dataset_shard.to_tf(
+        #    feature_columns="image", label_columns="label", batch_size=config["batch_size"]
+        #)
+        tf_dataset = dataset_shard.iter_batches(
+            batch_size=config["batch_size"]
         )
-    elif config["data_loader"] == TORCH_DATALOADER:
-        assert torch_dataset is not None
-        tf_dataset = iter(torch_dataset)
     elif config["data_loader"] == SYNTHETIC:
         tf_dataset = build_synthetic_tf_dataset(
             synthetic_dataset,
@@ -167,6 +169,11 @@ def train_loop_for_worker(config):
         if model:
             model.fit(tf_dataset, steps_per_epoch=num_steps_per_epoch)
         else:
+            if config["data_loader"] == TORCH_DATALOADER:
+                # Torch needs to refresh the dataset on each epoch.
+                assert torch_dataset is not None
+                tf_dataset = iter(torch_dataset)
+
             for i, row in enumerate(tf_dataset):
                 if i >= num_steps_per_epoch:
                     break
@@ -205,17 +212,20 @@ def train_loop_for_worker(config):
 
 
 def crop_and_flip_image_batch(image_batch):
-    image_batch["image"] = [
-        preprocess_image(
-            image_buffer=image_buffer,
-            output_height=DEFAULT_IMAGE_SIZE,
-            output_width=DEFAULT_IMAGE_SIZE,
-            num_channels=NUM_CHANNELS,
-            # TODO(swang): Also load validation set.
-            is_training=True,
-        ).numpy()
-        for image_buffer in image_batch["image"]
-    ]
+    transform = torchvision.transforms.Compose([
+        #torchvision.transforms.ToPILImage(),
+        torchvision.transforms.RandomResizedCrop(
+            size=DEFAULT_IMAGE_SIZE,
+            scale=(0.05, 1.0),
+            ratio=(0.75, 1.33),
+        ),
+        torchvision.transforms.RandomHorizontalFlip(),
+        #torchvision.transforms.ToTensor(),
+    ])
+    batch_size, height, width, channels = image_batch["image"].shape
+    tensor_shape = (batch_size, channels, height, width)
+    image_batch["image"] = transform(torch.Tensor(image_batch["image"].reshape(tensor_shape)))
+    #image_batch["label"] = [0 for _ in range(len(image_batch["image"]))]
     return image_batch
 
 
@@ -265,23 +275,6 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     return df
 
 
-def crop_and_flip_image_batch(image_batch: pd.DataFrame) -> pd.DataFrame:
-    def process_images():
-        for image_buffer in image_batch["image"]:
-            # Each image output is ~600KB.
-            yield preprocess_image(
-                image_buffer=image_buffer,
-                output_height=DEFAULT_IMAGE_SIZE,
-                output_width=DEFAULT_IMAGE_SIZE,
-                num_channels=NUM_CHANNELS,
-                # TODO(swang): Also load validation set.
-                is_training=True,
-            ).numpy()
-
-    image_batch["image"] = list(process_images())
-    return image_batch
-
-
 def build_synthetic_dataset(batch_size):
     image_dims = IMAGE_DIMS[1:]
     empty = np.empty(image_dims, dtype=np.uint8)
@@ -311,20 +304,22 @@ def build_dataset(
     if read_from_images:
         ds = ray.data.read_images(
                 data_root,
-                partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data")
-            ).limit(num_images_per_epoch)
-        classes = {label: i for i, label in enumerate(ds.unique("label"))}
-        def convert_class_to_idx(df, classes):
-            df["label"] = df["label"].map(classes).astype("float32")
-            return df
-        ds = ds.map_batches(
-            convert_class_to_idx,
-            fn_kwargs={"classes": classes},
-            batch_format="pandas",
-        )
+                parallelism=50,
+                #partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data")
+            )
+        
+        #classes = {label: i for i, label in enumerate(ds.unique("label"))}
+        #def convert_class_to_idx(df, classes):
+        #    df["label"] = df["label"].map(classes).astype("float32")
+        #    return df
+        #ds = ds.map_batches(
+        #    convert_class_to_idx,
+        #    fn_kwargs={"classes": classes},
+        #    batch_format="pandas",
+        #)
         ds = ds.map_batches(
             crop_and_flip_image_batch,
-            batch_format="pandas",
+            zero_copy_batch=True,
         )
     else:
         filenames = get_tfrecords_filenames(
