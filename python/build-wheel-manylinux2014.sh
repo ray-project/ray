@@ -22,15 +22,20 @@ PYTHON_NUMPYS=(
   "py311 cp311-cp311 1.22.0"
 )
 
-yum -y install unzip zip sudo
-yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
-yum -y install openssl
+YUM_PKGS=(
+  unzip zip sudo openssl xz
+  java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
+)
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
-  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
-  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+  YMB_PKGS+=(
+    "libasan-4.8.5-44.el7.x86_64"
+    "libubsan-7.3.1-5.10.el7.x86_64"
+    "devtoolset-8-libasan-devel.x86_64"
+  )
 fi
+
+yum -y install "${YUM_PKGS[@]}"
 
 java -version
 JAVA_BIN="$(readlink -f "$(command -v java)")"
