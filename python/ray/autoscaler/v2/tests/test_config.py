@@ -1,17 +1,13 @@
 # coding: utf-8
 import os
 import sys
-from pathlib import Path
 
 import pytest  # noqa
 import yaml
 
 from ray._private.test_utils import load_test_config
+from ray.autoscaler import AUTOSCALER_DIR_PATH
 from ray.autoscaler.v2.instance_manager.config import NodeProviderConfig
-
-AUTOSCALER_RELATIVE_PATH = Path(
-    os.path.abspath(os.path.dirname(__file__))
-).parent.parent
 
 
 def test_simple():
@@ -86,7 +82,7 @@ def test_complex():
 
 def test_multi_provider_instance_type():
     def load_config(file):
-        path = os.path.join(AUTOSCALER_RELATIVE_PATH, file)
+        path = os.path.join(AUTOSCALER_DIR_PATH, file)
         return NodeProviderConfig(
             yaml.safe_load(open(path).read()), skip_content_hash=True
         )
