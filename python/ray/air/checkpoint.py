@@ -324,7 +324,7 @@ class Checkpoint:
         return None
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "Checkpoint":
+    def from_bytes(cls, data: bytes) -> "ray.air.checkpoint.Checkpoint":
         """Create a checkpoint from the given byte string.
 
         Args:
@@ -353,7 +353,7 @@ class Checkpoint:
         return pickle.dumps(data_dict)
 
     @classmethod
-    def from_dict(cls, data: dict) -> "Checkpoint":
+    def from_dict(cls, data: dict) -> "ray.air.checkpoint.Checkpoint":
         """Create checkpoint object from dictionary.
 
         Args:
@@ -446,7 +446,7 @@ class Checkpoint:
         return checkpoint_data
 
     @classmethod
-    def from_directory(cls, path: Union[str, os.PathLike]) -> "Checkpoint":
+    def from_directory(cls, path: Union[str, os.PathLike]) -> "ray.air.checkpoint.Checkpoint":
         """Create checkpoint object from directory.
 
         Args:
@@ -473,8 +473,8 @@ class Checkpoint:
 
     @classmethod
     @DeveloperAPI
-    def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`Checkpoint`.
+    def from_checkpoint(cls, other: "ray.air.checkpoint.Checkpoint") -> "ray.air.checkpoint.Checkpoint":
+        """Create a checkpoint from a generic :class:`ray.air.checkpoint.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
         generic :class:`Checkpoint` object.
