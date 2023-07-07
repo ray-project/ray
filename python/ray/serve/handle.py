@@ -82,12 +82,14 @@ class HandleOptions:
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
-            method_name=self.method_name
-            if method_name == DEFAULT.VALUE
-            else method_name,
-            multiplexed_model_id=self.multiplexed_model_id
-            if multiplexed_model_id == DEFAULT.VALUE
-            else multiplexed_model_id,
+            method_name=(
+                self.method_name if method_name == DEFAULT.VALUE else method_name
+            ),
+            multiplexed_model_id=(
+                self.multiplexed_model_id
+                if multiplexed_model_id == DEFAULT.VALUE
+                else multiplexed_model_id
+            ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
         )
 
@@ -416,12 +418,14 @@ class RayServeDeploymentHandle:
 
     def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
-            handle = serve._private.api.get_deployment(
-                self.deployment_name
-            )._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
-            self.handle = handle.options(
-                method_name=self.handle_options.method_name,
-                stream=self.handle_options.stream,
+            self.handle = (
+                serve._private.api.get_deployment(self.deployment_name)
+                ._get_handle(sync=FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC)
+                .options(
+                    method_name=self.handle_options.method_name,
+                    stream=self.handle_options.stream,
+                    multiplexed_model_id=self.handle_options.multiplexed_model_id,
+                )
             )
         return self.handle.remote(*args, **kwargs)
 

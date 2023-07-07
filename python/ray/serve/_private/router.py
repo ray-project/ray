@@ -69,7 +69,7 @@ class RequestMetadata:
     app_name: str = ""
 
     # Multiplexed model ID.
-    multiplexed_model_id: str = ""
+    multiplexed_model_id: Optional[str] = None
 
     # If this request expects a streaming response.
     is_streaming: bool = False
@@ -983,6 +983,7 @@ class Router:
                 "application": request_meta.app_name,
             },
         )
+        print("IN ROUTER", request_meta.multiplexed_model_id)
 
         query = Query(
             args=list(request_args),
