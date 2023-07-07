@@ -2451,8 +2451,8 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
-                destination path if ``True``. Does nothing if all directories already
+            try_create_dir: If True, attempts to create all directories in the
+                destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
@@ -2462,7 +2462,7 @@ class Dataset:
             block_path_provider: A
                 :class:`~ray.data.datasource.BlockWritePathProvider`
                 implementation specifying the filename structure for each output
-                parquet file. By default,  the format of the output files is
+                parquet file. By default, the format of the output files is
                 ``{uuid}_{block_idx}.parquet``, where ``uuid`` is a unique id for the
                 dataset.
             arrow_parquet_args_fn: Callable that returns a dictionary of write
@@ -2470,7 +2470,7 @@ class Dataset:
                     /arrow.apache.org/docs/python/generated/\
                         pyarrow.parquet.write_table.html#pyarrow.parquet.write_table>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``arrow_parquet_args``. This should be used
+                any duplicate keys from ``arrow_parquet_args``. Use this argument
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
@@ -2542,8 +2542,8 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
-                destination path if ``True``. Does nothing if all directories already
+            try_create_dir: If True, attempts to create all directories in the
+                destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
@@ -2561,7 +2561,7 @@ class Dataset:
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
                     api/pandas.DataFrame.to_json.html>`_
                 when writing each block to a file. Overrides
-                any duplicate keys from ``pandas_json_args``. This should be used
+                any duplicate keys from ``pandas_json_args``. Use this parameter
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
@@ -2569,7 +2569,7 @@ class Dataset:
             pandas_json_args: These args are passed to
                 `pandas.DataFrame.to_json() <https://pandas.pydata.org/docs/reference/\
                     api/pandas.DataFrame.to_json.html>`_,
-                which we use under the hood to write out each
+                which is used under the hood to write out each
                 :class:`~ray.data.Dataset` block. These
                 are dict(orient="records", lines=True) by default.
         """
@@ -2599,7 +2599,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **arrow_csv_args,
     ) -> None:
-        """Writes the :class:`~ray.data.Dataset` to a CSV files.
+        """Writes the :class:`~ray.data.Dataset` to CSV files.
 
         The number of files is determined by the number of blocks in the dataset.
         To control the number of number of blocks, call
@@ -2631,7 +2631,7 @@ class Dataset:
 
         Args:
             path: The path to the destination root directory, where
-                the csv files are written to.
+                the CSV files are written to.
             filesystem: The pyarrow filesystem implementation to write to.
                 These filesystems are specified in the
                 `pyarrow docs <https://arrow.apache.org/docs\
@@ -2659,7 +2659,7 @@ class Dataset:
                 arrow.apache.org/docs/python/generated/\
                 pyarrow.csv.write_csv.html#pyarrow.csv.write_csv>`_ when writing each
                 block to a file. Overrides any duplicate keys from ``arrow_csv_args``.
-                This should be used instead of ``arrow_csv_args`` if any of your write
+                Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
@@ -2696,7 +2696,7 @@ class Dataset:
         """Write the :class:`~ray.data.Dataset` to TFRecord files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
-        files will contain
+        files contain
         `tf.train.Example <https://www.tensorflow.org/api_docs/python/tf/train/\
             Example>`_
         records, with one Example record for each row in the dataset.
@@ -2737,8 +2737,8 @@ class Dataset:
                 filesystem. By default, the filesystem is automatically selected based
                 on the scheme of the paths. For example, if the path begins with
                 ``s3://``, the ``S3FileSystem`` is used.
-            try_create_dir: Try to create all directories in
-                destination path if ``True``. Does nothing if all directories already
+            try_create_dir: If True, attempts to create all directories in the
+                destination path. Does nothing if all directories already
                 exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
                 `pyarrow.fs.FileSystem.open_output_stream <https://arrow.apache.org\
@@ -2748,7 +2748,7 @@ class Dataset:
             block_path_provider: A
                 :class:`~ray.data.datasource.BlockWritePathProvider`
                 implementation specifying the filename structure for each output
-                parquet file. By default,  the format of the output files is
+                parquet file. By default, the format of the output files is
                 ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id for the
                 dataset.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
