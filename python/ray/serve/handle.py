@@ -3,7 +3,7 @@ import concurrent.futures
 from dataclasses import dataclass
 from functools import wraps
 import inspect
-import os
+from typing import Coroutine, Dict, Optional, Union
 import threading
 from typing import Coroutine, Optional, Union
 
@@ -14,7 +14,8 @@ from ray import serve
 from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
+    SERVE_HANDLE_JSON_KEY,
+    ServeHandleType,
 )
 from ray.serve._private.utils import (
     get_random_letters,
@@ -25,13 +26,6 @@ from ray.util import metrics
 from ray.util.annotations import PublicAPI
 
 _global_async_loop = None
-
-
-# Feature flag to revert to legacy behavior of synchronous deployment
-# handle in dynamic dispatch. This is here as an escape hatch and last resort.
-FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
-    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
-)
 
 
 def _wrap_into_async_task(async_func):

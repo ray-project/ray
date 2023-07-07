@@ -1,5 +1,4 @@
-import os
-
+import json
 import ray
 from ray import cloudpickle
 from ray.util.annotations import PublicAPI
@@ -8,13 +7,6 @@ from ray.dag.class_node import ClassNode  # noqa: F401
 from ray.dag.function_node import FunctionNode  # noqa: F401
 from ray.dag.input_node import InputNode  # noqa: F401
 from ray.dag import DAGNode  # noqa: F401
-from ray.serve._private.constants import (
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
-)
-
-FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC = (
-    os.environ.get(SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY, "0") == "1"
-)
 
 
 @PublicAPI(stability="alpha")
@@ -48,11 +40,6 @@ class RayServeDAGHandle:
         if self.dag_node is None:
             self.dag_node = cloudpickle.loads(self.pickled_dag_node)
 
-        if FLAG_SERVE_DEPLOYMENT_HANDLE_IS_SYNC:
-            return self.dag_node.execute(
-                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
-            )
-        else:
-            return await self.dag_node.execute(
-                *args, _ray_cache_refs=_ray_cache_refs, **kwargs
-            )
+        return await self.dag_node.execute(
+            *args, _ray_cache_refs=_ray_cache_refs, **kwargs
+        )
