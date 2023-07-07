@@ -397,7 +397,7 @@ class _ExperimentCheckpointManager:
                     local_dir=self._local_checkpoint_dir,
                 )
                 self._syncer.wait()
-            except TuneError as e:
+            except Exception as e:
                 logger.warning(
                     f"Got error when trying to sync down: {e} "
                     f"\nPlease check this error message for potential "
