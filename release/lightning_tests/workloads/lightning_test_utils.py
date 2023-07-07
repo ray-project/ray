@@ -14,7 +14,7 @@ class MNISTClassifier(pl.LightningModule):
         self.fc1 = torch.nn.Linear(28 * 28, feature_dim)
         self.fc2 = torch.nn.Linear(feature_dim, 10)
         self.lr = lr
-        self.accuracy = Accuracy()
+        self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
 
     def forward(self, x):
         x = x.view(-1, 28 * 28)
