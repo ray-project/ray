@@ -506,7 +506,9 @@ class HTTPProxy:
                     scope,
                     receive,
                     send,
-                    request_context_info.get("multiplexed_model_id", None),
+                    multiplexed_model_id=request_context_info.get(
+                        "multiplexed_model_id", None
+                    ),
                 )
             else:
                 status_code = await self.send_request_to_replica_unary(
@@ -514,7 +516,9 @@ class HTTPProxy:
                     scope,
                     receive,
                     send,
-                    request_context_info.get("multiplexed_model_id", None),
+                    multiplexed_model_id=request_context_info.get(
+                        "multiplexed_model_id", None
+                    ),
                 )
 
             self.request_counter.inc(
