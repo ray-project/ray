@@ -41,7 +41,7 @@ pip --no-cache-dir install -U \
 
 # explicitly install (overwrite) pytorch with CUDA support
 pip --no-cache-dir install -U \
-           -c requirements.txt \
+           $CONSTRAINT \
            -r dl-gpu-requirements.txt
 
 sudo apt-get clean
