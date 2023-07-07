@@ -254,15 +254,11 @@ def create_replica_wrapper(name: str):
             request_metadata: RequestMetadata,
             request: StreamingHTTPRequest,
         ) -> AsyncGenerator[Message, None]:
-            """Handle a request and stream the results to the caller.
+            """Handle an HTTP request and stream ASGI messages to the caller.
 
-            This is used by the HTTP proxy for experimental StreamingResponse support.
-
-            This generator yields ASGI-compliant messages sent via an ASGI send
-            interface. This allows us to return the messages back to the HTTP proxy as
-            they're sent by user code (e.g., the FastAPI wrapper).
+            This is a generator that yields ASGI-compliant messages sent by user code
+            via an ASGI send interface.
             """
-            # TODO: update comment ^^^
             receiver_task = None
             call_user_method_task = None
             wait_for_message_task = None
@@ -333,6 +329,7 @@ def create_replica_wrapper(name: str):
             *request_args,
             **request_kwargs,
         ) -> AsyncGenerator[Any, None]:
+            """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
