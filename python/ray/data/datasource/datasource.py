@@ -29,9 +29,11 @@ class Datasource:
     For an example of subclassing :class:`~ray.data.Datasource`, read
     :ref:`Implementing a Custom Datasource <custom_datasources>`.
 
-    .. note:: Datasource instances must be serializable, since
-    :meth:`~ray.data.Datasource.create_reader` and
-    :meth:`~ray.data.Datasource.write` are called in remote tasks.
+    .. note::
+        Datasource instances must be serializable, since
+        :meth:`~ray.data.Datasource.create_reader` and
+        :meth:`~ray.data.Datasource.write` are called in remote tasks.
+
     """  # noqa: E501
 
     def create_reader(self, **read_args) -> "Reader":
