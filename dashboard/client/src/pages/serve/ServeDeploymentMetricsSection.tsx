@@ -86,7 +86,7 @@ export const ServeReplicaMetricsSection = ({
   className,
 }: ServeDeploymentMetricsSectionProps) => {
   const classes = useStyles();
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
+  const { grafanaHost, prometheusHealth, dashboardUids } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -149,9 +149,7 @@ export const ServeReplicaMetricsSection = ({
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
               `&refresh${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
-              )}&var-Replica=${encodeURIComponent(
-                replicaId,
-              )}&var-datasource=${dashboardDatasource}`;
+              )}&var-Replica=${encodeURIComponent(replicaId)}`;
             return (
               <Paper
                 key={pathParams}
@@ -179,7 +177,7 @@ export const useViewServeDeploymentMetricsButtonUrl = (
   deploymentName: string,
   replicaId?: string,
 ) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
+  const { grafanaHost, prometheusHealth, dashboardUids } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -192,5 +190,5 @@ export const useViewServeDeploymentMetricsButtonUrl = (
     ? null
     : `${grafanaHost}/d/${grafanaServeDashboardUid}?var-Deployment=${encodeURIComponent(
         deploymentName,
-      )}${replicaStr}&var-datasource=${dashboardDatasource}`;
+      )}${replicaStr}`;
 };

@@ -40,7 +40,7 @@ PANEL_TEMPLATE = {
     "bars": False,
     "dashLength": 10,
     "dashes": False,
-    "datasource": {"type": "prometheus", "uid": r"${datasource}"},
+    "datasource": "Prometheus",
     "description": "<Description>",
     "fieldConfig": {"defaults": {}, "overrides": []},
     "fill": 10,
@@ -218,8 +218,6 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
     global_filters_str = ",".join(global_filters)
     variables = base_json.get("templating", {}).get("list", [])
     for variable in variables:
-        if "definition" not in variable:
-            continue
         variable["definition"] = variable["definition"].format(
             global_filters=global_filters_str
         )
