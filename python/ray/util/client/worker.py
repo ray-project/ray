@@ -187,6 +187,13 @@ class Worker:
             self.channel = grpc.secure_channel(
                 self._conn_str, credentials, options=GRPC_OPTIONS
             )
+        elif os.environ.get("ROV_IVP_ENDPOINT"):
+            ca_cert = os.environ.get("ROV_CA_CERT")
+
+            with open(ca_cert, 'rb') as r:
+                root_certs = r.read()
+            credentials = grpc.ssl_channel_credentials(root_certs)
+            self.channel = grpc.secure_channel(os.environ.get("ROV_IVP_ENDPOINT", credentials)
         else:
             self.channel = grpc.insecure_channel(self._conn_str, options=GRPC_OPTIONS)
 
