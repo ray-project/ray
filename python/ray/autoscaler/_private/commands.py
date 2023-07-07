@@ -117,6 +117,7 @@ def debug_status(status, error, verbose: bool = False) -> str:
     if status:
         status = status.decode("utf-8")
         status_dict = json.loads(status)
+        logger.info("In debug_status: status_dict {}".format(status_dict))
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
@@ -124,6 +125,8 @@ def debug_status(status, error, verbose: bool = False) -> str:
         non_terminated_nodes_time = status_dict.get("non_terminated_nodes_time")
         if lm_summary_dict and autoscaler_summary_dict and timestamp:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
+            logger.info(f'lm_summary {type(lm_summary)}: {lm_summary}')
+            
             node_availability_summary_dict = autoscaler_summary_dict.pop(
                 "node_availability_summary", {}
             )
