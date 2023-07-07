@@ -148,7 +148,7 @@ if __name__ == "__main__":
     # POST /get_or_create_runtime_env
     # body is serialzied protobuf GetOrCreateRuntimeEnvRequest
     # reply is serialzied protobuf GetOrCreateRuntimeEnvReply
-    async def get_or_create_runtime_env(request):
+    async def get_or_create_runtime_env(request: web.Request) -> web.Response:
         data = await request.read()
         request = runtime_env_agent_pb2.GetOrCreateRuntimeEnvRequest()
         request.ParseFromString(data)
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     # POST /delete_runtime_env_if_possible
     # body is serialzied protobuf DeleteRuntimeEnvIfPossibleRequest
     # reply is serialzied protobuf DeleteRuntimeEnvIfPossibleReply
-    async def delete_runtime_env_if_possible(request):
+    async def delete_runtime_env_if_possible(request: web.Request) -> web.Response:
         data = await request.read()
         request = runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleRequest()
         request.ParseFromString(data)
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     # POST /get_runtime_envs_info
     # body is serialzied protobuf GetRuntimeEnvsInfoRequest
     # reply is serialzied protobuf GetRuntimeEnvsInfoReply
-    async def get_runtime_envs_info(request):
+    async def get_runtime_envs_info(request: web.Request) -> web.Response:
         data = await request.read()
         request = runtime_env_agent_pb2.GetRuntimeEnvsInfoRequest()
         request.ParseFromString(data)
