@@ -34,9 +34,8 @@ pip --no-cache-dir install -U \
            -r ray-docker-requirements.txt
 
 # explicitly install (overwrite) pytorch with CUDA support
-pip --no-cache-dir install -U \
+pip --no-cache-dir install \
            -c requirements.txt \
-           -c requirements_compiled.txt \
            -r dl-gpu-requirements.txt
 
 sudo apt-get clean
