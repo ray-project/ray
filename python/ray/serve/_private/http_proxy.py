@@ -32,7 +32,13 @@ from ray.serve._private.http_util import (
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName, NodeId
+from ray.serve._private.common import (
+    ApplicationName,
+    EndpointInfo,
+    EndpointTag,
+    NodeId,
+    StreamingHTTPRequest,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -122,8 +128,7 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(
-                    endpoint,
+                self.handles[endpoint] = self._get_handle(endpoint).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -224,13 +229,12 @@ class HTTPProxy:
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(name, stream: bool = False):
+        def get_handle(name):
             return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
                 _is_for_http_requests=True,
-                _stream=stream,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -697,7 +701,9 @@ class HTTPProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.remote(pickle.dumps(scope), self.self_actor_handle)
+        assignment_task = handle.remote(
+            StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
+        )
         done, _ = await asyncio.wait(
             [assignment_task, disconnected_task],
             return_when=FIRST_COMPLETED,
