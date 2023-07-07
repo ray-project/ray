@@ -128,7 +128,6 @@ gin-config==0.5.0
 gitdb==4.0.10
 GitPython==3.1.31
 glfw==2.5.9
-gluoncv==0.10.5.post0
 google-api-core==2.11.1
 google-api-python-client==1.7.8
 google-auth==2.20.0
@@ -231,7 +230,6 @@ mujoco-py==2.1.2.14
 multidict==6.0.4
 multipledispatch==0.6.0
 multiprocess==0.70.14
-mxnet==1.8.0.post0
 nbclassic==1.0.0
 nbclient==0.8.0
 nbconvert==7.6.0
