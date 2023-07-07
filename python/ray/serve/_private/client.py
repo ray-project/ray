@@ -487,7 +487,6 @@ class ServeControllerClient:
         missing_ok: Optional[bool] = False,
         sync: bool = True,
         _is_for_http_requests: bool = False,
-        _stream: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -500,8 +499,6 @@ class ServeControllerClient:
                 that's only usable in asyncio loop.
             _is_for_http_requests: Indicates that this handle will be used
                 to send HTTP requests from the proxy to ingress deployment replicas.
-            _stream: Indicates that this handle should use
-                `num_returns="streaming"`.
 
         Returns:
             RayServeHandle
@@ -521,14 +518,12 @@ class ServeControllerClient:
                 self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
-                _stream=_stream,
             )
         else:
             handle = RayServeHandle(
                 self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
-                _stream=_stream,
             )
 
         self.handle_cache[cache_key] = handle

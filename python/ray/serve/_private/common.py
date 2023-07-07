@@ -391,3 +391,11 @@ class MultiplexedReplicaInfo:
     deployment_name: str
     replica_tag: str
     model_ids: List[str]
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle

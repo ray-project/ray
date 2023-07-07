@@ -262,6 +262,15 @@ py_test(
 
 
 py_test(
+    name = "test_handle_streaming",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
     name = "test_kv_store",
     size = "small",
     srcs = serve_tests_srcs,
