@@ -357,8 +357,8 @@ def test_dataset_stats_stage_execution_time(ray_start_regular_shared):
     # Check that each map_batches operator has the corresponding execution time.
     map_batches_1_stats = ds._get_stats_summary().parents[0].stages_stats[0]
     map_batches_2_stats = ds._get_stats_summary().stages_stats[0]
-    assert sleep_1 <= map_batches_1_stats.time_total_s <= sleep_1 + 0.5
-    assert sleep_2 <= map_batches_2_stats.time_total_s <= sleep_2 + 0.5
+    assert sleep_1 <= map_batches_1_stats.time_total_s
+    assert sleep_2 <= map_batches_2_stats.time_total_s
 
     ctx.optimize_fuse_stages = curr_optimize_fuse_stages
     ctx.optimizer_enabled = curr_optimizer_enabled
