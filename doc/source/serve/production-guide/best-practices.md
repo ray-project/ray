@@ -2,7 +2,7 @@
 
 # Best practices in production
 
-This section will help you:
+This section helps you:
 
 * Understand best practice when operating Serve in production
 * Learn more about managing Serve with the Serve CLI
