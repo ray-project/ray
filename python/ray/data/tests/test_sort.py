@@ -152,7 +152,8 @@ def test_sort_arrow_with_empty_blocks(
 
 
 @pytest.mark.parametrize("descending", [False, True])
-def test_sort_arrow_with_multiple_keys(ray_start_regular, descending):
+@pytest.mark.parametrize("batch_format", ["pyarrow", "pandas"])
+def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
     num_items = 1000
     num_blocks = 100
     df = pd.DataFrame(
@@ -164,10 +165,10 @@ def test_sort_arrow_with_multiple_keys(ray_start_regular, descending):
     )
     ds = ray.data.from_pandas(df).map_batches(
         lambda t: t,
-        batch_format="pyarrow",
+        batch_format=batch_format,
         batch_size=None,
     )
-    df.sort_values(["a", "b", "c"], inplace=True, ascending=not (descending))
+    df.sort_values(["a", "b", "c"], inplace=True, ascending=not descending)
     sorted_ds = ds.repartition(num_blocks).sort(["a", "b", "c"], descending=descending)
 
     # Number of blocks is preserved

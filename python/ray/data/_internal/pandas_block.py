@@ -1,3 +1,4 @@
+import bisect
 import collections
 import heapq
 from typing import (
@@ -346,18 +347,13 @@ class PandasBlockAccessor(TableBlockAccessor):
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
     ) -> List[Block]:
-        if len(key) > 1:
-            raise NotImplementedError(
-                "sorting by multiple columns is not supported yet"
-            )
-
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
             # so calling sort_indices() will raise an error.
             return [self._empty_table() for _ in range(len(boundaries) + 1)]
 
-        col, _ = key[0]
-        table = self._table.sort_values(by=col, ascending=not descending)
+        columns = [k[0] for k in key]
+        table = self._table.sort_values(by=columns, ascending=not descending)
         if len(boundaries) == 0:
             return [table]
 
@@ -368,13 +364,15 @@ class PandasBlockAccessor(TableBlockAccessor):
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
+
+        records = list(table[columns].itertuples(index=False, name=None))
         if descending:
-            num_rows = len(table[col])
-            bounds = num_rows - table[col].searchsorted(
-                boundaries, sorter=np.arange(num_rows - 1, -1, -1)
-            )
+            bounds = [
+                len(records) - bisect.bisect_left(records[::-1], b) for b in boundaries
+            ]
         else:
-            bounds = table[col].searchsorted(boundaries)
+            bounds = [bisect.bisect_left(records, b) for b in boundaries]
+
         last_idx = 0
         for idx in bounds:
             partitions.append(table[last_idx:idx])
@@ -466,7 +464,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = PandasBlockAccessor._empty_table()
         else:
             ret = pd.concat(blocks, ignore_index=True)
-            ret = ret.sort_values(by=key[0][0], ascending=not _descending)
+            ret = ret.sort_values(
+                by=[k[0][0] for k in key] if isinstance(key, list) else key[0][0],
+                ascending=not _descending,
+            )
         return ret, PandasBlockAccessor(ret).get_metadata(
             None, exec_stats=stats.build()
         )
