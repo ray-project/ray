@@ -10,7 +10,7 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
-from ray.air.constants import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION, REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
@@ -119,14 +119,20 @@ def assert_file(exists: bool, root: str, path: str = ""):
 
 
 class MockTrial:
-    def __init__(self, trial_id: str, logdir: str, on_dead_node: bool = False):
+    def __init__(
+        self,
+        trial_id: str,
+        logdir: str,
+        on_dead_node: bool = False,
+        runner_ip: str = None,
+    ):
         self.trial_id = trial_id
         self.uses_cloud_checkpointing = False
         self.sync_on_checkpoint = True
 
         self.logdir = logdir
         self.local_path = logdir
-        self._local_ip = ray.util.get_node_ip_address()
+        self._local_ip = runner_ip or ray.util.get_node_ip_address()
         self._on_dead_node = on_dead_node
 
     def get_runner_ip(self):
@@ -568,15 +574,11 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
 
 # TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
 def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
-    """Checks that an error is raised when head node syncing not enabled by default,
-    and a checkpoint cannot be found on the driver (since it was not synced).
-
-    Also checks that no error is raised if the checkpoint does exist on the local node.
-    This covers the single-node case where all trials write to local disk.
-    Only force the user to switch to cloud storage / NFS in the multi-node case."""
     syncer_callback = SyncerCallback(sync_period=0)
     trial = MockTrial(trial_id="a", logdir=None)
 
+    # Raise a deprecation error if checkpointing in a multi-node cluster
+    monkeypatch.delenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE)
     with pytest.raises(DeprecationWarning):
         syncer_callback.on_checkpoint(
             iteration=1,
@@ -587,7 +589,8 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
             ),
         )
 
-    monkeypatch.setenv("AIR_REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE", "1")
+    # Setting the env var raises the original TuneError instead of a deprecation
+    monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "1")
     with pytest.raises(TuneError):
         syncer_callback.on_checkpoint(
             iteration=1,
@@ -598,6 +601,9 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
             ),
         )
 
+    # Make sure we don't raise an error if running on a single node or using NFS,
+    # where the checkpoint can be accessed from the driver.
+    monkeypatch.delenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE)
     path_that_exists = tmp_path / "exists"
     path_that_exists.mkdir()
     syncer_callback.on_checkpoint(
@@ -608,6 +614,32 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
             dir_or_data=str(path_that_exists), storage_mode=CheckpointStorage.PERSISTENT
         ),
     )
+
+
+# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
+def test_head_node_syncing_disabled_warning(propagate_logs, caplog):
+    syncer_callback = SyncerCallback(sync_period=0)
+    remote_trial_a = MockTrial(trial_id="a", logdir=None, runner_ip="remote")
+    remote_trial_b = MockTrial(trial_id="b", logdir=None, runner_ip="remote")
+    local_trial_c = MockTrial(trial_id="c", logdir=None)
+
+    with caplog.at_level(logging.WARNING):
+        # Any attempts to sync from remote trials should no-op.
+        # Instead, print a warning message to the user explaining that
+        # no checkpoints or artifacts are pulled to the head node.
+        syncer_callback._sync_trial_dir(remote_trial_a)
+        syncer_callback._sync_trial_dir(remote_trial_b)
+
+        # Syncing multiple times shouldn't spam the logs
+        syncer_callback._sync_trial_dir(remote_trial_a)
+        syncer_callback._sync_trial_dir(remote_trial_b)
+
+        # No warning for attempting to sync a local trial dir
+        syncer_callback._sync_trial_dir(local_trial_c)
+
+        assert caplog.text.count("The contents of the trial directory for trial a") == 1
+        assert caplog.text.count("The contents of the trial directory for trial b") == 1
+        assert caplog.text.count("The contents of the trial directory for trial c") == 0
 
 
 if __name__ == "__main__":
