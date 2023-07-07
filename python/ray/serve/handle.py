@@ -57,9 +57,13 @@ def _create_or_get_async_loop_in_thread():
 @PublicAPI(stability="beta")
 @dataclass(frozen=True)
 class HandleOptions:
-    """Options for each ServeHandle instances. These fields are immutable."""
+    """Options for each ServeHandle instance.
+
+    These fields can be changed by calling `.options()` on a handle.
+    """
 
     method_name: str = "__call__"
+    stream: bool = False
 
 
 @PublicAPI(stability="beta")
@@ -111,14 +115,12 @@ class RayServeHandle:
         *,
         _router: Optional[Router] = None,
         _is_for_http_requests: bool = False,
-        _stream: bool = False,
     ):
         self.controller_handle = controller_handle
         self.deployment_name = deployment_name
         self.handle_options = handle_options or HandleOptions()
         self.handle_tag = f"{self.deployment_name}#{get_random_letters()}"
         self._is_for_http_requests = _is_for_http_requests
-        self._stream = _stream
 
         self.request_counter = metrics.Counter(
             "serve_handle_request_counter",
@@ -160,11 +162,15 @@ class RayServeHandle:
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ):
         new_options_dict = self.handle_options.__dict__.copy()
         user_modified_options_dict = {
             key: value
-            for key, value in zip(["method_name"], [method_name])
+            for key, value in [
+                ("method_name", method_name),
+                ("stream", stream),
+            ]
             if value != DEFAULT.VALUE
         }
         new_options_dict.update(user_modified_options_dict)
@@ -183,7 +189,6 @@ class RayServeHandle:
             new_options,
             _router=self.router,
             _is_for_http_requests=self._is_for_http_requests,
-            _stream=self._stream,
         )
 
     def options(
@@ -191,6 +196,7 @@ class RayServeHandle:
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -205,7 +211,9 @@ class RayServeHandle:
                 multiplexed_model_id="model:v1").remote(*args)
         """
         return self._options(
-            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
@@ -218,7 +226,7 @@ class RayServeHandle:
             route=_request_context.route,
             app_name=_request_context.app_name,
             multiplexed_model_id=_request_context.multiplexed_model_id,
-            is_streaming=self._stream,
+            is_streaming=handle_options.stream,
         )
         self.request_counter.inc(
             tags={
@@ -264,7 +272,6 @@ class RayServeHandle:
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
-            "_stream": self._stream,
         }
         return RayServeHandle._deserialize, (serialized_data,)
 
@@ -317,6 +324,7 @@ class RayServeSyncHandle(RayServeHandle):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -331,7 +339,9 @@ class RayServeSyncHandle(RayServeHandle):
 
         """
         return self._options(
-            method_name=method_name, multiplexed_model_id=multiplexed_model_id
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:
@@ -358,7 +368,6 @@ class RayServeSyncHandle(RayServeHandle):
             "deployment_name": self.deployment_name,
             "handle_options": self.handle_options,
             "_is_for_http_requests": self._is_for_http_requests,
-            "_stream": self._stream,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
@@ -379,10 +388,24 @@ class RayServeDeploymentHandle:
         # requirement of serve.start; Thus handle is fulfilled at runtime.
         self.handle: RayServeHandle = None
 
-    def options(self, *, method_name: str) -> "RayServeDeploymentHandle":
-        return self.__class__(
-            self.deployment_name, HandleOptions(method_name=method_name)
-        )
+    def options(
+        self,
+        *,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ) -> "RayServeDeploymentHandle":
+        new_options_dict = self.handle_options.__dict__.copy()
+        user_modified_options_dict = {
+            key: value
+            for key, value in [
+                ("method_name", method_name),
+                ("stream", stream),
+            ]
+            if value != DEFAULT.VALUE
+        }
+        new_options_dict.update(user_modified_options_dict)
+        new_options = HandleOptions(**new_options_dict)
+        return self.__class__(self.deployment_name, new_options)
 
     def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
@@ -391,6 +414,7 @@ class RayServeDeploymentHandle:
                 ._get_handle(sync=False)
                 .options(
                     method_name=self.handle_options.method_name,
+                    stream=self.handle_options.stream,
                 )
             )
         return self.handle.remote(*args, **kwargs)
