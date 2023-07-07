@@ -10,6 +10,7 @@ from ray.data._internal.block_batching.util import (
     blocks_to_batches,
     collate,
     extract_data_from_batch,
+    finalize_batches,
     format_batches,
     make_async_gen,
     resolve_block_refs,
@@ -30,6 +31,7 @@ def iter_batches(
     batch_format: Optional[str] = "default",
     drop_last: bool = False,
     collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+    finalize_fn: Optional[Callable[[Any], Any]] = None,
     shuffle_buffer_min_size: Optional[int] = None,
     shuffle_seed: Optional[int] = None,
     ensure_copy: bool = False,
@@ -41,13 +43,12 @@ def iter_batches(
     This takes a block iterator and creates batch_size batches, slicing,
     unioning, shuffling, prefetching, and formatting blocks as needed.
 
-
     The algorithm uses both pipeline parallelism and data parallelism:
 
     If prefetch_batches=2, these are all the batches in flight:
 
     [User thread] trains on Batch 0
-    - [Fetch thread] Batch 1 in output queue
+    - [Fetch thread] Batch 1 finalization + move to output queue
             - [Worker thread 1] Batch 2 formatting + collating
             - [Worker thread 2] Batch 3 formatting + collating
             - [Raylet] Batches 4 + 5 fetched to local object store memory
@@ -66,7 +67,8 @@ def iter_batches(
         4. Then, in a threadpool consisting of `prefetch_batches` threads:
             a. Format the batches to the provided batch format.
             b. Apply the collate function.
-        5. Fetch outputs from the threadpool, maintaining order of the batches.
+        5. Finalize each of the collated batches
+        6. Fetch outputs from the threadpool, maintaining order of the batches.
 
     Args:
         block_refs: An iterator over block object references and their corresponding
@@ -86,6 +88,9 @@ def iter_batches(
             as batches. Default is "default".
         drop_last: Whether to drop the last batch if it's incomplete.
         collate_fn: A function to apply to each data batch before returning it.
+        finalize_fn: A function to apply to each data batch after it has been collated.
+            This function is not run in a threadpool so it can be used for
+            memory-intensive operations such as GPU preloading.
         shuffle_buffer_min_size: If non-None, the data will be randomly shuffled using a
             local in-memory shuffle buffer, and this value will serve as the minimum
             number of rows that must be in the local in-memory shuffle buffer in order
@@ -97,8 +102,7 @@ def iter_batches(
             process. If set to greater than 0, a separate thread will be used to fetch
             the specified amount of formatted batches from blocks. This improves
             performance for non-CPU bound UDFs, allowing batch fetching compute and
-            formatting to be overlapped with the UDF. Defaults to 0 (no prefetching
-            enabled).
+            formatting to be overlapped with the UDF. Defaults to 1.
 
     Returns:
         An iterator over record batches.
@@ -119,7 +123,6 @@ def iter_batches(
     def _async_iter_batches(
         block_refs: Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
     ) -> Iterator[DataBatch]:
-
         # Step 1: Prefetch logical batches locally.
         block_refs = prefetch_batches_locally(
             block_ref_iter=block_refs,
@@ -152,7 +155,13 @@ def iter_batches(
             num_threadpool_workers=prefetch_batches,
         )
 
-        # Step 5: Restore original order.
+        # Step 5: Finalize each batch.
+        if finalize_fn is not None:
+            batch_iter = finalize_batches(
+                batch_iter, finalize_fn=finalize_fn, stats=stats
+            )
+
+        # Step 6: Restore original order.
         batch_iter: Iterator[Batch] = restore_original_order(batch_iter)
 
         yield from extract_data_from_batch(batch_iter)
@@ -193,7 +202,7 @@ def _format_in_threadpool(
         num_threadpool_workers: The number of threads to use in the threadpool.
     """
 
-    def threadpool_computations(
+    def threadpool_computations_format_collate(
         batch_iter: Iterator[Batch],
     ) -> Iterator[Batch]:
         # Step 4a: Format the batches.
@@ -209,13 +218,14 @@ def _format_in_threadpool(
         yield from formatted_batch_iter
 
     if num_threadpool_workers > 0:
-        return make_async_gen(
+        collated_iter = make_async_gen(
             base_iterator=batch_iter,
-            fn=threadpool_computations,
+            fn=threadpool_computations_format_collate,
             num_workers=num_threadpool_workers,
         )
     else:
-        return threadpool_computations(batch_iter)
+        collated_iter = threadpool_computations_format_collate(batch_iter)
+    return collated_iter
 
 
 def prefetch_batches_locally(
