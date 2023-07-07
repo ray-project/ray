@@ -33,7 +33,8 @@ class instrumented_io_context : public boost::asio::io_context {
 
   /// Run the io_context if and only if no other thread is running it. Blocks
   /// other threads from running once started. Noop if there is a thread
-  /// running it already.
+  /// running it already. Only used in GcsClient::Connect, to be deprecated
+  /// after the introduction of executors.
   void run_if_not_running(std::function<void()> prerun_fn) {
     absl::MutexLock l(&mu_);
     // Note: this doesn't set is_running_ because it blocks anything else from
