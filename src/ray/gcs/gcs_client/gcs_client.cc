@@ -90,27 +90,27 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
 
   if (cluster_id.IsNil()) {
     rpc::GetClusterIdReply reply;
-    std::promise<bool> cluster_known;
-    std::atomic<bool> running_inline{false};
+    std::promise<void> cluster_known;
+    std::atomic<bool> stop_io_service{false};
     gcs_rpc_client_->GetClusterId(
         rpc::GetClusterIdRequest(),
-        [this, &cluster_known, &running_inline, &io_service](
+        [this, &cluster_known, &stop_io_service, &io_service](
             const Status &status, const rpc::GetClusterIdReply &reply) {
           RAY_CHECK(status.ok()) << "Failed to get Cluster ID! Status: " << status;
           auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
           RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
           client_call_manager_->SetClusterId(cluster_id);
-          if (running_inline.load()) {
-            io_service.stop();
+          if (stop_io_service.load()) {
+            io_service.stop_exclusive();
           } else {
-            cluster_known.set_value(true);
+            cluster_known.set_value();
           }
         });
     // Run the IO service here to make the above call synchronous.
     // If it is already running, then wait for our particular callback
     // to be processed.
-    io_service.run_exclusive([&running_inline]() { running_inline.store(true); });
-    if (running_inline.load()) {
+    io_service.run_if_not_running([&stop_io_service]() { stop_io_service.store(true); });
+    if (stop_io_service.load()) {
       io_service.restart();
     } else {
       cluster_known.get_future().get();

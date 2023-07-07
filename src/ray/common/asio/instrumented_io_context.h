@@ -34,14 +34,22 @@ class instrumented_io_context : public boost::asio::io_context {
   /// Run the io_context if and only if no other thread is running it. Blocks
   /// other threads from running once started. Noop if there is a thread
   /// running it already.
-  void run_exclusive(std::function<void()> callback) {
+  void run_if_not_running(std::function<void()> prerun_fn) {
     absl::MutexLock l(&mu_);
-    // Note: this doesn't set is_running_ because it blocks anything else from running
-    // anyway.
+    // Note: this doesn't set is_running_ because it blocks anything else from
+    // running anyway.
     if (!is_running_) {
-      callback();
+      prerun_fn();
+      is_running_ = true;
       boost::asio::io_context::run();
     }
+  }
+
+  /// Assumes the current state is in run_exclusive (i.e., mutex is held).
+  /// UB if not.
+  void stop_exclusive() {
+    is_running_ = false;
+    boost::asio::io_context::stop();
   }
 
   void run() {
@@ -52,7 +60,13 @@ class instrumented_io_context : public boost::asio::io_context {
     boost::asio::io_context::run();
   }
 
-  void stop() { boost::asio::io_context::stop(); }
+  void stop() {
+    {
+      absl::MutexLock l(&mu_);
+      is_running_ = false;
+    }
+    boost::asio::io_context::stop();
+  }
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
@@ -81,7 +95,7 @@ class instrumented_io_context : public boost::asio::io_context {
 
  private:
   absl::Mutex mu_;
-  bool is_running_ GUARDED_BY(mu_);
+  bool is_running_;
   /// The event stats tracker to use to record asio handler stats to.
   std::shared_ptr<EventTracker> event_stats_;
 };
