@@ -40,6 +40,7 @@ pip --no-cache-dir install -U \
            -r ray-docker-requirements.txt
 
 # explicitly install (overwrite) pytorch with CUDA support
+# shellcheck disable=SC2086
 pip --no-cache-dir install -U \
            $CONSTRAINT \
            -r dl-gpu-requirements.txt
