@@ -191,7 +191,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
     from ray.train.torch import TorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
-        dataset_shard = train.get_context().get_dataset_shard("train")
+        dataset_shard = train.get_dataset_shard("train")
 
         running_loss = 0
         for i, batch in enumerate(
@@ -262,7 +262,7 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     def train_loop_per_worker(config):
         strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
 
-        train_shard = train.get_context().get_dataset_shard("train")
+        train_shard = train.get_dataset_shard("train")
         train_dataset = train_shard.to_tf(
             "image",
             "label",

@@ -77,7 +77,7 @@ def train_loop_for_worker(config):
             # model.compile(optimizer="rmsprop", loss="sparse_categorical_crossentropy")
             model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
 
-    dataset_shard = train.get_context().get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     _tf_dataset = None
     synthetic_dataset = None
     if config["data_loader"] == TF_DATA:

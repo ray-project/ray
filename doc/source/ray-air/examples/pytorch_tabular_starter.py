@@ -55,7 +55,7 @@ def train_loop_per_worker(config):
 
     # Get the Dataset shard for this data parallel worker,
     # and convert it to a PyTorch Dataset.
-    train_data = train.get_context().get_dataset_shard("train")
+    train_data = train.get_dataset_shard("train")
     # Create model.
     model = create_model(num_features)
     model = train.torch.prepare_model(model)

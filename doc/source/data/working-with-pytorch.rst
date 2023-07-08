@@ -57,7 +57,7 @@ Ray Data integrates with :ref:`Ray Train <train-docs>` for easy data ingest for 
         optimizer = torch.optim.SGD(model.parameters(), lr=0.001)
         
         # Datasets can be accessed in your train_func via ``get_dataset_shard``.
-        train_data_shard = train.get_context().get_dataset_shard("train")
+        train_data_shard = train.get_dataset_shard("train")
 
         for epoch_idx in range(2):
             for batch in train_data_shard.iter_torch_batches(batch_size=128, dtypes=torch.float32):

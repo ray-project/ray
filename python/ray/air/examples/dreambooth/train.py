@@ -121,7 +121,7 @@ def train_fn(config):
         lr=config["lr"],
     )
 
-    train_dataset = train.get_context().get_dataset_shard("train")
+    train_dataset = train.get_dataset_shard("train")
 
     # Train!
     num_train_epochs = config["num_epochs"]

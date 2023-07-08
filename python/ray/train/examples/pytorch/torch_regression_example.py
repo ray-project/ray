@@ -72,8 +72,8 @@ def train_func(config):
     lr = config.get("lr", 1e-2)
     epochs = config.get("epochs", 3)
 
-    train_dataset_shard = train.get_context().get_dataset_shard("train")
-    validation_dataset = train.get_context().get_dataset_shard("validation")
+    train_dataset_shard = train.get_dataset_shard("train")
+    validation_dataset = train.get_dataset_shard("validation")
 
     model = nn.Sequential(
         nn.Linear(100, hidden_size), nn.ReLU(), nn.Linear(hidden_size, 1)

@@ -32,7 +32,7 @@ class NeuralNetwork(nn.Module):
 
 def train_loop_per_worker():
     hvd.init()
-    dataset_shard = train.get_context().get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     model = NeuralNetwork()
     device = train.torch.get_device()
     model.to(device)

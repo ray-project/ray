@@ -29,7 +29,7 @@ class NeuralNetwork(nn.Module):
 
 
 def train_loop_per_worker():
-    dataset_shard = train.get_context().get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
     model = NeuralNetwork()
     loss_fn = nn.MSELoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)

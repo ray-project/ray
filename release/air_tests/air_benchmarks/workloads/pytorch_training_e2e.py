@@ -30,7 +30,7 @@ def train_loop_per_worker(config):
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.SGD(model.parameters(), lr=0.001, momentum=0.9)
 
-    train_dataset_shard = train.get_context().get_dataset_shard("train")
+    train_dataset_shard = train.get_dataset_shard("train")
 
     for epoch in range(config["num_epochs"]):
         running_loss = 0.0

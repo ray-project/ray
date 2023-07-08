@@ -46,7 +46,7 @@ def train_func(config: dict):
             metrics=[tf.keras.metrics.mean_squared_error],
         )
 
-    dataset = train.get_context().get_dataset_shard("train")
+    dataset = train.get_dataset_shard("train")
 
     results = []
     for _ in range(epochs):

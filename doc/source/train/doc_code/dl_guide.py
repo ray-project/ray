@@ -22,7 +22,7 @@ def train_loop_per_worker(config: dict):
     model = checkpoint.get_model() if checkpoint else resnet18()
     ray.train.torch.prepare_model(model)
 
-    train_ds = train.get_context().get_dataset_shard("train")
+    train_ds = train.get_dataset_shard("train")
 
     for epoch in range(5):
         # Do some training...
