@@ -3,12 +3,13 @@ import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Type, Union
 
-from ray.air import Checkpoint, CheckpointConfig, session
+from ray.air import Checkpoint, CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
 )
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
+from ray.train._internal import session
 from ray.train._internal.session import TrainingResult
 from ray.train._internal.utils import construct_path
 from ray.train.constants import (

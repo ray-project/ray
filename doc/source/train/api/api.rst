@@ -52,6 +52,25 @@ Train Backend Base Classes
     ~train.backend.Backend
     ~train.backend.BackendConfig
 
+Ray Train Config
+----------------
+
+.. autosummary::
+
+    ~ray.train.DataConfig
+
+
+Ray Train Loop
+--------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.context.TrainContext
+    ~train.get_context
+    ~train.get_dataset_shard
+    ~train.report
+
 
 .. _train-integration-api:
 .. _train-framework-specific-ckpts:

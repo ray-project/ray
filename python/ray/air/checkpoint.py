@@ -331,7 +331,7 @@ class Checkpoint:
             data: Data object containing pickled checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         bytes_data = pickle.loads(data)
         if isinstance(bytes_data, dict):
@@ -360,7 +360,7 @@ class Checkpoint:
             data: Dictionary containing checkpoint data.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         if _METADATA_KEY in data:
@@ -455,7 +455,7 @@ class Checkpoint:
                 Checkpoint).
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
 
@@ -474,7 +474,7 @@ class Checkpoint:
     @classmethod
     @DeveloperAPI
     def from_checkpoint(cls, other: "Checkpoint") -> "Checkpoint":
-        """Create a checkpoint from a generic :class:`Checkpoint`.
+        """Create a checkpoint from a generic :class:`ray.air.checkpoint.Checkpoint`.
 
         This method can be used to create a framework-specific checkpoint from a
         generic :class:`Checkpoint` object.
@@ -715,7 +715,7 @@ class Checkpoint:
             uri: Source location URI to read data from.
 
         Returns:
-            Checkpoint: checkpoint object.
+            ray.air.checkpoint.Checkpoint: checkpoint object.
         """
         state = {}
         try:

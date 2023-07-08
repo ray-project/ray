@@ -136,7 +136,7 @@ def _shutdown_torch(destroy_process_group=False):
 def _set_torch_distributed_env_vars():
     # Same env vars as in
     # https://pytorch.org/docs/stable/elastic/run.html#environment-variables
-    from ray.air import session
+    from ray.train._internal import session
     from ray.train.torch.train_loop_utils import get_device
 
     os.environ["LOCAL_RANK"] = str(session.get_local_rank())

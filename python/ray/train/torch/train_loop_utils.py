@@ -7,7 +7,7 @@ from packaging.version import Version
 
 from typing import Any, Dict, List, Optional, Callable, Union
 
-from ray.air import session
+from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
