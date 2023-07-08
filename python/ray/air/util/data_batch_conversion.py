@@ -223,30 +223,19 @@ def _convert_batch_type_to_numpy(
             _concatenate_extension_column,
         )
 
-        if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(data.schema.types[0], ArrowTensorType)
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
-            # Arrow’s incorrect concatenation of extension arrays:
-            # https://issues.apache.org/jira/browse/ARROW-16503
-            return _concatenate_extension_column(data[TENSOR_COLUMN_NAME]).to_numpy(
-                zero_copy_only=False
-            )
-        else:
-            output_dict = {}
-            for col_name in data.column_names:
-                col = data[col_name]
-                if col.num_chunks == 0:
-                    col = pyarrow.array([], type=col.type)
-                elif _is_column_extension_type(col):
-                    # Arrow’s incorrect concatenation of extension arrays:
-                    # https://issues.apache.org/jira/browse/ARROW-16503
-                    col = _concatenate_extension_column(col)
-                else:
-                    col = col.combine_chunks()
-                output_dict[col_name] = col.to_numpy(zero_copy_only=False)
-            return output_dict
+        output_dict = {}
+        for col_name in data.column_names:
+            col = data[col_name]
+            if col.num_chunks == 0:
+                col = pyarrow.array([], type=col.type)
+            elif _is_column_extension_type(col):
+                # Arrow’s incorrect concatenation of extension arrays:
+                # https://issues.apache.org/jira/browse/ARROW-16503
+                col = _concatenate_extension_column(col)
+            else:
+                col = col.combine_chunks()
+            output_dict[col_name] = col.to_numpy(zero_copy_only=False)
+        return output_dict
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:

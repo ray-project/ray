@@ -15,7 +15,6 @@ from typing import (
 
 import numpy as np
 
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data.aggregate import AggregateFn
 from ray.data.block import (
@@ -90,7 +89,7 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
         for key, value in columns.items():
-            if key == TENSOR_COLUMN_NAME or isinstance(
+            if isinstance(
                 next(iter(value), None), np.ndarray
             ):
                 from ray.data.extensions.tensor_extension import TensorArray
@@ -138,17 +137,6 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
-
-    @staticmethod
-    def _build_tensor_row(row: PandasRow) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
-        tensor = row[TENSOR_COLUMN_NAME].iloc[0]
-        if isinstance(tensor, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
