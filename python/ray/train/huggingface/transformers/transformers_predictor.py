@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING, List, Optional, Type, Union
 import pandas as pd
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.train.predictor import Predictor
 from ray.util import log_once
@@ -282,11 +281,7 @@ class TransformersPredictor(Predictor):
         feature_columns: Optional[List[str]] = None,
         **pipeline_call_kwargs,
     ) -> "pd.DataFrame":
-        if TENSOR_COLUMN_NAME in data:
-            arr = data[TENSOR_COLUMN_NAME].to_numpy()
-            if feature_columns:
-                data = pd.DataFrame(arr[:, feature_columns])
-        elif feature_columns:
+        if feature_columns:
             data = data[feature_columns]
 
         data = data[feature_columns] if feature_columns else data

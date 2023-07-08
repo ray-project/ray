@@ -5,7 +5,6 @@ from joblib import parallel_backend
 from sklearn.base import BaseEstimator
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
@@ -141,12 +140,7 @@ class SklearnPredictor(Predictor):
         if num_estimator_cpus:
             _set_cpu_params(self.estimator, num_estimator_cpus)
 
-        if TENSOR_COLUMN_NAME in data:
-            data = data[TENSOR_COLUMN_NAME].to_numpy()
-            data = _unwrap_ndarray_object_type_if_needed(data)
-            if feature_columns:
-                data = data[:, feature_columns]
-        elif feature_columns:
+        if feature_columns:
             data = data[feature_columns]
 
         with parallel_backend("ray", n_jobs=num_estimator_cpus):
