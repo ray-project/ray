@@ -6,7 +6,7 @@ export DEBIAN_FRONTEND="noninteractive"
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata
+apt-get install -y ca-certificates curl zip unzip sudo gnupg lsb_release tzdata
 
 # Add docker APT repo
 mkdir -p /etc/apt/keyrings
