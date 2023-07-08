@@ -2525,6 +2525,9 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     # Test shutdown flow
     assert not deployment_state._replicas.get()[0]._actor.stopped
 
+    # Before shutdown, `is_ready_for_shutdown()` should return False
+    assert not deployment_state_manager.is_ready_for_shutdown()
+
     deployment_state_manager.shutdown()
 
     timer.advance(grace_period_s + 0.1)
@@ -2540,6 +2543,9 @@ def test_shutdown(mock_deployment_state_manager, is_driver_deployment):
     deployment_state_manager.update()
     check_counts(deployment_state, total=0)
     assert len(deployment_state_manager.get_deployment_statuses()) == 0
+
+    # After all deployments shutdown, `is_ready_for_shutdown()` should return True
+    assert deployment_state_manager.is_ready_for_shutdown()
 
 
 def test_resource_requirements_none():

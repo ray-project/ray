@@ -906,6 +906,7 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
             metric_dict_str = f"dict({line[dict_body_start:dict_body_end]})"
             metric_dicts.append(eval(metric_dict_str))
 
+    print(metric_dicts)
     return metric_dicts
 
 
