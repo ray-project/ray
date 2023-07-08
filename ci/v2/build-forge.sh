@@ -2,6 +2,8 @@
 
 set -euo pipefail
 
+export DEBIAN_FRONTEND="noninteractive"
+
 apt-get update
 apt-get upgrade -y
 apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata
