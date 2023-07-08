@@ -1,0 +1,45 @@
+group: Linux wheels and images
+steps:
+  - label: "forge"
+    key: "forge"
+    command: bash ci/v2/build-forge.sh
+    job_env: "ubuntu-focal"
+
+  - wait: ~
+
+  - label: "wheel forge"
+    key: "wheel-forge"
+    command: bash ci/v2/build-wheel-forge.sh
+
+  - label: "wheel {{matrix}}"
+    key: wheels
+    command: BUILD_ONE_PYTHON_ONLY={{matrix}} bash ci/v2/build-wheels.sh
+    depends_on: "wheel-forge"
+    matrix: ["py37", "py38", "py39", "py310", "py311"]
+
+  - label: "{{matrix.py}} {{matrix.type}} base image"
+    command: bash ci/v2/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
+    key: "ray-base-images"
+    job_env: "wheel-forge"
+    matrix:
+      setup:
+        py: ["py37", "py38", "py39", "py310", "py311"]
+        type: ["cpu", "gpu"]
+
+  - label: "{{matrix.py}} {{matrix.type}} image"
+    key: ray-images
+    depends_on: ["wheels", "ray-base-images"]
+    command: bash ci/v2/build-ray-image.sh {{matrixy.py}} {{matrix.type}}
+    matrix:
+      setup:
+        py: ["py37", "py38", "py39", "py310", "py311"]
+        type: ["cpu", "cu115", "cu116", "cu117", "cu118"]
+
+  - label: "{{matrix.py}} {{matrix.type}} ML image"
+    key: ray-ml-images
+    depends_on: ray-images
+    command: bash ci/v2/build-ray-ml-image.sh {{matrixy.py}} {{matrix.type}}
+    matrix:
+      setup:
+        py: ["py38", "py39", "py310"]
+        type: ["cpu", "gpu"]
