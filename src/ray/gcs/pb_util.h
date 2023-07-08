@@ -344,6 +344,19 @@ inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
   return kPlacementGroupConstraintKeyPrefix + pg_id;
 }
 
+/// \brief Format placement group details.
+///     Format:
+///        <pg_id>:<strategy>:<state>
+///
+/// \param pg_data
+/// \return
+inline std::string FormatPlacementGroupDetails(
+    const rpc::PlacementGroupTableData &pg_data) {
+  return PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex() + ":" +
+         rpc::PlacementStrategy_Name(pg_data.strategy()) + "|" +
+         rpc::PlacementGroupTableData::PlacementGroupState_Name(pg_data.state());
+}
+
 /// Generate a placement constraint for placement group.
 ///
 /// \param pg_id The ID of placement group.

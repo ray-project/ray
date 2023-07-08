@@ -66,7 +66,7 @@ def test_get_ray_image():
                 "cluster": {"byod": {}},
             }
         ).get_ray_image()
-        == "rayproject/ray:123456-py38"
+        == "rayproject/ray:123456-py38-cpu"
     )
     assert (
         _stub_test(
@@ -84,7 +84,7 @@ def test_get_ray_image():
     os.environ["BUILDKITE_BRANCH"] = "releases/1.0.0"
     assert (
         _stub_test({"cluster": {"byod": {}}}).get_ray_image()
-        == "rayproject/ray:1.0.0.123456-py37"
+        == "rayproject/ray:1.0.0.123456-py37-cpu"
     )
 
 
@@ -93,7 +93,7 @@ def test_get_anyscale_byod_image():
     os.environ["BUILDKITE_COMMIT"] = "1234567890"
     assert (
         _stub_test({"python": "3.7", "cluster": {"byod": {}}}).get_anyscale_byod_image()
-        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37"
+        == f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_REPO}:123456-py37-cpu"
     )
     assert _stub_test(
         {
