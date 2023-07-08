@@ -42,7 +42,7 @@ class ConvNet(nn.Module):
 EPOCH_SIZE = 512
 TEST_SIZE = 256
 
-def train(model, optimizer, train_loader):
+def train_func(model, optimizer, train_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -57,7 +57,7 @@ def train(model, optimizer, train_loader):
         optimizer.step()
 
 
-def test(model, data_loader):
+def test_func(model, data_loader):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
     correct = 0
@@ -101,8 +101,8 @@ def train_mnist(config):
     optimizer = optim.SGD(
         model.parameters(), lr=config["lr"], momentum=config["momentum"])
     for i in range(10):
-        train(model, optimizer, train_loader)
-        acc = test(model, test_loader)
+        train_func(model, optimizer, train_loader)
+        acc = test_func(model, test_loader)
 
         # Send the current training result back to Tune
         train.report({"mean_accuracy": acc})
