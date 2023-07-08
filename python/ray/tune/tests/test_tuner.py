@@ -10,6 +10,7 @@ from typing import Optional
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
+import ray
 from ray import train, tune
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.examples.pytorch.torch_linear_example import (
