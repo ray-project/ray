@@ -56,11 +56,11 @@ cc_library(
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
+        ":stats_metric",
         "//src/ray/common:asio",
+        "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:status",
-        "//src/ray/common:grpc_util",
-        ":stats_metric",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
         "@com_github_grpc_grpc//:grpcpp_admin",
@@ -206,8 +206,8 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
-        "//src/ray/common:status",
         ":reporter_cc_grpc",
+        "//src/ray/common:status",
         "@boost//:asio",
         "@boost//:thread",
         "@com_github_grpc_grpc//:grpc++",
@@ -390,8 +390,8 @@ cc_library(
     deps = [
         ":plasma_fbs",
         ":ray_common",
-        "//src/ray/util:util",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util",
         "@msgpack",
     ],
 )
@@ -495,10 +495,10 @@ cc_library(
     deps = [
         ":node_manager_fbs",
         ":ray_syncer_cc_grpc",
-        "//src/ray/util:util",
         ":stats_metric",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util",
         "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -519,8 +519,8 @@ cc_binary(
     copts = COPTS,
     visibility = ["//java:__subpackages__"],
     deps = [
-        "//src/ray/util:util",
         ":raylet_lib",
+        "//src/ray/util",
         "@com_github_gflags_gflags//:gflags",
     ],
 )
@@ -633,7 +633,7 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        "//src/ray/util:util",
+        "//src/ray/util",
         "@com_github_jupp0r_prometheus_cpp//pull",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -705,9 +705,9 @@ cc_library(
     deps = [
         ":gcs_client_lib",
         ":ray_common",
-        "//src/ray/util:util",
         ":stats_lib",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util",
         "@boost//:asio",
         "@boost//:system",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -765,12 +765,12 @@ cc_library(
         ":plasma_client",
         ":pubsub_lib",
         ":ray_common",
-        "//src/ray/util:util",
         ":runtime_env_rpc",
         ":scheduler",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util",
         "@boost//:asio",
         "@boost//:system",
         "@com_github_jupp0r_prometheus_cpp//pull",
@@ -808,8 +808,8 @@ cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
-        "//src/ray/util:util",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util",
         "@boost//:asio",
     ],
 )
@@ -842,11 +842,11 @@ cc_library(
         ":gcs_client_lib",
         ":plasma_client",
         ":ray_common",
-        "//src/ray/util:util",
         ":raylet_client_lib",
         ":stats_lib",
         ":worker_rpc",
         "//src/ray/protobuf:worker_cc_proto",
+        "//src/ray/util",
         "@boost//:circular_buffer",
         "@boost//:fiber",
         "@com_google_absl//absl/container:btree",
@@ -2190,7 +2190,7 @@ cc_library(
         ":object_manager_rpc",
         ":plasma_store_server_lib",
         ":ray_common",
-        "//src/ray/util:util",
+        "//src/ray/util",
         "@boost//:asio",
     ],
 )
@@ -2308,8 +2308,8 @@ cc_library(
     deps = [
         ":hiredis",
         ":ray_common",
-        "//src/ray/util:util",
         ":stats_lib",
+        "//src/ray/util",
         "@boost//:asio",
     ],
 )
@@ -2347,7 +2347,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":ray_common",
-        "//src/ray/util:util",
+        "//src/ray/util",
     ],
 )
 
@@ -2365,7 +2365,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":ray_common",
-        "//src/ray/util:util",
+        "//src/ray/util",
     ],
 )
 
@@ -2475,10 +2475,10 @@ cc_library(
         ":node_manager_fbs",
         ":node_manager_rpc",
         ":ray_common",
-        "//src/ray/util:util",
         ":stats_lib",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
+        "//src/ray/util",
         "@boost//:asio",
     ],
 )
@@ -2511,7 +2511,7 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":gcs",
-        "//src/ray/util:util",
+        "//src/ray/util",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2560,7 +2560,7 @@ pyx_library(
         "//:src/ray/ray_version_script.lds",
         "//:stats_lib",
         "//src/ray/protobuf:serialization_cc_proto",
-        "//src/ray/util:util",
+        "//src/ray/util",
     ],
 )
 
