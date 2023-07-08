@@ -9,7 +9,7 @@ set -euo pipefail
 
 apt-get update
 apt-get upgrade -y
-apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata
+apt-get install -y ca-certificates curl zip unzip sudo gnupg lsb_release tzdata
 
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
@@ -36,7 +36,8 @@ ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
 EOF
 
-RUN adduser --home /home/ray --uid 1000 ray --gid 100
-RUN usermode -a -G docker ray
+# A non-root user. Use 2000, which is hte same as our buildkite agent VM uses.
+RUN adduser --home /home/forge --uid 2000 forge --gid 100
+RUN usermode -a -G docker forge
 
 CMD ["echo", "ray forge"]
