@@ -7,7 +7,6 @@ from ray.util.annotations import PublicAPI
 
 
 if TYPE_CHECKING:
-    from ray.data import DataIterator
     from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
@@ -71,13 +70,6 @@ class TrainContext:
     @_copy_doc(session.get_node_rank)
     def get_node_rank(self) -> int:
         return session.get_node_rank()
-
-    @_copy_doc(session.get_dataset_shard)
-    def get_dataset_shard(
-        self,
-        dataset_name: Optional[str] = None,
-    ) -> Optional["DataIterator"]:
-        return session.get_dataset_shard(dataset_name)
 
 
 @PublicAPI(stability="beta")
