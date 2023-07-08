@@ -17,6 +17,7 @@ from typing import (
 import numpy as np
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
     convert_udf_returns_to_numpy,
@@ -114,7 +115,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
         for col_name, col in columns.items():
-            if isinstance(
+            if col_name == TENSOR_COLUMN_NAME or isinstance(
                 next(iter(col), None), np.ndarray
             ):
                 from ray.data.extensions.tensor_extension import ArrowTensorArray
@@ -159,7 +160,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-        if not isinstance(batch, collections.abc.Mapping) or any(
+        if isinstance(batch, np.ndarray):
+            batch = {TENSOR_COLUMN_NAME: batch}
+        elif not isinstance(batch, collections.abc.Mapping) or any(
             not is_valid_udf_return(col) for col in batch.values()
         ):
             raise ValueError(
@@ -179,7 +182,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(
-        row: ArrowRow, col_name: str
+        row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
     ) -> np.ndarray:
         from pkg_resources._vendor.packaging.version import parse as parse_version
 

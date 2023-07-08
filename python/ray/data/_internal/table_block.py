@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Mapping, TypeVar, U
 
 import numpy as np
 
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
 from ray.data._internal.size_estimator import SizeEstimator
@@ -46,6 +47,8 @@ class TableBlockBuilder(BlockBuilder):
     def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
         if isinstance(item, TableRow):
             item = item.as_pydict()
+        elif isinstance(item, np.ndarray):
+            item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -127,7 +130,7 @@ class TableBlockBuilder(BlockBuilder):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
-        for table in self._tables[self._tables_size_cursor:]:
+        for table in self._tables[self._tables_size_cursor :]:
             self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
         self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
