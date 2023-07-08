@@ -1,6 +1,7 @@
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@rules_cc//cc:defs.bzl", native_cc_library = "cc_library", native_cc_test = "cc_test")
 
 COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
@@ -168,4 +169,20 @@ def native_java_library(module_name, name, native_library_name):
             "//conditions:default": [name + "_linux"],
         }),
         visibility = ["//visibility:public"],
+    )
+
+def cc_library(name, **kwargs):
+    native_cc_library(
+        name = name,
+        strip_include_prefix = "/src",
+        copts = COPTS,
+        visibility = ["//visibility:public"],
+        **kwargs
+    )
+
+def cc_test(name, **kwargs):
+    native_cc_test(
+        name = name,
+        copts = COPTS,
+        **kwargs
     )

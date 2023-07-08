@@ -50,14 +50,17 @@ cc_library(
         "src/ray/rpc/grpc_server.h",
         "src/ray/rpc/metrics_agent_client.h",
         "src/ray/rpc/server_call.h",
+        "src/ray/rpc/grpc_util.h",
         "src/ray/raylet_client/*.h",
     ]),
     copts = COPTS,
     strip_include_prefix = "src",
     deps = [
-        ":ray_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:grpc_util",
         ":stats_metric",
-        "@boost//:asio",
         "@com_github_grpc_grpc//:grpc++",
         "@com_github_grpc_grpc//:grpc++_reflection",
         "@com_github_grpc_grpc//:grpcpp_admin",
@@ -203,7 +206,7 @@ cc_library(
     strip_include_prefix = "src",
     deps = [
         ":grpc_common_lib",
-        ":ray_common",
+        "//src/ray/common:status",
         ":reporter_cc_grpc",
         "@boost//:asio",
         "@boost//:thread",
@@ -1474,42 +1477,6 @@ cc_test(
 )
 
 cc_test(
-    name = "asio_defer_test",
-    size = "small",
-    srcs = ["src/ray/common/test/asio_defer_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        "ray_common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "ray_config_test",
-    size = "small",
-    srcs = ["src/ray/common/test/ray_config_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        "ray_common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "id_test",
-    size = "small",
-    srcs = ["src/ray/common/id_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        "ray_common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "dependency_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/dependency_manager_test.cc"],
@@ -1529,51 +1496,6 @@ cc_test(
     tags = ["team:core"],
     deps = [
         ":raylet_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "client_connection_test",
-    size = "small",
-    srcs = ["src/ray/common/test/client_connection_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":ray_common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "status_test",
-    size = "small",
-    srcs = [
-        "src/ray/common/test/status_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":ray_common",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "memory_monitor_test",
-    size = "small",
-    srcs = [
-        "src/ray/common/test/memory_monitor_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
-    deps = [
-        ":ray_common",
-        "@boost//:filesystem",
-        "@boost//:thread",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -2558,52 +2480,6 @@ cc_library(
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "@boost//:asio",
-    ],
-)
-
-cc_binary(
-    name = "syncer_service_e2e_test",
-    srcs = ["src/ray/common/test/syncer_service_e2e_test.cc"],
-    copts = COPTS,
-    deps = [
-        ":ray_common",
-    ],
-)
-
-cc_test(
-    name = "ray_syncer_test",
-    srcs = ["src/ray/common/test/ray_syncer_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":grpc_common_lib",
-        ":ray_common",
-        ":ray_mock",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "task_spec_test",
-    srcs = ["src/ray/common/test/task_spec_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":ray_common",
-        "@com_google_googletest//:gtest",
-    ],
-)
-
-cc_test(
-    name = "bundle_location_index_test",
-    srcs = [
-        "src/ray/common/test/bundle_location_index_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":ray_common",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
