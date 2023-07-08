@@ -13,7 +13,6 @@ import ray._private.state
 
 from ray import serve
 from ray._private.test_utils import (
-    run_string_as_driver,
     wait_for_condition,
     SignalActor,
 )
@@ -21,7 +20,6 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
@@ -346,42 +344,6 @@ def test_autoscaler_shutdown_node_http_everynode(
     serve.shutdown()
 
 
-def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
-    script = """
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-import ray
-
-@serve.deployment
-class A:
-    def predict(self, inp):
-        return inp
-
-@serve.deployment
-class Dispatch:
-    def __init__(self, handle):
-        self.handle = handle
-
-    def predict(self, inp):
-        ref = self.handle.predict.remote(inp)
-        assert isinstance(ref, ray.ObjectRef), ref
-        return ray.get(ref)
-
-with InputNode() as inp:
-    a = A.bind()
-    d = Dispatch.bind(a)
-    dag = d.predict.bind(inp)
-
-handle = serve.run(DAGDriver.bind(dag))
-assert ray.get(handle.predict.remote(1)) == 1
-    """
-
-    run_string_as_driver(
-        script, dict(os.environ, **{SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
-    )
-
-
 def test_healthz_and_routes_on_head_and_worker_nodes(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
@@ -500,6 +462,106 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     assert (
         requests.get("http://127.0.0.1:8001/-/routes").text
         == "This node is being drained."
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
+def test_controller_shutdown_gracefully(
+    shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
+):
+    """Test controller shutdown gracefully when calling `graceful_shutdown()`.
+
+    Called `graceful_shutdown()` on the controller, so it will start shutdown and
+    eventually all actors will be in DEAD state. Test both cases whether to wait for
+    the controller shutdown or not should both resolve graceful shutdown.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Call `graceful_shutdown()` on the controller, so it will start shutdown.
+    client = get_global_client()
+    if wait_for_controller_shutdown:
+        # Waiting for controller shutdown will throw RayActorError when the controller
+        # killed itself.
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(client._controller.graceful_shutdown.remote(True))
+    else:
+        ray.get(client._controller.graceful_shutdown.remote(False))
+
+    # Ensure the all resources are shutdown.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        )
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+def test_client_shutdown_gracefully_when_timeout(
+    shutdown_ray, call_ray_stop_only, caplog  # noqa: F811
+):
+    """Test client shutdown gracefully when timeout.
+
+    When the controller is taking longer than the timeout to shutdown, the client will
+    log timeout message and exit the process. The controller will continue to shutdown
+    everything gracefully.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Ensure client times out if the controller does not shutdown within timeout.
+    timeout_s = 0.0
+    client = get_global_client()
+    client.shutdown(timeout_s=timeout_s)
+    assert (
+        f"Controller failed to shut down within {timeout_s}s. "
+        f"Check controller logs for more details." in caplog.text
+    )
+
+    # Ensure the all resources are shutdown gracefully.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        ),
     )
 
     # Clean up serve.

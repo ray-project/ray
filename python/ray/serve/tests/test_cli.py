@@ -828,8 +828,9 @@ def parrot(request):
 parrot_node = parrot.bind()
 
 
+@pytest.mark.parametrize("number_of_kill_signals", (1, 2))
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_application(ray_start_stop):
+def test_run_application(ray_start_stop, number_of_kill_signals):
     """Deploys valid config file and import path via `serve run`."""
 
     # Deploy via config file
@@ -849,7 +850,8 @@ def test_run_application(ray_start_stop):
     )
     print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
 
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    for _ in range(number_of_kill_signals):
+        p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.post("http://localhost:8000/", json=["ADD", 0]).json()

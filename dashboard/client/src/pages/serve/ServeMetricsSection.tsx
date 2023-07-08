@@ -81,7 +81,7 @@ export const ServeMetricsSection = ({
   className,
 }: ServeMetricsSectionProps) => {
   const classes = useStyles();
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
+  const { grafanaHost, prometheusHealth, dashboardUids } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
 
@@ -106,7 +106,7 @@ export const ServeMetricsSection = ({
       <div>
         <Paper className={classes.topBar}>
           <Button
-            href={`${grafanaHost}/d/${grafanaServeDashboardUid}?var-datasource=${dashboardDatasource}`}
+            href={`${grafanaHost}/d/${grafanaServeDashboardUid}`}
             target="_blank"
             rel="noopener noreferrer"
             endIcon={<RiExternalLinkLine />}
@@ -134,7 +134,7 @@ export const ServeMetricsSection = ({
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `&refresh${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `&refresh${timeRangeParams}`;
             return (
               <Paper
                 key={pathParams}
