@@ -7,10 +7,11 @@ from typing import Any, Dict, Optional, Type
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
-from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
+from ray.train.data_config import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
@@ -395,7 +396,7 @@ class LightningTrainer(TorchTrainer):
         *,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         datasets_iter_config: Optional[Dict[str, Any]] = None,

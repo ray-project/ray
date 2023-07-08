@@ -10,11 +10,12 @@ from torch.utils.data import Dataset as TorchDataset
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 from ray.train.constants import (
     EVALUATION_DATASET_KEY,
     TRAIN_DATASET_KEY,
 )
+from ray.train.data_config import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -254,7 +255,7 @@ main/en/main_classes/trainer#transformers.TrainingArguments>`__.
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

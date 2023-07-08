@@ -6,7 +6,8 @@ from composer.trainer import Trainer
 from composer.loggers.logger_destination import LoggerDestination
 
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train.data_config import DataConfig
 from ray.train.mosaic._mosaic_utils import RayLogger
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.trainer import GenDataset
@@ -139,7 +140,7 @@ class MosaicTrainer(TorchTrainer):
         trainer_init_config: Optional[Dict] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         preprocessor: Optional["Preprocessor"] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
