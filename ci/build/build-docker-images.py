@@ -210,7 +210,7 @@ def _build_docker_image(
     build_args = {}
     build_args["PYTHON_VERSION"] = PY_MATRIX[py_version]
     # I.e. "py310"[3:] == 10
-    assert(py_version[:3] == "py3")
+    assert py_version[:3] == "py3"
     python_minor_version = py_version[3:]
 
     if platform.processor() in ADDITIONAL_PLATFORMS:
@@ -492,8 +492,10 @@ def _docker_push(image, tag):
 
 
 def _tag_and_push(
-    full_image_name: str, old_tag: str, new_tag: str,
-    merge_build:bool = False,
+    full_image_name: str,
+    old_tag: str,
+    new_tag: str,
+    merge_build: bool = False,
 ):
     # Do not tag release builds because they are no longer up to
     # date after the branch cut.
@@ -924,9 +926,7 @@ def main(
 
     # Only build ray-ml image for pythons in ML_IMAGES_PY_VERSIONS
     ml_py_versions = [
-        py_version
-        for py_version in py_versions
-        if py_version in ML_IMAGES_PY_VERSIONS
+        py_version for py_version in py_versions if py_version in ML_IMAGES_PY_VERSIONS
     ]
 
     if len(ml_image_types) > 0:
@@ -940,9 +940,7 @@ def main(
         images_to_tag_and_push += ["ray-ml"]
 
     if is_buildkite:
-        extract_image_infos(
-            all_tagged_images, target_dir="/artifact-mount/.image-info"
-        )
+        extract_image_infos(all_tagged_images, target_dir="/artifact-mount/.image-info")
 
     if build_type in {MERGE, PR}:
         valid_branch = _valid_branch()
