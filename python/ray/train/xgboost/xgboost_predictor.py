@@ -4,6 +4,7 @@ import pandas as pd
 import xgboost
 
 from ray.air.checkpoint import Checkpoint
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 from ray.train.predictor import Predictor
@@ -130,7 +131,13 @@ class XGBoostPredictor(Predictor):
         dmatrix_kwargs = dmatrix_kwargs or {}
 
         feature_names = None
-        if feature_columns:
+        if TENSOR_COLUMN_NAME in data:
+            data = data[TENSOR_COLUMN_NAME].to_numpy()
+            data = _unwrap_ndarray_object_type_if_needed(data)
+            if feature_columns:
+                # In this case feature_columns is a list of integers
+                data = data[:, feature_columns]
+        elif feature_columns:
             # feature_columns is a list of integers or strings
             data = data[feature_columns].to_numpy()
             # Only set the feature names if they are strings

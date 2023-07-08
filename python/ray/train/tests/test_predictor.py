@@ -7,7 +7,7 @@ import numpy as np
 
 import ray
 from ray.air.checkpoint import Checkpoint
-from ray.air.constants import PREPROCESSOR_KEY
+from ray.air.constants import PREPROCESSOR_KEY, TENSOR_COLUMN_NAME
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Preprocessor
 from ray.train.predictor import Predictor, PredictorNotSerializableException
@@ -147,6 +147,16 @@ def test_predict_numpy_with_numpy_data():
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
     np.testing.assert_array_equal(actual_output, np.array([4.0, 8.0, 12.0]))
 
+    # Preprocessing is still done via Pandas path.
+    pd.testing.assert_frame_equal(
+        predictor.get_preprocessor().inputs[0],
+        pd.DataFrame({TENSOR_COLUMN_NAME: [1, 2, 3]}),
+    )
+    pd.testing.assert_frame_equal(
+        predictor.get_preprocessor().outputs[0],
+        pd.DataFrame({TENSOR_COLUMN_NAME: [2, 4, 6]}),
+    )
+
     # Test predict with Numpy as preferred batch format for both Predictor and
     # Preprocessor.
     checkpoint = Checkpoint.from_dict(
@@ -177,6 +187,16 @@ def test_predict_pandas_with_numpy_data():
     # Predictor should return in the same format as the input.
     # Multiply by 2 from preprocessor, another multiply by 2.0 from predictor
     np.testing.assert_array_equal(actual_output, np.array([4.0, 8.0, 12.0]))
+
+    # Preprocessing should go through Pandas path.
+    pd.testing.assert_frame_equal(
+        predictor.get_preprocessor().inputs[0],
+        pd.DataFrame({TENSOR_COLUMN_NAME: [1, 2, 3]}),
+    )
+    pd.testing.assert_frame_equal(
+        predictor.get_preprocessor().outputs[0],
+        pd.DataFrame({TENSOR_COLUMN_NAME: [2, 4, 6]}),
+    )
 
     # Test predict with both Numpy and Pandas preprocessor available
     checkpoint = Checkpoint.from_dict(
