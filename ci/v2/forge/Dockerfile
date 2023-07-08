@@ -5,6 +5,10 @@ RUN <<EOF
 
 set -euo pipefail
 
+apt-get update
+apt-get upgrade -y
+apt-get install -y ca-certificates curl zip unzip sudo gnupg tzdata
+
 # Add docker client APT repository
 mkdir -p /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -18,10 +22,7 @@ curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
 # Install packages
 
 apt-get update
-apt-get upgrade -y
-apt-get install -y \
-    ca-certificates curl zip unzip sudo tzdata \
-    awscli docker-ce-cli nodejs \
+apt-get install -y awscli docker-ce-cli nodejs
     
 # Needs to be synchronized to the host group id as we map /var/run/docker.sock
 # into the container.
