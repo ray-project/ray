@@ -22,7 +22,7 @@ if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   )
 fi
 
-yum -y install "${YUM_PKGS[@]}"
+yum install -y "${YUM_PKGS[@]}"
 
 java -version
 JAVA_BIN="$(readlink -f "$(command -v java)")"
