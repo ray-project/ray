@@ -438,7 +438,7 @@ def main(num_samples=10, max_num_epochs=10, gpus_per_trial=2):
         if gpus_per_trial > 1:
             best_trained_model = nn.DataParallel(best_trained_model)
     elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
-        device = torch.device('mps')
+        device = torch.device("mps")
         if gpus_per_trial > 1:
             best_trained_model = nn.DataParallel(best_trained_model)
     best_trained_model.to(device)
