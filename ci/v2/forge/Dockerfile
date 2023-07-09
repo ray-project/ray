@@ -42,6 +42,6 @@ EOF
 
 # A non-root user. Use 2000, which is hte same as our buildkite agent VM uses.
 RUN adduser --home /home/forge --uid 2000 forge --gid 100
-RUN usermode -a -G docker forge
+RUN usermod -a -G docker forge
 
 CMD ["echo", "ray forge"]
