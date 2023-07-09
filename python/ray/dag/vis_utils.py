@@ -45,18 +45,24 @@ def _check_pydot_and_graphviz():
     during runtime rather than adding them to Ray dependencies.
 
     """
+    pydot_missing = False
+    graphviz_missing = False
     try:
         import pydot
+        try:
+            pydot.Dot.create(pydot.Dot())
+        except (OSError, pydot.InvocationException):
+            graphviz_missing = True
     except ImportError:
+        pydot_missing = True
+    if pydot_missing or graphviz_missing:
         raise ImportError(
-            "pydot is required to plot DAG, " "install it with `pip install pydot`."
-        )
-    try:
-        pydot.Dot.create(pydot.Dot())
-    except (OSError, pydot.InvocationException):
-        raise ImportError(
-            "graphviz is required to plot DAG, "
-            "download it from https://graphviz.gitlab.io/download/"
+            "pydot and graphviz are required to plot DAG.\n"
+            f"{'pydot is missing. ' if pydot_missing else ''}"
+            f"{'graphviz is missing. ' if graphviz_missing else ''}"
+            "\n"
+            "pydot: install it with `pip install pydot`.\n"
+            "graphviz: download it from https://graphviz.gitlab.io/download/"
         )
 
 
