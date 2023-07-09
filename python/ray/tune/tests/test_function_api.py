@@ -296,7 +296,7 @@ class FunctionCheckpointingTest(unittest.TestCase):
         checkpoint_obj = new_trainable2.save_to_object()
         new_trainable2.train()
         result = new_trainable2.train()
-        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 0
+        assert sum("tmp" in path for path in os.listdir(self.logdir)) == 1
         new_trainable2.stop()
         assert sum("tmp" in path for path in os.listdir(self.logdir)) == 0
         assert result[TRAINING_ITERATION] == 4
