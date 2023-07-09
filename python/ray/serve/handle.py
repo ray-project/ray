@@ -3,8 +3,8 @@ import concurrent.futures
 from dataclasses import dataclass
 from functools import wraps
 import inspect
-from typing import Coroutine, Dict, Optional, Union
 import threading
+from typing import Coroutine, Optional, Union
 
 import ray
 from ray._private.utils import get_or_create_event_loop
@@ -14,8 +14,6 @@ from ray import serve
 from ray.serve._private.common import EndpointTag
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_NEW_ROUTING,
-    SERVE_HANDLE_JSON_KEY,
-    ServeHandleType,
 )
 from ray.serve._private.utils import (
     get_random_letters,
@@ -436,35 +434,3 @@ class RayServeDeploymentHandle:
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
-
-
-def _serve_handle_to_json_dict(handle: RayServeHandle) -> Dict[str, str]:
-    """Converts a Serve handle to a JSON-serializable dictionary.
-
-    The dictionary can be converted back to a ServeHandle using
-    _serve_handle_from_json_dict.
-    """
-    if isinstance(handle, RayServeSyncHandle):
-        handle_type = ServeHandleType.SYNC
-    else:
-        handle_type = ServeHandleType.ASYNC
-
-    return {
-        SERVE_HANDLE_JSON_KEY: handle_type,
-        "deployment_name": handle.deployment_name,
-    }
-
-
-def _serve_handle_from_json_dict(d: Dict[str, str]) -> RayServeHandle:
-    """Converts a JSON-serializable dictionary back to a ServeHandle.
-
-    The dictionary should be constructed using _serve_handle_to_json_dict.
-    """
-    if SERVE_HANDLE_JSON_KEY not in d:
-        raise ValueError(f"dict must contain {SERVE_HANDLE_JSON_KEY} key.")
-
-    return serve.context.get_global_client().get_handle(
-        d["deployment_name"],
-        sync=d[SERVE_HANDLE_JSON_KEY] == ServeHandleType.SYNC,
-        missing_ok=True,
-    )
