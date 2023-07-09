@@ -8,6 +8,7 @@ import torch
 import torch.optim as optim
 from ray.tune.examples.mnist_pytorch import test, ConvNet, get_data_loaders
 
+import ray
 from ray import train, tune
 from ray.train import Checkpoint
 from ray.tune.schedulers import PopulationBasedTraining

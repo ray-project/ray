@@ -439,7 +439,7 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
     def trainable(config):
         for i in range(5):
             checkpoint = Checkpoint.from_dict({"model": i})
-            session.report(metrics={"metric": i}, checkpoint=checkpoint)
+            train.report(metrics={"metric": i}, checkpoint=checkpoint)
 
     tuner = tune.Tuner(
         trainable,

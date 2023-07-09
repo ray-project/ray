@@ -12,7 +12,7 @@ from ray.train import Checkpoint
 from ray.tune.schedulers import HyperBandScheduler
 
 
-def train(config, checkpoint_dir=None):
+def train_func(config, checkpoint_dir=None):
     step = 0
     if checkpoint_dir:
         with open(os.path.join(checkpoint_dir, "checkpoint")) as f:
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     hyperband = HyperBandScheduler(max_t=200)
 
     tuner = tune.Tuner(
-        train,
+        train_func,
         run_config=train.RunConfig(
             name="hyperband_test",
             stop={"training_iteration": 10 if args.smoke_test else 99999},
