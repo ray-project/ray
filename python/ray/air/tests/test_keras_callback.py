@@ -6,7 +6,7 @@ import numpy as np
 import tensorflow as tf
 
 import ray
-from ray.air import train
+from ray import train
 from ray.air.integrations.keras import Callback, ReportCheckpointCallback
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train import ScalingConfig
