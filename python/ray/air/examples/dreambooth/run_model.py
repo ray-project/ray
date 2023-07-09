@@ -15,6 +15,8 @@ def run(args):
     pipeline.set_progress_bar_config(disable=True)
     if torch.cuda.is_available():
         pipeline.to("cuda")
+    elif hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():
+        pipeline.to(torch.device('mps'))
 
     prompts = args.prompts.split(",")
 
