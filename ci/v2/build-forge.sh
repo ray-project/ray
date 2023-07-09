@@ -33,5 +33,9 @@ tar --mtime="UTC 2020-01-01" -c -f - \
     | docker build --progress=plain -t "${DEST_IMAGE}" \
         -f ci/v2/forge/Dockerfile -
 
+aws sts get-caller-identity
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin "${RAYCI_TEMP_ECR}"
+
+echo "TEMP ECR: ${RAYCI_TEMP_ECR}"
+echo "DEST IMAGE: ${DEST_IMAGE}"
 docker push "${DEST_IMAGE}"
