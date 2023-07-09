@@ -467,24 +467,12 @@ cc_grpc_library(
 
 cc_library(
     name = "ray_common",
-    srcs = glob(
-        [
-            "src/ray/common/**/*.cc",
-        ],
-        exclude = [
-            "src/ray/common/**/*_test.cc",
-        ],
-    ) + [
+    srcs = [
         "src/ray/raylet/scheduling/cluster_resource_data.cc",
         "src/ray/raylet/scheduling/fixed_point.cc",
         "src/ray/raylet/scheduling/scheduling_ids.cc",
     ],
-    hdrs = glob(
-        [
-            "src/ray/common/*.h",
-            "src/ray/common/**/*.h",
-        ],
-    ) + [
+    hdrs = [
         "src/ray/raylet/scheduling/cluster_resource_data.h",
         "src/ray/raylet/scheduling/fixed_point.h",
         "src/ray/raylet/scheduling/scheduling_ids.h",
@@ -493,23 +481,20 @@ cc_library(
     strip_include_prefix = "src",
     visibility = ["//visibility:public"],
     deps = [
-        ":node_manager_fbs",
-        ":ray_syncer_cc_grpc",
+        "//src/ray/common:constants",
+        "//src/ray/common:grpc_util",
+        "//src/ray/common:memory_monitor",
+        "//src/ray/common:client_connection",
+        "//src/ray/common:id",
+        "//src/ray/common:task_common",
+        "//src/ray/common:asio",
+        "//src/ray/common:event_stats",
+        "//src/ray/common:ray_config",
+        "//src/ray/common:ray_syncer",
+        "//src/ray/common:status",
         ":stats_metric",
-        "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
-        "//src/ray/util",
-        "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/random",
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest",
-        "@msgpack",
-        "@nlohmann_json",
     ],
 )
 
