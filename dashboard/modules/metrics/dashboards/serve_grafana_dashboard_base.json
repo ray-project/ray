@@ -25,6 +25,22 @@
   "templating": {
     "list": [
       {
+        "current": {
+          "selected": false
+        },
+        "description": "Filter queries to specific prometheus type.",
+        "hide": 2,
+        "includeAll": false,
+        "multi": false,
+        "name": "datasource",
+        "options": [],
+        "query": "prometheus",
+        "refresh": 1,
+        "regex": "",
+        "skipUrlSync": false,
+        "type": "datasource"
+      },
+      {
         "allValue": ".*",
         "current": {
           "selected": true,
@@ -35,7 +51,7 @@
             "$__all"
           ]
         },
-        "datasource": "Prometheus",
+        "datasource": "${datasource}",
         "definition": "label_values(ray_serve_num_http_requests{{{global_filters}}}, route)",
         "description": null,
         "error": null,
