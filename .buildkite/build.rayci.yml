@@ -29,7 +29,7 @@ steps:
   - label: "{{matrix.py}} {{matrix.type}} image"
     key: ray-images
     depends_on: ["wheels", "ray-base-images"]
-    command: bash ci/v2/build-ray-image.sh {{matrixy.py}} {{matrix.type}}
+    command: bash ci/v2/build-ray-image.sh {{matrix.py}} {{matrix.type}}
     matrix:
       setup:
         py: ["py37", "py38", "py39", "py310", "py311"]
@@ -38,7 +38,7 @@ steps:
   - label: "{{matrix.py}} {{matrix.type}} ML image"
     key: ray-ml-images
     depends_on: ray-images
-    command: bash ci/v2/build-ray-ml-image.sh {{matrixy.py}} {{matrix.type}}
+    command: bash ci/v2/build-ray-ml-image.sh {{matrix.py}} {{matrix.type}}
     matrix:
       setup:
         py: ["py38", "py39", "py310"]
