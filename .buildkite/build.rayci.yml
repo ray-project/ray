@@ -13,7 +13,7 @@ steps:
 
   - label: "wheel {{matrix}}"
     key: wheels
-    command: BUILD_ONE_PYTHON_ONLY={{matrix}} bash ci/v2/build-wheels.sh
+    command: BUILD_ONE_PYTHON_ONLY={{matrix}} bash ci/v2/build-wheel.sh
     depends_on: "wheel-forge"
     matrix: ["py37", "py38", "py39", "py310", "py311"]
 
