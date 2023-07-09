@@ -34,6 +34,9 @@ pip --no-cache-dir install -U \
            -r ray-docker-requirements.txt
 
 # explicitly install (overwrite) pytorch with CUDA support
+# do not use compiled requirements as constraint here as some
+# device-specific constraints can't be met (e.g. torch+cpu).
+# Instead, we don't use `-U` so other dependencies don't get updated.
 pip --no-cache-dir install \
            -c requirements.txt \
            -r dl-gpu-requirements.txt
