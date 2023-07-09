@@ -24,6 +24,8 @@ export DOCKER_BUILDKIT=1
 
 echo "--- Build forge"
 
+docker version
+
 tar --mtime="UTC 2020-01-01" -c -f - \
     ci/v2/forge/Dockerfile \
     | docker build --progress=plain -t forge \

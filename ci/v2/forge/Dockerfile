@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.3-labs
+
 FROM ubuntu:20.04
 
 ENV DEBIAN_FRONTEND=noninteractive
@@ -33,7 +35,7 @@ apt-get install -y awscli docker-ce-cli nodejs
 addgroup --gid 1001 docker
 
 # Install bazelisk
-npm install -g @bazel/bazlisk
+npm install -g @bazel/bazelisk
 ln -s /usr/local/bin/bazel /usr/local/bin/bazelisk
 
 EOF
