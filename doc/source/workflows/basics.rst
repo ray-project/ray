@@ -336,8 +336,8 @@ node, not the output of `bar`:
     )
 
 
-Workflow introduces a utility function called ``workflow.continuation`` which
-enables Ray DAG nodes to return a DAG at runtime:
+To enable dynamically executing DAG nodes at runtime, workflows introduces a utility
+function called ``workflow.continuation``:
 
 .. testcode::
 
