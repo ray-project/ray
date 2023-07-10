@@ -2,7 +2,6 @@ from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 import contextlib
 import cython
-import pyarrow
 
 DEF MEMCOPY_THREADS = 6
 
@@ -538,6 +537,8 @@ cdef class RawSerializedObject(SerializedObject):
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
 
+
+import pyarrow
 
 cdef class ArrowSerializedObject(SerializedObject):
     cdef:
