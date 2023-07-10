@@ -12,14 +12,16 @@ from ray.rllib.utils.annotations import override
 class Distribution(abc.ABC):
     """The base class for distribution over a random variable.
 
-    Examples:
-        >>> model = ... # a model that outputs a vector of logits
-        >>> action_logits = model.forward(obs)
-        >>> action_dist = Distribution(action_logits)
-        >>> action = action_dist.sample()
-        >>> logp = action_dist.logp(action)
-        >>> kl = action_dist.kl(action_dist2)
-        >>> entropy = action_dist.entropy()
+    .. testcode::
+        :skipif: True
+
+        model = ... # a model that outputs a vector of logits
+        action_logits = model.forward(obs)
+        action_dist = Distribution(action_logits)
+        action = action_dist.sample()
+        logp = action_dist.logp(action)
+        kl = action_dist.kl(action_dist2)
+        entropy = action_dist.entropy()
     """
 
     @abc.abstractmethod
