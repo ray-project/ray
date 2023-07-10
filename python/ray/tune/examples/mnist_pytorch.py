@@ -32,7 +32,7 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def trai_func(model, optimizer, train_loader, device=None):
+def train_func(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):

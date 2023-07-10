@@ -40,7 +40,7 @@ def train_convnet(config):
             step = checkpoint["step"]
 
     while True:
-        ray.tune.examples.mnist_pytorch.train(model, optimizer, train_loader)
+        ray.tune.examples.mnist_pytorch.train_func(model, optimizer, train_loader)
         acc = test_func(model, test_loader)
         checkpoint = None
         if step % 5 == 0:
