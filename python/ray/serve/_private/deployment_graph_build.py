@@ -17,7 +17,7 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -173,7 +173,7 @@ def transform_ray_dag_to_serve_dag(
         # serve DAG end to end executable.
         def replace_with_handle(node):
             if isinstance(node, DeploymentNode):
-                return RayServeDeploymentHandle(node._deployment.name)
+                return RayServeHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 

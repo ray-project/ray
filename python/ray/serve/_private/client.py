@@ -469,7 +469,7 @@ class ServeControllerClient:
         cache_key = (deployment_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
-            if cached_handle._is_polling and cached_handle._is_same_loop:
+            if cached_handle._is_same_loop:
                 return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
@@ -478,13 +478,11 @@ class ServeControllerClient:
 
         if sync:
             handle = RayServeSyncHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
         else:
             handle = RayServeHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
             )
