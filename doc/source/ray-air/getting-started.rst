@@ -177,30 +177,12 @@ Then use the ``Tuner`` to run the search:
 Batch Inference
 ~~~~~~~~~~~~~~~
 
-After running the steps in :ref:`Training <air-getting-started-training>` or :ref:`Tuning <air-getting-started-tuning>`, use the trained model for scalable batch prediction with a ``BatchPredictor``.
+After running the steps in :ref:`Training <air-getting-started-training>` or
+:ref:`Tuning <air-getting-started-tuning>`, use the trained model for scalable batch
+prediction with :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
-.. tabs::
+To learn more, see :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
-    .. group-tab:: XGBoost
-
-        .. literalinclude:: examples/xgboost_starter.py
-            :language: python
-            :start-after: __air_xgb_batchpred_start__
-            :end-before: __air_xgb_batchpred_end__
-
-    .. group-tab:: Pytorch
-
-        .. literalinclude:: examples/pytorch_tabular_starter.py
-            :language: python
-            :start-after: __air_pytorch_batchpred_start__
-            :end-before: __air_pytorch_batchpred_end__
-
-    .. group-tab:: Tensorflow
-
-        .. literalinclude:: examples/tf_tabular_starter.py
-            :language: python
-            :start-after: __air_tf_batchpred_start__
-            :end-before: __air_tf_batchpred_end__
 
 Project Status
 --------------
@@ -216,4 +198,4 @@ Next Steps
 - :ref:`air-examples-ref`
 - :ref:`API reference <air-api-ref>`
 - :ref:`Technical whitepaper <whitepaper>`
-- To check how your application is doing, you can use the :ref:`Ray dashboard<observability-getting-started>`. 
+- To check how your application is doing, you can use the :ref:`Ray dashboard<observability-getting-started>`.
