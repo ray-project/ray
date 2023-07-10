@@ -22,7 +22,6 @@ const TaskList = ({
     getTasks(jobId),
   );
   const tasks = data ? data : [];
-  console.log("tasks: ", tasks);
 
   return (
     <div>

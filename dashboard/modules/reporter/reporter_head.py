@@ -27,6 +27,9 @@ from ray.util.state.common import (
     ListApiOptions,
 )
 from ray.dashboard.state_aggregator import StateAPIManager
+from ray.util.state.state_manager import (
+    StateDataSourceClient,
+)
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -161,59 +164,94 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
+        logger.info("before self._state_api.list_tasks")
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
-        else:
-            task_id = req.query.get("ip")
-            option = ListApiOptions(
-                filters=[("task_id", "=", task_id)], detail=True, timeout=10, attempt=1
+        if "attempt_number" not in req.query:
+            raise ValueError("task's attempt number is required")
+        task_id = req.query.get("task_id")
+        attempt_number = req.query.get("attempt_number")
+
+        option = ListApiOptions(
+            filters=[
+                ("task_id", "=", task_id),
+                ("attempt_number", "=", attempt_number),
+            ],
+            detail=True,
+            timeout=10,
+        )
+
+        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        self._state_api_data_source_client = StateDataSourceClient(
+            gcs_channel, self._dashboard_head.gcs_aio_client
+        )
+        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        logger.info(f"self._state_api {type(self._state_api)}: {self._state_api}")
+
+        result = await self._state_api.list_tasks(option=option)
+        tasks = result.result
+        logger.info(f"tasks {type(tasks)}: {tasks}")
+
+        pid = tasks[0]["worker_pid"]
+        node_id = tasks[0]["node_id"]
+        ip = DataSource.node_id_to_ip[node_id]
+        logger.info(f"pid {type(pid)}: {pid}")
+        logger.info(f"node_id {type(node_id)}: {node_id}")
+
+        duration = int(req.query.get("duration", 5))
+        if duration > 60:
+            raise ValueError(f"The max duration allowed is 60: {duration}.")
+        format = req.query.get("format", "flamegraph")
+
+        # Default not using `--native` for profiling
+        native = req.query.get("native", False) == "1"
+        reporter_stub = self._stubs[ip]
+        logger.info(f"reporter_stub {type(reporter_stub)}: {reporter_stub}")
+
+        logger.info(
+            "Sending CPU profiling request to {}:{} for {}with native={}".format(
+                ip, pid, task_id, native
             )
-            self._state_api = StateAPIManager(self._state_api_data_source_client)
-            tasks = self._state_api.list_tasks(option, detail=True)
+        )
 
-            pid = tasks[0]["worker_pid"]
-            node_id = tasks[0]["node_id"]
+        reply = await reporter_stub.CpuProfiling(
+            reporter_pb2.CpuProfilingRequest(
+                pid=pid, duration=duration, format=format, native=native
+            )
+        )
+        logger.info(f"reply {type(reply)}: {reply}")
 
-            ip = DataSource.node_id_to_ip[node_id]
+        # ## Check if the task attempt is still running
+        # new_result = await self._state_api.list_tasks(option=option)
+        # new_tasks = new_result.result
+        # state = new_tasks[0].get("state")
+        # new_pid = new_tasks[0]["worker_pid"]
+        # new_node_id = new_tasks[0]["node_id"]
+        # new_ip = DataSource.node_id_to_ip[new_node_id]
 
-            duration = int(req.query.get("duration", 5))
-            if duration > 60:
-                raise ValueError(f"The max duration allowed is 60: {duration}.")
-            format = req.query.get("format", "flamegraph")
+        # if pid != new_pid or ip != new_ip or state != "RUNNING":
+        #     raise ValueError(f"The task attempt is not running: {state}.")
+        #     return aiohttp.web.HTTPInternalServerError(
+        #         text="Could not find CPU Flame Graph info for task {}".format(task_id)
+        #     )
 
-            # Default not using `--native` for profiling
-            native = req.query.get("native", False) == "1"
-            reporter_stub = self._stubs[ip]
+        # logger.info(f"tasks {type(tasks)}: {tasks}")
 
+        if reply.success:
             logger.info(
-                "Sending CPU profiling request to {}:{} for {}with native={}".format(
-                    ip, pid, task_id, native
-                )
+                "Returning profiling response, size {}".format(len(reply.output))
             )
-
-            reply = await reporter_stub.CpuProfiling(
-                reporter_pb2.CpuProfilingRequest(
-                    pid=pid, duration=duration, format=format, native=native
-                )
+            return aiohttp.web.Response(
+                body=reply.output,
+                headers={
+                    "Content-Type": "image/svg+xml"
+                    if format == "flamegraph"
+                    else "text/plain"
+                },
             )
-            if reply.success:
-                logger.info(
-                    "Returning profiling response, size {}".format(len(reply.output))
-                )
-                return aiohttp.web.Response(
-                    body=reply.output,
-                    headers={
-                        "Content-Type": "image/svg+xml"
-                        if format == "flamegraph"
-                        else "text/plain"
-                    },
-                )
-            else:
-                return aiohttp.web.HTTPInternalServerError(
-                    text="Could not find CPU Flame Graph info for task {}".format(
-                        task_id
-                    )
-                )
+        return aiohttp.web.HTTPInternalServerError(
+            text="Could not find CPU Flame Graph info for task {}".format(task_id)
+        )
 
     @routes.get("/worker/traceback")
     async def get_traceback(self, req) -> aiohttp.web.Response:
