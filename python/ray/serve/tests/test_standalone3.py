@@ -13,7 +13,6 @@ import ray._private.state
 
 from ray import serve
 from ray._private.test_utils import (
-    run_string_as_driver,
     wait_for_condition,
     SignalActor,
 )
@@ -21,7 +20,6 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
@@ -35,38 +33,6 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
-
-
-@pytest.fixture()
-def ray_instance(request):
-    """Starts and stops a Ray instance for this test.
-
-    Args:
-        request: request.param should contain a dictionary of env vars and
-            their values. The Ray instance will be started with these env vars.
-    """
-
-    original_env_vars = os.environ.copy()
-
-    try:
-        requested_env_vars = request.param
-    except AttributeError:
-        requested_env_vars = {}
-
-    os.environ.update(requested_env_vars)
-
-    yield ray.init(
-        _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50,
-        },
-    )
-
-    ray.shutdown()
-
-    os.environ.clear()
-    os.environ.update(original_env_vars)
 
 
 @contextmanager
@@ -378,42 +344,6 @@ def test_autoscaler_shutdown_node_http_everynode(
     serve.shutdown()
 
 
-def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
-    script = """
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-import ray
-
-@serve.deployment
-class A:
-    def predict(self, inp):
-        return inp
-
-@serve.deployment
-class Dispatch:
-    def __init__(self, handle):
-        self.handle = handle
-
-    def predict(self, inp):
-        ref = self.handle.predict.remote(inp)
-        assert isinstance(ref, ray.ObjectRef), ref
-        return ray.get(ref)
-
-with InputNode() as inp:
-    a = A.bind()
-    d = Dispatch.bind(a)
-    dag = d.predict.bind(inp)
-
-handle = serve.run(DAGDriver.bind(dag))
-assert ray.get(handle.predict.remote(1)) == 1
-    """
-
-    run_string_as_driver(
-        script, dict(os.environ, **{SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
-    )
-
-
 def test_healthz_and_routes_on_head_and_worker_nodes(
     shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
@@ -431,14 +361,14 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
 
     # Setup a cluster with 2 nodes
     cluster = Cluster()
-    cluster.add_node(num_cpus=3)
-    cluster.add_node(num_cpus=3)
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
     serve.start(http_options={"location": "EveryNode"})
 
-    # Deploy 2 replicas, one to each node
-    @serve.deployment(num_replicas=2, ray_actor_options={"num_cpus": 2})
+    # Deploy 2 replicas, both should be on the worker node.
+    @serve.deployment(num_replicas=2)
     class HelloModel:
         def __call__(self):
             return "hello"
@@ -446,21 +376,45 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     model = HelloModel.bind()
     serve.run(target=model)
 
+    # Ensure worker node has both replicas.
+    def check_replicas_on_worker_nodes():
+        _actors = ray._private.state.actors().values()
+        replica_nodes = [
+            a["Address"]["NodeID"]
+            for a in _actors
+            if a["ActorClassName"].startswith("ServeReplica")
+        ]
+        return len(set(replica_nodes)) == 1
+
+    wait_for_condition(check_replicas_on_worker_nodes)
+
     # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
     wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
     assert len(ray.nodes()) == 2
 
     # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
     # on both nodes.
-    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
+    def check_request(url: str, expected_code: int, expected_text: str):
+        req = requests.get(url)
+        return req.status_code == expected_code and req.text == expected_text
+
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
     assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
     assert (
         requests.get("http://127.0.0.1:8000/-/routes").text
         == '{"/":"default_HelloModel"}'
     )
-    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8001/-/healthz").text == "success"
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
     assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
     assert (
         requests.get("http://127.0.0.1:8001/-/routes").text
@@ -490,20 +444,125 @@ def test_healthz_and_routes_on_head_and_worker_nodes(
     # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
     # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
     # and unavailable responses.
-    assert requests.get("http://127.0.0.1:8000/-/healthz").text == "success"
-    assert requests.get("http://127.0.0.1:8000/-/healthz").status_code == 200
-    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
-    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
-    assert (
-        requests.get("http://127.0.0.1:8001/-/healthz").text
-        == "This node is being drained."
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
     )
-    assert requests.get("http://127.0.0.1:8001/-/healthz").status_code == 503
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=503,
+        expected_text="This node is being drained.",
+    )
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
     assert (
         requests.get("http://127.0.0.1:8001/-/routes").text
         == "This node is being drained."
     )
-    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
+def test_controller_shutdown_gracefully(
+    shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
+):
+    """Test controller shutdown gracefully when calling `graceful_shutdown()`.
+
+    Called `graceful_shutdown()` on the controller, so it will start shutdown and
+    eventually all actors will be in DEAD state. Test both cases whether to wait for
+    the controller shutdown or not should both resolve graceful shutdown.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Call `graceful_shutdown()` on the controller, so it will start shutdown.
+    client = get_global_client()
+    if wait_for_controller_shutdown:
+        # Waiting for controller shutdown will throw RayActorError when the controller
+        # killed itself.
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(client._controller.graceful_shutdown.remote(True))
+    else:
+        ray.get(client._controller.graceful_shutdown.remote(False))
+
+    # Ensure the all resources are shutdown.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        )
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+def test_client_shutdown_gracefully_when_timeout(
+    shutdown_ray, call_ray_stop_only, caplog  # noqa: F811
+):
+    """Test client shutdown gracefully when timeout.
+
+    When the controller is taking longer than the timeout to shutdown, the client will
+    log timeout message and exit the process. The controller will continue to shutdown
+    everything gracefully.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Ensure client times out if the controller does not shutdown within timeout.
+    timeout_s = 0.0
+    client = get_global_client()
+    client.shutdown(timeout_s=timeout_s)
+    assert (
+        f"Controller failed to shut down within {timeout_s}s. "
+        f"Check controller logs for more details." in caplog.text
+    )
+
+    # Ensure the all resources are shutdown gracefully.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        ),
+    )
 
     # Clean up serve.
     serve.shutdown()

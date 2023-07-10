@@ -257,21 +257,6 @@ py_test_run_all_subdirectory(
     tags = ["exclusive", "team:data"],
 )
 
-# --------------------------------------------------------------------
-# Workspace templates tests
-# --------------------------------------------------------------------
-
-# Validate that all the paths and yamls within the templates.yaml file are valid.
-
-py_test(
-    name = "templates_directory_validation",
-    size = "small",
-    main = "source/templates/testing/validate.py",
-    srcs = ["source/templates/testing/validate.py"],
-    data = glob(["source/templates/**/*"]),
-    tags = ["exclusive", "team:ml"]
-)
-
 # --------------
 # Run GPU tests
 # --------------
@@ -328,7 +313,9 @@ doctest(
             "source/serve/production-guide/fault-tolerance.md",
             "source/data/batch_inference.rst",
             "source/data/transforming-data.rst",
-            "source/train/faq.rst"
+            "source/train/faq.rst",
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
         ]
     ),
     size = "large",
@@ -336,6 +323,16 @@ doctest(
 )
 
 
+doctest(
+    name="doctest[workflow]",
+    files = glob(
+        include=[
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
+        ]
+    ),
+    tags = ["team:core"]
+)
 
 doctest(
     files = [
