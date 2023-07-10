@@ -202,13 +202,14 @@ void RedisRequestContext::Run() {
           auto reply = std::make_shared<CallbackReply>(redis_reply);
           request_cxt->io_service_.post(
               [reply, callback = std::move(request_cxt->callback_)]() {
-                callback(std::move(reply));
+                if (callback) {
+                  callback(std::move(reply));
+                }
               },
               "RedisRequestContext.Callback");
           auto end_time = absl::Now();
           ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
                                           absl::Milliseconds(1));
-          delete request_cxt;
         }
       };
 
