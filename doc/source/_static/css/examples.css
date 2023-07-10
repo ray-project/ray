@@ -22,6 +22,14 @@
   text-transform: uppercase;
 }
 
+/* Hide the default sidebar content */
+#site-navigation > div.bd-sidebar__content {
+  display: none;
+}
+#site-navigation > div.rtd-footer-container {
+  display: none;
+}
+
 .searchDiv {
   margin-bottom: 2em;
 }
@@ -160,7 +168,7 @@ div.sd-card-body > p.sd-card-text > a > span {
   justify-content: center;
 }
 
-#noMatches.hidden,.gallery-item.hidden,.footer-article.hidden,div.header-article.row.sticky-top.noprint {
+#noMatches.hidden,.gallery-item.hidden {
   display: none !important;
 }
 
@@ -196,4 +204,14 @@ button.try-anyscale > span {
 
 .top-nav-content {
   justify-content: initial;
+}
+
+/* Hide nav bar that has github, fullscreen, and print icons */
+div.header-article.row.sticky-top.noprint {
+  display: none !important;
+}
+
+/* Hide the footer with 'prev article' and 'next article' buttons */
+.footer-article.hidden {
+  display: none !important;
 }
