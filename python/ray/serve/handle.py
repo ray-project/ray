@@ -61,7 +61,26 @@ class HandleOptions:
     """
 
     method_name: str = "__call__"
+    multiplexed_model_id: str = ""
     stream: bool = False
+
+    def copy_and_update(
+        self,
+        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+    ) -> "HandleOptions":
+        return HandleOptions(
+            method_name=(
+                self.method_name if method_name == DEFAULT.VALUE else method_name
+            ),
+            multiplexed_model_id=(
+                self.multiplexed_model_id
+                if multiplexed_model_id == DEFAULT.VALUE
+                else multiplexed_model_id
+            ),
+            stream=self.stream if stream == DEFAULT.VALUE else stream,
+        )
 
 
 @PublicAPI(stability="beta")
@@ -162,29 +181,15 @@ class RayServeHandle:
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ):
-        new_options_dict = self.handle_options.__dict__.copy()
-        user_modified_options_dict = {
-            key: value
-            for key, value in [
-                ("method_name", method_name),
-                ("stream", stream),
-            ]
-            if value != DEFAULT.VALUE
-        }
-        new_options_dict.update(user_modified_options_dict)
-        new_options = HandleOptions(**new_options_dict)
-
-        if multiplexed_model_id != DEFAULT.VALUE:
-            # If the user specifies model id, we need to update the RequestContext
-            # to include the model_id.
-            ray.serve.context._set_request_context(
-                multiplexed_model_id=multiplexed_model_id
-            )
-
+        new_handle_options = self.handle_options.copy_and_update(
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
+        )
         return self.__class__(
             self.controller_handle,
             self.deployment_name,
-            new_options,
+            new_handle_options,
             _router=self.router,
             _is_for_http_requests=self._is_for_http_requests,
         )
@@ -223,7 +228,7 @@ class RayServeHandle:
             is_http_request=self._is_for_http_requests,
             route=_request_context.route,
             app_name=_request_context.app_name,
-            multiplexed_model_id=_request_context.multiplexed_model_id,
+            multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
         )
         self.request_counter.inc(
@@ -390,20 +395,15 @@ class RayServeDeploymentHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeDeploymentHandle":
-        new_options_dict = self.handle_options.__dict__.copy()
-        user_modified_options_dict = {
-            key: value
-            for key, value in [
-                ("method_name", method_name),
-                ("stream", stream),
-            ]
-            if value != DEFAULT.VALUE
-        }
-        new_options_dict.update(user_modified_options_dict)
-        new_options = HandleOptions(**new_options_dict)
-        return self.__class__(self.deployment_name, new_options)
+        new_handle_options = self.handle_options.copy_and_update(
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
+        )
+        return self.__class__(self.deployment_name, new_handle_options)
 
     def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
@@ -413,6 +413,7 @@ class RayServeDeploymentHandle:
                 .options(
                     method_name=self.handle_options.method_name,
                     stream=self.handle_options.stream,
+                    multiplexed_model_id=self.handle_options.multiplexed_model_id,
                 )
             )
         return self.handle.remote(*args, **kwargs)
