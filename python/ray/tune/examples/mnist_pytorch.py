@@ -32,7 +32,7 @@ class ConvNet(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def train(model, optimizer, train_loader, device=None):
+def trai_func(model, optimizer, train_loader, device=None):
     device = device or torch.device("cpu")
     model.train()
     for batch_idx, (data, target) in enumerate(train_loader):
@@ -46,7 +46,7 @@ def train(model, optimizer, train_loader, device=None):
         optimizer.step()
 
 
-def test(model, data_loader, device=None):
+def test_func(model, data_loader, device=None):
     device = device or torch.device("cpu")
     model.eval()
     correct = 0
@@ -102,8 +102,8 @@ def train_mnist(config):
     )
 
     while True:
-        train(model, optimizer, train_loader, device)
-        acc = test(model, test_loader, device)
+        train_func(model, optimizer, train_loader, device)
+        acc = test_func(model, test_loader, device)
         checkpoint = None
         if should_checkpoint:
             checkpoint = TorchCheckpoint.from_state_dict(model.state_dict())
