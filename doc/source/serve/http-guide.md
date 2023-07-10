@@ -136,7 +136,7 @@ Got result 0.9s after start: '9'
 
 In some cases, you may want to cease processing a request when the client disconnects before the full stream has been returned.
 If you pass an async generator to `StreamingResponse`, it will be cancelled and raise an `asyncio.CancelledError` when the client disconnects.
-Note that you must `await` at some point in the generator for this to work, otherwise the full generator will run before the cancellation can occur.
+Note that you must `await` at some point in the generator for the cancellation to occur.
 
 In the example below, the generator streams responses forever until the client disconnects, then it prints that it was cancelled and exits. Save this code in `stream.py` and run it:
 
