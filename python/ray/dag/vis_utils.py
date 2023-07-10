@@ -49,6 +49,7 @@ def _check_pydot_and_graphviz():
     graphviz_missing = False
     try:
         import pydot
+
         try:
             pydot.Dot.create(pydot.Dot())
         except (OSError, pydot.InvocationException):
