@@ -173,7 +173,7 @@ class AgentConnector(Connector):
 
     We can adapt a simple stateless function into an agent connector by using
     register_lambda_agent_connector:
-    
+
     .. testcode::
         :skipif: True
 
@@ -184,7 +184,7 @@ class AgentConnector(Connector):
     More complicated agent connectors can be implemented by extending this
     AgentConnector class:
 
-    
+
     .. testcode::
         :skipif: True
 
