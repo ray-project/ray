@@ -308,30 +308,31 @@ Idempotent workflow:
 Dynamic workflows
 -----------------
 
-Workflow tasks can be dynamically created in the runtime. In theory, Ray DAG is
-static which means a DAG node can't be returned in a DAG node. For example, the
-following code is invalid:
+Ray DAGs are static -- returning a node from another node isn't a valid way to
+construct a graph. For example, the following code prints a DAG
+node, not the output of `bar`:
 
 .. testcode::
 
     @ray.remote
-    def bar(): ...
+    def bar():
+        print("Hello from bar!")
 
     @ray.remote
     def foo():
-        return bar.bind() # This is invalid since Ray DAG is static
+        # This is evaluated at runtime, not in DAG construction.
+        return bar.bind()
 
-    try:
-        ray.get(foo.bind().execute()) # This will error
-    except ray.exceptions.RayTaskError:
-        print("Ray DAG is static")
+    # Executing `foo` returns the `bar` DAG node, *not* its result.
+    print("Output of foo DAG:", type(ray.get(foo.bind().execute())))
 
 .. testoutput::
 
-    Ray DAG is static
+    Output of foo DAG: <class 'ray.dag.function_node.FunctionNode'>
 
-Workflow introduces a utility function called ``workflow.continuation`` which
-makes Ray DAG node can return a DAG in the runtime:
+
+To enable dynamically executing DAG nodes at runtime, workflows introduces a utility
+function called ``workflow.continuation``:
 
 .. testcode::
 
