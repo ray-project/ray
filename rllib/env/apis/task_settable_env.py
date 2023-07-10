@@ -17,9 +17,11 @@ class TaskSettableEnv(gym.Env):
     - Setting the env to any task it supports.
     - Getting the current task this env has been set to.
 
-    Examples:
-        >>> from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
-        >>> env = TaskSettableEnv(...) # doctest: +SKIP
+    .. testcode::
+        :skipif: True
+
+        from ray.rllib.env.apis.task_settable_env import TaskSettableEnv
+        env = TaskSettableEnv(...)
     """
 
     def sample_tasks(self, n_tasks: int) -> List[TaskType]:

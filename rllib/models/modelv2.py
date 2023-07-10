@@ -81,16 +81,18 @@ class ModelV2:
             List of np.array (for tf) or Tensor (for torch) objects containing the
             initial hidden state of an RNN, if applicable.
 
-        Examples:
-            >>> import numpy as np
-            >>> from ray.rllib.models.modelv2 import ModelV2
-            >>> class MyModel(ModelV2): # doctest: +SKIP
-            ...     # ...
-            ...     def get_initial_state(self):
-            ...         return [
-            ...             np.zeros(self.cell_size, np.float32),
-            ...             np.zeros(self.cell_size, np.float32),
-            ...         ]
+        .. testcode::
+            :skipif: True
+
+            import numpy as np
+            from ray.rllib.models.modelv2 import ModelV2
+            class MyModel(ModelV2):
+                # ...
+                def get_initial_state(self):
+                    return [
+                        np.zeros(self.cell_size, np.float32),
+                        np.zeros(self.cell_size, np.float32),
+                    ]
         """
         return []
 
@@ -126,15 +128,17 @@ class ModelV2:
             A tuple consisting of the model output tensor of size
             [BATCH, num_outputs] and the list of new RNN state(s) if any.
 
-        Examples:
-            >>> import numpy as np
-            >>> from ray.rllib.models.modelv2 import ModelV2
-            >>> class MyModel(ModelV2): # doctest: +SKIP
-            ...     # ...
-            >>>     def forward(self, input_dict, state, seq_lens):# doctest: +SKIP
-            >>>         model_out, self._value_out = self.base_model(# doctest: +SKIP
-            ...             input_dict["obs"])# doctest: +SKIP
-            >>>         return model_out, state# doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import numpy as np
+            from ray.rllib.models.modelv2 import ModelV2
+            class MyModel(ModelV2):
+                # ...
+                def forward(self, input_dict, state, seq_lens):
+                    model_out, self._value_out = self.base_model(
+                        input_dict["obs"])
+                    return model_out, state
         """
         raise NotImplementedError
 
@@ -282,12 +286,14 @@ class ModelV2:
         Args:
             h5_file: The h5 file name to import weights from.
 
-        Example:
-            >>> from ray.rllib.algorithms.ppo import PPO
-            >>> algo = PPO(...)  # doctest: +SKIP
-            >>> algo.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
-            >>> for _ in range(10): # doctest: +SKIP
-            >>>     algo.train() # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.algorithms.ppo import PPO
+            algo = PPO(...)
+            algo.import_policy_model_from_h5("/tmp/weights.h5")
+            for _ in range(10):
+                algo.train()
         """
         raise NotImplementedError
 

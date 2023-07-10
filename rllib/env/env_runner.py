@@ -72,12 +72,14 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Args:
             state: The state dict to restore the state from.
 
-        Examples:
-            >>> from ray.rllib.env.env_runner import EnvRunner
-            >>> env_runner = ... # doctest: +SKIP
-            >>> state = env_runner.get_state() # doctest: +SKIP
-            >>> new_runner = EnvRunner(...) # doctest: +SKIP
-            >>> new_runner.set_state(state) # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            from ray.rllib.env.env_runner import EnvRunner
+            env_runner = ...
+            state = env_runner.get_state()
+            new_runner = EnvRunner(...)
+            new_runner.set_state(state)
         """
         pass
 
