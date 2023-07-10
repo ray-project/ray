@@ -60,7 +60,7 @@ class ApplicationStatusInfo:
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status}",
+            status=f"APPLICATION_STATUS_{self.status.name}",
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
