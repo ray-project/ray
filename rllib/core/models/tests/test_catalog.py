@@ -371,7 +371,10 @@ class TestCatalog(unittest.TestCase):
                     msg=f"Expected {expected_cls_dict[framework]}, "
                     f"got {type(dist)}",
                 )
+                # Test if sampling works
                 actions = dist.sample()
+                # Test is logp works
+                dist.logp(actions)
 
                 # For any array of actions in a possibly nested space, convert to
                 # numpy and pick the first one to check if it is in the action space.
