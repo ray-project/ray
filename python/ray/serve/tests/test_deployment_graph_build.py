@@ -3,7 +3,7 @@ import pytest
 import ray
 from ray import serve
 from ray.dag import InputNode
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve._private.deployment_graph_build import (
     transform_ray_dag_to_serve_dag,
     extract_deployments_from_serve_dag,
@@ -169,10 +169,10 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     # with correct handle
     combine_deployment = deployments[2]
     init_arg_handle = combine_deployment.init_args[0]
-    assert isinstance(init_arg_handle, RayServeDeploymentHandle)
+    assert isinstance(init_arg_handle, RayServeHandle)
     assert init_arg_handle.deployment_name == "Model"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
-    assert isinstance(init_kwarg_handle, RayServeDeploymentHandle)
+    assert isinstance(init_kwarg_handle, RayServeHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
 
     for deployment in deployments:

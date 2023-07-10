@@ -1,7 +1,7 @@
 from typing import Any, Dict, Optional, List, Tuple
 
 from ray.dag import DAGNode
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 
 from ray.dag.constants import PARENT_CLASS_NODE_KEY
 from ray.dag.format_utils import get_dag_node_str
@@ -30,7 +30,7 @@ class DeploymentNode(DAGNode):
             other_args_to_resolve=other_args_to_resolve,
         )
         self._deployment = deployment
-        self._deployment_handle = RayServeDeploymentHandle(self._deployment.name)
+        self._deployment_handle = RayServeHandle(self._deployment.name)
 
     def _copy_impl(
         self,
