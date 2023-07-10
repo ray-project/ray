@@ -311,6 +311,7 @@ parts:
               - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-rlmodule
+              - file: rllib/rllib-torch2x
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
