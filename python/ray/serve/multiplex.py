@@ -3,7 +3,7 @@ from collections import OrderedDict
 import inspect
 import logging
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Optional, Set
 
 from ray._private.async_compat import sync_to_async
 from ray.serve._private.constants import (
@@ -87,8 +87,11 @@ class _ModelMultiplexWrapper:
         self._deployment_name: str = context.deployment
         self._replica_tag: str = context.replica_tag
 
-        # Whether to push the multiplexed replica info to the controller.
-        self._push_multiplexed_replica_info: bool = False
+        # Pending replica info to push on the next poll interval.
+        self._replica_info_to_push: Optional[Set[str]] = None
+
+        # Monotonic timestamp of the last replica push.
+        self._last_replica_push_time: int = 0
 
         # Push the model IDs to the controller periodically.
         run_background_task(self._push_model_ids())
@@ -130,12 +133,12 @@ class _ModelMultiplexWrapper:
             # Load the model.
             logger.info(f"Loading model '{model_id}'.")
             self.models_load_counter.inc()
+            self._push_replica_info_throttled({model_id}.union(self.models.keys()))
             load_start_time = time.time()
             if self.self_arg is None:
                 self.models[model_id] = await self._func(model_id)
             else:
                 self.models[model_id] = await self._func(self.self_arg, model_id)
-            self._push_multiplexed_replica_info = True
             self.model_load_latency_s.set(time.time() - load_start_time)
         return self.models[model_id]
 
@@ -153,21 +156,38 @@ class _ModelMultiplexWrapper:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
 
+    async def _push_replica_info_throttled(self, model_ids: Set[str]) -> None:
+        """Push the multiplexed replica info as soon as possible.
+
+        If the time since last push exceeds the push interval, pushes the data now.
+        Otherwise, will push on the next poll interval.
+        """
+        if (
+            time.monotonic() - self._last_replica_push_time
+            > PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S
+        ):
+            self._push_replica_info_now(model_ids)
+        else:
+            self._replica_info_to_push = model_ids
+
     async def _push_model_ids(self):
         """Push the multiplexed replica info to the controller."""
 
         while True:
             try:
-                if self._push_multiplexed_replica_info:
-                    get_global_client().record_multiplexed_replica_info(
-                        MultiplexedReplicaInfo(
-                            self._deployment_name, self._replica_tag, self.models.keys()
-                        )
-                    )
-                    self._push_multiplexed_replica_info = False
+                if self._replica_info_to_push:
+                    self._push_replica_info_now(self._replica_info_to_push)
+                    self._replica_info_to_push = None
             except Exception as e:
                 logger.warning(
                     "Failed to push the multiplexed replica info "
                     f"to the controller. Error: {e}"
                 )
             await asyncio.sleep(PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S)
+
+    async def _push_replica_info_now(self, model_ids: Set[str]) -> None:
+        """Pushes the multiplexed replica info immediately."""
+        get_global_client().record_multiplexed_replica_info(
+            MultiplexedReplicaInfo(self._deployment_name, self._replica_tag, model_ids)
+        )
+        self._last_replica_push_time = time.monotonic()
