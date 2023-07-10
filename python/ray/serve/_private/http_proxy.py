@@ -720,6 +720,7 @@ class HTTPProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
+        # Change this to go to grpc request
         assignment_task = handle.remote(
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
