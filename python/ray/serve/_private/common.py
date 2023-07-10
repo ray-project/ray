@@ -241,7 +241,7 @@ class DeploymentInfo:
         deployment_config: DeploymentConfig = None,
         replica_config: ReplicaConfig = None,
         version: str = None,
-        is_driver_deployment: bool = False,
+        is_driver_deployment: bool = None,
         route_prefix: str = None,
     ) -> "DeploymentInfo":
         return DeploymentInfo(
@@ -252,7 +252,9 @@ class DeploymentInfo:
             actor_name=self.actor_name,
             version=version or self.version,
             end_time_ms=self.end_time_ms,
-            is_driver_deployment=is_driver_deployment or self.is_driver_deployment,
+            is_driver_deployment=is_driver_deployment
+            if is_driver_deployment is not None
+            else self.is_driver_deployment,
             app_name=self.app_name,
             route_prefix=route_prefix or self.route_prefix,
         )
