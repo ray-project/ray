@@ -14,7 +14,7 @@ We have integrated this feature with RLModules. You can set the backend and mode
 Benchmarks
 ==========
 
-We conducted a comprehensive benchmark with this feature. 
+We conducted a comprehensive benchmark with this feature. The following benchmarks consider only the potential speed-ups due to enabling torch-compile during inference and environment explorations. This is because, RL is usually bottllnecked by sampling.
 
 Inference
 ---------
@@ -62,7 +62,7 @@ For the benchmarking metric, we compute the inverse of the time it takes to run 
      - inductor + reduce-overhead
 
 
-For detailed benchmarks, checkout `this google doc <https://docs.google.com/spreadsheets/d/1O7_vfGRLV7JfsClXO6stTg8snxghDRRHYBrR3f47T94/edit#gid=0>`_. Here is the benchmarking code: `run_inference_bm.py <https://github.com/ray-project/ray/blob/master/rllib/benchmarks/torch_compile/run_inference_bm.py>`_. You can run the benchmark yourself as well:
+For detailed tables, checkout the `Appendix <../../../../rllib/benchmarks/torch_compile/README.md#appendix>`_. Here is the benchmarking code: `run_inference_bm.py <../../../../rllib/benchmarks/torch_compile/run_inference_bm.py>`_. You can run the benchmark yourself as well:
 
 
 .. code-block:: bash
@@ -81,7 +81,7 @@ Some meta level comments
 
 Exploration
 ------------
-In RLlib, you can now set the configuration so that the compiled module is used during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. Having said that, you can still choose to run the sampling part on GPUs as well by setting ``num_gpus_per_worker`` in which case other backends can be used as well.
+In RLlib, you can now set the configuration so that the compiled module is used during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. Having said that, you can still choose to run the sampling part on GPUs as well by setting ``num_gpus_per_worker`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
 
 
 
@@ -96,7 +96,7 @@ In RLlib, you can now set the configuration so that the compiled module is used 
     )
 
 
-This benchmark script runs PPO algorithm with the default model architecture for Atari-Breakout game. It will run the training for ``n`` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module. 
+`This <../../../../rllib/benchmarks/torch_compile/run_ppo_with_inference_bm.py>`_ benchmark script runs PPO algorithm with the default model architecture for Atari-Breakout game. It will run the training for ``n`` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module. 
 
 To run the benchmark script, you need a ray cluster comprised of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this is not accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
 
