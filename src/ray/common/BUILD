@@ -92,6 +92,7 @@ cc_library(
     name = "id",
     srcs = [
         "id.cc",
+        "common_protocol.cc",
     ],
     hdrs = [
         "id.h",
@@ -119,6 +120,8 @@ cc_library(
         "scheduling/fixed_point.cc",
         "scheduling/scheduling_ids.cc",
         "scheduling/scheduling_resources.cc",
+        "placement_group.cc",
+        "function_descriptor.cc",
     ],
     hdrs = [
         "scheduling/cluster_resource_data.h",
