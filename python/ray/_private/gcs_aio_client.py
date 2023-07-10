@@ -44,17 +44,22 @@ class GcsAioClient:
         if loop is None:
             loop = ray._private.utils.get_or_create_event_loop()
         if executor is None:
+            # TODO(ryw): make this number configurable
             executor = ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="gcs_aio_client"
             )
 
         self._gcs_client = GcsClient(address, nums_reconnect_retry)
-        self._async_proxy = AsyncProxy(self._gcs_client)
+        self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
         self._connect()
         self._nums_reconnect_retry = nums_reconnect_retry
 
     def _connect(self):
         self._gcs_client._connect()
+
+    @property
+    def address(self):
+        return self._gcs_client.address
 
     async def check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
