@@ -93,7 +93,7 @@ class DeploymentStatusInfo:
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name,
-            status=f"DEPLOYMENT_STATUS_{self.status}",
+            status=f"DEPLOYMENT_STATUS_{self.status.name}",
             message=self.message,
         )
 
@@ -391,3 +391,11 @@ class MultiplexedReplicaInfo:
     deployment_name: str
     replica_tag: str
     model_ids: List[str]
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle

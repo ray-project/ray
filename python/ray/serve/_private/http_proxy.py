@@ -32,7 +32,13 @@ from ray.serve._private.http_util import (
     set_socket_reuse_port,
     validate_http_proxy_callback_return,
 )
-from ray.serve._private.common import EndpointInfo, EndpointTag, ApplicationName, NodeId
+from ray.serve._private.common import (
+    ApplicationName,
+    EndpointInfo,
+    EndpointTag,
+    NodeId,
+    StreamingHTTPRequest,
+)
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
@@ -122,8 +128,7 @@ class LongestPrefixRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(
-                    endpoint,
+                self.handles[endpoint] = self._get_handle(endpoint).options(
                     # Streaming codepath isn't supported for Java.
                     stream=(
                         RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -224,13 +229,12 @@ class HTTPProxy:
                 extra={"log_to_stderr": False},
             )
 
-        def get_handle(name, stream: bool = False):
+        def get_handle(name):
             return serve.context.get_global_client().get_handle(
                 name,
                 sync=False,
                 missing_ok=True,
                 _is_for_http_requests=True,
-                _stream=stream,
             )
 
         self.prefix_router = LongestPrefixRouter(get_handle)
@@ -487,7 +491,9 @@ class HTTPProxy:
             start_time = time.time()
             for key, value in scope.get("headers", []):
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                    request_context_info["multiplexed_model_id"] = value.decode()
+                    multiplexed_model_id = value.decode()
+                    handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+                    request_context_info["multiplexed_model_id"] = multiplexed_model_id
                 if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
@@ -497,11 +503,18 @@ class HTTPProxy:
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
                 status_code = await self.send_request_to_replica_streaming(
-                    request_context_info["request_id"], handle, scope, receive, send
+                    request_context_info["request_id"],
+                    handle,
+                    scope,
+                    receive,
+                    send,
                 )
             else:
                 status_code = await self.send_request_to_replica_unary(
-                    handle, scope, receive, send
+                    handle,
+                    scope,
+                    receive,
+                    send,
                 )
 
             self.request_counter.inc(
@@ -697,7 +710,9 @@ class HTTPProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.remote(pickle.dumps(scope), self.self_actor_handle)
+        assignment_task = handle.remote(
+            StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
+        )
         done, _ = await asyncio.wait(
             [assignment_task, disconnected_task],
             return_when=FIRST_COMPLETED,

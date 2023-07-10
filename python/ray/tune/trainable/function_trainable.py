@@ -292,6 +292,11 @@ class _StatusReporter:
         """Resources assigned to the trial of this Trainable."""
         return self._trial_resources
 
+    @property
+    def trial_dir(self) -> str:
+        """Trial-level log directory for the corresponding trial."""
+        return self._logdir
+
 
 @DeveloperAPI
 class FunctionTrainable(Trainable):

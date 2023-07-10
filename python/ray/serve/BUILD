@@ -187,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -203,6 +203,14 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -246,6 +254,15 @@ py_test(
 
 py_test(
     name = "test_handle",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_handle_streaming",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -504,7 +521,7 @@ py_test(
 
 py_test(
     name = "test_streaming_response",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -512,7 +529,7 @@ py_test(
 
 py_test(
     name = "test_websockets",
-    size = "large",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -591,14 +608,6 @@ py_test(
     srcs = glob(["examples/doc/*.py"]),
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"]
-)
-
-py_test(
-    name = "test_json_serde",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
 )
 
 py_test(

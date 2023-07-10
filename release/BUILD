@@ -558,6 +558,9 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_byod_build.py"],
     exec_compatible_with = [":hermetic_python"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",
@@ -723,6 +726,9 @@ py_test(
     size = "small",
     srcs = ["ray_release/tests/test_test.py"],
     exec_compatible_with = [":hermetic_python"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",
