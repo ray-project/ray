@@ -267,4 +267,3 @@ Here is a list of adapters; please feel free to [contribute more](https://github
     :members: json_to_ndarray, image_to_ndarray, starlette_request, json_request, pandas_read_json, json_to_multi_ndarray
 
 ```
-
