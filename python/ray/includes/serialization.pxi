@@ -2,6 +2,7 @@ from libc.string cimport memcpy
 from libc.stdint cimport uintptr_t, uint64_t, INT32_MAX
 import contextlib
 import cython
+import pyarrow
 
 DEF MEMCOPY_THREADS = 6
 
@@ -544,12 +545,11 @@ cdef class ArrowSerializedObject(SerializedObject):
         int64_t _total_bytes
 
     def __init__(self, value):
-        import pyarrow as pa
         super(ArrowSerializedObject,
               self).__init__(ray_constants.OBJECT_METADATA_TYPE_ARROW)
         self.value = value
-        sink = pa.MockOutputStream()
-        writer = pa.ipc.new_stream(sink, self.value.schema)
+        sink = pyarrow.MockOutputStream()
+        writer = pyarrow.ipc.new_stream(sink, self.value.schema)
         writer.write(self.value)
         writer.close()
         self._total_bytes = sink.size()
@@ -562,8 +562,7 @@ cdef class ArrowSerializedObject(SerializedObject):
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
         with gil:
-            import pyarrow as pa
-            sink = pa.FixedSizeBufferWriter(pa.py_buffer(buffer))
-            writer = pa.ipc.new_stream(sink, self.value.schema)
+            sink = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+            writer = pyarrow.ipc.new_stream(sink, self.value.schema)
             writer.write(self.value)
             writer.close()
