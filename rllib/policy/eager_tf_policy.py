@@ -17,8 +17,12 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+    Deprecated,
+)
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -141,7 +145,7 @@ def _check_too_many_retraces(obj):
     return _func
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
@@ -298,6 +302,7 @@ class _OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
+@Deprecated(error=False)
 def _build_eager_tf_policy(
     name,
     loss_fn,

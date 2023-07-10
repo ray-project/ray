@@ -114,9 +114,9 @@ class DAGDriver(ASGIAppReplicaWrapper):
 
         return await root_dag_node.get_object_refs_from_last_execute()
 
-    async def get_dag_node_json(self) -> str:
-        """Returns the json serialized root dag node"""
-        return self.dags[self.MATCH_ALL_ROUTE_PREFIX].dag_node_json
+    async def get_pickled_dag_node(self) -> bytes:
+        """Returns the serialized root dag node."""
+        return self.dags[self.MATCH_ALL_ROUTE_PREFIX].pickled_dag_node
 
 
 @PublicAPI(stability="alpha")

@@ -436,6 +436,12 @@ class NodeResources {
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
 
+  // The idle duration of the node from resources reported by raylet.
+  int64_t idle_resource_duration_ms = 0;
+
+  // The timestamp of the last resource update if there was a resource report.
+  absl::optional<absl::Time> last_resource_update_time = absl::nullopt;
+
   /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
   /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
   /// upload is latest.

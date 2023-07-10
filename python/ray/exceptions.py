@@ -714,6 +714,15 @@ class ActorUnschedulableError(RayError):
         return f"The actor is not schedulable: {self.error_message}"
 
 
+@DeveloperAPI
+class ObjectRefStreamEndOfStreamError(RayError):
+    """Raised by streaming generator tasks when there are no more ObjectRefs to
+    read.
+    """
+
+    pass
+
+
 RAY_EXCEPTION_TYPES = [
     PlasmaObjectNotAvailable,
     RayError,

@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -322,7 +323,18 @@ def test_execution_allowed():
     )
 
 
-def test_resource_constrained_triggers_autoscaling():
+def test_resource_constrained_triggers_autoscaling(monkeypatch):
+    RESOURCE_REQUEST_TIMEOUT = 5
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "RESOURCE_REQUEST_TIMEOUT",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "PURGE_INTERVAL",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
     from ray.data._internal.execution.autoscaling_requester import (
         get_or_create_autoscaling_requester_actor,
     )
@@ -450,6 +462,12 @@ def test_resource_constrained_triggers_autoscaling():
         {"GPU": 1},
         {"CPU": 1},
     ]
+
+    # Test that the resource requests will be purged after the timeout.
+    wait_for_condition(
+        lambda: ray.get(ac._aggregate_requests.remote()) == [],
+        timeout=RESOURCE_REQUEST_TIMEOUT * 2,
+    )
 
 
 def test_select_ops_ensure_at_least_one_live_operator():

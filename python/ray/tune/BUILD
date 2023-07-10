@@ -169,14 +169,6 @@ py_test(
 )
 
 py_test(
-    name = "test_legacy_import",
-    size = "medium",
-    srcs = ["tests/test_legacy_import.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -778,15 +770,6 @@ py_test(
 )
 
 py_test(
-    name = "mxnet_example",
-    size = "small",
-    srcs = ["examples/mxnet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "nevergrad_example",
     size = "small",
     srcs = ["examples/nevergrad_example.py"],
@@ -981,16 +964,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
-# Downloads too much data.
-# py_test(
-#     name = "tune_cifar10_gluon",
-#     size = "medium",
-#     srcs = ["examples/tune_cifar10_gluon.py"],
-#     deps = [":tune_lib"],
-#     tags = ["team:ml", "exclusive", "example"],
-#     args = ["--model SqueezeNet1.0", "--smoke-test"]
-# )
 
 py_test(
     name = "tune_mnist_keras",

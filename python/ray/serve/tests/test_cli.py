@@ -828,8 +828,9 @@ def parrot(request):
 parrot_node = parrot.bind()
 
 
+@pytest.mark.parametrize("number_of_kill_signals", (1, 2))
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_application(ray_start_stop):
+def test_run_application(ray_start_stop, number_of_kill_signals):
     """Deploys valid config file and import path via `serve run`."""
 
     # Deploy via config file
@@ -849,7 +850,8 @@ def test_run_application(ray_start_stop):
     )
     print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
 
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    for _ in range(number_of_kill_signals):
+        p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.post("http://localhost:8000/", json=["ADD", 0]).json()
@@ -1455,8 +1457,8 @@ def test_run_config_request_timeout():
     # Ensure the http request is killed and failed when the deployment runs longer than
     # the 0.1 request_timeout_s set in in the config yaml
     wait_for_condition(
-        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").text
-        == "Task failed with 1 retries.",
+        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
+        == 500,
     )
 
     # Ensure the http request returned the correct response when the deployment runs
@@ -1474,6 +1476,26 @@ def test_run_config_request_timeout():
     wait_for_condition(
         check_ray_stop,
         timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deployment_contains_utils(ray_start_stop):
+    """Test when deployment contains utils module, it can be deployed successfully.
+
+    When the deployment contains utils module, running serve deploy should successfully
+    deployment the application and return the correct response.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deployment_uses_utils_module.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
     )
 
 
