@@ -18,7 +18,7 @@ We conducted a comprehensive benchmark with this feature.
 
 Inference
 ---------
-For the benchmarking metric, we compute the inverse of the time it takes to run :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` of the RLModule. We have conducted this benchmark on the default implementation of PPO RLModule under different hardware settings, torch versions, dynamo backends and modes, as well as different batch sizes. Here is a high-level summary of our findings:
+For the benchmarking metric, we compute the inverse of the time it takes to run :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` of the RLModule. We have conducted this benchmark on the default implementation of PPO RLModule under different hardware settings, torch versions, dynamo backends and modes, as well as different batch sizes. The following table shows our findings regarding what combination of torch-backend and -mode yields the highest speedup we could find for a given combination of hardware and PyTorch version:
 
 .. list-table:: 
    :widths: 25 25 25 25
