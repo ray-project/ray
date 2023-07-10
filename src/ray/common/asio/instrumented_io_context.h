@@ -46,9 +46,8 @@ class instrumented_io_context : public boost::asio::io_context {
     }
   }
 
-  /// Assumes the current state is in run_exclusive (i.e., mutex is held).
-  /// UB if not.
-  void stop_exclusive() {
+  /// Assumes the mutex is held. Undefined behavior if not.
+  void stop_without_lock() {
     is_running_ = false;
     boost::asio::io_context::stop();
   }
