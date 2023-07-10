@@ -370,6 +370,7 @@ class RayServeSyncHandle(RayServeHandle):
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
+
 @Deprecated(
     message="RayServeDeploymentHandle is no longer used, use RayServeHandle instead."
 )
