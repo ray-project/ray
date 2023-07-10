@@ -228,15 +228,16 @@ def test_multiplexed_replica_info(serve_instance):
     def check_replica_information(
         model_ids: List[str],
     ):
+        replica_scheduler = handle._get_or_create_router()._replica_scheduler
         if RAY_SERVE_ENABLE_NEW_ROUTING:
-            for replica in handle.router._replica_scheduler.curr_replicas.values():
+            for replica in replica_scheduler.curr_replicas.values():
                 if (
                     replica.replica_id != replica_tag
                     or model_ids != replica.multiplexed_model_ids
                 ):
                     return False
         else:
-            for replica in handle.router._replica_scheduler.in_flight_queries.keys():
+            for replica in replica_scheduler.in_flight_queries.keys():
                 if replica.replica_tag != replica_tag or model_ids != set(
                     replica.multiplexed_model_ids
                 ):
@@ -272,14 +273,15 @@ def test_multiplexed_replica_info(serve_instance):
 
 
 def check_model_id_in_replicas(handle: RayServeHandle, model_id: str) -> bool:
+    replica_scheduler = handle._get_or_create_router()._replica_scheduler
     if RAY_SERVE_ENABLE_NEW_ROUTING:
-        for replica in handle.router._replica_scheduler.curr_replicas.values():
+        for replica in replica_scheduler.curr_replicas.values():
             if model_id in replica.multiplexed_model_ids:
                 return True
 
         return False
     else:
-        return model_id in handle.router._replica_scheduler.multiplexed_replicas_table
+        return model_id in replica_scheduler.multiplexed_replicas_table
 
 
 def test_multiplexed_e2e(serve_instance):
