@@ -162,7 +162,9 @@ Ray Examples
         :link: /ray-air/examples/dreambooth_finetuning
         :link-type: doc
 
-        How to fine-tune a DreamBooth text-to-image model with your own images.
+        .. button-ref:: /ray-air/examples/dreambooth_finetuning
+
+            How to fine-tune a DreamBooth text-to-image model with your own images.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
