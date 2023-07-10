@@ -223,6 +223,7 @@ class ApplicationState:
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
+
         Wipes the target deployment infos, code version, and config.
         """
         self._set_target_state(dict(), None, None, True)
@@ -799,7 +800,7 @@ def build_serve_application(
     name: str,
     args: Dict,
 ) -> Tuple[List[Dict], Optional[str]]:
-    """Deploy Serve application from a user-provided config.
+    """Import and build a Serve application.
 
     Args:
         import_path: import path to top-level bound deployment.
@@ -814,11 +815,14 @@ def build_serve_application(
             without removing existing applications.
         args: Arguments to be passed to the application builder.
     Returns:
-        Returns None if no error is raised. Otherwise, returns error message.
+        Deploy arguments: a list of deployment arguments if application
+            was built successfully, otherwise None.
+        Error message: a string if an error was raised, otherwise None.
     """
     try:
         from ray.serve.api import build
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
+        from ray.serve.built_application import get_deploy_args_from_built_app
 
         # Import and build the application.
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
@@ -849,11 +853,11 @@ def build_serve_application(
                 _internal=True,
             )
 
-        return app.deploy_args_list, None
+        return get_deploy_args_from_built_app(app), None
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
-        logger.debug("Existing config deployment request terminated.")
+        logger.info("Existing config deployment request terminated.")
         return None, None
     except Exception as e:
         return None, repr(e)
