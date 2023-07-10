@@ -630,8 +630,10 @@ def test_unhealthy_retry_correct_number_of_times():
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-@pytest.mark.parametrize("number_of_worker_nodes", [1])
-def test_update_draining(mock_get_all_node_ids, all_nodes, setup_controller):
+@pytest.mark.parametrize("number_of_worker_nodes", [1, 2, 3])
+def test_update_draining(
+    mock_get_all_node_ids, all_nodes, setup_controller, number_of_worker_nodes
+):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
@@ -664,7 +666,8 @@ def test_update_draining(mock_get_all_node_ids, all_nodes, setup_controller):
         timeout=20,
         http_state=state,
         node_ids=node_ids,
-        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING],
+        statuses=[HTTPProxyStatus.HEALTHY]
+        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
         active_nodes=active_nodes,
     )
 
@@ -678,7 +681,7 @@ def test_update_draining(mock_get_all_node_ids, all_nodes, setup_controller):
         timeout=20,
         http_state=state,
         node_ids=node_ids,
-        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.HEALTHY],
+        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
         active_nodes=active_nodes,
     )
 
