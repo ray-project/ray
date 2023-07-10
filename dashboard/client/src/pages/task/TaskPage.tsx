@@ -34,7 +34,6 @@ const useStyles = makeStyles((theme) =>
 export const TaskPage = () => {
   const { taskId } = useParams();
   const { task, isLoading } = useStateApiTask(taskId);
-  console.log("task", task);
 
   const classes = useStyles();
 
@@ -99,7 +98,7 @@ const TaskPageContents = ({
     name,
   } = task;
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
-
+  console.info("isTaskActive: ", isTaskActive);
   return (
     <div>
       <MetadataSection

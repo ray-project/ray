@@ -43,7 +43,7 @@ export const TaskCpuStackTraceLink = ({
   }
   return (
     <Link
-      href={`task/stacktrace?task_id=${taskId}&attempt_number=${attemptNumber}`}
+      href={`task/traceback?task_id=${taskId}&attempt_number=${attemptNumber}`}
       target="_blank"
       title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
