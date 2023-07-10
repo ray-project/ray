@@ -6,6 +6,21 @@ cc_library(
 )
 
 cc_library(
+    name = "test_util",
+    hdrs = ["test_util.h"],
+    srcs = ["test_util.cc"],
+    deps = [
+        ":id",
+        ":ray_object",
+        ":network",
+        "//src/ray/util:util",
+        "@com_google_googletest//:gtest",
+        "//src/ray/protobuf:common_cc_proto",
+        "@boost//:optional",
+    ],
+)
+
+cc_library(
     name = "ray_object",
     hdrs = [
         "buffer.h",
