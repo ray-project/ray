@@ -20,7 +20,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI
 
 _global_async_loop = None
 
