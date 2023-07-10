@@ -43,13 +43,13 @@ void GcsRedisFailureDetector::Stop() {
 
 void GcsRedisFailureDetector::DetectRedis() {
   auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
-    if (reply->IsError()) {
+    if (reply->IsNil()) {
       RAY_LOG(ERROR) << "Redis is inactive.";
       callback_();
     }
   };
   auto cxt = redis_client_->GetShardContext("");
-  cxt->RunArgvAsync({"GET", "HOLD"}, redis_callback);
+  cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 
 }  // namespace gcs
