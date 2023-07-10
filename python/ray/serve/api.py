@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union
+from typing import Any, Callable, Dict, Optional, Tuple, Union, List
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
@@ -50,6 +50,7 @@ from ray.serve._private.utils import (
     get_random_letters,
     extract_self_if_method_call,
 )
+from ray.serve.schema import ServeInstanceDetails
 
 from ray.serve._private import api as _private_api
 
@@ -718,3 +719,32 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
+
+
+@PublicAPI(stability="alpha")
+def status() -> List[Dict]:
+    """Get statuses of all active applications on the cluster.
+
+    Each dictionary in the list matches the format of ServeStatusSchema,
+    which includes the application status, all deployment statuses,
+    status messages, etc. If Serve hasn't been started on the cluster
+    yet, this returns an empty list.
+
+    .. code-block:: python
+
+            @serve.deployment(num_replicas=2)
+            class MyDeployment:
+                pass
+
+            app = MyDeployment.bind()
+            serve.run(app)
+            status = serve.status()
+            assert status[0]["app_status"]["status"] == "RUNNING"
+    """
+
+    try:
+        client = get_global_client()
+        details = ServeInstanceDetails(**client.get_serve_details())
+        return [app.get_status_dict() for app in details.applications.values()]
+    except RayServeException:
+        return []

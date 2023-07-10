@@ -884,6 +884,79 @@ def test_pass_starlette_request_over_handle(serve_instance):
     }
 
 
+def test_status_basic(serve_instance):
+    # Before Serve is started, serve.status() should just return empty list
+    assert len(serve.status()) == 0
+
+    from ray.serve.tests.test_config_files.test_dag.conditional_dag import serve_dag
+    from ray.serve.tests.test_config_files.world import DagNode
+
+    handle_1 = serve.run(serve_dag, name="pizza", route_prefix="/a")
+    handle_2 = serve.run(DagNode, name="world", route_prefix="/b")
+
+    assert ray.get(handle_1.predict.remote("ADD", 6)) == "4 pizzas please!"
+    assert ray.get(handle_2.remote()) == "wonderful world"
+
+    expected_dep_1 = {
+        "pizza_DAGDriver",
+        "pizza_Multiplier",
+        "pizza_Adder",
+        "pizza_Router",
+        "pizza_create_order",
+    }
+    expected_dep_2 = {"world_BasicDriver", "world_f"}
+
+    status = serve.status()
+    assert len(status) == 2
+    assert {d["name"] for d in status[0]["deployment_statuses"]} == expected_dep_1
+    assert {d["name"] for d in status[1]["deployment_statuses"]} == expected_dep_2
+    assert all(d["status"] == "HEALTHY" for d in status[0]["deployment_statuses"])
+    assert all(d["status"] == "HEALTHY" for d in status[1]["deployment_statuses"])
+
+
+def test_status_constructor_error(serve_instance):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    traceback is surfaced in serve.status().
+    """
+
+    from ray.serve.tests.test_config_files.fail import node
+
+    serve.run(node, _blocking=False)
+
+    def check_for_failed_deployment():
+        status = serve.status()[0]
+        error_substr = "ZeroDivisionError: division by zero"
+        return (
+            status["app_status"]["status"] == "DEPLOY_FAILED"
+            and error_substr in status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+def test_status_package_unavailable_in_controller(serve_instance):
+    """Test that exceptions raised from packages that are installed on deployment actors
+    but not on controller is serialized and surfaced properly in serve.status().
+    """
+
+    from ray.serve.tests.test_config_files.sqlalchemy import TestDeployment
+
+    ray_actor_options = {"runtime_env": {"pip": ["PyMySQL", "sqlalchemy==1.3.19"]}}
+    serve.run(
+        TestDeployment.options(ray_actor_options=ray_actor_options).bind(),
+        _blocking=False,
+    )
+
+    def check_for_failed_deployment():
+        status = serve.status()[0]
+        return (
+            status["app_status"]["status"] == "DEPLOY_FAILED"
+            and "some_wrong_url" in status["deployment_statuses"][0]["message"]
+        )
+
+    wait_for_condition(check_for_failed_deployment, timeout=15)
+
+
 if __name__ == "__main__":
     import sys
 
