@@ -9,7 +9,7 @@ Using RLlib with torch 2.x compile
 
 Torch 2.x comes with the new ``torch.compile()`` `API <https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile>`_, which leverages `torch dynamo <https://pytorch.org/docs/stable/dynamo/index.html#torchdynamo-overview>`_ under the hood to JIT-compile wrapped code. We integrate ``torch.compile()`` with RLlib in the context of `RLModules <rllib-rlmodule.html>`_ and Learners. 
 
-We have integrated this feature with RLModules. You can set the backend and mode via ``framework()`` API on an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object. Alternatively, you can compile the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly during stand-alone usage such as inference.
+We have integrated this feature with RLModules. You can set the backend and mode via ``framework()`` API on an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object. Alternatively, you can compile the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly during stand-alone usage, such as inference.
 
 Benchmarks
 ==========
