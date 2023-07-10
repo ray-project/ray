@@ -8,6 +8,7 @@ from ray.rllib.core.models.configs import (
 )
 from ray.rllib.core.models.base import Encoder, ActorCriticEncoder, Model
 from ray.rllib.utils import override
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
 def _check_if_diag_gaussian(action_distribution_cls, framework):
@@ -92,6 +93,7 @@ class PPOCatalog(Catalog):
             output_layer_dim=1,
         )
 
+    @OverrideToImplementCustomLogic
     def build_actor_critic_encoder(self, framework: str) -> ActorCriticEncoder:
         """Builds the ActorCriticEncoder.
 
@@ -114,9 +116,10 @@ class PPOCatalog(Catalog):
         Since PPO uses an ActorCriticEncoder, this method should not be implemented.
         """
         raise NotImplementedError(
-            "Use PPOCatalog.build_actor_critic_encoder() instead."
+            "Use PPOCatalog.build_actor_critic_encoder() instead for PPO."
         )
 
+    @OverrideToImplementCustomLogic
     def build_pi_head(self, framework: str) -> Model:
         """Builds the policy head.
 
@@ -156,6 +159,7 @@ class PPOCatalog(Catalog):
 
         return self.pi_head_config.build(framework=framework)
 
+    @OverrideToImplementCustomLogic
     def build_vf_head(self, framework: str) -> Model:
         """Builds the value function head.
 

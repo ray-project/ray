@@ -24,6 +24,7 @@ from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ViewRequirementsDict
+from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
 class Catalog:
@@ -33,7 +34,11 @@ class Catalog:
     By default, that Catalog builds the configs it has as attributes.
     You can modify a Catalog so that it builds different Models by subclassing and
     overriding the build_* methods. Alternatively, you can customize the configs
-    inside RLlib's Catalogs to customize what is being built by RLlib.
+    inside RLlib's Catalogs to customize what is being built for RL Modules.
+    Note that it is recommended to write a custom RL Module for a single use-case.
+    Modifications to Catalogs mostly make sense if you want to reuse the same
+    Catalog for different RL Modules. For example if you have written a custom
+    encoder and want to inject it into different RL Modules (e.g. for PPO, DQN, etc.).
 
     Usage example:
 
@@ -77,8 +82,6 @@ class Catalog:
         self,
         observation_space: gym.Space,
         action_space: gym.Space,
-        # TODO (Artur): Turn model_config into model_config_dict to distinguish
-        #  between ModelConfig and a model_config_dict dict library-wide.
         model_config_dict: dict,
         view_requirements: dict = None,
     ):
@@ -132,7 +135,7 @@ class Catalog:
         At the end of Catalog initialization, an attribute `Catalog.latent_dims`
         should be set so that heads can be built using that information.
         """
-        self.encoder_config = self.get_encoder_config(
+        self.encoder_config = self._get_encoder_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
             model_config_dict=self.model_config_dict,
@@ -142,17 +145,25 @@ class Catalog:
         # Create a function that can be called when framework is known to retrieve the
         # class type for action distributions
         self._action_dist_class_fn = functools.partial(
-            self.get_dist_cls_from_action_space, action_space=self.action_space
+            self._get_dist_cls_from_action_space, action_space=self.action_space
         )
 
         # The dimensions of the latent vector that is output by the encoder and fed
         # to the heads.
         self.latent_dims = self.encoder_config.output_dims
 
+    @OverrideToImplementCustomLogic
     def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
 
-        By default this method builds an encoder instance from Catalog.encoder_config.
+        By default, this method builds an encoder instance from Catalog.encoder_config.
+
+        You should override this if you want to use RLlib's default RL Modules but
+        only want to change the encoder. For example, if you want to use a custom
+        encoder, but want to use RLlib's default heads, action distribution and how
+        tensors are routed between them. If you want to have full control over the
+        RL Module, we recommend writing your own RL Module by inheriting from one of
+        RLlib's RL Modules instead.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -167,13 +178,17 @@ class Catalog:
         )
         return self.encoder_config.build(framework=framework)
 
+    @OverrideToImplementCustomLogic
     def get_action_dist_cls(self, framework: str):
         """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
-        `Catalog.action_dist_class_fn`. This can be overridden to build a custom action
-        distribution as a means of configuring the behavior of a RLModule
-        implementation.
+        `Catalog.action_dist_class_fn`.
+
+        You should override this to have RLlib build your custom action
+        distribution instead of the default one. For example, if you don't want to
+        use RLlib's default RLModules with their default models, but only want to
+        change the distribution that Catalog returns.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -190,7 +205,7 @@ class Catalog:
         return self._action_dist_class_fn(framework=framework)
 
     @classmethod
-    def get_encoder_config(
+    def _get_encoder_config(
         cls,
         observation_space: gym.Space,
         model_config_dict: dict,
@@ -312,6 +327,7 @@ class Catalog:
         return encoder_config
 
     @classmethod
+    @OverrideToImplementCustomLogic
     def get_tokenizer_config(
         cls,
         observation_space: gym.Space,
@@ -324,13 +340,19 @@ class Catalog:
         inputs. By default, RLlib uses the models supported by Catalog out of the box to
         tokenize.
 
+        You should override this method if you want to change the custom tokenizer
+        inside current encoders that Catalog returns without providing the recurrent
+        as a whole. For example, if you want to define some custom CNN layers as a
+        tokenizer for a recurrent encoder that already includes the recurrent layers
+        and manages the state.
+
         Args:
             observation_space: The observation space to use.
             model_config_dict: The model config to use.
             view_requirements: The view requirements to use if anything else than
                 observation_space is to be encoded. This signifies an advanced use case.
         """
-        return cls.get_encoder_config(
+        return cls._get_encoder_config(
             observation_space=observation_space,
             # Use model_config_dict without flags that would end up in complex models
             model_config_dict={
@@ -341,7 +363,7 @@ class Catalog:
         )
 
     @classmethod
-    def get_dist_cls_from_action_space(
+    def _get_dist_cls_from_action_space(
         cls,
         action_space: gym.Space,
         *,
@@ -534,7 +556,7 @@ def _multi_action_dist_partial_helper(
     action_space_struct = get_base_struct_from_space(action_space)
     flat_action_space = flatten_space(action_space)
     child_distribution_cls_struct = tree.map_structure(
-        lambda s: catalog_cls.get_dist_cls_from_action_space(
+        lambda s: catalog_cls._get_dist_cls_from_action_space(
             action_space=s,
             framework=framework,
         ),
