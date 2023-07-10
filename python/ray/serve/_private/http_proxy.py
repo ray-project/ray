@@ -944,7 +944,9 @@ class HTTPProxyActor:
 
         # self.running_grpc_task = None
         # if self.start_grpc_server:
-        #     self.running_grpc_task = get_or_create_event_loop().create_task(self.run_grpc_server())
+        #     self.running_grpc_task = get_or_create_event_loop().create_task(
+        #         self.run_grpc_server()
+        #     )
 
     async def ready(self):
         """Returns when HTTP proxy is ready to serve traffic.
@@ -1024,7 +1026,8 @@ Please make sure your http-host and http-port are specified correctly."""
         )
         self.server.add_insecure_port(f"[::]:{self.grpc_port}")
         serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
-            PredictAPIsServicer(), self.server)
+            PredictAPIsServicer(), self.server
+        )
         await self.server.start()
         self.setup_complete.set()
         await self.server.wait_for_termination()
@@ -1038,7 +1041,8 @@ Please make sure your http-host and http-port are specified correctly."""
         )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
-            PredictAPIsServicer(), grpc_server)
+            PredictAPIsServicer(), grpc_server
+        )
         await grpc_server.start()
         self.grpc_setup_complete.set()
         self.setup_complete.set()

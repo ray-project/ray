@@ -11,7 +11,8 @@ from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Dict
 import traceback
 
 import starlette.responses
-from starlette.requests import Request
+
+# from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
 import ray
@@ -242,7 +243,7 @@ def create_replica_wrapper(name: str):
                 request_args = (scope, buffered_receive, buffered_send)
 
             result = await self.replica.call_user_method(
-                    request_metadata, request_args, request_kwargs
+                request_metadata, request_args, request_kwargs
             )
 
             # if request_metadata.is_http_request:
@@ -760,19 +761,21 @@ class RayServeReplica:
                     result = starlette.responses.Response(
                         f"Unexpected error, traceback: {e}.", status_code=500
                     )
-                    await self.send_user_result_over_asgi(result, scope, receive, send)
+                    # await self.send_user_result_over_asgi(
+                    #     result, scope, receive, send
+                    # )
 
                 raise e from None
 
-            if request_metadata.is_http_request and not isinstance(
-                self.callable, ASGIAppReplicaWrapper
-            ):
-                # For the FastAPI codepath, the response has already been sent over the
-                # ASGI interface, but for the vanilla deployment codepath we need to
-                # send it.
-                await self.send_user_result_over_asgi(result, scope, receive, send)
-
-            return result
+            # if request_metadata.is_http_request and not isinstance(
+            #     self.callable, ASGIAppReplicaWrapper
+            # ):
+            #     # For the FastAPI codepath, the response has already been sent
+            #     # over the ASGI interface, but for the vanilla deployment
+            #     # codepath we need to send it.
+            #     await self.send_user_result_over_asgi(result, scope, receive, send)
+            #
+            # return result
 
     async def call_user_method_generator(
         self,
