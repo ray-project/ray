@@ -79,7 +79,7 @@ class BuiltApplication:
         return ingress
 
 
-def get_deploy_args_from_built_app(app: BuiltApplication):
+def _get_deploy_args_from_built_app(app: BuiltApplication):
     """Get list of deploy args from a BuiltApplication."""
     deploy_args_list = []
     for deployment in list(app.deployments.values()):

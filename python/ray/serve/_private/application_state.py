@@ -818,7 +818,7 @@ def build_serve_application(
     try:
         from ray.serve.api import build
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
-        from ray.serve.built_application import get_deploy_args_from_built_app
+        from ray.serve.built_application import _get_deploy_args_from_built_app
 
         # Import and build the application.
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
@@ -842,7 +842,7 @@ def build_serve_application(
                 _internal=True,
             )
 
-        return get_deploy_args_from_built_app(app), None
+        return _get_deploy_args_from_built_app(app), None
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
