@@ -630,7 +630,7 @@ def test_unhealthy_retry_correct_number_of_times():
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-@pytest.mark.parametrize("number_of_worker_nodes", [1, 2, 3])
+@pytest.mark.parametrize("number_of_worker_nodes", [0, 1, 2, 3])
 def test_update_draining(
     mock_get_all_node_ids, all_nodes, setup_controller, number_of_worker_nodes
 ):
