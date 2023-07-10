@@ -465,6 +465,7 @@ class JobSupervisor:
                 assert len(finished) == 1, "Should have only one coroutine done"
                 [child_process_task] = finished
                 return_code = child_process_task.result()
+                logger.info(f"Job {self._job_id} exited with code {return_code}")
                 if return_code == 0:
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.SUCCEEDED
@@ -473,12 +474,12 @@ class JobSupervisor:
                     log_tail = self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
-                            "Job failed due to an application error, "
+                            f"Job failed with exit code {return_code}, "
                             "last available logs (truncated to 20,000 chars):\n"
                             + log_tail
                         )
                     else:
-                        message = None
+                        message = f"Job failed with exit code {return_code}"
                     await self._job_info_client.put_status(
                         self._job_id, JobStatus.FAILED, message=message
                     )

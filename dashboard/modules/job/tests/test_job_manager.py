@@ -1156,7 +1156,7 @@ async def test_failed_job_logs_max_char(job_manager):
     job_info = await job_manager.get_job_info(job_id)
     assert job_info
     assert len(job_info.message) == 20000 + len(
-        "Job failed due to an application error, " "last available logs:\n"
+        "Job failed with exit code 1 , last available logs:\n"
     )
 
 
