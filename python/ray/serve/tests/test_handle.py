@@ -336,6 +336,23 @@ def test_handle_typing(serve_instance):
     assert isinstance(h, RayServeSyncHandle)
 
 
+def test_call_function_with_argument(serve_instance):
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, h: RayServeHandle):
+            self._h = h
+
+        async def __call__(self, name: str):
+            return await (await self._h.remote(name))
+
+    h = serve.run(Ingress.bind(echo.bind()))
+    assert ray.get(h.remote("sned")) == "Hi sned"
+
+
 if __name__ == "__main__":
     import sys
     import pytest
