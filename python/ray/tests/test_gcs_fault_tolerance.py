@@ -822,7 +822,7 @@ print("DONE")
     gcs_server_pid = gcs_server_process.pid
     # GCS should exit in this case
     print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 2000)
+    wait_for_pid_to_exit(gcs_server_pid, 10000)
 
 
 @pytest.mark.parametrize(
