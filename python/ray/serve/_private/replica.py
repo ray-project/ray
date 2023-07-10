@@ -57,7 +57,6 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.router import RequestMetadata
 from ray.serve._private.utils import (
     parse_import_path,
-    wrap_generator_function_in_async_if_needed,
     wrap_to_ray_error,
     merge_dict,
     MetricsPusher,
@@ -731,10 +730,11 @@ class RayServeReplica:
                     runner_method
                 ) or inspect.isasyncgenfunction(runner_method):
                     raise TypeError(
-                        f"Method '{runner_method.__name__}' is a generator. You must "
-                        "use `handle.options(stream=True)` to call generator methods "
-                        "on a deployment."
+                        f"Method '{runner_method.__name__}' is a generator function. "
+                        "You must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
                     )
+
                 method_to_call = sync_to_async(runner_method)
 
                 # Edge case to support empty HTTP handlers: don't pass the Request
@@ -746,6 +746,12 @@ class RayServeReplica:
                     request_args, request_kwargs = tuple(), {}
 
                 result = await method_to_call(*request_args, **request_kwargs)
+                if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                    raise TypeError(
+                        f"Method '{runner_method.__name__}' returned a generator. You "
+                        "must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
+                    )
 
             except Exception as e:
                 function_name = "unknown"
@@ -793,10 +799,21 @@ class RayServeReplica:
                 not request_metadata.is_http_request
             ), "HTTP requests should go through `call_user_method`."
             user_method = self.get_runner_method(request_metadata)
-            method_to_call = wrap_generator_function_in_async_if_needed(user_method)
+            result_generator = user_method(*request_args, **request_kwargs)
+            if inspect.iscoroutine(result_generator):
+                result_generator = await result_generator
 
-            async for result in method_to_call(*request_args, **request_kwargs):
-                yield result
+            if inspect.isgenerator(result_generator):
+                for result in result_generator:
+                    yield result
+            elif inspect.isasyncgen(result_generator):
+                async for result in result_generator:
+                    yield result
+            else:
+                raise TypeError(
+                    "When using `stream=True`, the called method must be a generator "
+                    f"function, but '{user_method.__name__}' is not."
+                )
 
     async def prepare_for_shutdown(self):
         """Perform graceful shutdown.
