@@ -296,7 +296,8 @@ class ScalingConfig:
 @dataclass
 @Deprecated(
     message="Use `ray.train.DataConfig` instead of DatasetConfig to "
-    "configure data ingest for training."
+    "configure data ingest for training. "
+    "See https://docs.ray.io/en/master/ray-air/check-ingest.html for more details."
 )
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
