@@ -43,7 +43,9 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     Examples of canoncial format #1:
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         spec = ["foo", ("bar", "baz")]
         output = convert_to_canonical_format(spec)
         # output = SpecDict({"foo": None, ("bar", "baz"): None})
@@ -70,7 +72,9 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
 
     # Example of canoncial format #2:
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         spec = int
         output = convert_to_canonical_format(spec)
         # output = TypeSpec(int)

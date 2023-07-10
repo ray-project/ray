@@ -449,16 +449,15 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
 def make_multi_callbacks(callback_class_list: List[Type[DefaultCallbacks]]):
     """Allows combining multiple sub-callbacks into one new callbacks class.
 
-    Example:
+    .. testcode::
+        :skipif: True
 
-        .. code-block:: python
-
-            config.callbacks(make_multi_callbacks([
-                MyCustomStatsCallbacks,
-                MyCustomVideoCallbacks,
-                MyCustomTraceCallbacks,
-                ....
-            ]))
+        config.callbacks(make_multi_callbacks([
+            MyCustomStatsCallbacks,
+            MyCustomVideoCallbacks,
+            MyCustomTraceCallbacks,
+            ....
+        ]))
 
     Args:
         callback_class_list: The list of sub-classes of DefaultCallbacks to

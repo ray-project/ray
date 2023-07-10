@@ -234,7 +234,8 @@ class RLModule(abc.ABC):
 
     During Training (acting in env from each rollout worker):
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         module = RLModule(...)
         obs, info = env.reset()
@@ -249,7 +250,8 @@ class RLModule(abc.ABC):
 
     During Training (learning the policy)
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         module = RLModule(...)
         fwd_ins = {"obs": obs, "action": action, "reward": reward, "next_obs": next_obs}
@@ -259,7 +261,8 @@ class RLModule(abc.ABC):
 
     During Inference (acting in env during evaluation)
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         module = RLModule(...)
         obs, info = env.reset()

@@ -132,7 +132,8 @@ class Distribution(abc.ABC):
         Returns:
             The created distribution.
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import numpy as np
             from ray.rllib.models.distributions import Distribution

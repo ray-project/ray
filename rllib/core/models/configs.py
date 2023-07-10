@@ -180,7 +180,9 @@ class MLPHeadConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[4],  # must be 1D tensor
@@ -201,7 +203,9 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(8, 2, bias=True)
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[2],
@@ -258,7 +262,9 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
     free std-variable.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = FreeLogStdMLPHeadConfig(
             input_dims=[2],
@@ -278,7 +284,9 @@ class FreeLogStdMLPHeadConfig(_MLPConfig):
         # Tensor((8,), float32)  # for the free (observation independent) std outputs
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = FreeLogStdMLPHeadConfig(
             input_dims=[2],
@@ -401,7 +409,9 @@ class CNNTransposeHeadConfig(ModelConfig):
             in between each Conv2DTranspose layer's output and its activation.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = CNNTransposeHeadConfig(
             input_dims=[10],  # 1D input vector (possibly coming from another NN)
@@ -435,7 +445,9 @@ class CNNTransposeHeadConfig(ModelConfig):
         # )
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = CNNTransposeHeadConfig(
             input_dims=[128],  # 1D input vector (possibly coming from another NN)
@@ -547,7 +559,9 @@ class CNNEncoderConfig(ModelConfig):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
@@ -698,7 +712,9 @@ class MLPEncoderConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[4],  # must be 1D tensor
@@ -714,7 +730,9 @@ class MLPEncoderConfig(_MLPConfig):
         # ReLU()
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[2],
@@ -790,7 +808,9 @@ class RecurrentEncoderConfig(ModelConfig):
     the `hidden_dims` value.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="lstm",
@@ -809,7 +829,9 @@ class RecurrentEncoderConfig(ModelConfig):
         # (2, B, 128) for each c- and h-states.
 
     Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="gru",

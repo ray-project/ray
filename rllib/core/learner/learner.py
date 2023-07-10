@@ -264,9 +264,9 @@ class Learner:
             more info.
 
 
-    Usage pattern:
 
-        .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         # create a single agent RL module spec.
         module_spec = SingleAgentRLModuleSpec(
@@ -320,15 +320,16 @@ class Learner:
 
     Extension pattern:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
-        class MyLearner(TorchLearner):
+            class MyLearner(TorchLearner):
 
-            def compute_loss(self, fwd_out, batch):
-                # compute the loss based on batch and output of the forward pass
-                # to access the learner hyper-parameters use `self._hps`
+                def compute_loss(self, fwd_out, batch):
+                    # compute the loss based on batch and output of the forward pass
+                    # to access the learner hyper-parameters use `self._hps`
 
-                return {ALL_MODULES: loss}
+                    return {ALL_MODULES: loss}
     """
 
     framework: str = None
@@ -1054,7 +1055,8 @@ class Learner:
 
         Example:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             class DQNLearner(TorchLearner):
 
@@ -1071,7 +1073,8 @@ class Learner:
 
         And inside a training loop:
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             for _ in range(100):
                 sample = ...

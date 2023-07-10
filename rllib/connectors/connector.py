@@ -148,8 +148,9 @@ class AgentConnector(Connector):
 
     AgentConnectorDataTypes can be used to specify arbitrary type of env data,
 
-    Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # A dict of multi-agent data from one env step() call.
         ac = AgentConnectorDataType(
             env_id="env_1",
@@ -160,8 +161,9 @@ class AgentConnector(Connector):
             }
         )
 
-    Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         # Single agent data ready to be preprocessed.
         ac = AgentConnectorDataType(
             env_id="env_1",
@@ -171,7 +173,10 @@ class AgentConnector(Connector):
 
     We can adapt a simple stateless function into an agent connector by using
     register_lambda_agent_connector:
-    .. code-block:: python
+    
+    .. testcode::
+        :skipif: True
+
         TimesTwoAgentConnector = register_lambda_agent_connector(
             "TimesTwoAgentConnector", lambda data: data * 2
         )
@@ -179,8 +184,10 @@ class AgentConnector(Connector):
     More complicated agent connectors can be implemented by extending this
     AgentConnector class:
 
-    Example:
-    .. code-block:: python
+    
+    .. testcode::
+        :skipif: True
+
         class FrameSkippingAgentConnector(AgentConnector):
             def __init__(self, n):
                 self._n = n
@@ -278,8 +285,9 @@ class ActionConnector(Connector):
     Any functions that operate directly on PolicyOutputType can be easily adapted
     into an ActionConnector by using register_lambda_action_connector.
 
-    Example:
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
+
         ZeroActionConnector = register_lambda_action_connector(
             "ZeroActionsConnector",
             lambda actions, states, fetches: (
