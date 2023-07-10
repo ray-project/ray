@@ -23,7 +23,6 @@ from ray.serve._private.utils import (
     snake_to_camel_case,
     dict_keys_snake_to_camel_case,
     get_head_node_id,
-    wrap_generator_function_in_async_if_needed,
 )
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
@@ -617,41 +616,6 @@ def test_calculate_remaining_timeout():
         )
         == 0
     )
-
-
-@pytest.mark.asyncio
-async def test_wrap_generator_function_in_async_if_needed():
-    def regular_function():
-        return "hi"
-
-    with pytest.raises(TypeError):
-        wrap_generator_function_in_async_if_needed(regular_function)
-
-    def sync_gen():
-        for i in range(5):
-            yield i
-
-    wrapped = wrap_generator_function_in_async_if_needed(sync_gen)
-    assert wrapped.__name__ == sync_gen.__name__
-
-    nums = []
-    async for i in wrapped():
-        nums.append(i)
-
-    assert nums == list(range(5))
-
-    async def async_gen():
-        for i in range(5):
-            yield i
-
-    not_wrapped = wrap_generator_function_in_async_if_needed(async_gen)
-    assert not_wrapped == async_gen
-
-    nums = []
-    async for i in not_wrapped():
-        nums.append(i)
-
-    assert nums == list(range(5))
 
 
 if __name__ == "__main__":
