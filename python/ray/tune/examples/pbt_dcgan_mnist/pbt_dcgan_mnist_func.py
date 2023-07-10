@@ -23,7 +23,7 @@ from ray.tune.examples.pbt_dcgan_mnist.common import (
     demo_gan,
     get_data_loader,
     plot_images,
-    train,
+    train_func,
     weights_init,
     Discriminator,
     Generator,
@@ -73,7 +73,7 @@ def dcgan_train(config):
                 param_group["lr"] = config["netG_lr"]
 
     while True:
-        lossG, lossD, is_score = train(
+        lossG, lossD, is_score = train_func(
             netD,
             netG,
             optimizerG,

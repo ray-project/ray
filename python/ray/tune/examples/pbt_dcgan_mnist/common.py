@@ -182,7 +182,7 @@ def inception_score(imgs, mnist_model_ref, batch_size=32, splits=1):
 # __INCEPTION_SCORE_end__
 
 
-def train(
+def train_func(
     netD,
     netG,
     optimG,

@@ -10,7 +10,7 @@ import numpy as np
 import torch
 import torch.optim as optim
 from torchvision import datasets
-from ray.tune.examples.mnist_pytorch import train, test, ConvNet,\
+from ray.tune.examples.mnist_pytorch import train_func, test_func, ConvNet,\
     get_data_loaders
 
 import ray
@@ -37,8 +37,8 @@ class PytorchTrainable(tune.Trainable):
             momentum=config.get("momentum", 0.9))
 
     def step(self):
-        train(self.model, self.optimizer, self.train_loader)
-        acc = test(self.model, self.test_loader)
+        train_func(self.model, self.optimizer, self.train_loader)
+        acc = test_func(self.model, self.test_loader)
         return {"mean_accuracy": acc}
 
     def save_checkpoint(self, checkpoint_dir):
@@ -137,5 +137,5 @@ if __name__ == "__main__":
     best_model = restored_trainable.model
     # Note that test only runs on a small random set of the test data, thus the
     # accuracy may be different from metrics shown in tuning process.
-    test_acc = test(best_model, get_data_loaders()[1])
+    test_acc = test_func(best_model, get_data_loaders()[1])
     print("best model accuracy: ", test_acc)

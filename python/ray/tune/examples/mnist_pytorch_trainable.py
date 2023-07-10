@@ -10,7 +10,7 @@ import torch.optim as optim
 import ray
 from ray import air, tune
 from ray.tune.schedulers import ASHAScheduler
-from ray.tune.examples.mnist_pytorch import train, test, get_data_loaders, ConvNet
+from ray.tune.examples.mnist_pytorch import train_func, test_func, get_data_loaders, ConvNet
 
 # Change these values if you want the training to run quicker or slower.
 EPOCH_SIZE = 512
@@ -42,9 +42,9 @@ class TrainMNIST(tune.Trainable):
             momentum=config.get("momentum", 0.9))
 
     def step(self):
-        train(
+        train_func(
             self.model, self.optimizer, self.train_loader, device=self.device)
-        acc = test(self.model, self.test_loader, self.device)
+        acc = test_func(self.model, self.test_loader, self.device)
         return {"mean_accuracy": acc}
 
     def save_checkpoint(self, checkpoint_dir):

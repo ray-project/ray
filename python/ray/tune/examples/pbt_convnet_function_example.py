@@ -6,7 +6,7 @@ import os
 import numpy as np
 import torch
 import torch.optim as optim
-from ray.tune.examples.mnist_pytorch import test, ConvNet, get_data_loaders
+from ray.tune.examples.mnist_pytorch import test_func, ConvNet, get_data_loaders
 
 import ray
 from ray import train, tune
@@ -41,7 +41,7 @@ def train_convnet(config):
 
     while True:
         ray.tune.examples.mnist_pytorch.train(model, optimizer, train_loader)
-        acc = test(model, test_loader)
+        acc = test_func(model, test_loader)
         checkpoint = None
         if step % 5 == 0:
             # Every 5 steps, checkpoint our current state.
@@ -75,7 +75,7 @@ def test_best_model(results: tune.ResultGrid):
         best_model.load_state_dict(best_checkpoint["model"])
         # Note that test only runs on a small random set of the test data, thus the
         # accuracy may be different from metrics shown in tuning process.
-        test_acc = test(best_model, get_data_loaders()[1])
+        test_acc = test_func(best_model, get_data_loaders()[1])
         print("best model accuracy: ", test_acc)
 
 
