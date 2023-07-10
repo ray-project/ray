@@ -5,6 +5,8 @@ Ray Examples
 
 .. raw:: html
 
+    <link rel="stylesheet" type="text/css" href="../_static/css/examples.css">
+
     <div>
        <div class="searchDiv">
           <input type="text" id="searchInput" class="searchTerm"

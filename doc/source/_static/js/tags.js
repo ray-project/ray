@@ -245,16 +245,6 @@ window.addEventListener('load', () => {
 
     const isGallery = window.location.href.endsWith("ray-overview/examples.html")
     if (isGallery) {
-        // Hide the nav bar that has sandwich, fullscreen, github, and download buttons.
-        document.querySelector("div.header-article.row.sticky-top.noprint").classList.add("hidden");
-
-        let navBar = document.getElementById("site-navigation");
-
-        // Recursively remove all children of the navbar.
-        while (navBar.firstChild) {
-          navBar.firstChild.remove();
-        }
-
         const tags = {
           useCaseTags: [
             {
@@ -366,16 +356,9 @@ window.addEventListener('load', () => {
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = tagString;
         const newNav = tempDiv.firstChild;
-        navBar.appendChild(newNav);
 
-        // Hide "previous" and "next" footer on the gallery page
-        document.querySelector("footer.footer-article.noprint").classList.add("hidden");
-
-        // Apply custom css rules for
-        document.getElementsByTagName('head')[0].insertAdjacentHTML(
-          'beforeend',
-          '<link rel="stylesheet" href="../_static/css/examples.css" />'
-        );
+        // Populate the sidebar with buttons that filter for different example tags
+        document.getElementById("site-navigation").appendChild(newNav);
 
         document.querySelectorAll('.tag').forEach(tag => {
             tag.addEventListener('click', generateTagClickHandler(tag, tags));
