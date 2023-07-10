@@ -28,6 +28,7 @@ window.addEventListener("scroll", loadVisibleTermynals);
 createTermynals();
 loadVisibleTermynals();
 
+
 // Reintroduce dropdown icons on the sidebar. This is a hack, as we can't
 // programmatically figure out which nav items have children anymore.
 document.addEventListener("DOMContentLoaded", function() {
@@ -35,7 +36,7 @@ document.addEventListener("DOMContentLoaded", function() {
     for (let i = 0; i < navItems.length; i++) {
         let navItem = navItems[i];
         const stringList = [
-            "User Guide", "Examples",
+            "User Guides", "Examples",
             "Ray Core", "Ray Core API",
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
@@ -44,6 +45,8 @@ document.addEventListener("DOMContentLoaded", function() {
             "Ray Train", "Ray Train API",
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
             "Ray Serve", "Ray Serve API",
+            "Production Guide", "Advanced Guides",
+            "Deploy Many Models",
             "Ray RLlib", "Ray RLlib API",
             "More Libraries", "Ray Workflows (Alpha)",
             "Monitoring and Debugging",
@@ -120,4 +123,43 @@ document.addEventListener("DOMContentLoaded", function() {
                 });
             });
         }
+});
+
+
+function checkForElement() {
+    let element = document.getElementsByClassName('mantine-Modal-root')[0];
+    if (element) {
+        return element
+    } else {
+        setTimeout(checkForElement, 100);
+        return null
+    }
+}
+
+window.addEventListener("load", function(){
+
+    let targetElement = checkForElement();
+
+    try {
+        let observer = new MutationObserver(
+            function (mutationsList, observer) {
+                // Handle the changes in the element
+                mutationsList.forEach(function (mutation) {
+                    // Code to handle the specific type of mutation, like "childList" additions
+                    console.log('Element changed:', mutation);
+                    let inputElement = document.getElementsByClassName("mantine-TextInput-input")[0];
+                    inputElement.placeholder = "Do not include any personal data or confidential information";
+                    let main = document.getElementsByClassName("mantine-Text-root")[1];
+                    main.textContent = "Ray Docs AI - Ask a question"
+                    let left = document.getElementsByClassName("mantine-Text-root")[2];
+                    left.textContent = "results are automated & may be incorrect or contain inappropriate information"
+                });
+            });
+
+        let observerConfig = {childList: true};
+        observer.observe(targetElement, observerConfig);
+    } catch (e) {
+        console.log("could not load kapa widget.");
+        console.log(e);
+    }
 });

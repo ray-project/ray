@@ -1,7 +1,7 @@
 import pytest
 import sys
 
-from ray_release.config import Test
+from ray_release.test import Test
 from ray_release.exception import ReleaseTestConfigError
 from ray_release.template import populate_cluster_env_variables, render_yaml_template
 

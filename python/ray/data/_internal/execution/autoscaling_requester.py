@@ -1,4 +1,5 @@
 import math
+import threading
 import time
 from typing import Dict, List
 
@@ -9,6 +10,7 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Resource requests are considered stale after this number of seconds, and
 # will be purged.
 RESOURCE_REQUEST_TIMEOUT = 60
+PURGE_INTERVAL = RESOURCE_REQUEST_TIMEOUT * 2
 
 # When the autoscaling is driven by memory pressure and there are abundant
 # CPUs to support incremental CPUs needed to launch more tasks, we'll translate
@@ -19,7 +21,7 @@ ARTIFICIAL_CPU_SCALING_FACTOR = 1.2
 
 @ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)
 class AutoscalingRequester:
-    """Actor to make resource requests to autoscaler for the datastreams.
+    """Actor to make resource requests to autoscaler for the datasets.
 
     The resource requests are set to timeout after RESOURCE_REQUEST_TIMEOUT seconds.
     For those live requests, we keep track of the last request made for each execution,
@@ -32,6 +34,23 @@ class AutoscalingRequester:
         self._resource_requests = {}
         # TTL for requests.
         self._timeout = RESOURCE_REQUEST_TIMEOUT
+
+        self._self_handle = ray.get_runtime_context().current_actor
+
+        # Start a thread to purge expired requests periodically.
+        def purge_thread_run():
+            while True:
+                time.sleep(PURGE_INTERVAL)
+                # Call purge_expired_requests() as an actor task,
+                # so we don't need to handle multi-threading.
+                ray.get(self._self_handle.purge_expired_requests.remote())
+
+        self._purge_thread = threading.Thread(target=purge_thread_run, daemon=True)
+        self._purge_thread.start()
+
+    def purge_expired_requests(self):
+        self._purge()
+        ray.autoscaler.sdk.request_resources(bundles=self._aggregate_requests())
 
     def request_resources(self, req: List[Dict], execution_id: str):
         # Purge expired requests before making request to autoscaler.

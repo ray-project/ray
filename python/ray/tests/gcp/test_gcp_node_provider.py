@@ -10,7 +10,7 @@ from ray.autoscaler._private.gcp.node import (
     GCPResource,
 )
 
-from python.ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
+from ray.autoscaler._private.gcp.node_provider import GCPNodeProvider
 
 _PROJECT_NAME = "project-one"
 _AZ = "us-west1-b"

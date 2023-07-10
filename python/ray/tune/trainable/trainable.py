@@ -9,8 +9,7 @@ import sys
 import tempfile
 import time
 from contextlib import redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional, Union, Type, TYPE_CHECKING
-import warnings
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
 
 import ray
 from ray.air._internal.remote_storage import list_at_uri
@@ -19,6 +18,11 @@ from ray.air._internal.util import skip_exceptions, exception_cause
 from ray.air.checkpoint import (
     Checkpoint,
     _DICT_CHECKPOINT_ADDITIONAL_FILE_KEY,
+)
+from ray.air.constants import (
+    TIMESTAMP,
+    TIME_THIS_ITER_S,
+    TRAINING_ITERATION,
 )
 from ray.tune.result import (
     DEBUG_METRICS,
@@ -33,12 +37,9 @@ from ray.tune.result import (
     SHOULD_CHECKPOINT,
     STDERR_FILE,
     STDOUT_FILE,
-    TIME_THIS_ITER_S,
     TIME_TOTAL_S,
-    TIMESTAMP,
     TIMESTEPS_THIS_ITER,
     TIMESTEPS_TOTAL,
-    TRAINING_ITERATION,
     TRIAL_ID,
     TRIAL_INFO,
 )
@@ -50,7 +51,7 @@ from ray.tune.utils.callback import (
 )
 from ray.tune.utils.log import disable_ipython
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.syncer import Syncer, SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.utils.util import Tee, _get_checkpoint_from_remote_node
 from ray.util.annotations import PublicAPI
@@ -108,10 +109,8 @@ class Trainable:
     def __init__(
         self,
         config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,
+        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
         remote_checkpoint_dir: Optional[str] = None,
-        custom_syncer: Optional[Syncer] = None,  # Deprecated
-        sync_timeout: Optional[int] = None,  # Deprecated
         sync_config: Optional[SyncConfig] = None,
     ):
         """Initialize a Trainable.
@@ -125,7 +124,7 @@ class Trainable:
         Args:
             config: Trainable-specific configuration data. By default
                 will be saved as ``self.config``.
-            logger_creator: Function that creates a ray.tune.Logger
+            logger_creator: (Deprecated) Function that creates a ray.tune.Logger
                 object. If unspecified, a default logger is created.
             remote_checkpoint_dir: Upload directory (S3 or GS path).
                 This is **per trial** directory,
@@ -140,6 +139,7 @@ class Trainable:
         if self.is_actor():
             disable_ipython()
 
+        # TODO(ml-team): Remove `logger_creator` in 2.7.
         self._result_logger = self._logdir = None
         self._create_logger(self.config, logger_creator)
 
@@ -186,26 +186,13 @@ class Trainable:
             upload_dir=self.remote_checkpoint_dir, syncer="auto"
         )
 
-        # TODO(ml-team): `custom_syncer` and `syncer` are deprecated. Remove in 2.6.
-        warning_message = (
-            "Specifying `custom_syncer` and `sync_timeout` as arguments in the "
-            "Trainable constructor is deprecated and will be removed in version 2.6. "
-            "Pass in a `tune.SyncConfig` object through the `sync_config` "
-            "argument instead."
+        # Resolves syncer="auto" to an actual syncer cloud storage is used
+        # If sync_config.syncer is a custom Syncer instance, this is a no-op.
+        self.sync_config.syncer = get_node_to_storage_syncer(
+            self.sync_config, self.remote_checkpoint_dir
         )
-        if sync_timeout:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.sync_timeout = sync_timeout
-        if custom_syncer:
-            warnings.warn(warning_message, DeprecationWarning)
-            self.sync_config.syncer = custom_syncer
-        else:
-            # Resolves syncer="auto" to an actual syncer if needed
-            self.sync_config.syncer = get_node_to_storage_syncer(
-                self.sync_config, self.remote_checkpoint_dir
-            )
 
-        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "3"))
+        self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
             os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S", "1")
         )
@@ -233,11 +220,11 @@ class Trainable:
         This can be overridden by sub-classes to set the correct trial resource
         allocation, so the user does not need to.
 
-        .. code-block:: python
+        .. testcode::
 
             @classmethod
             def default_resource_request(cls, config):
-                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}]])
+                return PlacementGroupFactory([{"CPU": 1}, {"CPU": 1}])
 
 
         Args:
@@ -665,15 +652,16 @@ class Trainable:
                 max_retries=self.sync_num_retries,
                 backoff_s=self.sync_sleep_time,
             )
-        except TuneError:
+        except TuneError as e:
             num_retries = self.sync_num_retries
             logger.error(
                 f"Could not upload checkpoint to {checkpoint_uri} even after "
-                f"{num_retries} retries."
+                f"{num_retries} retries. "
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported. For large checkpoints or artifacts, "
                 f"consider increasing `SyncConfig(sync_timeout)` "
-                f"(current value: {self.sync_config.sync_timeout} seconds)."
+                f"(current value: {self.sync_config.sync_timeout} seconds). "
+                f"See the full error details below:\n{e}"
             )
             return False
         return True
@@ -1169,9 +1157,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            name = self.trial_name
+            from ray.tune import Trainable
+
+            name = Trainable().trial_name
         """
         if self._trial_info:
             return self._trial_info.trial_name
@@ -1184,9 +1174,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            trial_id = self.trial_id
+            from ray.tune import Trainable
+
+            trial_id = Trainable().trial_id
         """
         if self._trial_info:
             return self._trial_info.trial_id
@@ -1199,9 +1191,11 @@ class Trainable:
 
         This is not set if not using Tune.
 
-        .. code-block:: python
+        .. testcode::
 
-            trial_resources = self.trial_resources
+            from ray.tune import Trainable
+
+            trial_resources = Trainable().trial_resources
         """
         if self._trial_info:
             return self._trial_info.trial_resources

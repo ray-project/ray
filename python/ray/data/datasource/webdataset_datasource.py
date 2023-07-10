@@ -1,19 +1,18 @@
 # Copyright NVIDIA Corporation 2023
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Any, Callable, Dict, Optional, Union, List, TYPE_CHECKING
-import tarfile
-import io
-import time
-import re
-import uuid
 import fnmatch
+import io
+import re
+import tarfile
+import time
+import uuid
 from functools import partial
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
-from ray.util.annotations import PublicAPI
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
-
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -195,8 +194,8 @@ def _default_decoder(sample: Dict[str, Any], format: Optional[Union[bool, str]] 
         elif extension in ["cls", "cls2"]:
             sample[key] = int(value.decode("utf-8"))
         elif extension in ["jpg", "png", "ppm", "pgm", "pbm", "pnm"]:
-            import PIL.Image
             import numpy as np
+            import PIL.Image
 
             if format == "PIL":
                 sample[key] = PIL.Image.open(io.BytesIO(value))
@@ -249,8 +248,8 @@ def _default_encoder(sample: Dict[str, Any], format: Optional[Union[str, bool]] 
         elif extension in ["cls", "cls2"]:
             sample[key] = str(value).encode("utf-8")
         elif extension in ["jpg", "jpeg", "png", "ppm", "pgm", "pbm", "pnm"]:
-            import PIL.Image
             import numpy as np
+            import PIL.Image
 
             if isinstance(value, np.ndarray):
                 value = PIL.Image.fromarray(value)
@@ -295,17 +294,17 @@ def _make_iterable(block: BlockAccessor):
     This is a placeholder for dealing with more complex blocks.
 
     Args:
-        block: Ray Datastream block
+        block: Ray Dataset block
 
     Returns:
         Iterable[Dict[str,Any]]: Iterable of samples
     """
-    return block.iter_rows()
+    return block.iter_rows(public_row_format=False)
 
 
 @PublicAPI(stability="alpha")
 class WebDatasetDatasource(FileBasedDatasource):
-    """A Datasource for WebDataset datastreams (tar format with naming conventions)."""
+    """A Datasource for WebDataset datasets (tar format with naming conventions)."""
 
     _FILE_EXTENSION = "tar"
 
@@ -337,6 +336,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         Yields:
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
+        import pandas as pd
 
         files = _tar_file_iterator(
             stream,
@@ -348,7 +348,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         for sample in samples:
             if decoder is not None:
                 sample = _apply_list(decoder, sample, default=_default_decoder)
-            yield [sample]
+            yield pd.DataFrame({k: [v] for k, v in sample.items()})
 
     def _write_block(
         self,

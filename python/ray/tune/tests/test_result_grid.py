@@ -12,6 +12,7 @@ import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.air.constants import EXPR_ERROR_FILE
 from ray.air.result import Result
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
@@ -332,7 +333,7 @@ def test_result_grid_df(ray_start_2_cpus):
 
 
 def test_num_errors_terminated(tmpdir):
-    error_filename = "error.txt"
+    error_filename = EXPR_ERROR_FILE
 
     trials = [Trial("foo", experiment_path=str(tmpdir), stub=True) for i in range(10)]
 

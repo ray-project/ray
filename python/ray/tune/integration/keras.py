@@ -3,9 +3,17 @@ from collections import Counter
 from typing import Dict, List, Optional, Union
 
 from ray import tune
+from ray.util.annotations import Deprecated
 from ray.air.integrations.keras import _Callback as TuneCallback
 
+_DEPRECATION_MESSAGE = (
+    "The `ray.tune.integration.keras` module is deprecated in favor of "
+    "`ray.air.integrations.keras.ReportCheckpointCallback` and will be removed "
+    "in Ray 2.7."
+)
 
+
+@Deprecated(message=_DEPRECATION_MESSAGE)
 class TuneReportCallback(TuneCallback):
     """Keras to Ray Tune reporting callback
 
@@ -65,6 +73,7 @@ class TuneReportCallback(TuneCallback):
         tune.report(**report_dict)
 
 
+@Deprecated(message=_DEPRECATION_MESSAGE)
 class _TuneCheckpointCallback(TuneCallback):
     """Keras checkpoint callback
 
@@ -127,6 +136,7 @@ class _TuneCheckpointCallback(TuneCallback):
                 self._cp_count += 1
 
 
+@Deprecated(message=_DEPRECATION_MESSAGE)
 class TuneReportCheckpointCallback(TuneCallback):
     """Keras report and checkpoint callback
 

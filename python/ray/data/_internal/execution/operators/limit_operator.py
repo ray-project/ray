@@ -1,27 +1,19 @@
-import ray
 import copy
 from collections import deque
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-)
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.execution.interfaces import (
-    PhysicalOperator,
-    RefBundle,
+from typing import Deque, List, Optional, Tuple
+
+import ray
+from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
+from ray.data._internal.execution.operators.base_physical_operator import (
+    OneToOneOperator,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.stats import StatsDict
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.types import ObjectRef
-from typing import (
-    Deque,
-    List,
-    Optional,
-    Tuple,
-)
 
 
-class LimitOperator(PhysicalOperator):
+class LimitOperator(OneToOneOperator):
     """Physical operator for limit."""
 
     def __init__(
@@ -32,15 +24,18 @@ class LimitOperator(PhysicalOperator):
         self._limit = limit
         self._consumed_rows = 0
         self._buffer: Deque[RefBundle] = deque()
-        self._name = f"Limit[limit={limit}]"
+        self._name = f"limit={limit}"
         self._output_metadata: List[BlockMetadata] = []
-        self._num_outputs_total = input_op.num_outputs_total()
-        if self._num_outputs_total is not None:
-            self._num_outputs_total = min(self._num_outputs_total, limit)
-        super().__init__(self._name, [input_op])
+        self._cur_output_bundles = 0
+        super().__init__(self._name, input_op)
+        if self._limit <= 0:
+            self.all_inputs_done()
 
     def _limit_reached(self) -> bool:
         return self._consumed_rows >= self._limit
+
+    def need_more_inputs(self) -> bool:
+        return not self._limit_reached()
 
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()
@@ -53,10 +48,10 @@ class LimitOperator(PhysicalOperator):
             num_rows = metadata.num_rows
             assert num_rows is not None
             if self._consumed_rows + num_rows <= self._limit:
-                self._consumed_rows += num_rows
                 out_blocks.append(block)
                 out_metadata.append(metadata)
                 self._output_metadata.append(metadata)
+                self._consumed_rows += num_rows
             else:
                 # Slice the last block.
                 def slice_fn(block, metadata, num_rows) -> Tuple[Block, BlockMetadata]:
@@ -75,12 +70,16 @@ class LimitOperator(PhysicalOperator):
                 metadata = ray.get(metadata_ref)
                 out_metadata.append(metadata)
                 self._output_metadata.append(metadata)
+                self._consumed_rows = self._limit
                 break
+        self._cur_output_bundles += 1
         out_refs = RefBundle(
             list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
         )
         self._buffer.append(out_refs)
+        if self._limit_reached():
+            self.all_inputs_done()
 
     def has_next(self) -> bool:
         return len(self._buffer) > 0
@@ -92,7 +91,10 @@ class LimitOperator(PhysicalOperator):
         return {self._name: self._output_metadata}
 
     def num_outputs_total(self) -> Optional[int]:
-        if self._limit_reached():
-            return self._limit
+        # Before inputs are completed (either because the limit is reached or
+        # because the inputs operators are done), we don't know how many output
+        # bundles we will have.
+        if self._inputs_complete:
+            return self._cur_output_bundles
         else:
-            return self._num_outputs_total
+            return None

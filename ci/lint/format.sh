@@ -155,12 +155,14 @@ BLACK_EXCLUDES=(
     `'python/ray/core/src/ray/gcs/*|'`
     `'python/ray/thirdparty_files/*|'`
     `'python/ray/_private/thirdparty/*|'`
-    `'python/ray/serve/tests/test_config_files/syntax_error\.py'
+    `'python/ray/serve/tests/test_config_files/syntax_error\.py|'`
+    `'doc/external/*'
 )
 
 GIT_LS_EXCLUDES=(
   ':(exclude)python/ray/cloudpickle/'
   ':(exclude)python/ray/_private/runtime_env/_clonevirtualenv.py'
+  ':(exclude)doc/external/'
 )
 
 JAVA_EXCLUDES=(

@@ -17,5 +17,3 @@ cartpole-impala-fake-gpus:
         # Fake 2 GPUs.
         num_gpus: 2
         _fake_gpus: true
-
-        vtrace_drop_last_ts: false

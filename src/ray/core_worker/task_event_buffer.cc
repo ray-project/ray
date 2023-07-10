@@ -95,6 +95,14 @@ bool TaskStatusEvent::ToRpcTaskEventsOrDrop(rpc::TaskEvents *rpc_task_events) {
         state_update_->task_log_info_.value());
   }
 
+  if (!state_update_->actor_repr_name_.empty()) {
+    dst_state_update->set_actor_repr_name(state_update_->actor_repr_name_);
+  }
+
+  if (state_update_->pid_.has_value()) {
+    dst_state_update->set_worker_pid(state_update_->pid_.value());
+  }
+
   return false;
 }
 
@@ -139,6 +147,8 @@ TaskEventBufferImpl::TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_cli
       periodical_runner_(io_service_),
       gcs_client_(std::move(gcs_client)),
       buffer_() {}
+
+TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
@@ -202,7 +212,9 @@ void TaskEventBufferImpl::Stop() {
     absl::MutexLock lock(&mutex_);
     // It's now safe to disconnect the GCS client since it will not be used by any
     // callbacks.
-    gcs_client_->Disconnect();
+    if (gcs_client_) {
+      gcs_client_->Disconnect();
+    }
   }
 }
 

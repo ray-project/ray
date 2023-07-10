@@ -1,22 +1,21 @@
 import itertools
-import pytest
+import queue
+import threading
 import time
 from typing import Iterator, List, Tuple
 
 import pandas as pd
 import pyarrow as pa
+import pytest
 
 import ray
-from ray.data.block import Block, BlockMetadata
-from ray.data._internal.block_batching.interfaces import (
-    Batch,
-    BlockPrefetcher,
-)
+from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.iter_batches import (
     iter_batches,
     prefetch_batches_locally,
     restore_original_order,
 )
+from ray.data.block import Block, BlockMetadata
 
 
 def block_generator(
@@ -97,6 +96,44 @@ def test_restore_from_original_order():
     ordered = list(restore_original_order(iter(base_iterator)))
     idx = [batch.batch_idx for batch in ordered]
     assert idx == [0, 1, 2, 3]
+
+
+def test_finalize_fn_uses_single_thread(ray_start_regular_shared):
+    """Tests that finalize_fn is not run with multiple threads."""
+    block_refs_iter = itertools.starmap(
+        lambda block, metadata: (ray.put(block), metadata),
+        block_generator(num_blocks=20, num_rows=2),
+    )
+
+    q = queue.Queue()
+    semaphore = threading.Semaphore(value=1)
+
+    def finalize_enforce_single_thread(batch):
+        already_acquired = not semaphore.acquire(blocking=False)
+        if already_acquired:
+            e = AssertionError("finalize_fn is being run concurrently.")
+            q.put(e, block=True)
+        semaphore.release()
+        return batch
+
+    # Test that finalize_fn is called in a single thread,
+    # even if prefetch_batches is set.
+    output_batches = iter_batches(
+        block_refs_iter,
+        collate_fn=lambda batch: batch,
+        finalize_fn=finalize_enforce_single_thread,
+        prefetch_batches=4,
+    )
+
+    # Force execution of the iterator.
+    # This step should not raise an exception.
+    list(output_batches)
+
+    try:
+        e = q.get(block=False, timeout=0.1)
+        raise e
+    except queue.Empty:
+        pass
 
 
 # Test for 3 cases

@@ -30,7 +30,7 @@ class TestAPPOOffPolicyNess(unittest.TestCase):
         )
         num_iterations = 3
 
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             for num_aggregation_workers in [0, 1]:
                 config.num_aggregation_workers = num_aggregation_workers
                 print("aggregation-workers={}".format(config.num_aggregation_workers))

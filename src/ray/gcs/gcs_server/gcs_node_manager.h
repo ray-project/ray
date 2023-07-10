@@ -17,6 +17,7 @@
 #include <gtest/gtest_prod.h>
 
 #include <boost/bimap.hpp>
+#include <boost/bimap/unordered_multiset_of.hpp>
 #include <boost/bimap/unordered_set_of.hpp>
 
 #include "absl/container/flat_hash_map.h"
@@ -35,6 +36,7 @@
 namespace ray {
 namespace gcs {
 
+class GcsAutoscalerStateManagerTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
@@ -46,7 +48,13 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+                          const ClusterID &cluster_id);
+
+  /// Handle register rpc request come from raylet.
+  void HandleGetClusterId(rpc::GetClusterIdRequest request,
+                          rpc::GetClusterIdReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle register rpc request come from raylet.
   void HandleRegisterNode(rpc::RegisterNodeRequest request,
@@ -101,6 +109,12 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllAliveNodes()
       const {
     return alive_nodes_;
+  }
+
+  /// Get all dead nodes.
+  const absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> &GetAllDeadNodes()
+      const {
+    return dead_nodes_;
   }
 
   /// Add listener to monitor the remove action of nodes.
@@ -159,6 +173,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Raylet client pool.
   std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  /// Cluster ID to be shared with clients when connecting.
+  const ClusterID cluster_id_;
 
   // Debug info.
   enum CountType {
@@ -173,10 +189,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// A map of NodeId <-> ip:port of raylet
   using NodeIDAddrBiMap =
       boost::bimap<boost::bimaps::unordered_set_of<NodeID, std::hash<NodeID>>,
-                   boost::bimaps::unordered_set_of<std::string>>;
+                   boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 
   friend GcsMonitorServerTest;
+  friend GcsAutoscalerStateManagerTest;
 };
 
 }  // namespace gcs

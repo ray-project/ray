@@ -45,7 +45,6 @@ extensions = [
     "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
-    "sphinxcontrib.yt",
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_nb",
@@ -57,7 +56,6 @@ extensions = [
     "sphinxcontrib.redoc",
     "sphinx_tabs.tabs",
     "sphinx_remove_toctrees",
-    "sphinx_panels",
     "sphinx_design",
 ]
 
@@ -185,6 +183,7 @@ language = None
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
+    "cluster/running-applications/doc/ray.*",
 ]
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -237,10 +236,13 @@ linkcheck_ignore = [
     "https://www.datanami.com/2018/02/01/rays-new-library-targets-high-speed-reinforcement-learning/",
     # 403 Client Error: Forbidden for url.
     # They ratelimit bots.
+    "https://www.researchgate.net/publication/222573328_Stochastic_Gradient_Boosting",
     "https://www.datanami.com/2019/11/05/why-every-python-developer-will-love-ray/",
     "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
+    # Returns 429 errors in Linkcheck due to too many requests
+    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -355,28 +357,15 @@ nb_render_priority = {
     ),
 }
 
-tag_mapping = {
-    # Tags for Ray Train examples gallery
-    "trainTorchFashionMnist": "PyTorch,Training",
-    "trainTransformers": "PyTorch,Training,HuggingFace",
-    "trainTensorflowMnist": "TensorFlow,Training",
-    "trainHorovod": "Horovod, PyTorch,Training",
-    "trainMlflow": "MLflow,Training",
-    "trainTuneTensorflow": "TensorFlow,Training,Tuning",
-    "trainTunePyTorch": "PyTorch,Training,Tuning",
-    "trainBenchmark": "PyTorch,Training",
-    "trainLightning": "PyTorch,Lightning,Training"
-    # TODO add and integrate tags for other libraries.
-    # Tune has a proper example library
-    # Serve, RLlib and AIR could use one.
-}
-
-# Create file with tag mappings for tags.js to use.
-with open("./_static/tag-mapping.json", "w") as f:
-    json.dump(tag_mapping, f)
-
 
 def setup(app):
+    # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
+    # `doctest` doesn't support this flag by default, `sphinx.ext.doctest` raises
+    # warnings when we build the documentation.
+    import doctest
+
+    doctest.register_optionflag("MOCK")
+
     app.connect("html-page-context", update_context)
 
     # Custom CSS
@@ -433,3 +422,8 @@ redoc = [
 ]
 
 redoc_uri = "https://cdn.redoc.ly/redoc/latest/bundles/redoc.standalone.js"
+
+autosummary_filename_map = {
+    "ray.serve.deployment": "ray.serve.deployment_decorator",
+    "ray.serve.Deployment": "ray.serve.Deployment",
+}

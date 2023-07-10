@@ -11,11 +11,9 @@ import time
 import traceback
 from typing import Callable, List, Set
 
-import ray._private.gcs_pubsub as gcs_pubsub
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -135,7 +133,7 @@ class LogMonitor:
     def __init__(
         self,
         logs_dir,
-        gcs_publisher: gcs_pubsub.GcsPublisher,
+        gcs_publisher,
         is_proc_alive_fn: Callable[[int], bool],
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
     ):
@@ -369,6 +367,13 @@ class LogMonitor:
                             ray_constants.LOG_PREFIX_JOB_ID, 1
                         )[1]
                     elif next_line.startswith(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_START
+                    ) or next_line.startswith(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END
+                    ):
+                        # Ignore these magic tokens for task logs.
+                        pass
+                    elif next_line.startswith(
                         "Windows fatal exception: access violation"
                     ):
                         # We are suppressing the
@@ -525,14 +530,14 @@ if __name__ == "__main__":
     )
 
     log_monitor = LogMonitor(
-        args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
+        args.logs_dir, ray._raylet.GcsPublisher(address=args.gcs_address), is_proc_alive
     )
 
     try:
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = GcsPublisher(address=args.gcs_address)
+        gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "

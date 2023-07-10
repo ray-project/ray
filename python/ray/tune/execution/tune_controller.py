@@ -14,6 +14,7 @@ from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
+from ray.exceptions import RayActorError
 from ray.tune.error import _AbortTrialExecution
 from ray.tune.execution.ray_trial_executor import _class_cache
 from ray.tune.execution.trial_runner import _TuneControllerBase, TrialRunnerWrapper
@@ -34,6 +35,7 @@ from ray.tune.search import SearchAlgorithm
 from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow
+from ray.tune.utils.log import _dedup_logs
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
 from ray.util.annotations import DeveloperAPI
@@ -65,13 +67,14 @@ class TuneController(_TuneControllerBase):
         chdir_to_trial_dir: bool = False,
         reuse_actors: bool = False,
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
+        _trainer_api: bool = False,
     ):
         if resource_manager_factory:
-            self._resource_manager = resource_manager_factory()
+            resource_manager = resource_manager_factory()
         else:
-            self._resource_manager = PlacementGroupResourceManager()
+            resource_manager = PlacementGroupResourceManager()
 
-        self._actor_manager = RayActorManager(resource_manager=self._resource_manager)
+        self._actor_manager = RayActorManager(resource_manager=resource_manager)
 
         self._class_cache = _class_cache
 
@@ -103,6 +106,21 @@ class TuneController(_TuneControllerBase):
 
         # Removed actors
         self._started_actors: Set[TrackedActor] = set()
+
+        # Map of tracked actors -> timestamp
+        # The timestamp is when we requested the stop.
+        # We track these actors here to force a
+        # cleanup after some time (as they might be hanging).
+        # Todo: This timeout logic should be moved into the actor manager.
+        # This map is populated whenever we request an actor stop:
+        #  - Regular STOP decision
+        #  - Removing an actor because its trial REUSEs a different trial's actor
+        #  - Removing a cached actor because it's not needed anymore
+        # Actors are only tracked in this map if they actually started (not if they
+        # were only requested but never started).
+        # Actors are removed from this map:
+        #  - When the STOP resolved and the actor actually stopped
+        #  - When they are forcefully cleaned up after the timeout.
         self._stopping_actors: Dict[TrackedActor, float] = {}
         self._earliest_stopping_actor: float = float("inf")
         self._actor_cleanup_timeout: int = int(
@@ -111,7 +129,7 @@ class TuneController(_TuneControllerBase):
         self._actor_force_cleanup_timeout: int = 10
 
         # Reuse actors
-        self._reuse_actors = reuse_actors  # reuse_actors
+        self._reuse_actors = reuse_actors
         self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # General trial behavior
@@ -143,6 +161,7 @@ class TuneController(_TuneControllerBase):
             callbacks=callbacks,
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
+            _trainer_api=_trainer_api,
         )
 
     def _wrapped(self):
@@ -150,8 +169,20 @@ class TuneController(_TuneControllerBase):
         return TrialRunnerWrapper(
             self,
             trial_executor=_FakeRayTrialExecutor(self),
-            runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
-            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
+            runner_whitelist_attr={
+                "search_alg",
+                "get_trials",
+                "get_live_trials",
+                "_set_trial_status",
+                "pause_trial",
+                "stop_trial",
+            },
+            executor_whitelist_attr={
+                "has_resources_for_trial",
+                "pause_trial",
+                "save",
+                "_resource_updater",
+            },
         )
 
     def _used_resources_string(self) -> str:
@@ -160,7 +191,7 @@ class TuneController(_TuneControllerBase):
         return self._resource_updater.debug_string(allocated_resources)
 
     def on_step_begin(self):
-        pass
+        self._resource_updater.update_avail_resources()
 
     def on_step_end(self):
         self._cleanup_cached_actors(force_all=False)
@@ -191,7 +222,7 @@ class TuneController(_TuneControllerBase):
 
         if (
             not force_all
-            and now - self._earliest_stopping_actor > self._actor_cleanup_timeout
+            and now - self._earliest_stopping_actor <= self._actor_cleanup_timeout
         ):
             # If the earliest actor to timeout has not reached the timeout, return
             return
@@ -199,8 +230,11 @@ class TuneController(_TuneControllerBase):
         # This is a bit costly, so we want to avoid running it too often
         times = deque(
             sorted(
-                (timestamp, tracked_actor)
-                for tracked_actor, timestamp in self._stopping_actors.items()
+                [
+                    (timestamp, tracked_actor)
+                    for tracked_actor, timestamp in self._stopping_actors.items()
+                ],
+                key=lambda item: item[0],
             )
         )
 
@@ -215,6 +249,11 @@ class TuneController(_TuneControllerBase):
                 continue
 
             _, tracked_actor = times.popleft()
+
+            if tracked_actor not in self._stopping_actors:
+                # Actor stopping has been handled by the block above
+                continue
+
             if self._actor_manager.is_actor_started(tracked_actor=tracked_actor):
                 logger.debug(f"Forcefully killing actor: {tracked_actor}")
                 self._actor_manager.remove_actor(tracked_actor=tracked_actor, kill=True)
@@ -376,8 +415,6 @@ class TuneController(_TuneControllerBase):
     def _cleanup_trials(self):
         logger.debug("CLEANING UP all trials")
 
-        self._cleanup_cached_actors(force_all=True)
-
         for tracked_actor in list(self._actor_to_trial):
             trial = self._actor_to_trial[tracked_actor]
             logger.debug(
@@ -386,9 +423,15 @@ class TuneController(_TuneControllerBase):
             )
             self._schedule_trial_stop(trial)
 
+        # Clean up cached actors now
+        self._cleanup_cached_actors(force_all=True)
+
         start = time.monotonic()
         while time.monotonic() - start < 5 and self._actor_manager.num_total_actors:
-            logger.debug("Waiting for actor manager to clean up final state")
+            if _dedup_logs("actor_manager_cleanup", str(start)):
+                logger.debug(
+                    "Waiting for actor manager to clean up final state [dedup]"
+                )
             self._actor_manager.next(timeout=1)
 
         logger.debug("Force cleanup of remaining actors")
@@ -401,11 +444,13 @@ class TuneController(_TuneControllerBase):
             tracked_actor, "stop", _return_future=True
         )
         now = time.monotonic()
-        self._stopping_actors[tracked_actor] = now
-        self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
-        self._actor_manager.remove_actor(
+
+        if self._actor_manager.remove_actor(
             tracked_actor, kill=False, stop_future=stop_future
-        )
+        ):
+            # If the actor was previously alive, track
+            self._stopping_actors[tracked_actor] = now
+            self._earliest_stopping_actor = min(self._earliest_stopping_actor, now)
 
     ###
     # ADD ACTORS
@@ -431,19 +476,27 @@ class TuneController(_TuneControllerBase):
             trial_to_run = self._scheduler_alg.choose_trial_to_run(self._wrapped())
 
         if trial_to_run:
-            logger.debug(f"Chose trial to run from scheduler: {trial_to_run}")
+            if _dedup_logs("trial_to_run_chosen", trial_to_run.trial_id):
+                logger.debug(
+                    f"Chose trial to run from scheduler: {trial_to_run} [dedup]"
+                )
             if (
                 trial_to_run not in self._staged_trials
                 and trial_to_run not in self._trial_to_actor
             ):
                 logger.debug(f"Staging trial to run: {trial_to_run}")
+                self._set_trial_status(trial_to_run, Trial.PENDING)
                 self._staged_trials.add(trial_to_run)
                 self._actor_cache.increase_max(trial_to_run.placement_group_factory)
                 # schedule_trial_actor also potentially uses cached actors
                 self._schedule_trial_actor(trial_to_run)
             else:
                 # Otherwise, only try to use the cached actor
-                logger.debug(f"Trying to re-use actor for trial to run: {trial_to_run}")
+                if _dedup_logs("trial_to_run_reuse", trial_to_run.trial_id):
+                    logger.debug(
+                        f"Trying to re-use actor for trial to run: {trial_to_run} "
+                        f"[dedup]"
+                    )
                 self._maybe_reuse_cached_actor(trial_to_run)
 
         ###
@@ -452,7 +505,7 @@ class TuneController(_TuneControllerBase):
             new_candidates = []
 
             while candidates:
-                if len(self._staged_trials) >= self._max_pending_trials:
+                if self._actor_manager.num_pending_actors >= self._max_pending_trials:
                     break
 
                 trial = candidates.pop(0)
@@ -460,7 +513,7 @@ class TuneController(_TuneControllerBase):
                 # If the trial is part of the list, but not of the set,
                 # we just ignore it. Removing it from the list on status
                 # change is too expensive.
-                if trial not in (self._pending_trials | self._paused_trials):
+                if trial not in self._pending_trials:
                     continue
 
                 if trial in self._trial_to_actor:
@@ -496,6 +549,12 @@ class TuneController(_TuneControllerBase):
                 )
                 if not self._maybe_reuse_cached_actor(start_trial):
                     self._resources_to_pending_trials[resource].add(start_trial)
+                else:
+                    if start_trial not in self._staged_trials:
+                        self._staged_trials.add(start_trial)
+                        self._actor_cache.increase_max(
+                            start_trial.placement_group_factory
+                        )
 
     def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
         """Maybe reuse a cached actor for a trial.
@@ -517,6 +576,7 @@ class TuneController(_TuneControllerBase):
         if trial in self._trial_to_actor:
             original_actor = self._trial_to_actor.pop(trial)
             self._actor_to_trial.pop(original_actor)
+
             logger.debug(f"Removing ORIGINAL ACTOR for trial {trial}: {original_actor}")
             self._remove_actor(tracked_actor=original_actor)
 
@@ -541,7 +601,7 @@ class TuneController(_TuneControllerBase):
         """
         logger.debug(f"Trying to schedule new ACTOR for trial {trial}")
 
-        self._set_trial_status(trial, Trial.PENDING)
+        assert trial.status == Trial.PENDING
 
         trial.init_logdir()
         # We checkpoint metadata here to try mitigating logdir duplication
@@ -563,10 +623,13 @@ class TuneController(_TuneControllerBase):
 
         trainable_cls = trial.get_trainable_cls()
         if not trainable_cls:
-            raise _AbortTrialExecution(
+            exception = _AbortTrialExecution(
                 f"Invalid trainable: {trial.trainable_name}. If you passed "
                 f"a string, make sure the trainable was registered before."
             )
+            self._schedule_trial_stop(trial, exception=exception)
+            return
+
         _actor_cls = self._class_cache.get(trainable_cls)
 
         trial.set_location(_Location())
@@ -741,6 +804,14 @@ class TuneController(_TuneControllerBase):
             self._unstage_trial_with_resources(trial)
             self._trial_task_failure(trial, exception=exception)
 
+        self._actor_manager.clear_actor_task_futures(tracked_actor)
+
+        # Clean up actor
+        tracked_actor.set_on_stop(None)
+        tracked_actor.set_on_error(None)
+        self._actor_manager.remove_actor(tracked_actor, kill=False)
+
+        # Trigger actor stopped callback
         self._actor_stopped(tracked_actor)
 
     def _schedule_trial_task(
@@ -793,7 +864,12 @@ class TuneController(_TuneControllerBase):
         if on_error:
 
             def _on_error(tracked_actor: TrackedActor, exception: Exception):
-                assert trial == self._actor_to_trial[tracked_actor]
+                # If the actor failed, it has already been cleaned up.
+                if tracked_actor not in self._actor_to_trial:
+                    assert isinstance(exception, RayActorError), type(exception)
+                else:
+                    assert trial == self._actor_to_trial[tracked_actor]
+
                 logger.debug(
                     f"Future {method_name.upper()} FAILED for trial {trial}: "
                     f"{exception}"
@@ -832,7 +908,7 @@ class TuneController(_TuneControllerBase):
             raise exception
         else:
             if self._print_trial_errors:
-                logger.error("Trial task failed", exc_info=exception)
+                logger.error(f"Trial task failed for trial {trial}", exc_info=exception)
             self._process_trial_failure(trial, exception=exception)
 
     def _schedule_trial_stop(self, trial: Trial, exception: Optional[Exception] = None):
@@ -1113,7 +1189,6 @@ class TuneController(_TuneControllerBase):
     def __getstate__(self):
         state = super().__getstate__()
         for exclude in [
-            "_resource_manager",
             "_actor_manager",
             "_class_cache",
             "_resource_updater",

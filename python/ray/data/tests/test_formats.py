@@ -1,39 +1,25 @@
 import os
-from typing import List, Union
+from typing import Iterable, List
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 import torchvision
-from ray.data.datasource.file_meta_provider import _handle_read_os_error
-
-from fsspec.implementations.local import LocalFileSystem
 from fsspec.implementations.http import HTTPFileSystem
+from fsspec.implementations.local import LocalFileSystem
 
 import ray
 from ray._private.test_utils import wait_for_condition
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource import (
-    Datasource,
-    DummyOutputDatasource,
-    WriteResult,
-)
-
+from ray.data.datasource import Datasource, DummyOutputDatasource, WriteResult
+from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
 from ray.types import ObjectRef
-from typing import Iterable
-
-
-def maybe_pipeline(ds, enabled):
-    if enabled:
-        return ds.window(blocks_per_window=1)
-    else:
-        return ds
 
 
 def df_to_csv(dataframe, path, **kwargs):
@@ -48,7 +34,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
     # test from single pyarrow table
     ds = ray.data.from_arrow(pa.Table.from_pandas(df1))
@@ -56,7 +42,7 @@ def test_from_arrow(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
 
 def test_from_arrow_refs(ray_start_regular_shared):
@@ -69,7 +55,7 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in pd.concat([df1, df2]).iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
     # test from single pyarrow table ref
     ds = ray.data.from_arrow_refs(ray.put(pa.Table.from_pandas(df1)))
@@ -77,22 +63,12 @@ def test_from_arrow_refs(ray_start_regular_shared):
     rows = [(r.one, r.two) for _, r in df1.iterrows()]
     assert values == rows
     # Check that metadata fetch is included in stats.
-    assert "FromArrowRefs" in ds.stats()
+    assert "FromArrow" in ds.stats()
 
 
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
-
-    # Zero-copy.
-    df = pd.DataFrame({"value": list(range(n))})
-    ds = ray.data.range_table(n)
-    dfds = pd.concat(
-        [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
-    )
-    assert df.equals(dfds)
-
-    # Conversion.
-    df = pd.DataFrame({"value": list(range(n))})
+    df = pd.DataFrame({"id": list(range(n))})
     ds = ray.data.range(n)
     dfds = pd.concat(
         [t.to_pandas() for t in ray.get(ds.to_arrow_refs())], ignore_index=True
@@ -105,7 +81,7 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert len(blocks) == 10
     out = []
     for b in ray.get(blocks):
-        out.extend(list(BlockAccessor.for_block(b).iter_rows()))
+        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
     out = sorted(out)
     assert out == list(range(10)), out
 
@@ -169,27 +145,19 @@ def test_read_example_data(ray_start_regular_shared, tmp_path):
     ]
 
 
-@pytest.mark.parametrize("pipelined", [False, True])
-def test_write_datasource(ray_start_regular_shared, pipelined):
+def test_write_datasource(ray_start_regular_shared):
     output = DummyOutputDatasource()
-    ds0 = ray.data.range(10, parallelism=2)
-    ds = maybe_pipeline(ds0, pipelined)
+    ds = ray.data.range(10, parallelism=2)
     ds.write_datasource(output)
-    if pipelined:
-        assert output.num_ok == 2
-    else:
-        assert output.num_ok == 1
+    assert output.num_ok == 1
     assert output.num_failed == 0
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
     output.enabled = False
-    ds = maybe_pipeline(ray.data.range(10, parallelism=2), pipelined)
+    ds = ray.data.range(10, parallelism=2)
     with pytest.raises(ValueError):
         ds.write_datasource(output, ray_remote_args={"max_retries": 0})
-    if pipelined:
-        assert output.num_ok == 2
-    else:
-        assert output.num_ok == 1
+    assert output.num_ok == 1
     assert output.num_failed == 1
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
@@ -203,7 +171,7 @@ def test_from_tf(ray_start_regular_shared):
 
     ray_dataset = ray.data.from_tf(tf_dataset)
 
-    actual_data = ray_dataset.take_all()
+    actual_data = extract_values("item", ray_dataset.take_all())
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
@@ -219,11 +187,11 @@ def test_from_torch(shutdown_only, tmp_path):
 
     ray_dataset = ray.data.from_torch(torch_dataset)
 
-    actual_data = list(ray_dataset.take_all())
+    actual_data = extract_values("item", list(ray_dataset.take_all()))
     assert actual_data == expected_data
 
 
-class NodeLoggerOutputDatasource(Datasource[Union[ArrowRow, int]]):
+class NodeLoggerOutputDatasource(Datasource):
     """A writable datasource that logs node IDs of write tasks, for testing."""
 
     def __init__(self):
@@ -329,13 +297,10 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_get_read_tasks(ray_start_cluster):
-    ray.shutdown()
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    cluster.add_node(num_cpus=4)
-    cluster.wait_for_nodes()
-    ray.init(cluster.address)
+def test_get_read_tasks(shutdown_only):
+    # Note: if you get TimeoutErrors here, try installing required dependencies
+    # with `pip install -U "ray[default]"`.
+    ray.init()
 
     head_node_id = ray.get_runtime_context().get_node_id()
 
@@ -344,11 +309,9 @@ def test_get_read_tasks(ray_start_cluster):
 
     # Verify `_get_read_tasks` being executed on same node (head node).
     def verify_get_read_tasks():
-        from ray.experimental.state.api import list_tasks
+        from ray.util.state import list_tasks
 
-        task_states = list_tasks(
-            address=cluster.address, filters=[("name", "=", "_get_read_tasks")]
-        )
+        task_states = list_tasks(filters=[("name", "=", "_get_read_tasks")])
         # Verify only one task being executed on same node.
         assert len(task_states) == 1
         assert task_states[0]["name"] == "_get_read_tasks"

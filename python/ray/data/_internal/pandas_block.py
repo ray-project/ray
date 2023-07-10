@@ -1,41 +1,38 @@
-from typing import (
-    Callable,
-    Dict,
-    List,
-    Tuple,
-    Union,
-    Iterator,
-    Any,
-    TypeVar,
-    Optional,
-    TYPE_CHECKING,
-)
-
 import collections
 import heapq
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+    Union,
+)
+
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     Block,
     BlockAccessor,
-    BlockMetadata,
     BlockExecStats,
-    KeyFn,
+    BlockMetadata,
     KeyType,
     U,
 )
 from ray.data.context import DataContext
 from ray.data.row import TableRow
-from ray.data._internal.table_block import (
-    TableBlockAccessor,
-    TableBlockBuilder,
-)
-from ray.data.aggregate import AggregateFn
 
 if TYPE_CHECKING:
-    import pyarrow
     import pandas
+    import pyarrow
+
     from ray.data._internal.sort import SortKeyT
 
 T = TypeVar("T")
@@ -54,7 +51,7 @@ def lazy_import_pandas():
 
 class PandasRow(TableRow):
     """
-    Row of a tabular Datastream backed by a Pandas DataFrame block.
+    Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
 
     def __getitem__(self, key: str) -> Any:
@@ -84,7 +81,7 @@ class PandasRow(TableRow):
         return self._row.shape[1]
 
 
-class PandasBlockBuilder(TableBlockBuilder[T]):
+class PandasBlockBuilder(TableBlockBuilder):
     def __init__(self):
         pandas = lazy_import_pandas()
         super().__init__(pandas.DataFrame)
@@ -98,8 +95,6 @@ class PandasBlockBuilder(TableBlockBuilder[T]):
             ):
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                if len(value) == 1:
-                    value = value[0]
                 columns[key] = TensorArray(value)
         return pandas.DataFrame(columns)
 
@@ -167,7 +162,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         table.reset_index(drop=True, inplace=True)
         return table
 
-    def select(self, columns: List[KeyFn]) -> "pandas.DataFrame":
+    def select(self, columns: List[str]) -> "pandas.DataFrame":
         if not all(isinstance(col, str) for col in columns):
             raise ValueError(
                 "Columns must be a list of column name strings when aggregating on "
@@ -186,11 +181,11 @@ class PandasBlockAccessor(TableBlockAccessor):
             names=dtypes.index.tolist(), types=dtypes.values.tolist()
         )
         # Column names with non-str types of a pandas DataFrame is not
-        # supported by Ray Datastream.
+        # supported by Ray Dataset.
         if any(not isinstance(name, str) for name in schema.names):
             raise ValueError(
                 "A Pandas DataFrame with column names of non-str types"
-                " is not supported by Ray Datastream. Column names of this"
+                " is not supported by Ray Dataset. Column names of this"
                 f" DataFrame: {schema.names!r}."
             )
         return schema
@@ -209,11 +204,9 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
         if columns is None:
             columns = self._table.columns.tolist()
-            should_be_single_ndarray = self.is_tensor_wrapper()
+            should_be_single_ndarray = False
         elif isinstance(columns, list):
-            should_be_single_ndarray = (
-                columns == self._table.columns.tolist() and self.is_tensor_wrapper()
-            )
+            should_be_single_ndarray = False
         else:
             columns = [columns]
             should_be_single_ndarray = True
@@ -264,7 +257,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return r
 
     @staticmethod
-    def builder() -> PandasBlockBuilder[T]:
+    def builder() -> PandasBlockBuilder:
         return PandasBlockBuilder()
 
     @staticmethod
@@ -275,7 +268,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table[[k[0] for k in key]].sample(n_samples, ignore_index=True)
 
     def _apply_agg(
-        self, agg_fn: Callable[["pandas.Series", bool], U], on: KeyFn
+        self, agg_fn: Callable[["pandas.Series", bool], U], on: str
     ) -> Optional[U]:
         """Helper providing null handling around applying an aggregation to a column."""
         pd = lazy_import_pandas()
@@ -303,10 +296,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
         return val
 
-    def count(self, on: KeyFn) -> Optional[U]:
+    def count(self, on: str) -> Optional[U]:
         return self._apply_agg(lambda col: col.count(), on)
 
-    def sum(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def sum(self, on: str, ignore_nulls: bool) -> Optional[U]:
         pd = lazy_import_pandas()
         if on is not None and not isinstance(on, str):
             raise ValueError(
@@ -328,18 +321,18 @@ class PandasBlockAccessor(TableBlockAccessor):
             return None
         return val
 
-    def min(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def min(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.min(skipna=ignore_nulls), on)
 
-    def max(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def max(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.max(skipna=ignore_nulls), on)
 
-    def mean(self, on: KeyFn, ignore_nulls: bool) -> Optional[U]:
+    def mean(self, on: str, ignore_nulls: bool) -> Optional[U]:
         return self._apply_agg(lambda col: col.mean(skipna=ignore_nulls), on)
 
     def sum_of_squared_diffs_from_mean(
         self,
-        on: KeyFn,
+        on: str,
         ignore_nulls: bool,
         mean: Optional[U] = None,
     ) -> Optional[U]:
@@ -352,7 +345,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def sort_and_partition(
         self, boundaries: List[T], key: "SortKeyT", descending: bool
-    ) -> List[Block[T]]:
+    ) -> List[Block]:
         if len(key) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet"
@@ -389,7 +382,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: KeyFn, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -418,7 +411,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 return
 
             start = end = 0
-            iter = self.iter_rows()
+            iter = self.iter_rows(public_row_format=False)
             next_row = None
             while True:
                 try:
@@ -464,7 +457,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block[T]], key: "SortKeyT", _descending: bool
+        blocks: List[Block], key: "SortKeyT", _descending: bool
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         pd = lazy_import_pandas()
         stats = BlockExecStats.builder()
@@ -481,7 +474,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
-        key: KeyFn,
+        key: str,
         aggs: Tuple[AggregateFn],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
@@ -509,7 +502,11 @@ class PandasBlockAccessor(TableBlockAccessor):
         key_fn = (lambda r: r[r._row.columns[0]]) if key is not None else (lambda r: 0)
 
         iter = heapq.merge(
-            *[PandasBlockAccessor(block).iter_rows() for block in blocks], key=key_fn
+            *[
+                PandasBlockAccessor(block).iter_rows(public_row_format=False)
+                for block in blocks
+            ],
+            key=key_fn,
         )
         next_row = None
         builder = PandasBlockBuilder()

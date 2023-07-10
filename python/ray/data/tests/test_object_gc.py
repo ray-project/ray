@@ -44,7 +44,7 @@ def check_to_tf_no_spill(ctx, pipe):
     max_epoch = 10
     for p in pipe.iter_epochs(max_epoch):
         for _ in p.to_tf(
-            feature_columns="__value__", label_columns="label", batch_size=None
+            feature_columns="data", label_columns="label", batch_size=None
         ):
             pass
     meminfo = memory_summary(ctx.address_info["address"], stats_only=True)

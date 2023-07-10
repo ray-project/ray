@@ -109,14 +109,18 @@ class HyperBandForBOHB(HyperBandScheduler):
             # as intended.
             # There should be a better API for this.
             # TODO(team-ml): Refactor alongside HyperBandForBOHB
-            trial_runner._search_alg.searcher.on_pause(trial.trial_id)
+            trial_runner.search_alg.searcher.on_pause(trial.trial_id)
             return TrialScheduler.PAUSE
+
+        logger.debug(f"Processing bracket after trial {trial} result")
         action = self._process_bracket(trial_runner, bracket)
+        if action == TrialScheduler.PAUSE:
+            trial_runner.search_alg.searcher.on_pause(trial.trial_id)
         return action
 
     def _unpause_trial(self, trial_runner: "trial_runner.TrialRunner", trial: Trial):
         # Hack. See comment in on_trial_result
-        trial_runner._search_alg.searcher.on_unpause(trial.trial_id)
+        trial_runner.search_alg.searcher.on_unpause(trial.trial_id)
 
     def choose_trial_to_run(
         self, trial_runner: "trial_runner.TrialRunner", allow_recurse: bool = True
@@ -148,6 +152,7 @@ class HyperBandForBOHB(HyperBandScheduler):
                         for trial in bracket.current_trials()
                     ):
                         # This will change the trial state
+                        logger.debug("Processing bracket since no trial is running.")
                         self._process_bracket(trial_runner, bracket)
 
                         # If there are pending trials now, suggest one.

@@ -21,7 +21,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Configure our PPO trainer
+    # Configure our PPO Algorithm.
     config = (
         ppo.PPOConfig()
         .rollouts(num_rollout_workers=1)

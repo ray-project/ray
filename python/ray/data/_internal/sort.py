@@ -14,7 +14,7 @@ This is an all-to-all shuffle.
 
 Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
-block and becomes part of the new, sorted datastream.
+block and becomes part of the new, sorted dataset.
 """
 from typing import Any, Callable, List, Optional, Tuple, TypeVar, Union
 
@@ -113,7 +113,7 @@ def sample_boundaries(
         sample_bar.close()
     del sample_results
     samples = [s for s in samples if len(s) > 0]
-    # The datastream is empty
+    # The dataset is empty
     if len(samples) == 0:
         return [None] * (num_reducers - 1)
     builder = DelegatingBlockBuilder()
@@ -173,5 +173,5 @@ def sort_impl(
     )
 
 
-def _sample_block(block: Block[T], n_samples: int, key: SortKeyT) -> Block[T]:
+def _sample_block(block: Block, n_samples: int, key: SortKeyT) -> Block:
     return BlockAccessor.for_block(block).sample(n_samples, key)

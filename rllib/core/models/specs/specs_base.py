@@ -145,7 +145,9 @@ class TensorSpec(Spec):
         """
         if self._framework == "tf2":
             # tf2 returns `Dimension` objects instead of `int` objects.
-            return tuple(int(i) for i in tensor.shape)
+            return tuple(
+                int(i) if i is not None else None for i in tensor.shape.as_list()
+            )
         return tuple(tensor.shape)
 
     @OverrideToImplementCustomLogic

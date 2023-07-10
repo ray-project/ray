@@ -1,7 +1,8 @@
 import inspect
-import json
 from typing import List
 from collections import OrderedDict
+
+from ray import cloudpickle
 
 from ray.serve.deployment import Deployment, schema_to_deployment
 from ray.serve.deployment_graph import RayServeDAGHandle
@@ -16,8 +17,7 @@ from ray.serve._private.deployment_method_executor_node import (
 from ray.serve._private.deployment_function_executor_node import (
     DeploymentFunctionExecutorNode,
 )
-from ray.serve._private.json_serde import DAGNodeEncoder
-from ray.serve.handle import RayServeDeploymentHandle
+from ray.serve.handle import RayServeHandle
 from ray.serve.schema import DeploymentSchema
 
 
@@ -74,19 +74,24 @@ def build(ray_dag_root_node: DAGNode, name: str = None) -> List[Deployment]:
             accessible via python .remote() call.
 
     Examples:
-        >>> with InputNode() as dag_input:
-        ...    m1 = Model.bind(1)
-        ...    m2 = Model.bind(2)
-        ...    m1_output = m1.forward.bind(dag_input[0])
-        ...    m2_output = m2.forward.bind(dag_input[1])
-        ...    ray_dag = ensemble.bind(m1_output, m2_output)
+
+        .. code-block:: python
+
+            with InputNode() as dag_input:
+                m1 = Model.bind(1)
+                m2 = Model.bind(2)
+                m1_output = m1.forward.bind(dag_input[0])
+                m2_output = m2.forward.bind(dag_input[1])
+                ray_dag = ensemble.bind(m1_output, m2_output)
 
         Assuming we have non-JSON serializable or inline defined class or
         function in local pipeline development.
 
-        >>> from ray.serve.api import build as build_app
-        >>> deployments = build_app(ray_dag) # it can be method node
-        >>> deployments = build_app(m1) # or just a regular node.
+        .. code-block:: python
+
+            from ray.serve.api import build as build_app
+            deployments = build_app(ray_dag) # it can be method node
+            deployments = build_app(m1) # or just a regular node.
     """
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag_root_node.apply_recursive(
@@ -168,7 +173,7 @@ def transform_ray_dag_to_serve_dag(
         # serve DAG end to end executable.
         def replace_with_handle(node):
             if isinstance(node, DeploymentNode):
-                return RayServeDeploymentHandle(node._deployment.name)
+                return RayServeHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
 
@@ -384,8 +389,7 @@ def generate_executor_dag_driver_deployment(
                 DeploymentFunctionExecutorNode,
             ),
         ):
-            serve_dag_root_json = json.dumps(node, cls=DAGNodeEncoder)
-            return RayServeDAGHandle(serve_dag_root_json)
+            return RayServeDAGHandle(cloudpickle.dumps(node))
 
     (
         replaced_deployment_init_args,

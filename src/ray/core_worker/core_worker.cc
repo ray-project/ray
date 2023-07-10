@@ -117,7 +117,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
-      task_execution_service_work_(task_execution_service_) {
+      task_execution_service_work_(task_execution_service_),
+      exiting_detail_(std::nullopt),
+      pid_(getpid()) {
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -131,7 +133,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_4,
                                   std::placeholders::_5,
                                   std::placeholders::_6,
-                                  std::placeholders::_7);
+                                  std::placeholders::_7,
+                                  std::placeholders::_8);
     direct_task_receiver_ = std::make_unique<CoreWorkerDirectTaskReceiver>(
         worker_context_, task_execution_service_, execute_task, [this] {
           return local_raylet_client_->TaskDone();
@@ -204,7 +207,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
-  core_worker_server_->RegisterService(grpc_service_);
+  core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
 
   // Set our own address.
@@ -319,6 +322,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
+        rpc::ErrorType error_type;
+        if (obj.IsException(&error_type) &&
+            error_type == rpc::ErrorType::END_OF_STREAMING_GENERATOR) {
+          // End-of-stream ObjectRefs are sentinels and should never get
+          // returned to the caller.
+          return;
+        }
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
         io_service_.post(
@@ -764,7 +774,11 @@ void CoreWorker::Exit(
                    "tasks have finished"
                 << ", exit_type=" << rpc::WorkerExitType_Name(exit_type)
                 << ", detail=" << detail;
-  exiting_ = true;
+  {
+    absl::MutexLock lock(&mutex_);
+    RAY_CHECK_NE(detail, "");
+    exiting_detail_ = std::optional<std::string>{detail};
+  }
   // Release the resources early in case draining takes a long time.
   RAY_CHECK_OK(
       local_raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources*/ true));
@@ -785,8 +799,12 @@ void CoreWorker::Exit(
          detail = std::move(detail),
          creation_task_exception_pb_bytes]() {
           rpc::DrainServerCallExecutor();
-          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           KillChildProcs();
+          // Disconnect should be put close to Shutdown
+          // https://github.com/ray-project/ray/pull/34883
+          // TODO (iycheng) Improve the Process.h and make it able to monitor
+          // process liveness
+          Disconnect(exit_type, detail, creation_task_exception_pb_bytes);
           Shutdown();
         },
         "CoreWorker.Shutdown");
@@ -830,9 +848,13 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
                            const std::string &detail) {
   RAY_LOG(WARNING) << "Force exit the process. "
                    << " Details: " << detail;
-  Disconnect(exit_type, detail);
 
   KillChildProcs();
+  // Disconnect should be put close to Exit
+  // https://github.com/ray-project/ray/pull/34883
+  // TODO (iycheng) Improve the Process.h and make it able to monitor
+  // process liveness
+  Disconnect(exit_type, detail);
 
   // NOTE(hchen): Use `QuickExit()` to force-exit this process without doing cleanup.
   // `exit()` will destruct static objects in an incorrect order, which will lead to
@@ -902,7 +924,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
 
   worker_data->set_is_alive(true);
-  worker_data->set_pid(getpid());
+  worker_data->set_pid(pid_);
   worker_data->set_start_time_ms(current_sys_time_ms());
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
@@ -1452,20 +1474,11 @@ void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_st
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
-    auto ready_iter = ready.find(mem_id);
-    if (ready_iter != ready.end()) {
-      std::vector<std::shared_ptr<RayObject>> found;
-      RAY_CHECK_OK(memory_store->Get({mem_id},
-                                     /*num_objects=*/1,
-                                     /*timeout=*/0,
-                                     worker_context,
-                                     /*remote_after_get=*/false,
-                                     &found));
-      if (found.size() == 1 && found[0]->IsInPlasmaError()) {
-        plasma_object_ids.insert(mem_id);
-        ready.erase(ready_iter);
-        memory_object_ids.erase(current);
-      }
+    auto found = memory_store->GetIfExists(mem_id);
+    if (found != nullptr && found->IsInPlasmaError()) {
+      plasma_object_ids.insert(mem_id);
+      ready.erase(mem_id);
+      memory_object_ids.erase(current);
     }
   }
 }
@@ -1690,53 +1703,6 @@ Status CoreWorker::PushError(const JobID &job_id,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-void CoreWorker::SpillOwnedObject(const ObjectID &object_id,
-                                  const std::shared_ptr<RayObject> &obj,
-                                  std::function<void()> callback) {
-  if (!obj->IsInPlasmaError()) {
-    RAY_LOG(ERROR) << "Cannot spill inlined object " << object_id;
-    callback();
-    return;
-  }
-
-  // Find the raylet that hosts the primary copy of the object.
-  bool owned_by_us = false;
-  NodeID pinned_at;
-  bool spilled = false;
-  RAY_CHECK(reference_counter_->IsPlasmaObjectPinnedOrSpilled(
-      object_id, &owned_by_us, &pinned_at, &spilled));
-  RAY_CHECK(owned_by_us);
-  if (spilled) {
-    // The object has already been spilled.
-    return;
-  }
-  auto node = gcs_client_->Nodes().Get(pinned_at);
-  if (pinned_at.IsNil() || !node) {
-    RAY_LOG(ERROR) << "Primary raylet for object " << object_id << " unreachable";
-    callback();
-    return;
-  }
-
-  // Ask the raylet to spill the object.
-  RAY_LOG(DEBUG) << "Sending spill request to raylet for object " << object_id;
-  auto raylet_client = std::make_shared<raylet::RayletClient>(
-      rpc::NodeManagerWorkerClient::make(node->node_manager_address(),
-                                         node->node_manager_port(),
-                                         *client_call_manager_));
-  raylet_client->RequestObjectSpillage(
-      object_id,
-      [object_id, callback](const Status &status,
-                            const rpc::RequestObjectSpillageReply &reply) {
-        if (!status.ok() || !reply.success()) {
-          RAY_LOG(ERROR) << "Failed to spill object " << object_id
-                         << ", raylet unreachable or object could not be spilled.";
-        }
-        // TODO(Clark): Provide spilled URL and spilled node ID to callback so it can
-        // added them to the reference.
-        callback();
-      });
-}
-
 json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
@@ -1846,6 +1812,16 @@ void CoreWorker::BuildCommonTaskSpec(
     // is a generator of ObjectRefs.
     num_returns = 1;
   }
+  // TODO(sang): Remove this and integrate it to
+  // nun_returns == -1 once migrating to streaming
+  // generator.
+  bool is_streaming_generator = num_returns == kStreamingGeneratorReturn;
+  if (is_streaming_generator) {
+    num_returns = 1;
+    // We are using the dynamic return if
+    // the streaming generator is used.
+    returns_dynamic = true;
+  }
   RAY_CHECK(num_returns >= 0);
   builder.SetCommonTaskSpec(
       task_id,
@@ -1862,6 +1838,7 @@ void CoreWorker::BuildCommonTaskSpec(
       address,
       num_returns,
       returns_dynamic,
+      is_streaming_generator,
       required_resources,
       required_placement_resources,
       debugger_breakpoint,
@@ -1932,6 +1909,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   } else {
     returned_refs = task_manager_->AddPendingTask(
         task_spec.CallerAddress(), task_spec, CurrentCallSite(), max_retries);
+
     io_service_.post(
         [this, task_spec]() {
           RAY_UNUSED(direct_task_submitter_->SubmitTask(task_spec));
@@ -1972,7 +1950,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
@@ -2257,6 +2234,7 @@ Status CoreWorker::SubmitActorTask(const ActorID &actor_id,
   } else {
     returned_refs = task_manager_->AddPendingTask(
         rpc_address_, task_spec, CurrentCallSite(), actor_handle->MaxTaskRetries());
+
     RAY_CHECK_OK(direct_actor_submitter_->SubmitTask(task_spec));
   }
   task_returns = std::move(returned_refs);
@@ -2540,20 +2518,48 @@ Status CoreWorker::ExecuteTask(
     const std::shared_ptr<ResourceMappingType> &resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
+    std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
     ReferenceCounter::ReferenceTableProto *borrowed_refs,
     bool *is_retryable_error,
     std::string *application_error) {
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
+
+  // If the worker is exitted via Exit API, we shouldn't execute
+  // tasks anymore.
+  if (IsExiting()) {
+    absl::MutexLock lock(&mutex_);
+    return Status::IntentionalSystemExit(
+        absl::StrCat("Worker has already exited. Detail: ", exiting_detail_.value()));
+  }
+
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
 
   // Modify the worker's per function counters.
   std::string func_name = task_spec.FunctionDescriptor()->CallString();
+  std::string actor_repr_name = "";
+  {
+    absl::MutexLock lock(&mutex_);
+    actor_repr_name = actor_repr_name_;
+  }
   if (!options_.is_local_mode) {
     task_counter_.MovePendingToRunning(func_name, task_spec.IsRetry());
 
-    task_manager_->RecordTaskStatusEvent(
-        task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+    if (task_spec.IsActorTask() && !actor_repr_name.empty()) {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_));
+    } else {
+      task_manager_->RecordTaskStatusEvent(
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(pid_));
+    }
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -2586,6 +2592,9 @@ Status CoreWorker::ExecuteTask(
     dynamic_return_objects = NULL;
   } else if (task_spec.AttemptNumber() > 0) {
     for (const auto &dynamic_return_id : task_spec.DynamicReturnIds()) {
+      // Increase the put index so that when the generator creates a new obj
+      // the object id won't conflict.
+      worker_context_.GetNextPutIndex();
       dynamic_return_objects->push_back(
           std::make_pair<>(dynamic_return_id, std::shared_ptr<RayObject>()));
       RAY_LOG(DEBUG) << "Re-executed task " << task_spec.TaskId()
@@ -2641,12 +2650,14 @@ Status CoreWorker::ExecuteTask(
       task_spec.GetSerializedRetryExceptionAllowlist(),
       return_objects,
       dynamic_return_objects,
+      streaming_generator_returns,
       creation_task_exception_pb_bytes,
       is_retryable_error,
       application_error,
       defined_concurrency_groups,
       name_of_concurrency_group_to_execute,
-      /*is_reattempt=*/task_spec.AttemptNumber() > 0);
+      /*is_reattempt=*/task_spec.AttemptNumber() > 0,
+      /*is_streaming_generator*/ task_spec.IsStreamingGenerator());
 
   // Get the reference counts for any IDs that we borrowed during this task,
   // remove the local reference for these IDs, and return the ref count info to
@@ -2739,6 +2750,28 @@ Status CoreWorker::SealReturnObject(const ObjectID &return_id,
   return status;
 }
 
+void CoreWorker::DelObjectRefStream(const ObjectID &generator_id) {
+  task_manager_->DelObjectRefStream(generator_id);
+}
+
+Status CoreWorker::TryReadObjectRefStream(const ObjectID &generator_id,
+                                          rpc::ObjectReference *object_ref_out) {
+  ObjectID object_id;
+  const auto &status = task_manager_->TryReadObjectRefStream(generator_id, &object_id);
+  RAY_CHECK(object_ref_out != nullptr);
+  object_ref_out->set_object_id(object_id.Binary());
+  object_ref_out->mutable_owner_address()->CopyFrom(rpc_address_);
+  return status;
+}
+
+rpc::ObjectReference CoreWorker::PeekObjectRefStream(const ObjectID &generator_id) {
+  auto object_id = task_manager_->PeekObjectRefStream(generator_id);
+  rpc::ObjectReference object_ref;
+  object_ref.set_object_id(object_id.Binary());
+  object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+  return object_ref;
+}
+
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
                                          const ObjectID &generator_id) {
@@ -2792,14 +2825,62 @@ bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
   }
 }
 
-ObjectID CoreWorker::AllocateDynamicReturnId() {
-  const auto &task_spec = worker_context_.GetCurrentTask();
-  const auto return_id =
-      ObjectID::FromIndex(task_spec->TaskId(), worker_context_.GetNextPutIndex());
+ObjectID CoreWorker::AllocateDynamicReturnId(const rpc::Address &owner_address,
+                                             const TaskID &task_id,
+                                             std::optional<ObjectIDIndexType> put_index) {
+  const auto return_id = worker_context_.GetGeneratorReturnId(task_id, put_index);
   AddLocalReference(return_id, "<temporary (ObjectRefGenerator)>");
-  reference_counter_->AddBorrowedObject(
-      return_id, ObjectID::Nil(), worker_context_.GetCurrentTask()->CallerAddress());
+  reference_counter_->AddBorrowedObject(return_id, ObjectID::Nil(), owner_address);
   return return_id;
+}
+
+Status CoreWorker::ReportGeneratorItemReturns(
+    const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
+    const ObjectID &generator_id,
+    const rpc::Address &caller_address,
+    int64_t item_index,
+    uint64_t attempt_number) {
+  RAY_LOG(DEBUG) << "Write the object ref stream, index: " << item_index
+                 << ", id: " << dynamic_return_object.first;
+  rpc::ReportGeneratorItemReturnsRequest request;
+  request.mutable_worker_addr()->CopyFrom(rpc_address_);
+  request.set_item_index(item_index);
+  request.set_generator_id(generator_id.Binary());
+  request.set_attempt_number(attempt_number);
+  auto client = core_worker_client_pool_->GetOrConnect(caller_address);
+
+  if (!dynamic_return_object.first.IsNil()) {
+    auto return_object_proto = request.add_dynamic_return_objects();
+    SerializeReturnObject(
+        dynamic_return_object.first, dynamic_return_object.second, return_object_proto);
+    std::vector<ObjectID> deleted;
+    // When we allocate a dynamic return ID (AllocateDynamicReturnId),
+    // we borrow the object. When the object value is allocatd, the
+    // memory store is updated. We should clear borrowers and memory store
+    // here.
+    ReferenceCounter::ReferenceTableProto borrowed_refs;
+    reference_counter_->PopAndClearLocalBorrowers(
+        {dynamic_return_object.first}, &borrowed_refs, &deleted);
+    memory_store_->Delete(deleted);
+  }
+
+  client->ReportGeneratorItemReturns(
+      request,
+      [](const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
+        if (!status.ok()) {
+          // TODO(sang): Handle network error more gracefully.
+          RAY_LOG(ERROR) << "Failed to send the object ref.";
+        }
+      });
+  return Status::OK();
+}
+
+void CoreWorker::HandleReportGeneratorItemReturns(
+    rpc::ReportGeneratorItemReturnsRequest request,
+    rpc::ReportGeneratorItemReturnsReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  task_manager_->HandleReportGeneratorItemReturns(request);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
@@ -2831,10 +2912,12 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   std::string application_error = "";
   // TODO(swang): Support ObjectRefGenerators in local mode?
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
+  std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
                          resource_ids,
                          &return_objects,
                          &dynamic_return_objects,
+                         &streaming_generator_returns,
                          &borrowed_refs,
                          &is_retryable_error,
                          &application_error));
@@ -2938,6 +3021,8 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
 void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::PushTaskReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received Handle Push Task "
+                 << TaskID::FromBinary(request.task_spec().task_id());
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -2959,10 +3044,18 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
     task_execution_service_.post(
-        [this, request, reply, send_reply_callback = std::move(send_reply_callback)] {
+        [this,
+         request,
+         reply,
+         send_reply_callback = std::move(send_reply_callback),
+         func_name] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
-          if (exiting_) return;
+          if (IsExiting()) {
+            RAY_LOG(INFO) << "Queued task " << func_name
+                          << " won't be executed because the worker already exited.";
+            return;
+          }
           direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
         },
         "CoreWorker.HandlePushTaskActor");
@@ -2971,10 +3064,14 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     // the task execution service.
     direct_task_receiver_->HandleTask(request, reply, send_reply_callback);
     task_execution_service_.post(
-        [=] {
+        [this, func_name] {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
-          if (exiting_) return;
+          if (IsExiting()) {
+            RAY_LOG(INFO) << "Queued task " << func_name
+                          << " won't be executed because the worker already exited.";
+            return;
+          }
           direct_task_receiver_->RunNormalTasksFromQueue();
         },
         "CoreWorker.HandlePushTask");
@@ -3155,7 +3252,13 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
     // counter so that we know that it exists.
     const auto generator_id = ObjectID::FromBinary(message.generator_id());
     RAY_CHECK(!generator_id.IsNil());
-    reference_counter_->AddDynamicReturn(object_id, generator_id);
+    if (task_manager_->ObjectRefStreamExists(generator_id)) {
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, generator_id);
+    } else {
+      reference_counter_->AddDynamicReturn(object_id, generator_id);
+    }
   }
 
   // Returns true if the object was present and the callback was added. It might have
@@ -3288,8 +3391,13 @@ void CoreWorker::AddSpilledObjectLocationOwner(
     // object is spilled before the reply from the task that created the
     // object. Add the dynamically created object to our ref counter so that we
     // know that it exists.
-    RAY_CHECK(!generator_id->IsNil());
-    reference_counter_->AddDynamicReturn(object_id, *generator_id);
+    if (task_manager_->ObjectRefStreamExists(*generator_id)) {
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id, *generator_id);
+    } else {
+      reference_counter_->AddDynamicReturn(object_id, *generator_id);
+    }
   }
 
   auto reference_exists =
@@ -3317,9 +3425,16 @@ void CoreWorker::AddObjectLocationOwner(const ObjectID &object_id,
   // until the task finishes.
   const auto &maybe_generator_id = task_manager_->TaskGeneratorId(object_id.TaskId());
   if (!maybe_generator_id.IsNil()) {
-    // The task is a generator and may not have finished yet. Add the internal
-    // ObjectID so that we can update its location.
-    reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    if (task_manager_->ObjectRefStreamExists(maybe_generator_id)) {
+      // ObjectRefStreamExists is used to distinguigsh num_returns="dynamic" vs
+      // "streaming".
+      task_manager_->TemporarilyOwnGeneratorReturnRefIfNeeded(object_id,
+                                                              maybe_generator_id);
+    } else {
+      // The task is a generator and may not have finished yet. Add the internal
+      // ObjectID so that we can update its location.
+      reference_counter_->AddDynamicReturn(object_id, maybe_generator_id);
+    }
     RAY_UNUSED(reference_counter_->AddObjectLocation(object_id, node_id));
   }
 }
@@ -3496,6 +3611,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
+  stats->set_num_owned_objects(reference_counter_->NumObjectsOwnedByUs());
+  stats->set_num_owned_actors(reference_counter_->NumActorsOwnedByUs());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3504,6 +3621,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
+  stats->set_num_running_tasks(current_tasks_.size());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;
@@ -3711,6 +3829,15 @@ void CoreWorker::HandleAssignObjectOwner(rpc::AssignObjectOwnerRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+// Handle RPC for TaskManager::NumPendingTasks().
+void CoreWorker::HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
+                                       rpc::NumPendingTasksReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(DEBUG) << "Received NumPendingTasks request.";
+  reply->set_num_pending_tasks(task_manager_->NumPendingTasks());
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void CoreWorker::YieldCurrentFiber(FiberEvent &event) {
   RAY_CHECK(worker_context_.CurrentActorIsAsync());
   boost::this_fiber::yield();
@@ -3817,13 +3944,19 @@ void CoreWorker::SetActorTitle(const std::string &title) {
 void CoreWorker::SetActorReprName(const std::string &repr_name) {
   RAY_CHECK(direct_task_receiver_ != nullptr);
   direct_task_receiver_->SetActorReprName(repr_name);
+
+  absl::MutexLock lock(&mutex_);
+  actor_repr_name_ = repr_name;
 }
 
 rpc::JobConfig CoreWorker::GetJobConfig() const {
   return worker_context_.GetCurrentJobConfig();
 }
 
-bool CoreWorker::IsExiting() const { return exiting_; }
+bool CoreWorker::IsExiting() const {
+  absl::MutexLock lock(&mutex_);
+  return exiting_detail_.has_value();
+}
 
 std::unordered_map<std::string, std::vector<int64_t>> CoreWorker::GetActorCallStats()
     const {

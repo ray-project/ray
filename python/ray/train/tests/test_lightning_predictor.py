@@ -28,7 +28,7 @@ def test_repr():
 
 
 def save_checkpoint(model: pl.LightningModule, ckpt_path: str):
-    trainer = pl.Trainer(max_epochs=0)
+    trainer = pl.Trainer(max_epochs=0, accelerator="cpu")
     trainer.fit(model, train_dataloaders=DataLoader(torch.randn(1)))
     trainer.save_checkpoint(ckpt_path)
 

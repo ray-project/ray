@@ -12,23 +12,25 @@ Just as in the original `xgboost.train() <https://xgboost.readthedocs.io/en/stab
 `lightgbm.train() <https://lightgbm.readthedocs.io/en/latest/Parameters.html>`__ functions, the
 training parameters are passed as the ``params`` dictionary.
 
-.. tab-item:: XGBoost
+.. tab-set::
 
-    Run ``pip install -U xgboost_ray``.
+    .. tab-item:: XGBoost
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-        :language: python
-        :start-after: __xgboost_start__
-        :end-before: __xgboost_end__
+        Run ``pip install -U xgboost_ray``.
 
-.. tab-item:: LightGBM
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __xgboost_start__
+            :end-before: __xgboost_end__
 
-    Run ``pip install -U lightgbm_ray``.
+    .. tab-item:: LightGBM
 
-    .. literalinclude:: doc_code/gbdt_user_guide.py
-        :language: python
-        :start-after: __lightgbm_start__
-        :end-before: __lightgbm_end__
+        Run ``pip install -U lightgbm_ray``.
+
+        .. literalinclude:: doc_code/gbdt_user_guide.py
+            :language: python
+            :start-after: __lightgbm_start__
+            :end-before: __lightgbm_end__
 
 
 Ray-specific params are passed in through the trainer constructors.

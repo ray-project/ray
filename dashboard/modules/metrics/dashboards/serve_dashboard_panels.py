@@ -134,7 +134,7 @@ SERVE_GRAFANA_PANELS = [
     ),
     Panel(
         id=2,
-        title="Deployments",
+        title="Replicas per deployment",
         description='Number of replicas per deployment. Ignores "Route" variable.',
         unit="replicas",
         targets=[
@@ -251,16 +251,16 @@ SERVE_GRAFANA_PANELS = [
         targets=[
             # TODO(aguo): Update this to use autoscaler metrics instead
             Target(
-                expr="sum(ray_cluster_active_nodes{{{global_filters}}}) by (node_type)",
-                legend="Active Nodes: {{node_type}}",
+                expr="sum(autoscaler_active_nodes{{{global_filters}}}) by (NodeType)",
+                legend="Active Nodes: {{NodeType}}",
             ),
             Target(
-                expr="sum(ray_cluster_failed_nodes{{{global_filters}}}) by (node_type)",
-                legend="Failed Nodes: {{node_type}}",
+                expr="sum(autoscaler_recently_failed_nodes{{{global_filters}}}) by (NodeType)",
+                legend="Failed Nodes: {{NodeType}}",
             ),
             Target(
-                expr="sum(ray_cluster_pending_nodes{{{global_filters}}}) by (node_type)",
-                legend="Pending Nodes: {{node_type}}",
+                expr="sum(autoscaler_pending_nodes{{{global_filters}}}) by (NodeType)",
+                legend="Pending Nodes: {{NodeType}}",
             ),
         ],
         grid_pos=GridPos(8, 4, 8, 8),

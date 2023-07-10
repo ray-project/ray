@@ -1,35 +1,37 @@
 import itertools
 import random
-import pytest
 import threading
 import time
+from typing import Any, List
 
-from typing import List, Any
+import pandas as pd
+import pytest
 
 import ray
 from ray import cloudpickle
-from ray.data.context import DataContext
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     RefBundle,
 )
-from ray.data._internal.execution.streaming_executor import (
-    StreamingExecutor,
+from ray.data._internal.execution.operators.base_physical_operator import (
+    AllToAllOperator,
 )
-from ray.data._internal.execution.operators.all_to_all_operator import AllToAllOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
-from ray._private.test_utils import wait_for_condition
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.util import extract_values
 
 
 def make_transform(block_fn):
     def map_fn(block_iter, ctx):
         for block in block_iter:
-            yield block_fn(block)
+            yield pd.DataFrame({"id": block_fn(block["id"])})
 
     return map_fn
 
@@ -38,8 +40,46 @@ def ref_bundles_to_list(bundles: List[RefBundle]) -> List[List[Any]]:
     output = []
     for bundle in bundles:
         for block, _ in bundle.blocks:
-            output.append(ray.get(block))
+            output.append(list(ray.get(block)["id"]))
     return output
+
+
+def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
+    from ray.data._internal.execution import streaming_executor
+
+    num_runs = 5
+
+    # Test that when an interator is fully consumed,
+    # the executor should be shut down.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        ds = ray.data.range(100).repartition(10)
+        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
+        while True:
+            try:
+                next(it)
+            except StopIteration:
+                break
+    assert streaming_executor._num_shutdown - initial == num_runs
+
+    # Test that when an partially-consumed iterator is deleted,
+    # the executor should be shut down.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        ds = ray.data.range(100).repartition(10)
+        it = ds.iter_batches(batch_size=10, prefetch_batches=0)
+        next(it)
+        del it
+        del ds
+    assert streaming_executor._num_shutdown - initial == num_runs
+
+    # Test that the executor is shut down when it's deleted,
+    # even if not using iterators.
+    initial = streaming_executor._num_shutdown
+    for _ in range(num_runs):
+        executor = StreamingExecutor(ExecutionOptions())
+        del executor
+    assert streaming_executor._num_shutdown - initial == num_runs
 
 
 def test_pipelined_execution(ray_start_10_cpus_shared):
@@ -87,6 +127,17 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     c1.start()
     c0.join()
     c1.join()
+
+    def get_outputs(out: List[RefBundle]):
+        outputs = []
+        for bundle in out:
+            for block, _ in bundle.blocks:
+                ids: pd.Series = ray.get(block)["id"]
+                outputs.extend(ids.values)
+        return outputs
+
+    assert get_outputs(c0.out) == list(range(0, 20, 2))
+    assert get_outputs(c1.out) == list(range(1, 20, 2))
     assert len(c0.out) == 10, c0.out
     assert len(c1.out) == 10, c0.out
 
@@ -105,7 +156,8 @@ def test_streaming_split_e2e(ray_start_10_cpus_shared):
                 x = 0
                 if use_iter_batches:
                     for batch in it.iter_batches():
-                        x += len(batch)
+                        for arr in batch.values():
+                            x += arr.size
                 else:
                     for _ in it.iter_rows():
                         x += 1
@@ -241,6 +293,7 @@ def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     remote_function._task_launch_hook = _test_hook
     DataContext.get_current().use_streaming_executor = True
     DataContext.get_current().execution_options.preserve_order = True
+    DataContext.get_current().large_args_threshold = 0
 
     # Simple 2-stage pipeline.
     ray.data.range(2, parallelism=2).map(lambda x: x, num_cpus=2).take_all()
@@ -285,7 +338,7 @@ def test_scheduling_progress_when_output_blocked(
     # The pipeline should fully execute even when the output iterator is blocked.
     wait_for_condition(lambda: ray.get(counter.get.remote()) == 100)
     # Check we can take the rest.
-    assert list(it) == [[x] for x in range(1, 100)]
+    assert [b["id"] for b in it] == [[x] for x in range(1, 100)]
 
 
 def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
@@ -344,7 +397,7 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     ds = ray.data.range(10000, parallelism=100).map(lambda x: x, num_cpus=2)
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.
-    assert ds.take_all() == list(range(10000))
+    assert extract_values("id", ds.take_all()) == list(range(10000))
 
 
 def test_e2e_autoscaling_up(ray_start_10_cpus_shared, restore_data_context):
@@ -468,12 +521,14 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     # Test recover.
     base = ray.data.range(1000, parallelism=100)
     ds1 = base.map_batches(
-        f, compute=ray.data.ActorPoolStrategy(4, 4), max_task_retries=999
+        f, compute=ray.data.ActorPoolStrategy(size=4), max_task_retries=999
     )
     ds1.take_all()
 
     # Test disabling fault tolerance.
-    ds2 = base.map_batches(f, compute=ray.data.ActorPoolStrategy(4, 4), max_restarts=0)
+    ds2 = base.map_batches(
+        f, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
+    )
     with pytest.raises(ray.exceptions.RayActorError):
         ds2.take_all()
 

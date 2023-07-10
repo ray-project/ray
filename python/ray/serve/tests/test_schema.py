@@ -659,6 +659,18 @@ class TestServeDeploySchema:
         # Error message should be descriptive, mention name must be nonempty
         assert "name" in str(e.value) and "empty" in str(e.value)
 
+    def test_deploy_no_applications(self):
+        """Applications must be specified."""
+
+        deploy_config_dict = {
+            "http_options": {
+                "host": "127.0.0.1",
+                "port": 8000,
+            },
+        }
+        with pytest.raises(ValidationError):
+            ServeDeploySchema.parse_obj(deploy_config_dict)
+
 
 class TestServeStatusSchema:
     def get_valid_serve_status_schema(self):

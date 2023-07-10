@@ -10,3 +10,7 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`ray-joblib`
 - :ref:`ray-multiprocessing`
 - :ref:`ray-collective`
+- :ref:`dask-on-ray`
+- :ref:`spark-on-ray`
+- :ref:`mars-on-ray`
+- :ref:`modin-on-ray`

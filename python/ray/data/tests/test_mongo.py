@@ -4,7 +4,6 @@ import pytest
 
 import ray
 from ray.data.datasource import MongoDatasource
-
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -31,8 +30,8 @@ def start_mongo():
 
 
 def test_read_write_mongo(ray_start_regular_shared, start_mongo):
-    from pymongoarrow.api import Schema
     from pymongo.errors import ServerSelectionTimeoutError
+    from pymongoarrow.api import Schema
 
     client, mongo_url = start_mongo
     foo_db = "foo-db"
@@ -78,7 +77,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
         "   schema={float_field: double, int_field: int32}\n"
@@ -96,7 +95,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
@@ -115,7 +114,7 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=3,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
@@ -131,8 +130,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
     )
     assert str(ds) == (
-        "Datastream(\n"
-        "   num_blocks=5,\n"
+        "Dataset(\n"
+        "   num_blocks=200,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -148,8 +147,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         parallelism=1000,
     )
     assert str(ds) == (
-        "Datastream(\n"
-        "   num_blocks=5,\n"
+        "Dataset(\n"
+        "   num_blocks=1000,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -211,7 +210,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
         "   schema={float_field: double, int_field: int32}\n"
@@ -230,7 +229,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ).materialize()
     assert ds._block_num_rows() == [3, 2]
     assert str(ds) == (
-        "MaterializedDatastream(\n"
+        "MaterializedDataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
@@ -247,8 +246,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
     ).materialize()
     assert str(ds) == (
-        "MaterializedDatastream(\n"
-        "   num_blocks=5,\n"
+        "MaterializedDataset(\n"
+        "   num_blocks=200,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -265,8 +264,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
     )
     assert str(ds) == (
-        "Datastream(\n"
-        "   num_blocks=5,\n"
+        "Dataset(\n"
+        "   num_blocks=1000,\n"
         "   num_rows=5,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "
         "int_field: int32}\n"
@@ -285,7 +284,7 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     )
     assert ds._block_num_rows() == [2, 1]
     assert str(ds) == (
-        "Datastream(\n"
+        "Dataset(\n"
         "   num_blocks=2,\n"
         "   num_rows=3,\n"
         "   schema={_id: fixed_size_binary[12], float_field: double, "

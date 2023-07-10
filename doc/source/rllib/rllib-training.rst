@@ -608,4 +608,4 @@ hangs or performance issues.
 Next Steps
 ----------
 
-- To check how your application is doing, you can use the :ref:`Ray dashboard<ray-dashboard>`. 
+- To check how your application is doing, you can use the :ref:`Ray dashboard <observability-getting-started>`. 

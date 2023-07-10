@@ -3,9 +3,9 @@ import logging
 import numpy as np
 from typing import TYPE_CHECKING, Dict, Optional, List, Union
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.logger.logger import LoggerCallback
 from ray.tune.result import (
-    TRAINING_ITERATION,
     TIME_TOTAL_S,
     TIMESTEPS_TOTAL,
 )

@@ -19,5 +19,5 @@ cartpole-ppo:
             vf_share_layers: true
         enable_connectors: true
         _enable_rl_module_api: true
-        _enable_learner_api: false
+        _enable_learner_api: true
         eager_tracing: false

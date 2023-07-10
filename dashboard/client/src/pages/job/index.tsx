@@ -39,20 +39,14 @@ const columns = [
   { label: "Submission ID" },
   { label: "Entrypoint" },
   { label: "Status" },
+  { label: "Status message" },
   { label: "Duration" },
   {
     label: "Tasks",
     helpInfo: (
       <Typography>
         The progress of the all submitted tasks per job. Tasks that are not yet
-        submitted will not show up in the progress bar.
-        <br />
-        <br />
-        Note: This column requires that prometheus is running. See{" "}
-        <a href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#exporting-metrics">
-          here
-        </a>{" "}
-        for instructions.
+        submitted do not show up in the progress bar.
       </Typography>
     ),
   },

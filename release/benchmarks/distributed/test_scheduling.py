@@ -3,6 +3,7 @@ import argparse
 from time import time, sleep
 from math import floor
 from ray._private.test_utils import safe_write_to_results_json
+import ray._private.test_utils as test_utils
 
 
 @ray.remote
@@ -86,6 +87,7 @@ if __name__ == "__main__":
     )
 
     ray.init(address="auto")
+    monitor_actor = test_utils.monitor_memory_usage()
 
     total_cpus_per_node = [node["Resources"].get("CPU", 0) for node in ray.nodes()]
     num_nodes = len(total_cpus_per_node)
@@ -104,6 +106,12 @@ if __name__ == "__main__":
         args.total_num_actors, args.num_actors_per_nodes, job
     )
 
+    ray.get(monitor_actor.stop_run.remote())
+    used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
+    print(f"Peak memory usage: {round(used_gb, 2)}GB")
+    print(f"Peak memory usage per processes:\n {usage}")
+    del monitor_actor
+
     result = {
         "total_num_task": args.total_num_task,
         "num_cpu_per_task": args.num_cpu_per_task,
@@ -115,6 +123,8 @@ if __name__ == "__main__":
         "submission_cost": submission_cost,
         "ready_cost": ready_cost,
         "actor_job_cost": actor_job_cost,
+        "_peak_memory": round(used_gb, 2),
+        "_peak_process_memory": usage,
         "_runtime": submission_cost + ready_cost + actor_job_cost,
     }
 

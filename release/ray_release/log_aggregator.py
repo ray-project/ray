@@ -23,7 +23,10 @@ class LogAggregator:
         """
         massaged_trace = []
         for line in stack_trace:
-            line = re.sub(r"\d", "", line.strip())
+            # remove any hashes that are more than 10 characters
+            line = re.sub(r"[a-z0-9]{10,}", "", line.strip())
+            # remove any numbers
+            line = re.sub(r"\d", "", line)
             if line == "Traceback (most recent call last):":
                 continue
             file_line = re.search(r'File "(.*)", (.*)', line)

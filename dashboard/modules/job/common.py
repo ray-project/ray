@@ -25,6 +25,7 @@ JOB_ACTOR_NAME_TEMPLATE = (
 # In order to get information about SupervisorActors launched by different jobs,
 # they must be set to the same namespace.
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
+JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
 
 
 @PublicAPI(stability="stable")

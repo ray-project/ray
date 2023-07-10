@@ -248,12 +248,9 @@ class TorchDeterministic(Distribution):
     def sample(
         self,
         *,
-        sample_shape: Tuple[int, ...] = None,
+        sample_shape: Tuple[int, ...] = torch.Size(),
         **kwargs,
     ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
-        if sample_shape is None:
-            sample_shape = torch.Size()
-
         device = self.loc.device
         dtype = self.loc.dtype
         shape = sample_shape + self.loc.shape
@@ -321,7 +318,7 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def logp(self, value: torch.Tensor) -> TensorType:
         value = torch.unbind(value, dim=1)
-        logps = torch.stack([cat.log_prob(act) for cat, act in zip(self._cats, value)])
+        logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
         return torch.sum(logps, dim=0)
 
     @override(Distribution)

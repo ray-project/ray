@@ -36,7 +36,7 @@ Replay Buffers in RLlib
 RLlib comes with a set of extendable replay buffers built in. All the of them support the two basic methods ``add()`` and ``sample()``.
 We provide a base :py:class:`~ray.rllib.utils.replay_buffers.replay_buffer.ReplayBuffer` class from which you can build your own buffer.
 In most algorithms, we require :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer`\s.
-This is because we want them to generalize to the the multi-agent case. Therefore, these buffer's ``add()`` and ``sample()`` methods require a ``policy_id`` to handle experiences per policy.
+This is because we want them to generalize to the multi-agent case. Therefore, these buffer's ``add()`` and ``sample()`` methods require a ``policy_id`` to handle experiences per policy.
 Have a look at the :py:class:`~ray.rllib.utils.replay_buffers.multi_agent_replay_buffer.MultiAgentReplayBuffer` to get a sense of how it extends our base class.
 You can find buffer types and arguments to modify their behaviour as part of RLlib's default parameters. They are part of
 the ``replay_buffer_config``.

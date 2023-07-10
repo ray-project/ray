@@ -4,17 +4,11 @@ from typing import Any, Dict, Optional
 
 from ray_release.aws import RELEASE_AWS_BUCKET
 from ray_release.buildkite.concurrency import get_concurrency_group
-from ray_release.config import (
-    DEFAULT_ANYSCALE_PROJECT,
-    DEFAULT_CLOUD_ID,
-    DEFAULT_PYTHON_VERSION,
-    Test,
-    as_smoke_test,
-    parse_python_version,
-)
+from ray_release.test import Test, TestState
+from ray_release.config import DEFAULT_ANYSCALE_PROJECT, DEFAULT_CLOUD_ID, as_smoke_test
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment
 from ray_release.template import get_test_env_var
-from ray_release.util import python_version_str, DeferredEnvVar
+from ray_release.util import DeferredEnvVar
 
 DEFAULT_ARTIFACTS_DIR_HOST = "/tmp/ray_release_test_artifacts"
 
@@ -91,15 +85,7 @@ def get_step(
     env_dict.update(env)
 
     step["env"].update(env_dict)
-
-    if "python" in test:
-        python_version = parse_python_version(test["python"])
-    else:
-        python_version = DEFAULT_PYTHON_VERSION
-
-    step["plugins"][0][DOCKER_PLUGIN_KEY][
-        "image"
-    ] = f"rayproject/ray:nightly-py{python_version_str(python_version)}"
+    step["plugins"][0][DOCKER_PLUGIN_KEY]["image"] = "python:3.8"
 
     commit = get_test_env_var("RAY_COMMIT")
     branch = get_test_env_var("RAY_BRANCH")
@@ -123,11 +109,16 @@ def get_step(
 
     # If a test is not stable, allow to soft fail
     stable = test.get("stable", True)
+    clone_test = copy.deepcopy(test)  # avoid modifying the original test
+    clone_test.update_from_s3()
+    jailed = clone_test.get_state() == TestState.JAILED
+    full_label = ""
     if not stable:
         step["soft_fail"] = True
-        full_label = "[unstable] "
-    else:
-        full_label = ""
+    if not stable:
+        full_label += "[unstable]"
+    if jailed:
+        full_label += "[jailed]"
 
     full_label += test["name"]
     if smoke_test:

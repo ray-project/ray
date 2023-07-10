@@ -28,6 +28,12 @@ RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING = [
 ]
 
 
+def get_secret_token(secret_id: str) -> str:
+    return boto3.client("secretsmanager", region_name="us-west-2").get_secret_value(
+        SecretId=secret_id
+    )["SecretString"]
+
+
 def maybe_fetch_api_token():
     from anyscale.authenticate import AuthenticationBlock
 

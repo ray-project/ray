@@ -3,11 +3,11 @@ import os
 import random
 import types
 import collections
-from distutils.version import LooseVersion
+from packaging.version import Version
 
 from typing import Any, Dict, List, Optional, Callable, Union
 
-from ray.air import session
+from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
 from ray.train._internal.session import get_accelerator, set_accelerator
@@ -19,7 +19,7 @@ import torch
 from torch.cuda.amp import autocast, GradScaler
 from torch.nn.parallel import DistributedDataParallel
 
-if LooseVersion(torch.__version__) < LooseVersion("1.11.0"):
+if Version(torch.__version__) < Version("1.11.0"):
     FullyShardedDataParallel = None
 else:
     from torch.distributed.fsdp import FullyShardedDataParallel
