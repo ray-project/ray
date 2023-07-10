@@ -229,7 +229,9 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[bytes, Any]:
 
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_http_request:
+            if request_metadata.is_http_request and False:
+                print("Handling HTTP request", request_metadata)
+                print("Handling HTTP request_args", request_args)
                 # The sole argument passed from `http_proxy.py` is the ASGI scope.
                 assert len(request_args) == 1
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
@@ -240,11 +242,11 @@ def create_replica_wrapper(name: str):
                 request_args = (scope, buffered_receive, buffered_send)
 
             result = await self.replica.call_user_method(
-                request_metadata, request_args, request_kwargs
+                    request_metadata, request_args, request_kwargs
             )
 
-            if request_metadata.is_http_request:
-                result = buffered_send.build_asgi_response()
+            # if request_metadata.is_http_request:
+            #     result = buffered_send.build_asgi_response()
 
             # Returns a small object for router to track request status.
             return b"", result
@@ -714,15 +716,15 @@ class RayServeReplica:
         `RayTaskError`.
         """
         async with self.wrap_user_method_call(request_metadata):
-            if request_metadata.is_http_request:
-                # For HTTP requests we always expect (scope, receive, send) as args.
-                assert len(request_args) == 3
-                scope, receive, send = request_args
-
-                if isinstance(self.callable, ASGIAppReplicaWrapper):
-                    request_args = (scope, receive, send)
-                else:
-                    request_args = (Request(scope, receive, send),)
+            # if request_metadata.is_http_request:
+            #     # For HTTP requests we always expect (scope, receive, send) as args.
+            #     assert len(request_args) == 3
+            #     scope, receive, send = request_args
+            #
+            #     if isinstance(self.callable, ASGIAppReplicaWrapper):
+            #         request_args = (scope, receive, send)
+            #     else:
+            #         request_args = (Request(scope, receive, send),)
 
             runner_method = None
             try:
@@ -746,6 +748,8 @@ class RayServeReplica:
                     request_args, request_kwargs = tuple(), {}
 
                 result = await method_to_call(*request_args, **request_kwargs)
+                print("call_user_method!!!", result)
+                return result
 
             except Exception as e:
                 function_name = "unknown"

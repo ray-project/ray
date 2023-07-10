@@ -221,6 +221,7 @@ class ActorReplicaWrapper:
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
         """Send the query to a Python replica."""
+        print("send_query_python!!!", query)
         if query.metadata.is_streaming:
             obj_ref = self._actor_handle.handle_request_streaming.options(
                 num_returns="streaming"

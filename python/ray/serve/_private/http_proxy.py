@@ -7,6 +7,8 @@ import pickle
 import socket
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
+import grpc
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
 import uvicorn
 import starlette.responses
@@ -60,6 +62,23 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_random_letters,
 )
+
+
+class PredictAPIsServicer(serve_pb2_grpc.PredictAPIsServiceServicer):
+    async def Predict(self, request: serve_pb2.PredictRequest, context):
+        print("Predict called!!", request)
+        handle = serve.context.get_global_client().get_handle(
+            request.target,
+            sync=False,
+            missing_ok=True,
+        )
+        print("handle", handle)
+        print("request.input", request.input)
+
+        output_ref = await handle.remote(request.input)
+        output_any = await output_ref
+        return serve_pb2.PredictResponse(output=output_any)
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -872,6 +891,7 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
+        start_grpc_server: bool = True,  # TODO: maybe make this a feature flag
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -896,11 +916,15 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
+        self.grpc_port = self.port + 1
         self.root_path = root_path
+        self.start_grpc_server = start_grpc_server
+        self.server = grpc.aio.server()
 
         self.setup_complete = asyncio.Event()
+        self.http_setup_complete = asyncio.Event()
+        self.grpc_setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(controller_name, node_id)
         self.app = HTTPProxy(
             controller_name=controller_name,
             node_id=node_id,
@@ -918,19 +942,25 @@ class HTTPProxyActor:
         # This task should be running forever. We track it in case of failure.
         self.running_task = get_or_create_event_loop().create_task(self.run())
 
+        # self.running_grpc_task = None
+        # if self.start_grpc_server:
+        #     self.running_grpc_task = get_or_create_event_loop().create_task(self.run_grpc_server())
+
     async def ready(self):
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
+        # TODO: ensure both HTTP and GRPC servers are ready.
         setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
+        waiting_tasks = [
+            # Either the HTTP setup has completed.
+            # The event is set inside self.run.
+            setup_task,
+            # Or self.run errored.
+            self.running_task,
+        ]
         done_set, _ = await asyncio.wait(
-            [
-                # Either the HTTP setup has completed.
-                # The event is set inside self.run.
-                setup_task,
-                # Or self.run errored.
-                self.running_task,
-            ],
+            waiting_tasks,
             return_when=asyncio.FIRST_COMPLETED,
         )
 
@@ -982,8 +1012,37 @@ Please make sure your http-host and http-port are specified correctly."""
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
 
+        # self.http_setup_complete.set()
+        # self.setup_complete.set()
+        # await server.serve(sockets=[sock])
+        server.serve(sockets=[sock])
+
+        logger.info(
+            "Starting gRPC server with on node: "
+            f"{ray.get_runtime_context().get_node_id()} "
+            f"listening on port {self.grpc_port}"
+        )
+        self.server.add_insecure_port(f"[::]:{self.grpc_port}")
+        serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
+            PredictAPIsServicer(), self.server)
+        await self.server.start()
         self.setup_complete.set()
-        await server.serve(sockets=[sock])
+        await self.server.wait_for_termination()
+
+    async def run_grpc_server(self):
+        grpc_server = grpc.aio.server()
+        logger.info(
+            "Starting gRPC server with on node: "
+            f"{ray.get_runtime_context().get_node_id()} "
+            f"listening on port {self.grpc_port}"
+        )
+        grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+        serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
+            PredictAPIsServicer(), grpc_server)
+        await grpc_server.start()
+        self.grpc_setup_complete.set()
+        self.setup_complete.set()
+        await grpc_server.wait_for_termination()
 
     async def check_health(self):
         """No-op method to check on the health of the HTTP Proxy.
@@ -992,4 +1051,5 @@ Please make sure your http-host and http-port are specified correctly."""
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
+        print("receive_asgi_messages!!!")
         return pickle.dumps(await self.app.receive_asgi_messages(request_id))

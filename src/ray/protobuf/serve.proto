@@ -23,6 +23,8 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
+import "google/protobuf/any.proto";
+
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {
   // Minimal number of replicas, must be a non-negative integer.
@@ -228,13 +230,22 @@ message StatusOverview {
 
 // RPC Schema
 message PredictRequest {
-  map<string, bytes> input = 2;
+  string target = 1;
+  google.protobuf.Any input = 2;
 }
 
 message PredictResponse {
-  bytes prediction = 1;
+  google.protobuf.Any output = 1;
 }
 
 service PredictAPIsService {
   rpc Predict(PredictRequest) returns (PredictResponse);
+}
+
+message TestIn {
+  string name = 1;
+}
+
+message TestOut {
+  string greeting = 1;
 }
