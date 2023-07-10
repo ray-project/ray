@@ -11,7 +11,6 @@ import warnings
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import _join_path_or_uri
 
-from ray.tune import TuneError
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
@@ -20,6 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 VALID_RESUME_TYPES = [True, "LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY", "AUTO"]
+
+_EXPERIMENT_SYNC_TIMEOUT_MESSAGE = (
+    "If this warning keeps showing up, consider diagnosing the "
+    "reason behind the hanging sync operation, or increase the "
+    "`sync_timeout` in `SyncConfig`."
+)
 
 
 @dataclass
@@ -265,11 +270,14 @@ class _ExperimentCheckpointManager:
                 self._syncer.wait()
             except TimeoutError as e:
                 logger.warning(
-                    "The previous sync of the experiment checkpoint to the cloud "
-                    f"timed out: {str(e)}. Tune will continue to retry syncing. "
-                    "If this warning keeps showing up, consider diagnosing the "
-                    "reason behind the hanging sync operation, or increase the "
-                    "`sync_timeout` in `SyncConfig`."
+                    "The previous sync of the experiment directory to the cloud "
+                    f"timed out with the error: {str(e)}\nSyncing will be retried. "
+                    + _EXPERIMENT_SYNC_TIMEOUT_MESSAGE
+                )
+            except Exception as e:
+                logger.warning(
+                    "The previous sync of the experiment directory to the cloud "
+                    f"failed with the error: {str(e)}\nSyncing will be retried."
                 )
             synced = self._syncer.sync_up(
                 local_dir=self._local_checkpoint_dir,
@@ -285,7 +293,15 @@ class _ExperimentCheckpointManager:
 
         start_time = time.monotonic()
         if wait:
-            self._syncer.wait()
+            try:
+                self._syncer.wait()
+            except Exception as e:
+                raise RuntimeError(
+                    "Uploading the experiment directory from the driver "
+                    f"(local path: {self._local_checkpoint_dir}) to the the cloud "
+                    f"(remote path: {self._remote_checkpoint_dir}) failed. "
+                    "Please check the error message above."
+                ) from e
 
         now = time.monotonic()
         sync_time_taken = now - start_time
@@ -352,9 +368,16 @@ class _ExperimentCheckpointManager:
                 self._syncer.wait()
             except TimeoutError as e:
                 logger.warning(
-                    "The previous sync of the experiment checkpoint from the cloud "
-                    f"timed out: {str(e)}."
+                    "The previous sync of the experiment directory from the cloud "
+                    f"timed out with the error: {str(e)}\nSyncing will be retried. "
+                    + _EXPERIMENT_SYNC_TIMEOUT_MESSAGE
                 )
+            except Exception as e:
+                logger.warning(
+                    "The previous sync of the experiment directory from the cloud "
+                    f"failed with the error: {str(e)}\nSyncing will be retried. "
+                )
+
             synced = self._syncer.sync_down(
                 remote_dir=self._remote_checkpoint_dir,
                 local_dir=self._local_checkpoint_dir,
@@ -370,15 +393,14 @@ class _ExperimentCheckpointManager:
         if wait:
             try:
                 self._syncer.wait()
-            except TuneError as e:
+            except Exception as e:
                 raise RuntimeError(
-                    "Syncing the remote experiment checkpoint to the driver "
-                    "failed. Please check the error message. If you want to "
-                    'start a new experiment, use `resume="AUTO"` or '
-                    "`resume=None`. If you expected an experiment to "
-                    "already exist, check if you supplied the correct "
-                    "`upload_dir` to the `tune.SyncConfig` passed to "
-                    "`tune.Tuner()`."
+                    "Downloading the remote experiment directory from the cloud "
+                    f"(remote path: {self._remote_checkpoint_dir}) to the driver "
+                    f"(local path: {self._local_checkpoint_dir}) failed. "
+                    "Please check the error message above. "
+                    "If you expected an experiment to already exist, check if "
+                    "you supplied the correct restoration path."
                 ) from e
 
         return synced
@@ -397,7 +419,7 @@ class _ExperimentCheckpointManager:
                     local_dir=self._local_checkpoint_dir,
                 )
                 self._syncer.wait()
-            except TuneError as e:
+            except Exception as e:
                 logger.warning(
                     f"Got error when trying to sync down: {e} "
                     f"\nPlease check this error message for potential "
