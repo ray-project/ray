@@ -178,7 +178,10 @@ def transform_ray_dag_to_serve_dag(
             ):
 =======
             if isinstance(node, DeploymentNode):
+<<<<<<< HEAD
 >>>>>>> c326678881 ([serve] Remove unnecessary `RayServeDeploymentHandle` class (#37204))
+=======
+>>>>>>> e8fb792e65 ([serve] Remove unnecessary `RayServeDeploymentHandle` class (#37204))
                 return RayServeHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
