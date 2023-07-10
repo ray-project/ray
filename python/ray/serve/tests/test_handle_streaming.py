@@ -1,4 +1,3 @@
-import re
 import sys
 from typing import AsyncGenerator, Generator
 
@@ -112,7 +111,7 @@ class TestAppHandleStreaming:
         obj_ref_gen = ray.get(h.unary.remote(0))
         with pytest.raises(
             TypeError,
-            match=re.escape("must be a generator function, but 'unary' is not"),
+            match="must be a generator function, but 'unary' is not",
         ):
             ray.get(next(obj_ref_gen))
 
@@ -190,7 +189,7 @@ class TestDeploymentHandleStreaming:
                         "deployment."
                     ),
                 ):
-                    await (await h.call_inner_generator.remote(5))
+                    await (await self._h.call_inner_generator.remote(5))
 
         h = serve.run(Delegate.bind(deployment.bind()))
         ray.get(h.remote())
@@ -206,7 +205,7 @@ class TestDeploymentHandleStreaming:
 
                 obj_ref_gen = await h.unary.remote(0)
                 with pytest.raises(
-                    TypeError, match="Method 'unary' is not a generator."
+                    TypeError, match="must be a generator function, but 'unary' is not"
                 ):
                     await (await obj_ref_gen.__anext__())
 
