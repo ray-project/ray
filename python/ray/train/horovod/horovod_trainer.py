@@ -1,6 +1,7 @@
 from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
 
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
+from ray.air.config import ScalingConfig, RunConfig
+from ray.train.data_config import DataConfig
 from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
 
@@ -181,7 +182,7 @@ class HorovodTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         horovod_config: Optional[HorovodConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,
