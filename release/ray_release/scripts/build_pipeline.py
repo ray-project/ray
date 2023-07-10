@@ -1,9 +1,7 @@
 import json
 import os
 import shutil
-import subprocess
 import sys
-import tempfile
 from typing import Optional
 from pathlib import Path
 
@@ -42,16 +40,6 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     help="File containing test configurations",
 )
 @click.option(
-    "--no-clone-repo",
-    is_flag=True,
-    show_default=True,
-    default=False,
-    help=(
-        "Will not clone the test repository even if specified in configuration "
-        "(for internal use)."
-    ),
-)
-@click.option(
     "--run-jailed-tests",
     is_flag=True,
     show_default=True,
@@ -75,7 +63,6 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
 )
 def main(
     test_collection_file: Optional[str] = None,
-    no_clone_repo: bool = False,
     run_jailed_tests: bool = False,
     run_unstable_tests: bool = False,
     global_config: str = "oss_config.yaml",
@@ -86,51 +73,9 @@ def main(
     init_global_config(global_config_file)
     settings = get_pipeline_settings()
 
-    repo = settings["ray_test_repo"]
-    branch = settings["ray_test_branch"]
     tmpdir = None
 
     env = {}
-    if repo and not no_clone_repo:
-        # If the Ray test repo is set, we clone that repo to fetch
-        # the test configuration file. Otherwise, we might be missing newly
-        # added test.
-
-        tmpdir = tempfile.mktemp()
-
-        current_release_dir = os.path.abspath(
-            os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
-        )
-        clone_cmd = f"git clone --depth 1 --branch {branch} {repo} {tmpdir}"
-        logger.info(f"Cloning test repository: {clone_cmd}")
-        try:
-            subprocess.check_output(clone_cmd, shell=True)
-        except Exception as e:
-            raise ReleaseTestCLIError(
-                f"Could not clone test repository " f"{repo} (branch {branch}): {e}"
-            ) from e
-        subprocess.check_output(
-            ["cp", "-rf", os.path.join(tmpdir, "release"), current_release_dir],
-        )
-
-        # We run the script again in a subprocess without entering this if again.
-        # This is necessary as we update the ray_release files. This way,
-        # the modules are reloaded and use the newest files, instead of
-        # old ones, which may not have the changes introduced on the
-        # checked out branch.
-        cmd = _get_rerun_cmd(
-            global_config,
-            test_collection_file,
-            run_jailed_tests,
-            run_unstable_tests,
-        )
-        subprocess.run(cmd, capture_output=False, check=True)
-        return
-    elif repo:
-        env = {
-            "RAY_TEST_REPO": repo,
-            "RAY_TEST_BRANCH": branch,
-        }
     test_collection_file = test_collection_file or os.path.join(
         os.path.dirname(__file__), "..", "..", "release_tests.yaml"
     )
@@ -218,7 +163,7 @@ def main(
     report = (
         bool(int(os.environ.get("REPORT", "0")))
         or os.environ.get("BUILDKITE_SOURCE", "manual") == "schedule"
-        or (branch.startswith("releases/") and buildkite_branch.startswith("releases/"))
+        or buildkite_branch.startswith("releases/")
     )
     if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
         env["REPORT_TO_RAY_TEST_DB"] = "1"
@@ -274,23 +219,6 @@ def main(
 
     steps_str = json.dumps(steps)
     print(steps_str)
-
-
-def _get_rerun_cmd(
-    global_config: str,
-    test_collection_file: Optional[str] = None,
-    run_jailed_tests: bool = False,
-    run_unstable_tests: bool = False,
-):
-    cmd = [sys.executable, __file__, "--no-clone-repo"]
-    if test_collection_file:
-        cmd += ["--test-collection-file", test_collection_file]
-    if run_jailed_tests:
-        cmd += ["--run-jailed-tests"]
-    if run_unstable_tests:
-        cmd += ["--run-unstable-tests"]
-    cmd += ["--global-config", global_config]
-    return cmd
 
 
 if __name__ == "__main__":
