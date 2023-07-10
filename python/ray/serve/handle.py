@@ -20,7 +20,7 @@ from ray.serve._private.utils import (
 )
 from ray.serve._private.router import Router, RequestMetadata
 from ray.util import metrics
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 _global_async_loop = None
 
@@ -370,9 +370,10 @@ class RayServeSyncHandle(RayServeHandle):
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
 
-@DeveloperAPI
+@Deprecated(
+    message="RayServeDeploymentHandle is no longer used, use RayServeHandle instead."
+)
 class RayServeDeploymentHandle(RayServeHandle):
-    """RayServeDeploymentHandle is no longer used, use RayServeHandle instead."""
     # We had some examples using this class for type hinting. To avoid breakig them,
     # leave this as an alias.
     pass
