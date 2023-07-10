@@ -11,8 +11,6 @@ from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import HandleOptions
-
-from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
