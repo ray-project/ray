@@ -1104,20 +1104,6 @@ cc_test(
 )
 
 cc_test(
-    name = "resource_request_test",
-    size = "small",
-    srcs = [
-        "src/ray/raylet/scheduling/resource_request_test.cc",
-    ],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        ":scheduler",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
     name = "cluster_resource_scheduler_test",
     size = "small",
     srcs = [

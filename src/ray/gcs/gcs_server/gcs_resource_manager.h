@@ -20,7 +20,7 @@
 #include "ray/common/id.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/scheduling/cluster_resource_data.h"
-#include "ray/common/scheduling/cluster_resource_manager.h"
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"

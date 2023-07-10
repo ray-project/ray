@@ -238,13 +238,3 @@ cc_library(
         "//src/ray/util:util",
     ]
 )
-
-# cc_library(
-#     name = "stats",
-#     srcs = [
-#         ""
-#     ],
-#     hdrs = [
-#     ]
-# )
-    
