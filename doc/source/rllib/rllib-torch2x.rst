@@ -9,7 +9,7 @@ Using RLlib with torch 2.x compile
 
 Torch 2.x comes with the new ``torch.compile()`` `API <https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile>`_, which leverages `torch dynamo <https://pytorch.org/docs/stable/dynamo/index.html#torchdynamo-overview>`_ under the hood to JIT-compile wrapped code. We integrate ``torch.compile()`` with RLlib in the context of `RLModules <rllib-rlmodule.html>`_ and Learners. 
 
-We have integrated this feature with RLModules. You can set the backend and mode via ``framework()`` API on an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object. Alternatively, you can compile the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly during stand-alone usage such as inference.
+We have integrated this feature with RLModules. You can set the backend and mode via ``framework()`` API on an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object. Alternatively, you can compile the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly during stand-alone usage, such as inference.
 
 Benchmarks
 ==========
@@ -18,7 +18,7 @@ We conducted a comprehensive benchmark with this feature. The following benchmar
 
 Inference
 ---------
-For the benchmarking metric, we compute the inverse of the time it takes to run :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` of the RLModule. We have conducted this benchmark on the default implementation of PPO RLModule under different hardware settings, torch versions, dynamo backends and modes, as well as different batch sizes. Here is a high-level summary of our findings:
+For the benchmarking metric, we compute the inverse of the time it takes to run :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` of the RLModule. We have conducted this benchmark on the default implementation of PPO RLModule under different hardware settings, torch versions, dynamo backends and modes, as well as different batch sizes. The following table shows our findings regarding what combination of torch-backend and -mode yields the highest speedup we could find for a given combination of hardware and PyTorch version:
 
 .. list-table:: 
    :widths: 25 25 25 25
@@ -69,7 +69,7 @@ For detailed tables, checkout the `Appendix <../../../../rllib/benchmarks/torch_
   
   python ./run_inference_bm.py --backend <dynamo_backend> --mode <dynamo_mode> -bs <batch_size>
 
-Some meta level comments
+Some meta-level comments
 ########################
 1. The performance improvement depends on many factors, including the neural network architecture used, the batch size during sampling, the backend, the mode, the torch version, and many other things. The best way to optimize this is to first get the non-compiled workload learning and then do a hyper-parameter tuning on torch compile parameters on different hardware.
 
@@ -130,5 +130,5 @@ Here is a summary of results:
      - max-autotune
      - 12.88
 
-As you can see, ``onnxrt`` does not gain any speed-ups in the setup we tested (in fact it slows the workload down by %70) while the ``ipex`` provides ~%10 speed-up. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
+As you can see, ``onnxrt`` does not gain any speed-ups in the setup we tested (in fact it slows the workload down by %70), while the ``ipex`` provides ~%10 speed-up. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
 
