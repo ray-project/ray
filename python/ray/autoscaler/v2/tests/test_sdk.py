@@ -1,9 +1,10 @@
 import os
 import sys
+import time
 
 # coding: utf-8
 from dataclasses import dataclass
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 import pytest
 
@@ -27,6 +28,19 @@ def _autoscaler_state_service_stub():
         gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
     )
     return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)
+
+
+def get_node_ids() -> Tuple[str, List[str]]:
+    """Get the node ids of the head node and a worker node"""
+    head_node_id = None
+    nodes = list_nodes()
+    worker_node_ids = []
+    for node in nodes:
+        if node.is_head_node:
+            head_node_id = node.node_id
+        else:
+            worker_node_ids += [node.node_id]
+    return head_node_id, worker_node_ids
 
 
 def assert_cluster_resource_constraints(
@@ -57,6 +71,7 @@ class NodeState:
     node_id: str
     node_status: NodeStatus
     idle_time_check_cb: Optional[Callable] = None
+    labels: Optional[dict] = None
 
 
 def assert_node_states(state: ClusterResourceState, expected_nodes: List[NodeState]):
@@ -74,6 +89,38 @@ def assert_node_states(state: ClusterResourceState, expected_nodes: List[NodeSta
         assert actual_node.status == expected_node.node_status
         if expected_node.idle_time_check_cb:
             assert expected_node.idle_time_check_cb(actual_node.idle_duration_ms)
+
+        if expected_node.labels:
+            assert sorted(actual_node.dynamic_labels) == sorted(expected_node.labels)
+
+
+@dataclass
+class GangResourceRequest:
+    # Resource bundles.
+    bundles: List[dict]
+    # List of detail information about the request
+    details: List[str]
+
+
+def assert_gang_requests(
+    state: ClusterResourceState, expected: List[GangResourceRequest]
+):
+    """
+    Assert a GetClusterResourceStateReply has gang requests that
+    matches with the expected requests.
+    """
+    assert len(state.pending_gang_resource_requests) == len(expected)
+
+    # Sort all the requests by request's details
+    requests = sorted(
+        state.pending_gang_resource_requests, key=lambda request: request.details
+    )
+    expected = sorted(expected, key=lambda request: "".join(request.details))
+
+    for actual_request, expected_request in zip(requests, expected):
+        # Assert the detail contains the expected details
+        for detail_str in expected_request.details:
+            assert detail_str in actual_request.details
 
 
 def test_request_cluster_resources_basic(shutdown_only):
@@ -101,8 +148,66 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
 
-def test_node_state_lifecycle_basic(ray_start_cluster):
+def test_pg_pending_gang_requests_basic(ray_start_cluster):
+    ray.init(num_cpus=1)
 
+    # Create a pg that's pending.
+    pg = ray.util.placement_group([{"CPU": 1}] * 3, strategy="STRICT_SPREAD")
+    try:
+        ray.get(pg.ready(), timeout=2)
+    except TimeoutError:
+        pass
+
+    pg_id = pg.id.hex()
+
+    stub = _autoscaler_state_service_stub()
+
+    def verify():
+        state = get_cluster_resource_state(stub)
+        assert_gang_requests(
+            state,
+            [
+                GangResourceRequest(
+                    [{"CPU": 1}] * 3, details=[pg_id, "STRICT_SPREAD", "PENDING"]
+                )
+            ],
+        )
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_pg_usage_labels(shutdown_only):
+
+    ray.init(num_cpus=1)
+
+    # Create a pg
+    pg = ray.util.placement_group([{"CPU": 1}])
+    ray.get(pg.ready())
+
+    # Check the labels
+    stub = _autoscaler_state_service_stub()
+    head_node_id, _ = get_node_ids()
+
+    pg_id = pg.id.hex()
+
+    def verify():
+        state = get_cluster_resource_state(stub)
+        assert_node_states(
+            state,
+            [
+                NodeState(
+                    head_node_id, NodeStatus.RUNNING, labels={f"_PG_{pg_id}": ""}
+                ),
+            ],
+        )
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_node_state_lifecycle_basic(ray_start_cluster):
+    start_s = time.perf_counter()
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
@@ -119,18 +224,8 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
 
     wait_for_condition(nodes_up)
 
-    def get_node_ids():
-        head_node_id = None
-        node_id = None
-        nodes = list_nodes()
-        for node in nodes:
-            if node.is_head_node:
-                head_node_id = node.node_id
-            else:
-                node_id = node.node_id
-        return head_node_id, node_id
-
-    head_node_id, node_id = get_node_ids()
+    head_node_id, worker_node_ids = get_node_ids()
+    node_id = worker_node_ids[0]
 
     def verify_cluster_idle():
         state = get_cluster_resource_state(stub)
@@ -174,13 +269,22 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
     # Kill the node.
     cluster.remove_node(node)
 
+    # Sleep for a bit so head node should be idle longer than this.
+    time.sleep(3)
+
     def verify_cluster_no_node():
         state = get_cluster_resource_state(stub)
+        now_s = time.perf_counter()
+        test_dur_ms = (now_s - start_s) * 1000
         assert_node_states(
             state,
             [
                 NodeState(node_id, NodeStatus.DEAD),
-                NodeState(head_node_id, NodeStatus.IDLE, lambda idle_ms: idle_ms > 0),
+                NodeState(
+                    head_node_id,
+                    NodeStatus.IDLE,
+                    lambda idle_ms: idle_ms > 3 * 1000 and idle_ms < test_dur_ms,
+                ),
             ],
         )
         return True
