@@ -132,6 +132,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         ValueError: HTTPInternalServerError
     """
 
+    async def get_task_info(self, option: ListApiOptions) -> Tuple[str, str, str]:
+        result = await self._state_api.list_tasks(option=option)
+        tasks = result.result
+        state = tasks[0].get("state")
+        pid = tasks[0]["worker_pid"]
+        node_id = tasks[0]["node_id"]
+        ip = DataSource.node_id_to_ip[node_id]
+        return pid, ip, state
+
     @routes.get("/task/traceback")
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
         logger.info(f"req {type(req)}: {req}")
