@@ -165,11 +165,11 @@ Ray Examples
         How to fine-tune a DreamBooth text-to-image model with your own images.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training train
-        :link: /ray-air/examples/dolly_lightning_fsdp_finetuning
-        :link-type: doc
+        :class-item: gallery-item training
 
-        How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP
+        .. button-ref:: /ray-air/examples/dolly_lightning_fsdp_finetuning
+
+            How to fine-tune a dolly-v2-7b model with Ray AIR LightningTrainer and FSDP
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv

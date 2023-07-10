@@ -14,7 +14,80 @@ Use Ray to scale applications on your laptop or the cloud. Choose the right guid
 (libraries-quickstart)=
 ## Ray AI Runtime Libraries Quickstart
 
-Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
+`````{dropdown} Efficiently process your data into features.
+
+Load data into a ``Dataset``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_generic_preprocess_start__
+    :end-before: __air_generic_preprocess_end__
+```
+
+Preprocess your data with a ``Preprocessor``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_preprocess_start__
+    :end-before: __air_xgb_preprocess_end__
+```
+`````
+
+`````{dropdown} Scale out model training.
+
+This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
+
+```
+pip install xgboost_ray
+```
+
+Train a model with an ``XGBoostTrainer``.
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_train_start__
+    :end-before: __air_xgb_train_end__
+```
+`````
+
+`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
+
+Configure the parameters for tuning:
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_xgb_tuner_start__
+    :end-before: __air_xgb_tuner_end__
+```
+
+Run hyperparameter tuning with Ray Tune to find the best model:
+
+```{literalinclude} ../ray-air/examples/xgboost_starter.py
+    :language: python
+    :start-after: __air_tune_generic_end__
+    :end-before: __air_tune_generic_end__
+```
+`````
+
+`````{dropdown} Use the trained model for Batch prediction
+
+Use the trained model for batch prediction with
+``Dataset.map_batches()``.
+
+To learn more, see :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
+
+```{button-ref} air
+:color: primary
+:outline:
+:expand:
+
+Learn more about Ray AIR
+```
+`````
+
+## Ray Libraries Quickstart
+
+Use individual libraries for single ML workloads, without having to install the full AI Runtime package. Click on the dropdowns for your workload below.
 
 `````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
 :animate: fade-in-slide-down
