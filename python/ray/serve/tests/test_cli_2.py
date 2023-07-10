@@ -33,6 +33,7 @@ def ping_endpoint(endpoint: str, params: str = ""):
     except requests.exceptions.ConnectionError:
         return CONNECTION_ERROR_MSG
 
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_status_multi_app(ray_start_stop):
     """Deploys a multi-app config file and checks their status."""
