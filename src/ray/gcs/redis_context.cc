@@ -210,6 +210,7 @@ void RedisRequestContext::Run() {
           auto end_time = absl::Now();
           ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
                                           absl::Milliseconds(1));
+          delete request_cxt;
         }
       };
 
