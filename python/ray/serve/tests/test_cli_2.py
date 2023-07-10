@@ -179,10 +179,10 @@ def test_run_application(ray_start_stop, number_of_kill_signals):
         requests.post("http://localhost:8000/", json=["ADD", 0]).json()
     print("Kill successful! Deployments are not reachable over HTTP.")
 
-    print('Running node at import path "ray.serve.tests.test_cli.parrot_node".')
+    print('Running node at import path "ray.serve.tests.test_cli_2.parrot_node".')
     # Deploy via import path
     p = subprocess.Popen(
-        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli.parrot_node"]
+        ["serve", "run", "--address=auto", "ray.serve.tests.test_cli_2.parrot_node"]
     )
     wait_for_condition(
         lambda: ping_endpoint("parrot", params="?sound=squawk") == "squawk"
@@ -259,7 +259,7 @@ def test_run_deployment_node(ray_start_stop):
             "serve",
             "run",
             "--address=auto",
-            "ray.serve.tests.test_cli.molly_macaw",
+            "ray.serve.tests.test_cli_2.molly_macaw",
         ]
     )
     wait_for_condition(lambda: ping_endpoint("Macaw") == "Molly is green!", timeout=10)
@@ -294,8 +294,8 @@ def build_echo_app_typed(args: TypedArgs):
 @pytest.mark.parametrize(
     "import_path",
     [
-        "ray.serve.tests.test_cli.build_echo_app",
-        "ray.serve.tests.test_cli.build_echo_app_typed",
+        "ray.serve.tests.test_cli_2.build_echo_app",
+        "ray.serve.tests.test_cli_2.build_echo_app_typed",
     ],
 )
 def test_run_builder_with_args(ray_start_stop, import_path: str):
@@ -353,7 +353,7 @@ def test_run_runtime_env(ray_start_stop):
             "serve",
             "run",
             "--address=auto",
-            "ray.serve.tests.test_cli.metal_detector_node",
+            "ray.serve.tests.test_cli_2.metal_detector_node",
             "--runtime-env-json",
             ('{"env_vars": {"buried_item": "lucky coin"} }'),
         ]
@@ -458,14 +458,14 @@ constructor_failure_node = ConstructorFailure.bind()
 def test_run_teardown(ray_start_stop):
     """Consecutive serve runs should tear down controller so logs can always be seen."""
     logs = subprocess.check_output(
-        ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        ["serve", "run", "ray.serve.tests.test_cli_2.constructor_failure_node"],
         stderr=subprocess.STDOUT,
         timeout=30,
     ).decode()
     assert "Intentionally failing." in logs
 
     logs = subprocess.check_output(
-        ["serve", "run", "ray.serve.tests.test_cli.constructor_failure_node"],
+        ["serve", "run", "ray.serve.tests.test_cli_2.constructor_failure_node"],
         stderr=subprocess.STDOUT,
         timeout=30,
     ).decode()
@@ -501,7 +501,7 @@ def test_build_single_app(ray_start_stop, node):
                 "serve",
                 "build",
                 "--single-app",
-                f"ray.serve.tests.test_cli.{node}",
+                f"ray.serve.tests.test_cli_2.{node}",
                 "-o",
                 tmp.name,
             ]
@@ -532,8 +532,8 @@ def test_build_multi_app(ray_start_stop):
             [
                 "serve",
                 "build",
-                "ray.serve.tests.test_cli.TestApp1Node",
-                "ray.serve.tests.test_cli.TestApp2Node",
+                "ray.serve.tests.test_cli_2.TestApp1Node",
+                "ray.serve.tests.test_cli_2.TestApp2Node",
                 "-o",
                 tmp.name,
             ]
@@ -575,7 +575,7 @@ def test_build_kubernetes_flag():
                 "serve",
                 "build",
                 "--single-app",
-                "ray.serve.tests.test_cli.k8sFNode",
+                "ray.serve.tests.test_cli_2.k8sFNode",
                 "-o",
                 tmp.name,
                 "-k",
@@ -586,7 +586,7 @@ def test_build_kubernetes_flag():
         tmp.seek(0)
         config = yaml.safe_load(tmp.read())
         assert config == {
-            "importPath": "ray.serve.tests.test_cli.k8sFNode",
+            "importPath": "ray.serve.tests.test_cli_2.k8sFNode",
             "runtimeEnv": json.dumps({}),
             "host": "0.0.0.0",
             "port": 8000,
