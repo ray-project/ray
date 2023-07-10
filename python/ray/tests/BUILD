@@ -319,8 +319,17 @@ py_test_module_list(
 )
 
 py_test(
-  name = "test_cli",
-  srcs = ["test_cli.py"],
+  name = "test_cli_1",
+  srcs = ["test_cli_1.py"],
+  data = glob(["test_cli_patterns/*.txt", "test_cli_patterns/*.yaml"]),
+  size = "large",
+  tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+  name = "test_cli_2",
+  srcs = ["test_cli_2.py"],
   data = glob(["test_cli_patterns/*.txt", "test_cli_patterns/*.yaml"]),
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "team:core"],
