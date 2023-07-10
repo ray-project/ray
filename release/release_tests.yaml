@@ -123,7 +123,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       runtime_env:
@@ -156,7 +156,7 @@
   frequency: weekly
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -228,7 +228,7 @@
   python: "3.8"
   frequency: nightly
   team: ml
-  affected: true
+  affected: "true"
   cluster:
 #    byod:
 #      type: gpu
@@ -897,7 +897,7 @@
 
   python: "3.8"
 
-  affected: true
+  affected: "true"
   frequency: weekly
   team: ml
   cluster:
@@ -945,7 +945,7 @@
   group: Workspace templates
   working_dir: workspace_templates/02_many_model_training
   python: "3.9"
-  affected: true
+  affected: "true"
   frequency: nightly-3x
   team: ml
   cluster:
@@ -1503,7 +1503,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -1534,7 +1534,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -1630,7 +1630,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       runtime_env:
@@ -1663,7 +1663,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       runtime_env:
@@ -1758,7 +1758,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -1795,7 +1795,7 @@
   frequency: nightly
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -1824,7 +1824,7 @@
   frequency: nightly
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -1853,7 +1853,7 @@
   frequency: nightly
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2106,7 +2106,7 @@
   frequency: weekly
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2320,7 +2320,7 @@
   frequency: nightly-3x
   team: ml
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -2395,7 +2395,7 @@
   frequency: weekly
   team: rllib
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -2442,7 +2442,7 @@
   frequency: weekly
   team: rllib
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -3720,7 +3720,7 @@
   frequency: nightly
   team: rllib
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu
@@ -4540,7 +4540,7 @@
   frequency: nightly
   team: rllib
   python: "3.8"
-  affected: true
+  affected: "true"
   cluster:
     byod:
       type: gpu

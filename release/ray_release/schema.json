@@ -53,6 +53,9 @@
 				},
 				"alert": {
 					"type": "string"
+				},
+				"affected": {
+					"type": "string"
 				}
 			},
 			"required": [
@@ -107,7 +110,7 @@
 						"cu118"
 					]
 				},
-				"post_build_script":{
+				"post_build_script": {
 					"type": "string"
 				},
 				"pip": {
@@ -117,8 +120,7 @@
 					"type": "array"
 				}
 			},
-			"required": [
-			],
+			"required": [],
 			"title": "Byod"
 		},
 		"Run": {
