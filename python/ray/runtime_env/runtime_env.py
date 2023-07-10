@@ -235,8 +235,8 @@ class RuntimeEnv(dict):
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
-        worker_setup_hook: The setup hook that's called after workers
-            start and before tasks and actors are scheduled.
+        worker_process_setup_hook: (Experimental) The setup hook that's
+            called after workers start and before tasks and actors are scheduled.
             The value has to be a callable when passed to the job/task/actor.
             The callable is then exported and this value is converted to
             the setup hook's function name for the observability purpose.
@@ -263,7 +263,7 @@ class RuntimeEnv(dict):
         # field which is not supported. We should remove it
         # with the test.
         "docker",
-        "worker_setup_hook",
+        "worker_process_setup_hook",
     }
 
     extensions_fields: Set[str] = {
@@ -281,7 +281,7 @@ class RuntimeEnv(dict):
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
-        worker_setup_hook: Optional[Union[Callable, str]] = None,
+        worker_process_setup_hook: Optional[Union[Callable, str]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         **kwargs,
@@ -303,8 +303,8 @@ class RuntimeEnv(dict):
             runtime_env["env_vars"] = env_vars
         if config is not None:
             runtime_env["config"] = config
-        if worker_setup_hook is not None:
-            runtime_env["worker_setup_hook"] = worker_setup_hook
+        if worker_process_setup_hook is not None:
+            runtime_env["worker_process_setup_hook"] = worker_process_setup_hook
 
         if runtime_env.get("java_jars"):
             runtime_env["java_jars"] = runtime_env.get("java_jars")
