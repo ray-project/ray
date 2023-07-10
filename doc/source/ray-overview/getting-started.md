@@ -75,13 +75,10 @@ Run hyperparameter tuning with Ray Tune to find the best model:
 
 `````{dropdown} Use the trained model for Batch prediction
 
-Use the trained model for batch prediction with a ``BatchPredictor``.
+Use the trained model for batch prediction with
+``Dataset.map_batches()``.
 
-```{literalinclude} ../ray-air/examples/xgboost_starter.py
-    :language: python
-    :start-after: __air_xgb_batchpred_start__
-    :end-before: __air_xgb_batchpred_end__
-```
+To learn more, see :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
 ```{button-ref} air
 :color: primary
