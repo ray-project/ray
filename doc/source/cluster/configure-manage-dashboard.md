@@ -91,6 +91,10 @@ For more information about configuring network access to a Ray cluster on Kubern
 
 ## Running behind a reverse proxy
 
+:::{danger}
+For security purpose, do not expose Ray Dashboard publicly without proper authentication in place.
+:::
+
 Ray Dashboard should work out-of-the-box when accessed via a reverse proxy. API requests don't need to be proxied individually.
 
 Always access the dashboard with a trailing ``/`` at the end of the URL.
