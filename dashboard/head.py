@@ -284,12 +284,12 @@ class DashboardHead:
             self.aiogrpc_gcs_channel = None
             self.metrics = None
         else:
-            from ray._private.gcs_utils import GcsAioClient
+            from ray._private.gcs_utils import GcsAioClient, GcsChannel
 
             self.gcs_aio_client = GcsAioClient(
                 address=gcs_address, nums_reconnect_retry=0
             )
-            self.aiogrpc_gcs_channel = self.gcs_aio_client.channel.channel()
+            self.aiogrpc_gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
         try:
             assert internal_kv._internal_kv_initialized()

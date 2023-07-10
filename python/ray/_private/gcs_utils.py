@@ -9,10 +9,6 @@ from typing import Dict, List, Optional
 import grpc
 
 from ray._private import ray_constants
-from ray.core.generated import (
-    gcs_service_pb2,
-    gcs_service_pb2_grpc,
-)
 
 import ray._private.gcs_aio_client
 
