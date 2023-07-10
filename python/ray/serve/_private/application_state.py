@@ -447,7 +447,6 @@ class ApplicationState:
                 runtime_env=self._target_state.config.runtime_env
             ).remote(
                 self._target_state.config.import_path,
-                self._target_state.config.runtime_env,
                 self._target_state.config.deployment_names,
                 code_version,
                 self._target_state.config.name,
@@ -794,7 +793,6 @@ class ApplicationStateManager:
 @ray.remote(num_cpus=0, max_calls=1)
 def build_serve_application(
     import_path: str,
-    app_runtime_env: Dict,
     config_deployments: List[str],
     code_version: str,
     name: str,
@@ -804,8 +802,6 @@ def build_serve_application(
 
     Args:
         import_path: import path to top-level bound deployment.
-        app_runtime_env: application runtime environment. Used to load
-            and import application code
         config_deployments: list of deployment names specified in config
             with deployment override options. This is used to check that
             all deployments specified in the config are valid.
@@ -841,15 +837,8 @@ def build_serve_application(
 
         # Set code version and runtime env for each deployment
         for deployment_name in app.deployments:
-            ray_actor_options = app.deployments[deployment_name].ray_actor_options or {}
-            merged_env = override_runtime_envs_except_env_vars(
-                app_runtime_env, ray_actor_options.get("runtime_env", {})
-            )
-            ray_actor_options.update({"runtime_env": merged_env})
-
             app.deployments[deployment_name].set_options(
                 version=code_version,
-                ray_actor_options=ray_actor_options,
                 _internal=True,
             )
 
@@ -885,12 +874,6 @@ def override_deployment_info(
 
     config_dict = override_config.dict(exclude_unset=True)
     deployment_override_options = config_dict.get("deployments", [])
-    route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
-
-    # Overwrite ingress route prefix
-    for deployment in list(deployment_infos.values()):
-        if route_prefix is not DEFAULT.VALUE and deployment.route_prefix is not None:
-            deployment.route_prefix = route_prefix
 
     # Override options for each deployment listed in the config.
     for options in deployment_override_options:
@@ -914,27 +897,49 @@ def override_deployment_info(
         # What to pass to info.update
         override_options = dict()
 
+        # Override route prefix if specified in deployment config
+        deployment_route_prefix = options.pop("route_prefix", DEFAULT.VALUE)
+        if deployment_route_prefix is not DEFAULT.VALUE:
+            override_options["route_prefix"] = deployment_route_prefix
+
+        # Override is_driver_deployment if specified in deployment config
+        is_driver_deployment = options.pop("is_driver_deployment", None)
+        if is_driver_deployment is not None:
+            override_options["is_driver_deployment"] = is_driver_deployment
+
         # Merge app-level and deployment-level runtime_envs.
+        replica_config = info.replica_config
+        app_runtime_env = override_config.runtime_env
         if "ray_actor_options" in options:
-            replica_config = info.replica_config
             # If specified, get ray_actor_options from config
             override_actor_options = options.pop("ray_actor_options", {})
-            original_actor_options = replica_config.ray_actor_options or {}
-            merged_env = override_runtime_envs_except_env_vars(
-                original_actor_options.get("runtime_env", {}),
-                override_actor_options.get("runtime_env", {}),
-            )
-            override_actor_options.update({"runtime_env": merged_env})
-            replica_config.update_ray_actor_options(override_actor_options)
-            override_options["replica_config"] = replica_config
+        else:
+            # Otherwise, get options from application code (and default to {}
+            # if the code sets options to None).
+            override_actor_options = replica_config.ray_actor_options or {}
+
+        merged_env = override_runtime_envs_except_env_vars(
+            app_runtime_env, override_actor_options.get("runtime_env", {})
+        )
+        override_actor_options.update({"runtime_env": merged_env})
+        replica_config.update_ray_actor_options(override_actor_options)
+        override_options["replica_config"] = replica_config
 
         # Override deployment config options
         original_options = info.deployment_config.dict()
         options.pop("name", None)
-        options.pop("is_driver_deployment", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
 
         deployment_infos[unique_deployment_name] = info.update(**override_options)
+
+    # Overwrite ingress route prefix
+    app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
+    for deployment in list(deployment_infos.values()):
+        if (
+            app_route_prefix is not DEFAULT.VALUE
+            and deployment.route_prefix is not None
+        ):
+            deployment.route_prefix = app_route_prefix
 
     return deployment_infos

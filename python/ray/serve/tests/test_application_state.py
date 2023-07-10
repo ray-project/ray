@@ -8,6 +8,7 @@ from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
     ApplicationState,
     ApplicationStateManager,
+    override_deployment_info,
 )
 from ray.serve._private.common import (
     ApplicationStatus,
@@ -19,6 +20,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.utils import get_random_letters
 from ray.serve.exceptions import RayServeException
+from ray.serve.schema import ServeApplicationSchema, DeploymentSchema
 from ray.serve.tests.test_deployment_state import MockKVStore
 
 
@@ -722,6 +724,289 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
     app_state_manager.update()
     assert app_state.is_deleted()
     assert app_state_manager.is_ready_for_shutdown()
+
+
+class TestOverrideDeploymentInfo:
+    @pytest.fixture
+    def info(self):
+        return DeploymentInfo(
+            app_name="default",
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+
+    def test_override_deployment_config(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=3,
+                    max_concurrent_queries=200,
+                    user_config={"price": "4"},
+                    graceful_shutdown_wait_loop_s=4,
+                    graceful_shutdown_timeout_s=40,
+                    health_check_period_s=20,
+                    health_check_timeout_s=60,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert updated_info.deployment_config.max_concurrent_queries == 200
+        assert updated_info.deployment_config.user_config == {"price": "4"}
+        assert updated_info.deployment_config.graceful_shutdown_wait_loop_s == 4
+        assert updated_info.deployment_config.graceful_shutdown_timeout_s == 40
+        assert updated_info.deployment_config.health_check_period_s == 20
+        assert updated_info.deployment_config.health_check_timeout_s == 60
+
+    def test_override_autoscaling_config(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    autoscaling_config={
+                        "min_replicas": 1,
+                        "initial_replicas": 12,
+                        "max_replicas": 79,
+                    },
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert updated_info.autoscaling_policy.config.min_replicas == 1
+        assert updated_info.autoscaling_policy.config.initial_replicas == 12
+        assert updated_info.autoscaling_policy.config.max_replicas == 79
+
+    def test_override_route_prefix_1(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/alice"
+        assert updated_info.version == "123"
+
+    def test_override_route_prefix_2(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            route_prefix="/bob",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/bob"
+        assert updated_info.version == "123"
+
+    def test_override_route_prefix_3(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            route_prefix="/bob",
+            deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/bob"
+        assert updated_info.version == "123"
+
+    def test_override_is_driver_deployment(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    is_driver_deployment=True,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert updated_info.is_driver_deployment
+
+    def test_override_ray_actor_options_1(self, info):
+        """Test runtime env specified in config at deployment level."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert (
+            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            == "s3://B"
+        )
+
+    def test_override_ray_actor_options_2(self, info):
+        """Test application runtime env is propagated to deployments."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            runtime_env={"working_dir": "s3://C"},
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert (
+            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            == "s3://C"
+        )
+
+    def test_override_ray_actor_options_3(self, info):
+        """If runtime env is specified in the config at the deployment level, it should
+        override the application-level runtime env.
+        """
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            runtime_env={"working_dir": "s3://C"},
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert (
+            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            == "s3://B"
+        )
+
+    def test_override_ray_actor_options_4(self):
+        """If runtime env is specified for the deployment in code, it should override
+        the application-level runtime env.
+        """
+        info = DeploymentInfo(
+            app_name="default",
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(
+                lambda x: x,
+                ray_actor_options={"runtime_env": {"working_dir": "s3://A"}},
+            ),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            runtime_env={"working_dir": "s3://C"},
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert (
+            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            == "s3://A"
+        )
+
+    def test_override_ray_actor_options_5(self):
+        """If runtime env is specified in all three places:
+        - In code
+        - In the config at the deployment level
+        - In the config at the application level
+        The one specified in the config at the deployment level should take precedence.
+        """
+        info = DeploymentInfo(
+            app_name="default",
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(
+                lambda x: x,
+                ray_actor_options={"runtime_env": {"working_dir": "s3://A"}},
+            ),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            runtime_env={"working_dir": "s3://C"},
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    ray_actor_options={"runtime_env": {"working_dir": "s3://B"}},
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info("default", {"default_A": info}, config)
+        updated_info = updated_infos["default_A"]
+        assert updated_info.app_name == "default"
+        assert updated_info.route_prefix == "/"
+        assert updated_info.version == "123"
+        assert (
+            updated_info.replica_config.ray_actor_options["runtime_env"]["working_dir"]
+            == "s3://B"
+        )
 
 
 if __name__ == "__main__":
