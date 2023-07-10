@@ -3640,6 +3640,12 @@
   team: rllib
   python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
@@ -4199,7 +4205,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_32cpus.yaml
 
@@ -5823,7 +5836,12 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_env: app_config.yaml
     cluster_compute: scheduling.yaml
 
@@ -6530,6 +6548,10 @@
   frequency: weekly
   team: data
   cluster:
+    byod: 
+      runtime_env:
+        - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
+      post_build_script: byod_dataset_shuffle.sh
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute.yaml
 
