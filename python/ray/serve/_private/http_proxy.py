@@ -701,7 +701,6 @@ class HTTPProxy:
         scope: Scope,
         disconnected_task: asyncio.Task,
         timeout_s: Optional[float] = None,
-        multiplexed_model_id: Optional[str] = None,
     ) -> Optional[StreamingObjectRefGenerator]:
         """Attempt to send a request on the handle within the timeout.
 
@@ -711,9 +710,9 @@ class HTTPProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        assignment_task = handle.options(
-            multiplexed_model_id=multiplexed_model_id,
-        ).remote(StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle))
+        assignment_task = handle.remote(
+            StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
+        )
         done, _ = await asyncio.wait(
             [assignment_task, disconnected_task],
             return_when=FIRST_COMPLETED,
@@ -780,7 +779,6 @@ class HTTPProxy:
         scope: Scope,
         receive: Receive,
         send: Send,
-        multiplexed_model_id: Optional[str] = None,
     ) -> str:
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
@@ -800,7 +798,6 @@ class HTTPProxy:
                     scope,
                     proxy_asgi_receive_task,
                     timeout_s=self.request_timeout_s,
-                    multiplexed_model_id=multiplexed_model_id,
                 )
                 if obj_ref_generator is None:
                     logger.info(
