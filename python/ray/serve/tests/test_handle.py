@@ -10,7 +10,7 @@ import ray
 from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import HandleOptions
+from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
@@ -312,6 +312,28 @@ async def test_handle_across_loops(serve_instance):
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
+
+
+def test_handle_typing(serve_instance):
+    @serve.deployment
+    class DeploymentClass:
+        pass
+
+    @serve.deployment
+    def deployment_func():
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(
+            self, class_downstream: RayServeHandle, func_downstream: RayServeHandle
+        ):
+            # serve.run()'ing this deployment fails if these assertions fail.
+            assert isinstance(class_downstream, RayServeHandle)
+            assert isinstance(func_downstream, RayServeHandle)
+
+    h = serve.run(Ingress.bind(DeploymentClass.bind(), deployment_func.bind()))
+    assert isinstance(h, RayServeSyncHandle)
 
 
 if __name__ == "__main__":
