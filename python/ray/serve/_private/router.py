@@ -69,7 +69,7 @@ class RequestMetadata:
     app_name: str = ""
 
     # Multiplexed model ID.
-    multiplexed_model_id: Optional[str] = None
+    multiplexed_model_id: str = ""
 
     # If this request expects a streaming response.
     is_streaming: bool = False

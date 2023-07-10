@@ -21,18 +21,18 @@ from ray.serve._private.constants import (
 def test_handle_options():
     default_options = HandleOptions()
     assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id is None
+    assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
 
     # Test setting method name.
     only_set_method = default_options.copy_and_update(method_name="hi")
     assert only_set_method.method_name == "hi"
-    assert only_set_method.multiplexed_model_id is None
+    assert only_set_method.multiplexed_model_id == ""
     assert only_set_method.stream is False
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id is None
+    assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
 
     # Test setting model ID.
@@ -43,24 +43,24 @@ def test_handle_options():
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id is None
+    assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
 
     # Test setting stream.
     only_set_stream = default_options.copy_and_update(stream=True)
     assert only_set_stream.method_name == "__call__"
-    assert only_set_stream.multiplexed_model_id is None
+    assert only_set_stream.multiplexed_model_id == ""
     assert only_set_stream.stream is True
 
     # Existing options should be unmodified.
     assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id is None
+    assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
 
     # Test setting multiple.
     set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
     assert set_multiple.method_name == "hi"
-    assert set_multiple.multiplexed_model_id is None
+    assert set_multiple.multiplexed_model_id == ""
     assert set_multiple.stream is True
 
 
