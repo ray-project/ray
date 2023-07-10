@@ -162,11 +162,6 @@ class RayServeHandle:
         return self._router
 
     @property
-    def _is_polling(self) -> bool:
-        """Whether this handle is actively polling for replica updates."""
-        return self._router is not None and self._router.long_poll_client.is_running
-
-    @property
     def _is_same_loop(self) -> bool:
         """Whether the caller's asyncio loop is the same loop for handle.
 
