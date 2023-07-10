@@ -183,8 +183,13 @@ class RayServeHandle:
         )
         return self.__class__(
             self.deployment_name,
+<<<<<<< HEAD
             handle_options=new_handle_options,
             _router=self._router,
+=======
+            new_handle_options,
+            _router=self.router,
+>>>>>>> 36004e659a ([serve] Unify handle option setting (#37199))
             _is_for_http_requests=self._is_for_http_requests,
         )
 
@@ -395,20 +400,15 @@ class RayServeDeploymentHandle:
         self,
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeDeploymentHandle":
-        new_options_dict = self.handle_options.__dict__.copy()
-        user_modified_options_dict = {
-            key: value
-            for key, value in [
-                ("method_name", method_name),
-                ("stream", stream),
-            ]
-            if value != DEFAULT.VALUE
-        }
-        new_options_dict.update(user_modified_options_dict)
-        new_options = HandleOptions(**new_options_dict)
-        return self.__class__(self.deployment_name, new_options)
+        new_handle_options = self.handle_options.copy_and_update(
+            method_name=method_name,
+            multiplexed_model_id=multiplexed_model_id,
+            stream=stream,
+        )
+        return self.__class__(self.deployment_name, new_handle_options)
 
     def remote(self, *args, _ray_cache_refs: bool = False, **kwargs) -> asyncio.Task:
         if not self.handle:
@@ -418,6 +418,7 @@ class RayServeDeploymentHandle:
                 .options(
                     method_name=self.handle_options.method_name,
                     stream=self.handle_options.stream,
+                    multiplexed_model_id=self.handle_options.multiplexed_model_id,
                 )
             )
         return self.handle.remote(*args, **kwargs)
