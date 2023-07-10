@@ -68,21 +68,3 @@ result_grid = tuner.fit()
 best_result = result_grid.get_best_result()
 print("Best result:", best_result)
 # __air_tune_generic_end__
-
-# __air_xgb_batchpred_start__
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.xgboost import XGBoostPredictor
-
-# You can also create a checkpoint from a trained model using
-# `XGBoostCheckpoint.from_model`.
-checkpoint = best_result.checkpoint
-
-batch_predictor = BatchPredictor.from_checkpoint(checkpoint, XGBoostPredictor)
-
-predicted_probabilities = batch_predictor.predict(test_dataset)
-predicted_probabilities.show()
-# {'predictions': 0.9970690608024597}
-# {'predictions': 0.9943051934242249}
-# {'predictions': 0.00334902573376894}
-# ...
-# __air_xgb_batchpred_end__

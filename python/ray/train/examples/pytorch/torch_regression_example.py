@@ -1,7 +1,6 @@
 import argparse
 from typing import Tuple
 
-import numpy as np
 import pandas as pd
 from ray.air.checkpoint import Checkpoint
 
@@ -11,10 +10,8 @@ import torch.nn as nn
 import ray
 import ray.train as train
 from ray.air import session
-from ray.air.result import Result
 from ray.data import Dataset
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.torch import TorchPredictor, TorchTrainer
+from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
 
@@ -126,19 +123,6 @@ def train_regression(num_workers=2, use_gpu=False):
     return result
 
 
-def predict_regression(result: Result):
-    batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
-
-    df = pd.DataFrame(
-        [[np.random.uniform(0, 1, size=100)] for i in range(100)], columns=["x"]
-    )
-    prediction_dataset = ray.data.from_pandas(df)
-
-    predictions = batch_predictor.predict(prediction_dataset, dtype=torch.float)
-
-    return predictions
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -170,5 +154,4 @@ if __name__ == "__main__":
     else:
         ray.init(address=args.address)
         result = train_regression(num_workers=args.num_workers, use_gpu=args.use_gpu)
-    predictions = predict_regression(result)
-    print(predictions.to_pandas())
+    print(result)

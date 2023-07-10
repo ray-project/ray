@@ -129,17 +129,3 @@ trainer = TorchTrainer(
 result = trainer.fit()
 print(f"Last result: {result.metrics}")
 # __air_pytorch_train_end__
-
-
-# # __air_pytorch_batchpred_start__
-# import random
-# from ray.train.batch_predictor import BatchPredictor
-# from ray.train.torch import TorchPredictor
-
-# batch_predictor = BatchPredictor.from_checkpoint(result.checkpoint, TorchPredictor)
-
-# items = [{"x": random.uniform(0, 1) for _ in range(10)}]
-# prediction_dataset = ray.data.from_items(items)
-
-# predictions = batch_predictor.predict(prediction_dataset, dtype=torch.float)
-# # __air_pytorch_batchpred_end__

@@ -131,24 +131,3 @@ best_result = result_grid.get_best_result()
 print("Best Result:", best_result)
 # Best Result: Result(metrics={'loss': 4.997025489807129, ...)
 # __air_tune_generic_end__
-
-# __air_tf_batchpred_start__
-from ray.train.batch_predictor import BatchPredictor
-from ray.train.tensorflow import TensorflowPredictor
-
-# You can also create a checkpoint from a trained model using `TensorflowCheckpoint`.
-checkpoint = best_result.checkpoint
-
-batch_predictor = BatchPredictor.from_checkpoint(
-    checkpoint,
-    TensorflowPredictor,
-    model_definition=lambda: create_keras_model(num_features),
-)
-
-predicted_probabilities = batch_predictor.predict(test_dataset)
-predicted_probabilities.show()
-# {'predictions': 0.033036969602108}
-# {'predictions': 0.05944341793656349}
-# {'predictions': 0.1657751202583313}
-# ...
-# __air_tf_batchpred_end__
