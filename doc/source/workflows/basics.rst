@@ -308,8 +308,8 @@ Idempotent workflow:
 Dynamic workflows
 -----------------
 
-Ray DAGs are static -- returning a node from another node is not a valid way to
-construct a graph. For example, the following code will print an instance of a DAG
+Ray DAGs are static -- returning a node from another node isn't a valid way to
+construct a graph. For example, the following code prints a DAG
 node, not the output of `bar`:
 
 .. testcode::
@@ -320,7 +320,7 @@ node, not the output of `bar`:
 
     @ray.remote
     def foo():
-        # This will be evaluated at runtime, not in DAG construction.
+        # This is evaluated at runtime, not in DAG construction.
         return bar.bind()
 
     # Executing `foo` returns the `bar` DAG node, *not* its result.
