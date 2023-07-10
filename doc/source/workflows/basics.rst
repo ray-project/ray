@@ -323,17 +323,12 @@ node, not the output of `bar`:
         # This will be evaluated at runtime, not in DAG construction.
         return bar.bind()
 
-    # This will print the `bar` DAG node, *not* its result.
+    # Executing `foo` returns the `bar` DAG node, *not* its result.
     print("Output of foo DAG:", type(ray.get(foo.bind().execute())))
 
 .. testoutput::
 
-    Output of foo DAG: (FunctionNode, 04ea82a452e945b0829de5fd86d4c5e8)(
-        body=<function bar at 0x108f291f0>
-        args=[]
-        kwargs={}options={}
-        other_args_to_resolve={}
-    )
+    Output of foo DAG: <class 'ray.dag.function_node.FunctionNode'>
 
 
 To enable dynamically executing DAG nodes at runtime, workflows introduces a utility
