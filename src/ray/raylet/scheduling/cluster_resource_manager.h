@@ -133,6 +133,9 @@ class ClusterResourceManager {
 
   BundleLocationIndex &GetBundleLocationIndex();
 
+  void SetNodeLabels(const scheduling::NodeID &node_id,
+                     const absl::flat_hash_map<std::string, std::string> &labels);
+
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;

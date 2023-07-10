@@ -50,7 +50,7 @@ class RLTrainer(BaseTrainer):
     Example:
         Online training:
 
-        .. code-block:: python
+        .. testcode::
 
             from ray.air.config import RunConfig, ScalingConfig
             from ray.train.rl import RLTrainer
@@ -69,11 +69,16 @@ class RLTrainer(BaseTrainer):
             )
             result = trainer.fit()
 
+        .. testoutput::
+            :hide:
+
+            ...
 
     Example:
         Offline training (assumes data is stored in ``/tmp/data-dir``):
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import ray
             from ray.air.config import RunConfig, ScalingConfig

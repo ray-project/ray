@@ -26,30 +26,17 @@ from ray.rllib.utils.test_utils import (
 
 
 def get_model_config(framework, lstm=False):
-    model_config = {
-        "torch": dict(
-            # Settings in case we use an LSTM.
+    return (
+        dict(
+            use_lstm=True,
+            lstm_use_prev_action=True,
+            lstm_use_prev_reward=True,
             lstm_cell_size=10,
             max_seq_len=20,
-        ),
-        "tf2": dict(
-            fcnet_activation="relu",
-            fcnet_hiddens=[32, 32],
-            vf_share_layers=False,
-        ),
-    }
-    if framework == "tf2":
-        return model_config["tf2"]
-    elif framework == "torch":
-        torch_model_config = model_config["torch"]
-        for k in [
-            "use_lstm",
-            "lstm_use_prev_action",
-            "lstm_use_prev_reward",
-            "vf_share_layers",
-        ]:
-            torch_model_config[k] = lstm
-        return model_config["torch"]
+        )
+        if lstm
+        else {"use_lstm": False}
+    )
 
 
 class MyCallbacks(DefaultCallbacks):
@@ -113,14 +100,11 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for fw in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
-        ):
+        for fw in framework_iterator(config, frameworks=("torch", "tf2")):
             # TODO (Kourosh) Bring back "FrozenLake-v1"
             for env in ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]:
                 print("Env={}".format(env))
-                # TODO (Kourosh, Avnishn): for now just do lstm=False
-                for lstm in [False]:
+                for lstm in [False, True]:
                     print("LSTM={}".format(lstm))
                     config.training(model=get_model_config(fw, lstm=lstm))
 
@@ -168,9 +152,7 @@ class TestPPO(unittest.TestCase):
         )
         obs = np.array(0)
 
-        for _ in framework_iterator(
-            config, frameworks=("torch", "tf2"), with_eager_tracing=True
-        ):
+        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
             # Default Agent should be setup with StochasticSampling.
             algo = config.build()
             # explore=False, always expect the same (deterministic) action.
@@ -205,7 +187,7 @@ class TestPPO(unittest.TestCase):
                 ppo.PPOConfig()
                 .environment("Pendulum-v1")
                 .rollouts(
-                    num_rollout_workers=0,
+                    num_rollout_workers=1,
                 )
                 .training(
                     gamma=0.99,

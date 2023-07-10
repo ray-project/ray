@@ -19,9 +19,9 @@ from ray.air._internal.remote_storage import (
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.checkpoint import Checkpoint
-from ray.air import session
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
+from ray.train._internal import session
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.util import PublicAPI
 from ray.util.annotations import DeveloperAPI
@@ -95,7 +95,7 @@ class BaseTrainer(abc.ABC):
     Subclass ``ray.train.trainer.BaseTrainer``, and override the ``training_loop``
     method, and optionally ``setup``.
 
-    .. code-block:: python
+    .. testcode::
 
         import torch
 
@@ -121,8 +121,12 @@ class BaseTrainer(abc.ABC):
                 for epoch_idx in range(10):
                     loss = 0
                     num_batches = 0
+                    torch_ds = dataset.iter_torch_batches(
+                        dtypes=torch.float, batch_size=2
+                    )
                     for batch in torch_ds:
-                        X, y = torch.unsqueeze(batch["x"], 1), batch["y"]
+                        X = torch.unsqueeze(batch["x"], 1)
+                        y = torch.unsqueeze(batch["y"], 1)
                         # Compute prediction error
                         pred = self.model(X)
                         batch_loss = loss_fn(pred, y)
@@ -140,18 +144,18 @@ class BaseTrainer(abc.ABC):
                     # results.
                     session.report({"loss": loss, "epoch": epoch_idx})
 
-    **How do I use an existing Trainer or one of my custom Trainers?**
 
-    Initialize the Trainer, and call Trainer.fit()
-
-    .. code-block:: python
-
+        # Initialize the Trainer, and call Trainer.fit()
         import ray
         train_dataset = ray.data.from_items(
-            [{"x": i, "y": i} for i in range(3)])
+            [{"x": i, "y": i} for i in range(10)])
         my_trainer = MyPytorchTrainer(datasets={"train": train_dataset})
         result = my_trainer.fit()
 
+    .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         scaling_config: Configuration for how to scale training.
@@ -225,9 +229,10 @@ class BaseTrainer(abc.ABC):
         :ref:`Ray Jobs <jobs-overview>` to produce a Train experiment that will
         attempt to resume on both experiment-level and trial-level failures:
 
-        .. code-block:: python
+        .. testcode::
 
             import os
+            import ray
             from ray import air
             from ray.data.preprocessors import BatchMapper
             from ray.train.trainer import BaseTrainer
@@ -263,6 +268,11 @@ class BaseTrainer(abc.ABC):
                 )
 
             result = trainer.fit()
+
+        .. testoutput::
+            :hide:
+
+            ...
 
         Args:
             path: The path to the experiment directory of the training run to restore.
@@ -542,9 +552,10 @@ class BaseTrainer(abc.ABC):
 
         Example:
 
-        .. code-block:: python
+        .. testcode::
 
             from ray.train.trainer import BaseTrainer
+            from ray.air import session
 
             class MyTrainer(BaseTrainer):
                 def training_loop(self):

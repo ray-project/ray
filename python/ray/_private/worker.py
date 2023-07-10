@@ -43,7 +43,6 @@ else:
     from typing_extensions import Literal, Protocol
 
 import ray
-import ray._private.import_thread as import_thread
 import ray._private.node
 import ray._private.parameter
 import ray._private.profiling as profiling
@@ -59,6 +58,7 @@ import ray.cloudpickle as pickle  # noqa
 import ray.job_config
 import ray.remote_function
 from ray import ActorID, JobID, Language, ObjectRef
+from ray._raylet import StreamingObjectRefGenerator
 from ray._private import ray_option_utils
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.function_manager import FunctionActorManager
@@ -1137,14 +1137,15 @@ def init(
     This will autodetect an existing Ray cluster or start a new Ray instance if
     no existing cluster is found:
 
-    .. code-block:: python
+    .. testcode::
 
         ray.init()
 
     To explicitly connect to an existing local cluster, use this as follows. A
     ConnectionError will be thrown if no existing local cluster is found.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="auto")
 
@@ -1152,7 +1153,8 @@ def init(
     in the appropriate address). Note the addition of "ray://" at the beginning
     of the address.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="ray://123.45.67.89:10001")
 
@@ -1241,8 +1243,8 @@ def init(
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
-            directory for the Ray process. Defaults to an OS-specific
-            conventional location, e.g., "/tmp/ray".
+            directory for the Ray process. Must be an absolute path. Defaults to an
+            OS-specific conventional location, e.g., "/tmp/ray".
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -2182,8 +2184,11 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
         code_paths = []
-        if not interactive_mode:
+        if not interactive_mode and not (
+            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,
@@ -2231,37 +2236,21 @@ def connect(
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()
-    worker_id = worker.worker_id
-    worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
-    worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
-    worker.gcs_function_key_subscriber = ray._raylet.GcsFunctionKeySubscriber(
-        worker_id=worker_id, address=worker.gcs_client.address
-    )
+
+    if mode == SCRIPT_MODE:
+        worker_id = worker.worker_id
+        worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
+            worker_id=worker_id, address=worker.gcs_client.address
+        )
+        worker.gcs_log_subscriber = ray._raylet.GcsLogSubscriber(
+            worker_id=worker_id, address=worker.gcs_client.address
+        )
 
     if driver_object_store_memory is not None:
         logger.warning(
             "`driver_object_store_memory` is deprecated"
             " and will be removed in the future."
         )
-
-    # Setup import thread and start the import thread
-    # if the worker has job_id initialized.
-    # Otherwise, defer the start up of
-    # import thread until job_id is initialized.
-    # (python/ray/_raylet.pyx maybe_initialize_job_config)
-    if mode not in (RESTORE_WORKER_MODE, SPILL_WORKER_MODE):
-        worker.import_thread = import_thread.ImportThread(
-            worker, mode, worker.threads_stopped
-        )
-        if (
-            worker.current_job_id != JobID.nil()
-            and ray._raylet.Config.start_python_importer_thread()
-        ):
-            worker.import_thread.start()
 
     # If this is a driver running in SCRIPT_MODE, start a thread to print error
     # messages asynchronously in the background. Ideally the scheduler would
@@ -2311,14 +2300,10 @@ def disconnect(exiting_interpreter=False):
         # should be handled cleanly in the worker object's destructor and not
         # in this disconnect method.
         worker.threads_stopped.set()
-        if hasattr(worker, "gcs_function_key_subscriber"):
-            worker.gcs_function_key_subscriber.close()
         if hasattr(worker, "gcs_error_subscriber"):
             worker.gcs_error_subscriber.close()
         if hasattr(worker, "gcs_log_subscriber"):
             worker.gcs_log_subscriber.close()
-        if hasattr(worker, "import_thread"):
-            worker.import_thread.join_import_thread()
         if hasattr(worker, "listener_thread"):
             worker.listener_thread.join()
         if hasattr(worker, "logger_thread"):
@@ -2484,7 +2469,7 @@ def get(
     with profiling.profile("ray.get"):
         # TODO(sang): Should make StreamingObjectRefGenerator
         # compatible to ray.get for dataset.
-        if isinstance(object_refs, ray._raylet.StreamingObjectRefGenerator):
+        if isinstance(object_refs, StreamingObjectRefGenerator):
             return object_refs
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
@@ -2626,8 +2611,9 @@ def wait(
     - :doc:`/ray-core/patterns/ray-get-submission-order`
 
     Args:
-        object_refs: List of object refs for objects that may
-            or may not be ready. Note that these IDs must be unique.
+        object_refs: List of :class:`~ObjectRefs` or
+            :class:`~StreamingObjectRefGenerators` for objects that may or may
+            not be ready. Note that these must be unique.
         num_returns: The number of object refs that should be returned.
         timeout: The maximum amount of time in seconds to wait before
             returning.
@@ -2658,14 +2644,20 @@ def wait(
             )
             blocking_wait_inside_async_warned = True
 
-    if isinstance(object_refs, ObjectRef):
+    if isinstance(object_refs, ObjectRef) or isinstance(
+        object_refs, StreamingObjectRefGenerator
+    ):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, got a single ray.ObjectRef"
+            "wait() expected a list of ray.ObjectRef or ray.StreamingObjectRefGenerator"
+            ", got a single ray.ObjectRef or ray.StreamingObjectRefGenerator "
+            f"{object_refs}"
         )
 
     if not isinstance(object_refs, list):
         raise TypeError(
-            "wait() expected a list of ray.ObjectRef, " f"got {type(object_refs)}"
+            "wait() expected a list of ray.ObjectRef or "
+            "ray.StreamingObjectRefGenerator, "
+            f"got {type(object_refs)}"
         )
 
     if timeout is not None and timeout < 0:
@@ -2674,13 +2666,16 @@ def wait(
         )
 
     for object_ref in object_refs:
-        if not isinstance(object_ref, ObjectRef):
+        if not isinstance(object_ref, ObjectRef) and not isinstance(
+            object_ref, StreamingObjectRefGenerator
+        ):
             raise TypeError(
-                "wait() expected a list of ray.ObjectRef, "
+                "wait() expected a list of ray.ObjectRef or "
+                "ray.StreamingObjectRefGenerator, "
                 f"got list containing {type(object_ref)}"
             )
-
     worker.check_connected()
+
     # TODO(swang): Check main thread.
     with profiling.profile("ray.wait"):
         # TODO(rkn): This is a temporary workaround for
@@ -2771,7 +2766,8 @@ def kill(actor: "ray.actor.ActorHandle", *, no_restart: bool = True):
     worker.check_connected()
     if not isinstance(actor, ray.actor.ActorHandle):
         raise ValueError(
-            "ray.kill() only supported for actors. Got: {}.".format(type(actor))
+            "ray.kill() only supported for actors. For tasks, try ray.cancel(). "
+            "Got: {}.".format(type(actor))
         )
     worker.core_worker.kill_actor(actor._ray_actor_id, no_restart)
 
@@ -2813,7 +2809,7 @@ def cancel(object_ref: "ray.ObjectRef", *, force: bool = False, recursive: bool 
     if not isinstance(object_ref, ray.ObjectRef):
         raise TypeError(
             "ray.cancel() only supported for non-actor object refs. "
-            f"Got: {type(object_ref)}."
+            f"For actors, try ray.kill(). Got: {type(object_ref)}."
         )
     return worker.core_worker.cancel_task(object_ref, force, recursive)
 

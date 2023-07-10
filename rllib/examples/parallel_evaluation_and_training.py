@@ -124,7 +124,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("CartPole-v1")
         # Run with tracing enabled for tf2.
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         .training()
         .evaluation(
             # Parallel evaluation+training config.
