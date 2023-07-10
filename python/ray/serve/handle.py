@@ -369,3 +369,10 @@ class RayServeSyncHandle(RayServeHandle):
             "_is_for_http_requests": self._is_for_http_requests,
         }
         return RayServeSyncHandle._deserialize, (serialized_data,)
+
+@DeveloperAPI
+class RayServeDeploymentHandle(RayServeHandle):
+    """RayServeDeploymentHandle is no longer used, use RayServeHandle instead."""
+    # We had some examples using this class for type hinting. To avoid breakig them,
+    # leave this as an alias.
+    pass
