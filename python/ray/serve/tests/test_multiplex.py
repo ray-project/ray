@@ -378,6 +378,39 @@ def test_multiplexed_multiple_replicas(serve_instance):
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="1")
 
 
+def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
+    """
+    Verify that `.options(multiplexed_model_id="foo")` on a ServeHandle sets it in the
+    downstream but does not update the model ID in the caller.
+    """
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self):
+            return serve.get_multiplexed_model_id()
+
+    @serve.deployment
+    class Upstream:
+        def __init__(self, downstream: RayServeHandle):
+            self._h = downstream
+
+        async def __call__(self):
+            model_id_before = serve.get_multiplexed_model_id()
+
+            # Make a call with another model ID, verify it's set properly.
+            ref = await self._h.options(multiplexed_model_id="bar").remote()
+            assert await ref == "bar"
+
+            # Model ID shouldn't change after the handle call.
+            model_id_after = serve.get_multiplexed_model_id()
+            assert model_id_before == model_id_after
+
+            return model_id_before
+
+    handle = serve.run(Upstream.bind(Downstream.bind()))
+    assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
+
+
 if __name__ == "__main__":
     import sys
 
