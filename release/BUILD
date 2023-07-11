@@ -284,7 +284,7 @@ py_test(
     srcs = test_srcs,
     args = [
         "--data-directory=10G-image-data-synethic-raw-parquet",
-        "--data-format=parquet"
+        "--data-format=parquet",
         "--smoke-test",
     ],
     main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
@@ -304,7 +304,7 @@ py_test(
     srcs = test_srcs,
     args = [
         "--data-directory=10G-image-data-synethic-raw",
-        "--data-format=raw"
+        "--data-format=raw",
         "--smoke-test",
     ],
     main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
