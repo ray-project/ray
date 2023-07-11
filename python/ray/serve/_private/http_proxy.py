@@ -550,7 +550,9 @@ class GenericProxy:
             start_time = time.time()
             for key, value in scope.get("headers", []):
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                    request_context_info["multiplexed_model_id"] = value.decode()
+                    multiplexed_model_id = value.decode()
+                    handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+                    request_context_info["multiplexed_model_id"] = multiplexed_model_id
                 if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
@@ -565,11 +567,18 @@ class GenericProxy:
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
                 status_code = await self.send_request_to_replica_streaming(
-                    request_context_info["request_id"], handle, scope, receive, send
+                    request_context_info["request_id"],
+                    handle,
+                    scope,
+                    receive,
+                    send,
                 )
             else:
                 status_code = await self.send_request_to_replica_unary(
-                    handle, scope, receive, send
+                    handle,
+                    scope,
+                    receive,
+                    send,
                 )
 
             self.request_counter.inc(
