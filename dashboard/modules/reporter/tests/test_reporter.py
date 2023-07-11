@@ -697,5 +697,11 @@ def test_reporter_worker_cpu_percent():
             agent_mock.kill()
 
 
+@pytest.mark.parametrize("task_id, attempt_number", [("task_id_1", 1)])
+def test_get_task_traceback_task_not_running(task_id, attempt_number):
+    dashboard_agent = MagicMock()
+    agent = ReporterAgent(dashboard_agent)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
