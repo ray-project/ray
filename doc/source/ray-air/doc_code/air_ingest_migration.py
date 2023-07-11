@@ -59,5 +59,4 @@ my_trainer = TorchTrainer(
     ),
 )
 my_trainer.fit()
-
 # __new_api_end__
