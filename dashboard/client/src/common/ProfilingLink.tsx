@@ -11,7 +11,7 @@ type CpuProfilingLinkProps = PropsWithChildren<
 >;
 
 type TaskProfilingStackTraceProps = {
-  taskId: string | number | null | undefined;
+  taskId: string | null | undefined;
   attemptNumber: number;
 };
 
@@ -20,7 +20,7 @@ export const TaskCpuProfilingLink = ({
   attemptNumber,
 }: TaskProfilingStackTraceProps) => {
   if (!taskId) {
-    return <div></div>;
+    return null;
   }
   return (
     <Link
@@ -39,7 +39,7 @@ export const TaskCpuStackTraceLink = ({
   attemptNumber,
 }: TaskProfilingStackTraceProps) => {
   if (!taskId) {
-    return <div></div>;
+    return null;
   }
   return (
     <Link
