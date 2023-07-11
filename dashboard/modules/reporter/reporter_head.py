@@ -2,6 +2,8 @@ import json
 import logging
 import asyncio
 import aiohttp.web
+from typing import Tuple
+
 
 import ray
 import ray._private.services
@@ -50,6 +52,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
         self._gcs_aio_client = dashboard_head.gcs_aio_client
+        self.set_up_state_api()
 
     async def _update_stubs(self, change):
         if change.old:
@@ -130,7 +133,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._state_api = StateAPIManager(self._state_api_data_source_client)
 
-    async def get_worker_details_for_task(self, task_id, attempt_number):
+    async def get_worker_details_for_task(
+        self, task_id: str, attempt_number: int
+    ) -> Tuple[int, str, str]:
         """
         Retrieves worker details for a specific task and attempt number.
 
@@ -139,11 +144,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             attempt_number (int): The attempt number of the task.
 
         Returns:
-            tuple: A tuple containing the worker's PID (process ID) and IP address.
-
-        Raises:
-            ValueError: If the PID or IP is None, indicating that the information could not be fetched.
-            ValueError: If the task attempt is not in the "RUNNING" state.
+            tuple: A tuple containing the worker's PID (process ID), IP address and state.
         """
         option = ListApiOptions(
             filters=[
@@ -158,27 +159,34 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         tasks = result.result
 
         pid = tasks[0]["worker_pid"]
-        logger.info(f"pid {type(pid)}: {pid}")
 
         node_id = tasks[0]["node_id"]
         ip = DataSource.node_id_to_ip[node_id]
 
         state = tasks[0].get("state")
-        logger.info(f"ip {type(ip)}: {ip}")
 
+        return pid, ip, state
+
+    def validate_work_details(self, pid: int, ip: str, state: str):
+        """
+        Args:
+            pid (int):  The process ID.
+            ip (str): The IP address.
+            state (str): The current state of the task attempt.
+
+        Raises:
+            ValueError: If the PID or IP is None, indicating that the information could not be fetched.
+            ValueError: If the task attempt is not in the "RUNNING" state.
+        """
         if not pid or not ip:
             raise ValueError(
                 f"pid or ip is None, could not fetch the info you need: pid = {pid}, ip = {ip}"
             )
-        logger.info(f"node_id {type(node_id)}: {node_id}")
 
         if state != "RUNNING":
             raise ValueError(
                 f"The task attempt is not running: the current state is {state}."
             )
-        logger.info(f"state {type(state)}: {state}")
-
-        return pid, ip
 
     @routes.get("/task/traceback")
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
@@ -208,11 +216,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-
-        self.set_up_state_api()
+        pid, ip, state = await self.get_worker_details_for_task(task_id, attempt_number)
 
         try:
-            pid, ip = await self.get_worker_details_for_task(task_id, attempt_number)
+            self.validate_work_details(pid, ip, state)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -231,10 +238,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
+        new_pid, new_ip, new_state = await self.get_worker_details_for_task(
+            task_id, attempt_number
+        )
+
         try:
-            new_pid, new_ip = await self.get_worker_details_for_task(
-                task_id, attempt_number
-            )
+            self.validate_work_details(new_pid, new_ip, new_state)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -243,11 +252,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 f"The worker begin to work on other task, you could not get the correct CPU profile info"
             )
 
-        if reply.success:
-            logger.info("Returning stack trace, size {}".format(len(reply.output)))
-            return aiohttp.web.Response(text=reply.output)
-        else:
+        if not reply.success:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
+
+        logger.info("Returning stack trace, size {}".format(len(reply.output)))
+        return aiohttp.web.Response(text=reply.output)
 
     @routes.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
@@ -279,11 +288,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-
-        self.set_up_state_api()
+        pid, ip, state = await self.get_worker_details_for_task(task_id, attempt_number)
+        logger.info(f"pid {type(pid)}: {pid}")
 
         try:
-            pid, ip = await self.get_worker_details_for_task(task_id, attempt_number)
+            self.validate_work_details(pid, ip, state)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -310,10 +319,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
+        new_pid, new_ip, new_state = await self.get_worker_details_for_task(
+            task_id, attempt_number
+        )
+
         try:
-            new_pid, new_ip = await self.get_worker_details_for_task(
-                task_id, attempt_number
-            )
+            self.validate_work_details(new_pid, new_ip, new_state)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -322,21 +333,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 f"The worker begin to work on other task, you could not get the correct CPU profile info"
             )
 
-        if reply.success:
-            logger.info(
-                "Returning profiling response, size {}".format(len(reply.output))
-            )
-            return aiohttp.web.Response(
-                body=reply.output,
-                headers={
-                    "Content-Type": "image/svg+xml"
-                    if format == "flamegraph"
-                    else "text/plain"
-                },
-            )
+        if not reply.success:
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
-        return aiohttp.web.HTTPInternalServerError(
-            text="Could not find CPU Flame Graph info for task {}".format(task_id)
+        logger.info("Returning profiling response, size {}".format(len(reply.output)))
+        return aiohttp.web.Response(
+            body=reply.output,
+            headers={
+                "Content-Type": "image/svg+xml"
+                if format == "flamegraph"
+                else "text/plain"
+            },
         )
 
     @routes.get("/worker/traceback")
