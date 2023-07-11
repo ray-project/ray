@@ -86,9 +86,11 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
-class CoreWorkerServiceHandler {
+class CoreWorkerServiceHandler : public DelayedServiceHandler {
  public:
-  virtual ~CoreWorkerServiceHandler() {}
+  /// Blocks until the service is ready to serve RPCs.
+  virtual void WaitUntilInitialized() = 0;
+
   /// Handlers. For all of the following handlers, the implementations can
   /// handle the request asynchronously. When handling is done, the
   /// `send_reply_callback` should be called. See
