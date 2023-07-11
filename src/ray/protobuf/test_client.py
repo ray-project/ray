@@ -8,7 +8,9 @@ stub = serve_pb2_grpc.PredictAPIsServiceStub(channel)
 
 test_in = Any()
 test_in.Pack(serve_pb2.TestIn(name="eoakes"))
-response = stub.Predict(serve_pb2.PredictRequest(target="default_test-name", input=test_in))
+response = stub.Predict(
+    serve_pb2.PredictRequest(target="default_test-name", input=test_in)
+)
 print("Output type:", type(response.output))
 print("Full output:", response.output)
 
@@ -19,7 +21,9 @@ print("Output greeting field:", test_out.greeting)
 
 test_in = Any()
 test_in.Pack(serve_pb2.TestIn(name="genesu"))
-response = stub.Predict(serve_pb2.PredictRequest(target="default_test-name", input=test_in))
+response = stub.Predict(
+    serve_pb2.PredictRequest(target="default_test-name", input=test_in)
+)
 print("Output type:", type(response.output))
 print("Full output:", response.output)
 

@@ -935,7 +935,6 @@ class GrpcReceiveWrapper:
 
 
 class GRPCProxy(GenericProxy):
-
     async def Predict(self, request: serve_pb2.PredictRequest, context):
         print("in generic proxy, Predict called!!")
         print("request", request)
