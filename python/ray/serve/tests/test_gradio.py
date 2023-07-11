@@ -59,6 +59,7 @@ def test_gradio_ingress_scaling(serve_instance):
     )
 
     client = Client("http://localhost:8000")
+    # Verify that the requests are handled by two separate replicas.
     wait_for_condition(lambda: len({client.predict("input") for _ in range(3)}) == 2)
 
 
