@@ -1,12 +1,7 @@
-import dataclasses
-from base64 import b64decode
-from collections import Counter, defaultdict
-from datetime import datetime
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from collections import defaultdict
+from typing import Dict, List, Tuple
 
 from ray._private.utils import binary_to_hex
-from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.util import LoadMetricsSummary, format_info_string
 from ray.autoscaler.v2.schema import (
     NODE_DEATH_CAUSE_RAYLET_DIED,
     ClusterConstraintDemand,
@@ -98,11 +93,9 @@ class ClusterStatusParser:
                 bundles_by_count=cls._aggregate_resource_requests_by_shape(
                     gang_request.requests
                 ),
-                strategy=gang_request.details,
+                details=gang_request.details,
             )
             pg_demand.append(demand)
-
-        print(pg_demand)
 
         for constraint_request in state.cluster_resource_constraints:
             demand = ClusterConstraintDemand(
@@ -211,21 +204,21 @@ class ClusterStatusParser:
             else:
                 ray_node_type_name = node_state.ray_node_type_name
 
-            # Parse the resource usage
-            usage = defaultdict(ResourceUsage)
-            cls._parse_node_resource_usage(node_state, usage)
-            node_resource_usage = NodeUsage(
-                usage=list(usage.values()),
-                idle_time_ms=node_state.time_since_last_status_change_ms
-                if node_state.status == NodeStatus.IDLE
-                else 0,
-            )
+            # Parse the resource usage if it's not dead
+            node_resource_usage = None
+            failure_detail = None
+            if node_state.status == NodeStatus.DEAD:
+                failure_detail = NODE_DEATH_CAUSE_RAYLET_DIED
+            else:
+                usage = defaultdict(ResourceUsage)
+                cls._parse_node_resource_usage(node_state, usage)
+                node_resource_usage = NodeUsage(
+                    usage=list(usage.values()),
+                    idle_time_ms=node_state.time_since_last_status_change_ms
+                    if node_state.status == NodeStatus.IDLE
+                    else 0,
+                )
 
-            failure_detail = (
-                NODE_DEATH_CAUSE_RAYLET_DIED
-                if node_state.status == NodeStatus.DEAD
-                else None
-            )
             node_info = NodeInfo(
                 instance_type_name=node_state.instance_type_name,
                 node_status=NodeStatus.Name(node_state.status),
@@ -259,20 +252,20 @@ class ClusterStatusParser:
         pending_nodes = []
         pending_launches = []
         for pending_request in state.pending_instance_requests:
-            pending_launches = PendingLaunchRequest(
+            launch = PendingLaunchRequest(
                 instance_type_name=pending_request.instance_type_name,
-                node_type_name=pending_request.ray_node_type_name,
+                ray_node_type_name=pending_request.ray_node_type_name,
                 count=pending_request.count,
             )
 
-            pending_launches.append(pending_launches)
+            pending_launches.append(launch)
 
         for pending_node in state.pending_instances:
             pending_nodes.append(
                 NodeInfo(
                     instance_type_name=pending_node.instance_type_name,
                     ray_node_type_name=pending_node.ray_node_type_name,
-                    node_status=pending_node.details,
+                    details=pending_node.details,
                     instance_id=pending_node.instance_id,
                     ip_address=pending_node.ip_address,
                 )

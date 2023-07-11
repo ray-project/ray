@@ -30,21 +30,22 @@ class NodeUsage:
 class NodeInfo:
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
-    # The detailed state of the node/request.
-    # E.g. idle, running, setting-up, etc.
-    node_status: str
     # ray node type name.
     ray_node_type_name: str
     # Cloud instance id.
     instance_id: str
     # Ip address of the node when alive.
     ip_address: str
+    # The status of the node. Optional for pending nodes.
+    node_status: Optional[str] = None
     # ray node id. None if still pending.
     node_id: Optional[str] = None
     # Resource usage breakdown if node alive.
     resource_usage: Optional[NodeUsage] = None
     # Failure detail if the node failed.
     failure_detail: Optional[str] = None
+    # Descriptive details.
+    details: Optional[str] = None
 
 
 @dataclass
@@ -76,16 +77,24 @@ class ResourceDemand:
 
 @dataclass
 class PlacementGroupResourceDemand(ResourceDemand):
-    # Placement group strategy.
-    strategy: str
+    # Details string (parsed into below information)
+    details: str
+    # Placement group's id.
+    pg_id: Optional[str] = None
+    # Strategy, e.g. STRICT_SPREAD
+    strategy: Optional[str] = None
+    # Placement group's state, e.g. PENDING
+    state: Optional[str] = None
 
-    def __str__(self) -> str:
-        s = ""
-        s += f"{self.strategy}:  "
-        for bundle in self.bundles_by_count[:-1]:
-            s += f"{bundle},"
-        s += f"{self.bundles_by_count[-1]}"
-        return s
+    def __post_init__(self):
+        if self.details:
+            # details in the format of <pg_id>:<strategy>|<state>, parse
+            # it into the above fields.
+            pg_id, details = self.details.split(":")
+            strategy, state = details.split("|")
+            self.pg_id = pg_id
+            self.strategy = strategy
+            self.state = state
 
 
 @dataclass
@@ -139,3 +148,7 @@ class ClusterStatus:
     # being produced. And I have not seen this either.
     # Node availability info.
     node_availability: Optional[NodeAvailabilitySummary]
+
+    # TODO(rickyx): we don't show infeasible requests as of now.
+    # (They will just be pending forever as part of the demands)
+    # We should show them properly in the future.
