@@ -254,7 +254,7 @@ if __name__ == "__main__":
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
-            elif changed_file.startswith("ci/lint"):
+            elif changed_file.startswith("ci/v2/lint"):
                 # Linter will always be run
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("ci/pipeline"):
