@@ -1136,6 +1136,7 @@ async def test_job_runs_with_no_resources_available(job_manager):
         ray.cancel(hanging_ref)
 
 
+@pytest.mark.asyncio
 async def test_failed_job_logs_max_char(job_manager):
     """Test failed jobs does not print out too many logs"""
 
@@ -1148,7 +1149,7 @@ async def test_failed_job_logs_max_char(job_manager):
         entrypoint=print_large_logs_cmd,
     )
 
-    await async_wait_for_condition(
+    await async_wait_for_condition_async_predicate(
         check_job_failed, job_manager=job_manager, job_id=job_id
     )
 
@@ -1156,7 +1157,8 @@ async def test_failed_job_logs_max_char(job_manager):
     job_info = await job_manager.get_job_info(job_id)
     assert job_info
     assert len(job_info.message) == 20000 + len(
-        "Job failed due to an application error, " "last available logs:\n"
+        "Job entrypoint command failed with exit code 1,"
+        " last available logs (truncated to 20,000 chars):\n"
     )
 
 
