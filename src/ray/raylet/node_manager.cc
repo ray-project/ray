@@ -123,6 +123,16 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
+void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
+  std::vector<std::string> default_keys = {kLabelKeyNodeID};
+
+  for (const auto &key : default_keys) {
+    RAY_CHECK(!labels.contains(key))
+        << "The label key name " << key << " should never be set by the user.";
+  }
+  labels[kLabelKeyNodeID] = self_node_id;
+}
+
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
                          const std::string &self_node_name,
@@ -335,7 +345,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       },
       /*get_pull_manager_at_capacity*/
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
-      /*labels*/ config.labels);
+      /*labels*/
+      config.labels);
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);

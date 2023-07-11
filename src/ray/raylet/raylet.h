@@ -49,6 +49,7 @@ class Raylet {
   /// \param metrics_export_port A port at which metrics are exposed to.
   /// \param is_head_node Whether this node is the head node.
   Raylet(instrumented_io_context &main_service,
+         const NodeID &self_node_id,
          const std::string &socket_name,
          const std::string &node_ip_address,
          const std::string &node_name,

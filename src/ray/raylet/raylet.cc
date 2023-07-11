@@ -56,6 +56,7 @@ namespace ray {
 namespace raylet {
 
 Raylet::Raylet(instrumented_io_context &main_service,
+               const NodeID &self_node_id,
                const std::string &socket_name,
                const std::string &node_ip_address,
                const std::string &node_name,
@@ -65,10 +66,7 @@ Raylet::Raylet(instrumented_io_context &main_service,
                int metrics_export_port,
                bool is_head_node)
     : main_service_(main_service),
-      self_node_id_(
-          !RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty()
-              ? NodeID::FromHex(RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
-              : NodeID::FromRandom()),
+      self_node_id_(self_node_id),
       gcs_client_(gcs_client),
       node_manager_(main_service,
                     self_node_id_,
