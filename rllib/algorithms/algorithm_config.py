@@ -1146,7 +1146,9 @@ class AlgorithmConfig(_Config):
                 you want to use GPUs for learner workers and for rollout workers,
                 but want to avoid spreading out the learner workers over more nodes
                 than necessary. This is only relevant if num_learner_workers > 1.
-                If num_learner_workers = 0 or 1 (the default), learner workers are
+                If num_learner_workers = 0 (the default), all learner workers are
+                placed in one placement group bundle and thereby forced onto one node.
+                If num_learner_workers = 1, learner workers are
                 placed within their own placement group bundle and are expected to be
                 scheduled anywhere resources can be allocated.
             local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu

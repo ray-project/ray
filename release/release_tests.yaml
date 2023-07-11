@@ -3741,7 +3741,7 @@
     script: pytest smoke_tests/smoke_test_basic_multi_node_training_learner.py
 
     wait_for_nodes:
-      num_nodes: 2
+      num_nodes: 3
 
   alert: default
 
