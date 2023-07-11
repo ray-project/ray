@@ -103,6 +103,9 @@ def train_loop_per_worker(config):
     logger = WandbLogger(
         name="demo_run", save_dir="./wandb_logs", offline=True, id="unique_id"
     )
+
+    # Create Strategy and ModelCheckpoint provided by Ray AIR
+    strategy = RayDDPStrategy()
     checkpoint_callback = RayModelCheckpoint(
         monitor="val_accuracy", mode="max", save_top_k=3, save_last=True
     )
@@ -111,6 +114,7 @@ def train_loop_per_worker(config):
         max_epochs=5,
         accelerator="gpu",
         devices=devices,
+        strategy=strategy,
         plugins=[ray_environment],
         callbacks=[checkpoint_callback],
         logger=logger,
@@ -138,3 +142,4 @@ if __name__ == "__main__":
     )
 
     air_trainer.fit()
+
