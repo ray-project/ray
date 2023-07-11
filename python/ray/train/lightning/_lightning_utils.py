@@ -10,7 +10,7 @@ import shutil
 import torch
 import tempfile
 from packaging.version import Version
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
 from torch.utils.data import IterableDataset, DataLoader
 
 import pytorch_lightning as pl
@@ -266,8 +266,18 @@ class RayModelCheckpoint(ModelCheckpoint):
         self._session_report(trainer=trainer, stage="validation_end")
 
 
-def setup():
+def setup() -> [List[int], RayEnvironment]:
+    # Change the working directory for all workers to the same directory.
+    # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
+    # each worker will have a different log and checkpoint directory if they are
+    # using relative paths.
+    working_dir = os.path.join(session.get_trial_dir(), "rank_all")
+    os.makedirs(working_dir, exist_ok=True)
+    os.chdir(working_dir)
+
+    # Configure parallel settings for Ray Cluster
     current_device = get_worker_root_device()
     parallel_devices = [current_device.index]
     ray_environment = RayEnvironment()
+
     return parallel_devices, ray_environment
