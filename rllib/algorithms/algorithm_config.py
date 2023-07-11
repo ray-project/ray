@@ -252,6 +252,7 @@ class AlgorithmConfig(_Config):
         self.num_learner_workers = 0
         self.num_gpus_per_learner_worker = 0
         self.num_cpus_per_learner_worker = 1
+        self.force_num_learner_workers_onto_same_node = 0
         self.local_gpu_idx = 0
         self.custom_resources_per_worker = {}
         self.placement_strategy = "PACK"
@@ -1104,6 +1105,7 @@ class AlgorithmConfig(_Config):
         num_learner_workers: Optional[int] = NotProvided,
         num_cpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner_worker: Optional[Union[float, int]] = NotProvided,
+        force_num_learner_workers_onto_same_node: Optional[bool] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
         custom_resources_per_worker: Optional[dict] = NotProvided,
         placement_strategy: Optional[str] = NotProvided,
@@ -1139,6 +1141,14 @@ class AlgorithmConfig(_Config):
                 training on a single GPU on the head node, while a value of 0 will run
                 the training on head node CPU cores. If num_gpus_per_learner_worker is
                 set, then num_cpus_per_learner_worker cannot be set.
+            force_num_learner_workers_onto_same_node: Number of learner workers that
+                are forced to be on the same node. This is useful for example when
+                you want to use GPUs for learner workers and for rollout workers,
+                but want to avoid spreading out the learner workers over more nodes
+                than necessary. This is only relevant if num_learner_workers > 1.
+                If num_learner_workers = 0 or 1 (the default), learner workers are
+                placed within their own placement group bundle and are expected to be
+                scheduled anywhere resources can be allocated.
             local_gpu_idx: if num_gpus_per_worker > 0, and num_workers<2, then this gpu
                 index will be used for training. This is an index into the available
                 cuda devices. For example if os.environ["CUDA_VISIBLE_DEVICES"] = "1"
@@ -1182,6 +1192,10 @@ class AlgorithmConfig(_Config):
             self.custom_resources_per_worker = custom_resources_per_worker
         if placement_strategy is not NotProvided:
             self.placement_strategy = placement_strategy
+        if force_num_learner_workers_onto_same_node is not NotProvided:
+            self.force_num_learner_workers_onto_same_node = (
+                force_num_learner_workers_onto_same_node
+            )
 
         if num_learner_workers is not NotProvided:
             self.num_learner_workers = num_learner_workers

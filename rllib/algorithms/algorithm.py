@@ -136,6 +136,25 @@ try:
     from ray.rllib.extensions import AlgorithmBase
 except ImportError:
 
+    def _get_num_learner_bundles_and_remainder(total_workers, num_workers_on_same_node):
+        """Calculates the number of learner worker bundles and a remainder bundle.
+
+        This helper method calculates the number of learner worker bundles that we can
+        fill with num_workers_on_same_node workers each, and a remainder bundle that
+        we fill with the remaining workers.
+
+        Args:
+            total_workers: The total number of learner workers we attempt to schedule.
+            num_workers_on_same_node: The number of learner workers that we want to
+                schedule together.
+
+        Returns:
+            A tuple of (num_full_bundles, remainder_bundle).
+        """
+        num_full_bundes = total_workers // num_workers_on_same_node
+        remainder = total_workers % num_workers_on_same_node
+        return num_full_bundes, remainder
+
     class AlgorithmBase:
         @staticmethod
         def _get_learner_bundles(cf: AlgorithmConfig) -> List[Dict[str, int]]:
@@ -147,18 +166,63 @@ except ImportError:
             Returns:
                 A list of resource bundles for the learner workers.
             """
+
+            num_on_same_node = cf.force_num_learner_workers_onto_same_node
+            num_total = cf.num_learner_workers
+
             if cf.num_learner_workers > 0:
                 if cf.num_gpus_per_learner_worker:
-                    learner_bundles = [
-                        {"GPU": cf.num_learner_workers * cf.num_gpus_per_learner_worker}
-                    ]
+                    if num_on_same_node > 1:
+                        (
+                            num_full_bundles,
+                            remainder,
+                        ) = _get_num_learner_bundles_and_remainder(
+                            num_total, num_on_same_node
+                        )
+                        learner_bundles = []
+                        for i in range(num_full_bundles):
+                            learner_bundles.extend(
+                                [
+                                    {
+                                        "GPU": num_on_same_node
+                                        * cf.num_gpus_per_learner_worker
+                                    }
+                                ]
+                            )
+                        if remainder:
+                            learner_bundles.extend(
+                                [{"GPU": remainder * cf.num_gpus_per_learner_worker}]
+                            )
+                    else:
+                        learner_bundles = num_total * [
+                            {"GPU": cf.num_gpus_per_learner_worker}
+                        ]
                 elif cf.num_cpus_per_learner_worker:
-                    learner_bundles = [
-                        {
-                            "CPU": cf.num_cpus_per_learner_worker
-                            * cf.num_learner_workers,
-                        }
-                    ]
+                    if num_on_same_node > 1:
+                        (
+                            num_full_bundles,
+                            remainder,
+                        ) = _get_num_learner_bundles_and_remainder(
+                            num_total, num_on_same_node
+                        )
+                        learner_bundles = []
+                        for i in range(num_full_bundles):
+                            learner_bundles.extend(
+                                [
+                                    {
+                                        "CPU": num_on_same_node
+                                        * cf.num_gpus_per_learner_worker
+                                    }
+                                ]
+                            )
+                        if remainder:
+                            learner_bundles.extend(
+                                [{"CPU": remainder * cf.num_gpus_per_learner_worker}]
+                            )
+                    else:
+                        learner_bundles = num_total * [
+                            {"CPU": cf.num_cpus_per_learner_worker}
+                        ]
             else:
                 learner_bundles = [
                     {

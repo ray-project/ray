@@ -5,7 +5,6 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 def run_with_tuner_n_rollout_worker_2_gpu(config):
     """Run training with n rollout workers and 2 learner workers with gpu."""
-    config = config.rollouts(num_rollout_workers=5)
     tuner = tune.Tuner(
         "PPO",
         param_space=config,
