@@ -227,10 +227,9 @@
   frequency: nightly
   team: ml
   cluster:
-#    byod:
-#      type: gpu
-#      pip:
-#        - xgboost_ray
+    byod:
+      type: gpu
+      post_build_script: byod_xgboost_cuj_test.sh
     cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
@@ -897,6 +896,17 @@
   frequency: weekly
   team: ml
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - "datasets"
+        - "evaluate"
+        - "scikit-learn"
+        - "boto3"
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
+      post_build_script: byod_dolly_test.sh
     cluster_env: dolly_v2_fsdp_env.yaml
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
@@ -5058,32 +5068,6 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  python: "3.7"
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_64_gce.yaml
-
-
-- name: microbenchmark_38
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
   python: "3.8"
 
   cluster:
@@ -6547,6 +6531,7 @@
 
   frequency: weekly
   team: data
+  python: "3.8"
   cluster:
     byod: 
       runtime_env:
