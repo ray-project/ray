@@ -180,7 +180,7 @@ def ray_cc_library(name, **kwargs):
         **kwargs
     )
 
-def ray_cc_test(name, tags = [], **kwargs):
+def ray_cc_test(name, **kwargs):
     cc_test(
         name = name,
         tags = tags,
