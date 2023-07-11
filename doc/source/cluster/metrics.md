@@ -81,7 +81,7 @@ Many developers are not on macOS's trusted list. Users can manually override thi
 See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) for how to override the restriction and install or run the application.
 
 #### Loading Ray Prometheus configurations with Docker Compose
-In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus and Grafana configuration files and default dashboards.
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus configuration files.
 
 To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana and Prometheus configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, the shared volume should be mounted on the respective paths for the containers, which contains the recommended configurations and default dashboards to initiate the Prometheus and Grafana servers.
 
