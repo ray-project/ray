@@ -238,7 +238,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
-        logger.info("test, chao {}".format(req.query))
         view = req.query.get("view")
         if view == "summary":
             all_node_summary = await DataOrganizer.get_all_node_summary()

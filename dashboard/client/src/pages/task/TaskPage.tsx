@@ -98,7 +98,7 @@ const TaskPageContents = ({
     name,
   } = task;
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
-  console.info("isTaskActive: ", isTaskActive);
+
   return (
     <div>
       <MetadataSection

@@ -338,7 +338,7 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
       : undefined;
 
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
-  console.info("isTaskActive: ", isTaskActive);
+
   return (
     <React.Fragment>
       <Link component={RouterLink} to={`tasks/${task.task_id}`}>
@@ -359,6 +359,7 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
         </React.Fragment>
       )}
       <br />
+
       {errorDetails && (
         <CodeDialogButton
           title="Error details"

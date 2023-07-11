@@ -65,7 +65,7 @@ export const CpuProfilingLink = ({
     <Link
       href={`worker/traceback?pid=${pid}&ip=${ip}&native=0`}
       target="_blank"
-      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
+      title="Sample the current Python stack trace for this worker."
       rel="noreferrer"
     >
       Stack&nbsp;Trace{type ? ` (${type})` : ""}
@@ -86,7 +86,7 @@ export const CpuStackTraceLink = ({
     <Link
       href={`worker/cpu_profile?pid=${pid}&ip=${ip}&duration=5&native=0`}
       target="_blank"
-      title="Sample the current Python stack trace for this worker."
+      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
       rel="noreferrer"
     >
       CPU&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
