@@ -5,6 +5,8 @@ Ray Examples
 
 .. raw:: html
 
+    <link rel="stylesheet" type="text/css" href="../_static/css/examples.css">
+
     <div>
        <div class="searchDiv">
           <input type="text" id="searchInput" class="searchTerm"
@@ -160,13 +162,6 @@ Ray Examples
         .. button-ref:: /ray-air/examples/dreambooth_finetuning
 
             How to fine-tune a DreamBooth text-to-image model with your own images.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing inference
-
-        .. button-ref:: /ray-air/examples/opt_deepspeed_batch_inference
-
-            How to run batch inference on a dataset of texts with a 30B OPT model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
