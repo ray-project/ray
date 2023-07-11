@@ -209,8 +209,8 @@ class ServerCallImpl : public ServerCall {
   }
 
   void HandleRequestImpl() {
-    if (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
-      dynamic_cast<DelayedServiceHandler &>(service_handler_).WaitUntilInitialized();
+    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+      &service_handler_.WaitUntilInitialized();
     }
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
