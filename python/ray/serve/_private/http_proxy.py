@@ -29,6 +29,7 @@ from ray.serve._private.http_util import (
     ASGIMessageQueue,
     BufferedASGISender,
     HTTPRequestWrapper,
+    make_buffered_asgi_receive,
     RawASGIResponse,
     receive_http_body,
     Response,
@@ -751,6 +752,7 @@ class GenericProxy:
         """
         while True:
             msg = await receive()
+            print("proxy_asgi_receive", msg)
             await queue(msg)
 
             if msg["type"] == "http.disconnect":
@@ -778,11 +780,9 @@ class GenericProxy:
         assignment_task = handle.remote(
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
-        # TODO: add disconnect_task back. disconnect_task is exiting the request
-        # Or look into to change first_completed
         done, _ = await asyncio.wait(
             [assignment_task, disconnected_task],
-            return_when=ALL_COMPLETED,
+            return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
         print("done", done)
@@ -922,27 +922,6 @@ class GenericProxy:
         return status_code
 
 
-class GrpcReceiveWrapper:
-    def __init__(self, receive: bytes):
-        self.receive_q = [receive]
-
-    async def __call__(self):
-        # print("in GrpcReceiveWrapper#__call__!!")
-        if self.receive_q:
-            body = self.receive_q.pop()
-            return {
-                "type": "http.request",
-                "body": body,
-                "more_body": False,
-            }
-        return {
-            # "type": "http.request",
-            "type": "http.disconnect",
-            "body": b"",
-            "more_body": False,
-        }
-
-
 class GRPCProxy(GenericProxy):
     async def Predict(self, request: serve_pb2.PredictRequest, context):
         print("in generic proxy, Predict called!!")
@@ -951,10 +930,11 @@ class GRPCProxy(GenericProxy):
         print("context.details()", context.details())
 
         scope = {"type": "http", "path": f"/{request.target}", "root_path": "/"}
+        receive = make_buffered_asgi_receive(request.input.SerializeToString())
         send = BufferedASGISender()
         await self(
             scope=scope,
-            receive=GrpcReceiveWrapper(receive=request.input.SerializeToString()),
+            receive=receive,
             send=send,
         )
         response_body = ProtoAny()
@@ -1081,10 +1061,10 @@ class HTTPProxyActor:
             # Either the HTTP setup has completed.
             # The event is set inside self.run.
             setup_task,
-            setup_task_grpc,
+            # setup_task_grpc,
             # Or self.run errored.
             self.running_task,
-            self.running_task_grpc,
+            # self.running_task_grpc,
         ]
         done_set, _ = await asyncio.wait(
             waiting_tasks,
@@ -1139,21 +1119,27 @@ class HTTPProxyActor:
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
 
+        logger.info(
+            "Starting HTTP server with on node: "
+            f"{ray.get_runtime_context().get_node_id()} "
+            f"listening on port {self.port}"
+        )
+
         self.setup_complete.set()
         await server.serve(sockets=[sock])
 
     async def run_grpc_server(self):
         grpc_server = grpc.aio.server()
-        logger.info(
-            "Starting gRPC server with on node: "
-            f"{ray.get_runtime_context().get_node_id()} "
-            f"listening on port {self.grpc_port}"
-        )
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
         serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
             self.grpc_proxy, grpc_server
         )
         await grpc_server.start()
+        logger.info(
+            "Starting gRPC server with on node: "
+            f"{ray.get_runtime_context().get_node_id()} "
+            f"listening on port {self.grpc_port}"
+        )
         self.grpc_setup_complete.set()
         await grpc_server.wait_for_termination()
 
