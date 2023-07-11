@@ -279,17 +279,38 @@ py_test(
 )
 
 py_test(
-    name = "air_benchmark_gpu_batch_prediction_smoke_test",
+    name = "air_benchmark_gpu_batch_prediction_parquet_smoke_test",
     size = "small",
     srcs = test_srcs,
     args = [
-        "--data-size-gb=1",
+        "--data-directory=10G-image-data-synethic-raw-parquet",
+        "--data-format=parquet"
         "--smoke-test",
     ],
     main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
     tags = [
         "exclusive",
-        "team:ml",
+        "team:data",
+    ],
+    deps = [
+        "//:ray_lib",
+        "//python/ray/air:ml_lib",
+    ],
+)
+
+py_test(
+    name = "air_benchmark_gpu_batch_prediction_raw_image_smoke_test",
+    size = "small",
+    srcs = test_srcs,
+    args = [
+        "--data-directory=10G-image-data-synethic-raw",
+        "--data-format=raw"
+        "--smoke-test",
+    ],
+    main = "air_tests/air_benchmarks/workloads/gpu_batch_prediction.py",
+    tags = [
+        "exclusive",
+        "team:data",
     ],
     deps = [
         "//:ray_lib",
