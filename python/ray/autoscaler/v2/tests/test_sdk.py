@@ -174,6 +174,7 @@ def test_node_info_basic(shutdown_only, monkeypatch):
 
         wait_for_condition(verify)
 
+
 def test_pg_pending_gang_requests_basic(ray_start_cluster):
     ray.init(num_cpus=1)
 
