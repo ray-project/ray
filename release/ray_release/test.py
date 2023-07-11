@@ -268,10 +268,12 @@ class Test(dict):
         """
         Returns the anyscale byod image to use for this test.
         """
-        return (
-            f"{get_global_config()['byod_ecr']}/"
-            f"{self.get_byod_repo()}:{self.get_byod_base_image_tag()}"
+        ecr_repo = (
+            "us-west1-docker.pkg.dev/anyscale-oss-ci/anyscale-ray"
+            if self.get("env") == "gce"
+            else f"{get_global_config()['byod_ecr']}/{self.get_byod_repo()}"
         )
+        return f"{ecr_repo}:{self.get_byod_base_image_tag()}"
 
     def require_custom_byod_image(self) -> bool:
         """
