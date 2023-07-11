@@ -1952,3 +1952,15 @@ def parse_node_labels_json(
             cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
         )
     return labels
+
+
+def validate_node_labels(labels: Dict[str, str]):
+    if labels is None:
+        return
+    for key in labels.keys():
+        if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
+            raise ValueError(
+                f"Custom label keys cannot start with the prefix "
+                f"{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}. "
+                f"This is reserved for Ray defined labels."
+            )
