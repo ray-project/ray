@@ -2171,10 +2171,10 @@ cdef class GcsClient:
         return self._nums_reconnect_retry
 
     @_auto_reconnect
-    def internal_kv_get(self, c_string key, namespace=None, timeout_s=None):
+    def internal_kv_get(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_string value
             CRayStatus status
         with nogil:
@@ -2186,12 +2186,12 @@ cdef class GcsClient:
             return value
 
     @_auto_reconnect
-    def internal_kv_multi_get(self, keys, namespace=None, timeout_s=None):
+    def internal_kv_multi_get(self, keys, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
             c_vector[c_string] c_keys
             c_string c_key
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             unordered_map[c_string, c_string] c_result
             unordered_map[c_string, c_string].iterator it
 
@@ -2212,10 +2212,10 @@ cdef class GcsClient:
 
     @_auto_reconnect
     def internal_kv_put(self, c_string key, c_string value, c_bool overwrite=False,
-                        namespace=None, timeout_s=None):
+                        namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_added = 0
         with nogil:
             check_status(self.inner.get().InternalKVPut(
@@ -2225,10 +2225,10 @@ cdef class GcsClient:
 
     @_auto_reconnect
     def internal_kv_del(self, c_string key, c_bool del_by_prefix,
-                        namespace=None, timeout_s=None):
+                        namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             int num_deleted = 0
         with nogil:
             check_status(self.inner.get().InternalKVDel(
@@ -2237,10 +2237,10 @@ cdef class GcsClient:
         return num_deleted
 
     @_auto_reconnect
-    def internal_kv_keys(self, c_string prefix, namespace=None, timeout_s=None):
+    def internal_kv_keys(self, c_string prefix, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[c_string] keys
             c_string key
 
@@ -2256,10 +2256,10 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def internal_kv_exists(self, c_string key, namespace=None, timeout_s=None):
+    def internal_kv_exists(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_bool exists = False
         with nogil:
             check_status(self.inner.get().InternalKVExists(
@@ -2267,18 +2267,18 @@ cdef class GcsClient:
         return exists
 
     @_auto_reconnect
-    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout_s=None):
+    def pin_runtime_env_uri(self, str uri, int expiration_s, timeout=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_string c_uri = uri.encode()
         with nogil:
             check_status(self.inner.get().PinRuntimeEnvUri(
                 c_uri, expiration_s, timeout_ms))
 
     @_auto_reconnect
-    def get_all_node_info(self, timeout_s=None):
+    def get_all_node_info(self, timeout=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CGcsNodeInfo node_info
             c_vector[CGcsNodeInfo] node_infos
         with nogil:
@@ -2293,9 +2293,9 @@ cdef class GcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout_s=None):
+    def get_all_job_info(self, timeout=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CJobTableData job_info
             c_vector[CJobTableData] job_infos
         with nogil:

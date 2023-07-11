@@ -36,7 +36,7 @@ def request_cluster_resources(
         timeout: Timeout in seconds for the request to be timeout
 
     """
-    get_gcs_client().request_cluster_resource_constraint(to_request, timeout=timeout)
+    get_gcs_client().request_cluster_resource_constraint(to_request, timeout_s=timeout)
 
 
 def _get_cluster_status(
@@ -48,7 +48,7 @@ def _get_cluster_status(
     TODO(rickyx): Parse it into a ClusterStatus object.
     """
 
-    str_reply = get_gcs_client(gcs_address).get_cluster_status(timeout=timeout)
+    str_reply = get_gcs_client(gcs_address).get_cluster_status(timeout_s=timeout)
     reply = GetClusterStatusReply()
     reply.ParseFromString(str_reply)
 
