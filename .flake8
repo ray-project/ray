@@ -4,6 +4,7 @@ exclude =
   doc/source/conf.py
   python/ray/cloudpickle/
   python/ray/thirdparty_files/
+  python/ray/_private/runtime_env/agent/thirdparty_files/
   python/build/
   python/.eggs/
   python/ray/_private/thirdparty/*
