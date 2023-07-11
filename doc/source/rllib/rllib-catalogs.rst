@@ -4,7 +4,6 @@
 
 .. include:: /_includes/rllib/rlmodules_rollout.rst
 
-.. note:: Interacting with Catalogs mainly covers advanced use cases.
 
 Catalog (Alpha)
 ===============
@@ -14,9 +13,11 @@ Each :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has its own defaul
 :py:class:`~ray.rllib.core.models.catalog.Catalog`. For example,
 :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` has the
 :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`.
-You can override Catalogs’ methods to alter the behavior of existing RLModules.
-This makes Catalogs a means of configuration for RLModules.
-You interact with Catalogs when making deeper customization to what :py:class:`~ray.rllib.core.models.Model` and :py:class:`~ray.rllib.models.distributions.Distribution` RLlib creates by default.
+You can override Catalogs’ methods to alter the default components used by existing RLModules.
+
+.. note::
+    Modifying Catalogs signifies advanced use cases so you should only consider this if modifying an RLModule or writing does not cover your use case.
+    E.g. we recommend to modify Catalogs when making deeper customizations to the decision trees that determine what :py:class:`~ray.rllib.core.models.Model` and :py:class:`~ray.rllib.models.distributions.Distribution` RLlib creates by default.
 
 .. note::
     If you simply want to modify a :py:class:`~ray.rllib.core.models.Model` by changing its default values,
