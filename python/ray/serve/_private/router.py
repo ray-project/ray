@@ -611,6 +611,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         tasks_to_start = (
             self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
         )
+        print("tasks_to_start", tasks_to_start)
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.fulfill_pending_requests())

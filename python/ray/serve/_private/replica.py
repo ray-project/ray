@@ -230,11 +230,7 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[bytes, Any]:
 
             request_metadata = pickle.loads(pickled_request_metadata)
-            print("handle_request, request_metadata:", request_metadata)
-            # TODO: double check with this code branch
             if request_metadata.is_http_request:
-                print("Handling HTTP request", request_metadata)
-                print("Handling HTTP request_args", request_args)
                 # The sole argument passed from `http_proxy.py` is the ASGI scope.
                 assert len(request_args) == 1
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
@@ -244,12 +240,9 @@ def create_replica_wrapper(name: str):
                 buffered_receive = make_buffered_asgi_receive(request.body)
                 request_args = (scope, buffered_receive, buffered_send)
 
-            print("before calling call_user_method, request_args:", request_args)
-            print("request_kwargs", request_kwargs)
             result = await self.replica.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
-            print("result from handle_request:", result)
 
             if request_metadata.is_http_request:
                 result = buffered_send.build_asgi_response()
@@ -754,12 +747,12 @@ class RayServeReplica:
                 ):
                     request_args, request_kwargs = tuple(), {}
 
+                # TODO: make a new code branch to serialize the request object
                 print("before call_user_method!!!", request_args, request_kwargs)
                 request_body = await request_args[0].body()
                 print("request_body", request_body)
                 parsed_body = ProtoAny()
                 parsed_body.ParseFromString(request_body)
-                # TODO: make a new code branch to pass in the request object
                 result = await method_to_call(parsed_body)
                 serialized_result = result.SerializeToString()
                 print("call_user_method!!!", serialized_result)

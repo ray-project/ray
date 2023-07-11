@@ -1,5 +1,5 @@
 import asyncio
-from asyncio.tasks import FIRST_COMPLETED
+from asyncio.tasks import FIRST_COMPLETED, ALL_COMPLETED
 import json
 import os
 import logging
@@ -216,15 +216,14 @@ class GRPCRouter(LongestPrefixRouter):
     def match_route(
         self, target_route: str
     ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
-        """Return the longest prefix match among existing routes for the route.
+        """Return the target endpoint to match for the route.
 
         Args:
-            target_route: route to match against.
+            target_route: the endpoint to match against.
 
         Returns:
             (route, handle, app_name, is_cross_language) if found, else None.
         """
-        # TODO: fix comment
         print("GRPCRouter#match_route", target_route)
         for route, endpoint_and_app_name in self.route_info.items():
             endpoint, app_name = endpoint_and_app_name
@@ -242,6 +241,8 @@ class GRPCRouter(LongestPrefixRouter):
 
 class GenericProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
+
+    It also serve as the base class for proxies.
 
     >>> import uvicorn
     >>> controller_name = ... # doctest: +SKIP
@@ -741,7 +742,6 @@ class GenericProxy:
         """
         while True:
             msg = await receive()
-            print("proxy_asgi_receive", msg)
             await queue(msg)
 
             if msg["type"] == "http.disconnect":
@@ -770,9 +770,10 @@ class GenericProxy:
             StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
         )
         # TODO: add disconnect_task back. disconnect_task is exiting the request
+        # Or look into to change first_completed
         done, _ = await asyncio.wait(
-            [assignment_task],
-            return_when=FIRST_COMPLETED,
+            [assignment_task, disconnected_task],
+            return_when=ALL_COMPLETED,
             timeout=timeout_s,
         )
         print("done", done)
@@ -917,7 +918,7 @@ class GrpcReceiveWrapper:
         self.receive_q = [receive]
 
     async def __call__(self):
-        print("in GrpcReceiveWrapper#__call__!!")
+        # print("in GrpcReceiveWrapper#__call__!!")
         if self.receive_q:
             body = self.receive_q.pop()
             return {
@@ -926,6 +927,7 @@ class GrpcReceiveWrapper:
                 "more_body": False,
             }
         return {
+            # "type": "http.request",
             "type": "http.disconnect",
             "body": b"",
             "more_body": False,
@@ -934,47 +936,12 @@ class GrpcReceiveWrapper:
 
 class GRPCProxy(GenericProxy):
 
-    # def __int__(self):
-    #     super().__init__(router_class=GRPCRouter)
-
-    # async def _receive(self, request: serve_pb2.PredictRequest) -> Receive:
-    #     print("in GRPCProxy#_receive!!")
-    #     q = [request.input]
-    #
-    #     async def receive() -> Message:
-    #         if q:
-    #             body = q.popleft()
-    #             return {
-    #                 'type': 'http.request',
-    #                 'body': body,
-    #                 'more_body': False,
-    #             }
-    #
-    #         return {
-    #             'type': 'http.disconnect',
-    #             'body': '',
-    #             'more_body': False,
-    #         }
-    #
-    #     return receive
-
     async def Predict(self, request: serve_pb2.PredictRequest, context):
         print("in generic proxy, Predict called!!")
         print("request", request)
         print("context.invocation_metadata()", context.invocation_metadata())
         print("context.details()", context.details())
-        # handle = serve.context.get_global_client().get_handle(
-        #     request.target,
-        #     sync=False,
-        #     missing_ok=True,
-        # )
-        # print("handle", handle)
-        # print("request.input", request.input)
-        #
-        # output_ref = await handle.remote(request.input)
-        # output_any = await output_ref
 
-        # TODO: try to get the path
         scope = {"type": "http", "path": f"/{request.target}", "root_path": "/"}
         send = BufferedASGISender()
         await self(
@@ -1031,7 +998,6 @@ class HTTPProxyActor:
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
         http_middlewares: Optional[List["starlette.middleware.Middleware"]] = None,
-        start_grpc_server: bool = True,  # TODO: maybe make this a feature flag
     ):  # noqa: F821
         configure_component_logger(
             component_name="http_proxy", component_id=node_ip_address
@@ -1058,14 +1024,12 @@ class HTTPProxyActor:
         self.port = port
         self.grpc_port = self.port + 1
         self.root_path = root_path
-        self.start_grpc_server = start_grpc_server
         self.server = grpc.aio.server()
 
         self.setup_complete = asyncio.Event()
-        self.http_setup_complete = asyncio.Event()
         self.grpc_setup_complete = asyncio.Event()
 
-        self.app = GenericProxy(
+        self.app = HTTPProxy(
             controller_name=controller_name,
             node_id=node_id,
             request_timeout_s=(
@@ -1089,21 +1053,18 @@ class HTTPProxyActor:
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
         self.running_task = get_or_create_event_loop().create_task(self.run())
+
+        # Right now just always start the GRPC server on the side. We can decide if we
+        # want to make this configurable later.
         self.running_task_grpc = get_or_create_event_loop().create_task(
             self.run_grpc_server()
         )
-
-        # self.running_grpc_task = None
-        # if self.start_grpc_server:
-        #     self.running_grpc_task = get_or_create_event_loop().create_task(
-        #         self.run_grpc_server()
-        #     )
 
     async def ready(self):
         """Returns when HTTP proxy is ready to serve traffic.
         Or throw exception when it is not able to serve traffic.
         """
-        # TODO: ensure both HTTP and GRPC servers are ready.
+        # TODO (genesu): ensure both HTTP and GRPC servers are ready.
         setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
         setup_task_grpc = get_or_create_event_loop().create_task(
             self.grpc_setup_complete.wait()
@@ -1170,22 +1131,8 @@ class HTTPProxyActor:
         # the main thread and uvicorn doesn't expose a way to configure it.
         server.install_signal_handlers = lambda: None
 
-        # self.http_setup_complete.set()
         self.setup_complete.set()
         await server.serve(sockets=[sock])
-
-        # logger.info(
-        #     "Starting gRPC server with on node: "
-        #     f"{ray.get_runtime_context().get_node_id()} "
-        #     f"listening on port {self.grpc_port}"
-        # )
-        # self.server.add_insecure_port(f"[::]:{self.grpc_port}")
-        # serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
-        #     self.grpc_proxy, self.server
-        # )
-        # await self.server.start()
-        # self.setup_complete.set()
-        # await self.server.wait_for_termination()
 
     async def run_grpc_server(self):
         grpc_server = grpc.aio.server()
@@ -1200,7 +1147,6 @@ class HTTPProxyActor:
         )
         await grpc_server.start()
         self.grpc_setup_complete.set()
-        # self.setup_complete.set()
         await grpc_server.wait_for_termination()
 
     async def check_health(self):
@@ -1210,5 +1156,7 @@ class HTTPProxyActor:
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
-        print("receive_asgi_messages!!!")
-        return pickle.dumps(await self.grpc_proxy.receive_asgi_messages(request_id))
+        try:
+            return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+        except KeyError:
+            return pickle.dumps(await self.grpc_proxy.receive_asgi_messages(request_id))
