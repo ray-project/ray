@@ -75,6 +75,11 @@ class TensorflowCheckpoint(Checkpoint):
             model = tf.keras.applications.resnet.ResNet101()
             checkpoint = TensorflowCheckpoint.from_model(model)
 
+        .. testoutput::
+            :hide:
+
+            ...
+
         """
         checkpoint = cls.from_dict(
             {PREPROCESSOR_KEY: preprocessor, MODEL_KEY: model.get_weights()}

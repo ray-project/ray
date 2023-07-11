@@ -9,7 +9,6 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
-            "mosaic/mosaic_trainer.py",
         ]
     ),
     size = "large",
@@ -20,7 +19,6 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
-        "mosaic/mosaic_trainer.py",
     ],
     tags = ["team:ml"],
     gpu = True
