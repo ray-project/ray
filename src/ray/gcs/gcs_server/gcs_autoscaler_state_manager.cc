@@ -129,6 +129,9 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex(),
         pg_data.strategy());
 
+    // Add the strategy as detail info for the gang resource request.
+    gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
+
     // Copy the PG's bundles to the request.
     for (const auto &bundle : pg_data.bundles()) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {

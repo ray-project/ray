@@ -228,15 +228,16 @@ def test_multiplexed_replica_info(serve_instance):
     def check_replica_information(
         model_ids: List[str],
     ):
+        replica_scheduler = handle._get_or_create_router()._replica_scheduler
         if RAY_SERVE_ENABLE_NEW_ROUTING:
-            for replica in handle.router._replica_scheduler.curr_replicas.values():
+            for replica in replica_scheduler.curr_replicas.values():
                 if (
                     replica.replica_id != replica_tag
                     or model_ids != replica.multiplexed_model_ids
                 ):
                     return False
         else:
-            for replica in handle.router._replica_scheduler.in_flight_queries.keys():
+            for replica in replica_scheduler.in_flight_queries.keys():
                 if replica.replica_tag != replica_tag or model_ids != set(
                     replica.multiplexed_model_ids
                 ):
@@ -272,14 +273,15 @@ def test_multiplexed_replica_info(serve_instance):
 
 
 def check_model_id_in_replicas(handle: RayServeHandle, model_id: str) -> bool:
+    replica_scheduler = handle._get_or_create_router()._replica_scheduler
     if RAY_SERVE_ENABLE_NEW_ROUTING:
-        for replica in handle.router._replica_scheduler.curr_replicas.values():
+        for replica in replica_scheduler.curr_replicas.values():
             if model_id in replica.multiplexed_model_ids:
                 return True
 
         return False
     else:
-        return model_id in handle.router._replica_scheduler.multiplexed_replicas_table
+        return model_id in replica_scheduler.multiplexed_replicas_table
 
 
 def test_multiplexed_e2e(serve_instance):
@@ -376,6 +378,39 @@ def test_multiplexed_multiple_replicas(serve_instance):
     assert ray.get(pid1_ref) != ray.get(pid2_ref)
 
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="1")
+
+
+def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
+    """
+    Verify that `.options(multiplexed_model_id="foo")` on a ServeHandle sets it in the
+    downstream but does not update the model ID in the caller.
+    """
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self):
+            return serve.get_multiplexed_model_id()
+
+    @serve.deployment
+    class Upstream:
+        def __init__(self, downstream: RayServeHandle):
+            self._h = downstream
+
+        async def __call__(self):
+            model_id_before = serve.get_multiplexed_model_id()
+
+            # Make a call with another model ID, verify it's set properly.
+            ref = await self._h.options(multiplexed_model_id="bar").remote()
+            assert await ref == "bar"
+
+            # Model ID shouldn't change after the handle call.
+            model_id_after = serve.get_multiplexed_model_id()
+            assert model_id_before == model_id_after
+
+            return model_id_before
+
+    handle = serve.run(Upstream.bind(Downstream.bind()))
+    assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
 
 
 if __name__ == "__main__":
