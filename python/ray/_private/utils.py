@@ -268,7 +268,7 @@ def hex_to_binary(hex_identifier):
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
-    return ray.JobID(driver_id.binary()[0 : ray.JobID.size()])
+    return ray.JobID(driver_id.binary()[0: ray.JobID.size()])
 
 
 def compute_driver_id_from_job(job_id):
@@ -1191,7 +1191,7 @@ def import_attr(full_path: str):
     else:
         last_period_idx = full_path.rfind(".")
         module_name = full_path[:last_period_idx]
-        attr_name = full_path[last_period_idx + 1 :]
+        attr_name = full_path[last_period_idx + 1:]
 
     module = importlib.import_module(module_name)
     return getattr(module, attr_name)
@@ -1964,26 +1964,7 @@ def validate_node_labels(labels: Dict[str, str]):
     for key in labels.keys():
         if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
             raise ValueError(
-                f"Custom label keys `{key}` cannot start with the prefix "
-                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
+                f"Custom label keys cannot start with the prefix "
+                f"{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}. "
                 f"This is reserved for Ray defined labels."
             )
-
-
-def pasre_pg_formatted_resources_to_original(
-    pg_formatted_resources: Dict[str, float]
-) -> Dict[str, float]:
-    original_resources = {}
-
-    for key, value in pg_formatted_resources.items():
-        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 2:
-            original_resources[result.group(1)] = value
-            continue
-        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 3:
-            original_resources[result.group(1)] = value
-            continue
-        original_resources[key] = value
-
-    return original_resources

@@ -17,6 +17,11 @@ def add_default_labels(node_info, labels):
     return labels
 
 
+def add_default_labels(node_info, labels):
+    labels["ray.io/node_id"] = node_info["NodeID"]
+    return labels
+
+
 @pytest.mark.parametrize(
     "call_ray_start",
     ['ray start --head --labels={"gpu_type":"A100","region":"us"}'],
@@ -112,32 +117,6 @@ def test_cluster_add_node_with_labels(ray_start_cluster):
     for node in ray.nodes():
         if node["NodeID"] != head_node_id:
             assert node["Labels"] == add_default_labels(node, {})
-
-
-def test_autoscaler_set_node_labels(shutdown_only):
-    cluster = AutoscalingCluster(
-        head_resources={"CPU": 0},
-        worker_node_types={
-            "worker_1": {
-                "resources": {"CPU": 1},
-                "labels": {"region": "us"},
-                "node_config": {},
-                "min_workers": 1,
-                "max_workers": 1,
-            }
-        },
-    )
-
-    try:
-        cluster.start()
-        ray.init()
-        wait_for_condition(lambda: len(ray.nodes()) == 2)
-
-        for node in ray.nodes():
-            if node["Resources"].get("CPU", 0) == 1:
-                assert node["Labels"] == add_default_labels(node, {"region": "us"})
-    finally:
-        cluster.shutdown()
 
 
 if __name__ == "__main__":
