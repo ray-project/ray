@@ -172,7 +172,7 @@ def native_java_library(module_name, name, native_library_name):
     )
 
 def ray_cc_library(name, **kwargs):
-    native_cc_library(
+    cc_library(
         name = name,
         strip_include_prefix = "/src",
         copts = COPTS,
@@ -180,9 +180,10 @@ def ray_cc_library(name, **kwargs):
         **kwargs
     )
 
-def ray_cc_test(name, **kwargs):
-    native_cc_test(
+def ray_cc_test(name, tags = [], **kwargs):
+    cc_test(
         name = name,
+        tags = tags,
         copts = COPTS,
         **kwargs
     )
