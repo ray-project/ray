@@ -132,23 +132,22 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         ValueError: HTTPInternalServerError
     """
 
-    async def get_task_info(self, option: ListApiOptions) -> Tuple[str, str, str]:
-        result = await self._state_api.list_tasks(option=option)
-        tasks = result.result
-        state = tasks[0].get("state")
-        pid = tasks[0]["worker_pid"]
-        node_id = tasks[0]["node_id"]
-        ip = DataSource.node_id_to_ip[node_id]
-        return pid, ip, state
+    # async def get_task_info(self, option: ListApiOptions) -> Tuple[str, str, str]:
+    #     result = await self._state_api.list_tasks(option=option)
+    #     tasks = result.result
+    #     state = tasks[0].get("state")
+    #     pid = tasks[0]["worker_pid"]
+    #     node_id = tasks[0]["node_id"]
+    #     ip = DataSource.node_id_to_ip[node_id]
+    #     return pid, ip, state
 
     @routes.get("/task/traceback")
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
-        logger.info(f"req {type(req)}: {req}")
-        logger.info("in get_traceback")
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
             raise ValueError("task's attempt number is required")
+
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
         option = ListApiOptions(
@@ -159,22 +158,19 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             detail=True,
             timeout=10,
         )
+
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
         self._state_api = StateAPIManager(self._state_api_data_source_client)
-        logger.info(f"self._state_api {type(self._state_api)}: {self._state_api}")
 
         result = await self._state_api.list_tasks(option=option)
         tasks = result.result
-        logger.info(f"tasks {type(tasks)}: {tasks}")
 
         pid = tasks[0]["worker_pid"]
         node_id = tasks[0]["node_id"]
         ip = DataSource.node_id_to_ip[node_id]
-        logger.info(f"pid {type(pid)}: {pid}")
-        logger.info(f"node_id {type(node_id)}: {node_id}")
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
@@ -191,14 +187,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         ## Check if the task attempt is still running
         new_result = await self._state_api.list_tasks(option=option)
         new_tasks = new_result.result
-        logger.info(f"new_tasks {type(new_tasks)}: {new_tasks}")
+
         state = new_tasks[0].get("state")
         new_pid = new_tasks[0]["worker_pid"]
-        logger.info(f"new_pid {type(new_pid)}: {new_pid}")
         new_node_id = new_tasks[0]["node_id"]
-        logger.info(f"new_node_id {type(new_node_id)}: {new_node_id}")
         new_ip = DataSource.node_id_to_ip[new_node_id]
-        logger.info(f"new_ip {type(new_ip)}: {new_ip}")
 
         if new_pid is None or new_ip is None:
             raise ValueError(
@@ -231,12 +224,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
     @routes.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
-        logger.info(f"req {type(req)}: {req}")
-        logger.info("before self._state_api.list_tasks")
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
             raise ValueError("task's attempt number is required")
+
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
 
@@ -254,17 +246,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
         self._state_api = StateAPIManager(self._state_api_data_source_client)
-        logger.info(f"self._state_api {type(self._state_api)}: {self._state_api}")
 
         result = await self._state_api.list_tasks(option=option)
         tasks = result.result
-        logger.info(f"tasks {type(tasks)}: {tasks}")
 
         pid = tasks[0]["worker_pid"]
         node_id = tasks[0]["node_id"]
         ip = DataSource.node_id_to_ip[node_id]
-        logger.info(f"pid {type(pid)}: {pid}")
-        logger.info(f"node_id {type(node_id)}: {node_id}")
 
         if not pid or not ip:
             raise ValueError(
@@ -279,7 +267,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         reporter_stub = self._stubs[ip]
-        logger.info(f"reporter_stub {type(reporter_stub)}: {reporter_stub}")
 
         logger.info(
             "Sending CPU profiling request to {}:{} for {} with native={}".format(
@@ -292,19 +279,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 pid=pid, duration=duration, format=format, native=native
             )
         )
-        logger.info(f"reply {type(reply)}: {reply}")
 
-        ## Check if the task attempt is still running
+        ## Check if the task is still running
         new_result = await self._state_api.list_tasks(option=option)
         new_tasks = new_result.result
-        logger.info(f"new_tasks {type(new_tasks)}: {new_tasks}")
+
         state = new_tasks[0].get("state")
         new_pid = new_tasks[0]["worker_pid"]
-        logger.info(f"new_pid {type(new_pid)}: {new_pid}")
         new_node_id = new_tasks[0]["node_id"]
-        logger.info(f"new_node_id {type(new_node_id)}: {new_node_id}")
         new_ip = DataSource.node_id_to_ip[new_node_id]
-        logger.info(f"new_ip {type(new_ip)}: {new_ip}")
 
         if new_pid is None or new_ip is None:
             raise ValueError(
@@ -319,6 +302,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             raise ValueError(
                 f"The task attempt is not running: the current state is {state}."
             )
+
         if reply.success:
             logger.info(
                 "Returning profiling response, size {}".format(len(reply.output))
@@ -331,6 +315,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     else "text/plain"
                 },
             )
+
         return aiohttp.web.HTTPInternalServerError(
             text="Could not find CPU Flame Graph info for task {}".format(task_id)
         )
