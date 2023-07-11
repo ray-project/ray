@@ -825,8 +825,8 @@ def run_learning_tests_from_yaml(
     # When running as a release test, use `/mnt/cluster_storage` as the storage path.
     release_test_storage_path = "/mnt/cluster_storage"
     if os.path.exists(release_test_storage_path):
-        for experiment in experiments_to_run:
-            experiment["storage_path"] = release_test_storage_path
+        for k, e in experiments_to_run.items():
+            e["storage_path"] = release_test_storage_path
 
     try:
         ray.init(address="auto")
