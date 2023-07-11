@@ -86,10 +86,8 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)
 
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
-class CoreWorkerServiceHandler {
+class CoreWorkerServiceHandler : public DelayedServiceHandler {
  public:
-  virtual ~CoreWorkerServiceHandler() {}
-
   /// Blocks until the service is ready to serve RPCs.
   virtual void WaitUntilInitialized() = 0;
 
@@ -148,20 +146,10 @@ class CoreWorkerGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id) override {
-    std::vector<std::unique_ptr<ServerCallFactory>> tmp_server_call_factories;
-    InitServerCallFactoriesImpl(cq, &tmp_server_call_factories, cluster_id);
-    for (auto &factory : tmp_server_call_factories) {
-      server_call_factories->emplace_back(std::make_unique<CoreWorkerServerCallFactory>(
-          std::move(factory), service_handler_));
-    }
+    RAY_CORE_WORKER_RPC_HANDLERS
   }
 
  private:
-  void InitServerCallFactoriesImpl(
-      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
-      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
-      const ClusterID &cluster_id){RAY_CORE_WORKER_RPC_HANDLERS}
-
   /// The grpc async service object.
   CoreWorkerService::AsyncService service_;
 
