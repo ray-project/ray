@@ -18,7 +18,8 @@ from typing import Tuple
 import boto3
 import mlflow
 import pandas as pd
-from ray.air.config import DatasetConfig, ScalingConfig
+from ray.air.config import ScalingConfig
+from ray.train.data_config import DataConfig
 from ray.train.torch.torch_trainer import TorchTrainer
 import torch
 import torch.nn as nn
@@ -601,6 +602,10 @@ if __name__ == "__main__":
     DROPOUT_EVERY = 5
     DROPOUT_PROB = 0.2
 
+    # The following random_shuffle operations are lazy.
+    # They will be re-run every epoch.
+    train_dataset = train_dataset.random_shuffle()
+    test_dataset = test_dataset.random_shuffle()
     datasets = {"train": train_dataset, "test": test_dataset}
 
     config = {
@@ -633,7 +638,7 @@ if __name__ == "__main__":
             resources_per_worker=resources_per_worker,
         ),
         run_config=RunConfig(callbacks=callbacks),
-        dataset_config={"train": DatasetConfig(global_shuffle=True)},
+        dataset_config=DataConfig(datasets_to_split=["train", "test"]),
     )
     results = trainer.fit()
     state_dict = results.checkpoint.to_dict()["model"]

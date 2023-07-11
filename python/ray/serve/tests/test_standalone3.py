@@ -13,7 +13,6 @@ import ray._private.state
 
 from ray import serve
 from ray._private.test_utils import (
-    run_string_as_driver,
     wait_for_condition,
     SignalActor,
 )
@@ -21,7 +20,6 @@ from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
@@ -83,12 +81,12 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     # Clear all the internal longpoll client objects within handle
     # long poll client will receive new updates from long poll host,
     # this is to simulate the longpoll timeout
-    object_snapshots1 = handle.router.long_poll_client.object_snapshots
-    handle.router.long_poll_client._reset()
+    object_snapshots1 = handle._router.long_poll_client.object_snapshots
+    handle._router.long_poll_client._reset()
     wait_for_condition(
-        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
+        lambda: len(handle._router.long_poll_client.object_snapshots) > 0, timeout=10
     )
-    object_snapshots2 = handle.router.long_poll_client.object_snapshots
+    object_snapshots2 = handle._router.long_poll_client.object_snapshots
 
     # Check object snapshots between timeout interval
     assert object_snapshots1.keys() == object_snapshots2.keys()
@@ -344,42 +342,6 @@ def test_autoscaler_shutdown_node_http_everynode(
 
     # Clean up serve.
     serve.shutdown()
-
-
-def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
-    script = """
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-import ray
-
-@serve.deployment
-class A:
-    def predict(self, inp):
-        return inp
-
-@serve.deployment
-class Dispatch:
-    def __init__(self, handle):
-        self.handle = handle
-
-    def predict(self, inp):
-        ref = self.handle.predict.remote(inp)
-        assert isinstance(ref, ray.ObjectRef), ref
-        return ray.get(ref)
-
-with InputNode() as inp:
-    a = A.bind()
-    d = Dispatch.bind(a)
-    dag = d.predict.bind(inp)
-
-handle = serve.run(DAGDriver.bind(dag))
-assert ray.get(handle.predict.remote(1)) == 1
-    """
-
-    run_string_as_driver(
-        script, dict(os.environ, **{SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
-    )
 
 
 def test_healthz_and_routes_on_head_and_worker_nodes(

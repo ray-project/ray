@@ -308,7 +308,6 @@ class DatasetStats:
             stages_stats.append(
                 StageStatsSummary.from_block_metadata(
                     metadata,
-                    self.time_total_s,
                     stage_name,
                     is_substage=is_substage,
                 )
@@ -487,7 +486,6 @@ class StageStatsSummary:
     def from_block_metadata(
         cls,
         block_metas: List[BlockMetadata],
-        time_total_s: float,
         stage_name: str,
         is_substage: bool,
     ) -> "StageStatsSummary":
@@ -496,24 +494,32 @@ class StageStatsSummary:
 
         Args:
             block_metas: List of `BlockMetadata` to calculate stats of
-            time_total_s: Total execution time of stage
             stage_name: Name of stage associated with `blocks`
             is_substage: Whether this set of blocks belongs to a substage.
         Returns:
             A `StageStatsSummary` object initialized with the calculated statistics
         """
         exec_stats = [m.exec_stats for m in block_metas if m.exec_stats is not None]
+        rounded_total = 0
+        time_total_s = 0
 
         if is_substage:
             exec_summary_str = "{}/{} blocks executed\n".format(
                 len(exec_stats), len(block_metas)
             )
         else:
-            rounded_total = round(time_total_s, 2)
-            if rounded_total <= 0:
-                # Handle -0.0 case.
-                rounded_total = 0
             if exec_stats:
+                # Calculate the total execution time of stage as
+                # the difference between the latest end time and
+                # the earliest start time of all blocks in the stage.
+                earliest_start_time = min(s.start_time_s for s in exec_stats)
+                latest_end_time = max(s.end_time_s for s in exec_stats)
+                time_total_s = latest_end_time - earliest_start_time
+
+                rounded_total = round(time_total_s, 2)
+                if rounded_total <= 0:
+                    # Handle -0.0 case.
+                    rounded_total = 0
                 exec_summary_str = "{}/{} blocks executed in {}s".format(
                     len(exec_stats), len(block_metas), rounded_total
                 )
