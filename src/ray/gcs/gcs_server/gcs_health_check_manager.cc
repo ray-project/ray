@@ -108,8 +108,9 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 RAY_LOG(WARNING)
                     << "Health check failed for node " << node_id_
                     << ", remaining checks " << health_check_remaining_ << ", status "
-                    << status.ToString() << ", response status " << response_.status()
-                    << ", status message " << status.message();
+                    << status.error_code() << ", response status " << response_.status()
+                    << ", status message " << status.error_message()
+                    << ", status details " << status.error_details();
               }
 
               if (health_check_remaining_ == 0) {
