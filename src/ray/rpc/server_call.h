@@ -158,7 +158,6 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
-  /// \param[in] preprocess_function If not nullptr, it will be called before handling
   /// request.
   ServerCallImpl(
       const ServerCallFactory &factory,
@@ -167,8 +166,7 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      bool record_metrics,
-      std::function<void()> preprocess_function = nullptr)
+      bool record_metrics)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
