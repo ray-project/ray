@@ -453,6 +453,11 @@ def _render_table_item(
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
         yield key, f"{item:.5f}".rstrip("0")
+    elif isinstance(item, dict):
+        flattened = flatten_dict(item)
+        for k, v in sorted(flattened.items()):
+            yield key + "/" + str(k), _max_len(v)
+
     else:
         yield key, _max_len(item, 20)
 
@@ -463,6 +468,19 @@ def _get_dict_as_table_data(
     exclude: Optional[Collection] = None,
     upper_keys: Optional[Collection] = None,
 ):
+    """Get ``data`` dict as table rows.
+
+    If specified, excluded keys are removed. Excluded keys can either be
+    fully specified (e.g. ``foo/bar/baz``) or specify a top-level dictionary
+    (e.g. ``foo``), but no intermediate levels (e.g. ``foo/bar``). If this is
+    needed, we can revisit the logic at a later point.
+
+    The same is true for included keys. If a top-level key is included (e.g. ``foo``)
+    then all sub keys will be included, too, except if they are excluded.
+
+    If keys are both excluded and included, exclusion takes precedence. Thus, if
+    ``foo`` is excluded but ``foo/bar`` is included, it won't show up in the output.
+    """
     include = include or set()
     exclude = exclude or set()
     upper_keys = upper_keys or set()
@@ -470,15 +488,23 @@ def _get_dict_as_table_data(
     upper = []
     lower = []
 
-    flattened = flatten_dict(data)
-
-    for key, value in sorted(flattened.items()):
-        if include and key not in include:
-            continue
+    for key, value in sorted(data.items()):
+        # Exclude top-level keys
         if key in exclude:
             continue
 
         for k, v in _render_table_item(str(key), value):
+            # k is now the full subkey, e.g. config/nested/key
+
+            # We can exclude the full key
+            if k in exclude:
+                continue
+
+            # If we specify includes, top-level includes should take precedence
+            # (e.g. if `config` is in include, include config always).
+            if include and key not in include and k not in include:
+                continue
+
             if key in upper_keys:
                 upper.append([k, v])
             else:
@@ -1016,6 +1042,7 @@ class AirResultProgressCallback(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
+        print("")
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
@@ -1028,10 +1055,11 @@ class AirResultProgressCallback(Callback):
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             f"{self._addressing_tmpl.format(trial)} "
-            f"completed training after {finished_iter} iterations "
+            f"completed after {finished_iter} iterations "
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
+        print("")
 
     def on_checkpoint(
         self,
@@ -1052,6 +1080,7 @@ class AirResultProgressCallback(Callback):
             f"saved a checkpoint for iteration {saved_iter} "
             f"at: {checkpoint.dir_or_data}"
         )
+        print("")
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
@@ -1068,6 +1097,7 @@ class AirResultProgressCallback(Callback):
                 f"{self._addressing_tmpl.format(trial)} "
                 f"started without custom configuration."
             )
+        print("")
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):

@@ -44,7 +44,7 @@ class TestDDPG(unittest.TestCase):
         num_iterations = 1
 
         # Test against all frameworks.
-        for _ in framework_iterator(config, with_eager_tracing=True):
+        for _ in framework_iterator(config):
             algo = config.build(env="Pendulum-v1")
             for i in range(num_iterations):
                 results = algo.train()

@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
+from ray.serve.tests.conftest import check_ray_stop
 
 CONNECTION_ERROR_MSG = "connection error"
 
@@ -827,8 +828,9 @@ def parrot(request):
 parrot_node = parrot.bind()
 
 
+@pytest.mark.parametrize("number_of_kill_signals", (1, 2))
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_application(ray_start_stop):
+def test_run_application(ray_start_stop, number_of_kill_signals):
     """Deploys valid config file and import path via `serve run`."""
 
     # Deploy via config file
@@ -848,7 +850,8 @@ def test_run_application(ray_start_stop):
     )
     print("Run successful! Deployments are live and reachable over HTTP. Killing run.")
 
-    p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+    for _ in range(number_of_kill_signals):
+        p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
     p.wait()
     with pytest.raises(requests.exceptions.ConnectionError):
         requests.post("http://localhost:8000/", json=["ADD", 0]).json()
@@ -1167,7 +1170,7 @@ TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("node", ["TestBuildFNode", "TestBuildDagNode"])
-def test_build(ray_start_stop, node):
+def test_build_single_app(ray_start_stop, node):
     with NamedTemporaryFile(mode="w+", suffix=".yaml") as tmp:
         print(f'Building node "{node}".')
         # Build an app
@@ -1175,6 +1178,7 @@ def test_build(ray_start_stop, node):
             [
                 "serve",
                 "build",
+                "--single-app",
                 f"ray.serve.tests.test_cli.{node}",
                 "-o",
                 tmp.name,
@@ -1206,7 +1210,6 @@ def test_build_multi_app(ray_start_stop):
             [
                 "serve",
                 "build",
-                "--multi-app",
                 "ray.serve.tests.test_cli.TestApp1Node",
                 "ray.serve.tests.test_cli.TestApp2Node",
                 "-o",
@@ -1249,6 +1252,7 @@ def test_build_kubernetes_flag():
             [
                 "serve",
                 "build",
+                "--single-app",
                 "ray.serve.tests.test_cli.k8sFNode",
                 "-o",
                 tmp.name,
@@ -1415,6 +1419,84 @@ class TestRayReinitialization:
             "need to call `ray.init` in your code when using `serve run`."
         )
         assert expected_warning_message not in logs
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_run_config_request_timeout():
+    """Test running serve with request timeout in http_options.
+
+    The config file has 0.1s as the `request_timeout_s` in the `http_options`. First
+    case checks that when the query runs longer than the 0.1s, the deployment returns a
+    task failed message. The second case checks that when the query takes less than
+    0.1s, the deployment returns a success message.
+    """
+
+    # Set up ray instance to perform 1 retries
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+    subprocess.check_output(
+        ["ray", "start", "--head"],
+        env=dict(os.environ, RAY_SERVE_HTTP_REQUEST_MAX_RETRIES="1"),
+    )
+    wait_for_condition(
+        lambda: requests.get("http://localhost:52365/api/ray/version").status_code
+        == 200,
+        timeout=15,
+    )
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "http_option_request_timeout_s.yaml",
+    )
+    p = subprocess.Popen(["serve", "run", config_file_name])
+
+    # Ensure the http request is killed and failed when the deployment runs longer than
+    # the 0.1 request_timeout_s set in in the config yaml
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.11").status_code
+        == 500,
+    )
+
+    # Ensure the http request returned the correct response when the deployment runs
+    # shorter than the 0.1 request_timeout_s set up in the config yaml
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/app1?sleep_s=0.09").text
+        == "Task Succeeded!",
+    )
+
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Stop ray instance
+    subprocess.check_output(["ray", "stop", "--force"])
+    wait_for_condition(
+        check_ray_stop,
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deployment_contains_utils(ray_start_stop):
+    """Test when deployment contains utils module, it can be deployed successfully.
+
+    When the deployment contains utils module, running serve deploy should successfully
+    deployment the application and return the correct response.
+    """
+
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "deployment_uses_utils_module.yaml",
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: requests.post("http://localhost:8000/").text == "hello_from_utils"
+    )
 
 
 if __name__ == "__main__":

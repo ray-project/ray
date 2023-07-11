@@ -17,8 +17,6 @@ option cc_enable_arenas = true;
 
 package ray.rpc.autoscaler;
 
-import "src/ray/protobuf/experimental/instance_manager.proto";
-
 // ============= Cluster Resources ====================
 //
 // Following fields represents the Cluster Resources autoscaler interested
@@ -29,7 +27,7 @@ import "src/ray/protobuf/experimental/instance_manager.proto";
 // value.
 //
 // This is now used to implement placement group anti-affinity, i.e.
-// strict-spread. The label_name is "_PG_<pg_id>",
+// strict-spread. The label_name is "_PG_<pg_id_in_hex>",
 // and the label_value is empty string.
 message AntiAffinityConstraint {
   string label_name = 1;
@@ -40,7 +38,7 @@ message AntiAffinityConstraint {
 // should be allocated to node with the same label name and value.
 //
 // This is now used to implement placement group affinity, i.e.
-// strict-pack. The label_name is "_PG_<pg_id>",
+// strict-pack. The label_name is "_PG_<pg_id_in_hex>",
 // and the label_value is empty string.
 message AffinityConstraint {
   string label_name = 1;
@@ -72,6 +70,9 @@ message ResourceRequestByCount {
 message GangResourceRequest {
   // a map from bundles to the number of bundles requested.
   repeated ResourceRequest requests = 1;
+  // Metadata associated with the request for observability,
+  // e.g. placement group's strategy.
+  string details = 2;
 }
 
 // Cluster resource constraint represents minimial cluster size requirement,
@@ -82,44 +83,60 @@ message ClusterResourceConstraint {
   repeated ResourceRequest min_bundles = 1;
 }
 
+// Node status for a ray node.
+enum NodeStatus {
+  // Unknown state.
+  UNSPECIFIED = 0;
+  // Node is alive and running workloads.
+  RUNNING = 1;
+  // Node is dead.
+  DEAD = 2;
+  // Node is idle.
+  IDLE = 3;
+}
+
 message NodeState {
-  enum NodeStatus {
-    // Node is alive.
-    ALIVE = 0;
-    // Node is dead.
-    DEAD = 1;
-    // Node is being drained.
-    DRAIN_PENDING = 2;
-    // Node is being drained.
-    DRAIN_FAILED = 3;
-    // Node is being drained.
-    DRAINING = 4;
-    // Node is already drained, and ready to be removed.
-    DRAINED = 5;
-  }
   // The node id internal to Ray in binary format.
-  bytes node_id = 11;
+  bytes node_id = 1;
 
   // The instance id that the node is running on.
   // This is passed in when the node is registered.
-  string instance_id = 12;
+  // Set by ray from ENV at src/ray/common/constants.h::kNodeCloudInstanceIdEnv
+  string instance_id = 2;
+
+  // The node type name, e.g. ray-head-node, matching `available_node_types`
+  // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
+  // Should be set when a ray node is starting - and this will be empty
+  // if it's not set when starting the node.
+  // Set by ray from ENV at src/ray/common/constants.h::kNodeTypeNameEnv
+  string ray_node_type_name = 3;
 
   // The available resources on the node.
   // Reserved resource names: CPU, GPU, MEMORY, OBJECT_STORE_MEMORY
-  map<string, double> available_resources = 13;
+  map<string, double> available_resources = 4;
 
   // The corresponding total resources on the node.
-  map<string, double> total_resources = 14;
+  map<string, double> total_resources = 5;
 
   // Dynamic labels associated with the node.
   // Reserved dynamic label names: _PG
-  map<string, string> dynamic_labels = 15;
+  map<string, string> dynamic_labels = 6;
 
   // A monotonic increasing version of the node resource state.
-  int64 node_state_version = 16;
+  int64 node_state_version = 7;
 
   // The status of the node.
-  NodeStatus status = 17;
+  NodeStatus status = 8;
+
+  // The time in ms since the node is idle.
+  int64 idle_duration_ms = 9;
+
+  // TODO(rickyx): to be populated.
+  // Node ip address.
+  string node_ip_address = 10;
+
+  // The instance type name, e.g. p3.2xlarge
+  string instance_type_name = 11;
 }
 
 // ============= Autoscaling State Service API =======================
@@ -143,7 +160,8 @@ message GetClusterResourceStateRequest {
   int64 last_seen_cluster_resource_state_version = 1;
 }
 
-message GetClusterResourceStateReply {
+// Represents a cluster resource state.
+message ClusterResourceState {
   // an monotonically increasing version of the cluster resources.
   int64 cluster_resource_state_version = 1;
   // last seen autoscaler state.
@@ -160,7 +178,36 @@ message GetClusterResourceStateReply {
   repeated ClusterResourceConstraint cluster_resource_constraints = 6;
 }
 
-message ReportAutoscalingStateRequest {
+message GetClusterResourceStateReply {
+  ClusterResourceState cluster_resource_state = 1;
+}
+
+message PendingInstanceRequest {
+  // The instance type name for the cloud, e.g. t1.micro
+  string instance_type_name = 1;
+  // The node type name, e.g. ray-head-node, matching `available_node_types`
+  // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
+  string ray_node_type_name = 2;
+  // The number of such instance requested to be started.
+  int32 count = 3;
+}
+
+message PendingInstance {
+  // The instance type name for the cloud, e.g. t1.micro
+  string instance_type_name = 1;
+  // The node type name, e.g. ray-head-node, matching `available_node_types`
+  // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
+  string ray_node_type_name = 2;
+  // The instance id.
+  string instance_id = 3;
+  // The instance ip address.
+  string ip_address = 4;
+  // Detail information about the instance.
+  string details = 5;
+}
+
+// Represents autoscaler state.
+message AutoscalingState {
   int64 last_seen_cluster_resource_state_version = 1;
   // A monotonically increasing version identifies
   // the state of autoscaler.
@@ -169,14 +216,20 @@ message ReportAutoscalingStateRequest {
   // the autoscaler's state could also be updated by
   // node provider.
   int64 autoscaler_state_version = 2;
-  repeated Instance instances = 3;
+  repeated PendingInstanceRequest pending_instance_requests = 3;
   // infeasible resource requests.
   repeated ResourceRequest infeasible_resource_requests = 4;
-  repeated GangResourceRequest infeasible_gange_resource_requests = 5;
+  repeated GangResourceRequest infeasible_gang_resource_requests = 5;
   // NOTE: we currently only support one cluster resource constraint. But keeping
   // the repeated field for future extension where a per-job cluster constraint might
   // be applicable.
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
+  /// Instances that are launched but ray hasn't started.
+  repeated PendingInstance pending_instances = 7;
+}
+
+message ReportAutoscalingStateRequest {
+  AutoscalingState autoscaling_state = 1;
 }
 
 message ReportAutoscalingStateReply {}
@@ -188,6 +241,15 @@ message RequestClusterResourceConstraintRequest {
 
 message RequestClusterResourceConstraintReply {}
 
+message GetClusterStatusRequest {}
+
+message GetClusterStatusReply {
+  // The current autoscaler state.
+  AutoscalingState autoscaling_state = 1;
+  // The current cluster resource state.
+  ClusterResourceState cluster_resource_state = 2;
+}
+
 service AutoscalerStateService {
   rpc GetClusterResourceState(GetClusterResourceStateRequest)
       returns (GetClusterResourceStateReply);
@@ -197,4 +259,7 @@ service AutoscalerStateService {
   // when users call ray.autoscaler.sdk.request_resources.
   rpc RequestClusterResourceConstraint(RequestClusterResourceConstraintRequest)
       returns (RequestClusterResourceConstraintReply);
+  // Obtain the current cluster state, including the autoscaler state (e.g. pending
+  // requests), and the cluster resource state (e.g. ray node states).
+  rpc GetClusterStatus(GetClusterStatusRequest) returns (GetClusterStatusReply);
 }

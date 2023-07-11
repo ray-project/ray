@@ -153,6 +153,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus TryReadObjectRefStream(
             const CObjectID &generator_id,
             CObjectReference *object_ref_out)
+        CObjectReference PeekObjectRefStream(
+            const CObjectID &generator_id)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
             const CTaskID &task_id,
@@ -250,7 +252,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             const CObjectID &generator_id,
             const CAddress &caller_address,
             int64_t item_index,
-            c_bool finished)
+            uint64_t attempt_number)
         c_string MemoryUsageString()
 
         CWorkerContext &GetWorkerContext()

@@ -5,6 +5,7 @@ export enum ServeApplicationStatus {
   RUNNING = "RUNNING",
   DEPLOY_FAILED = "DEPLOY_FAILED",
   DELETING = "DELETING",
+  UNHEALTHY = "UNHEALTHY",
 }
 
 export type ServeApplication = {
@@ -90,6 +91,7 @@ export enum ServeSystemActorStatus {
   STARTING = "STARTING",
   HEALTHY = "HEALTHY",
   UNHEALTHY = "UNHEALTHY",
+  DRAINING = "DRAINING",
 }
 
 export type ServeSystemActor = {

@@ -83,7 +83,7 @@ class MARWILConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
         # You should override input_ to point to an offline dataset
-        # (see trainer.py and trainer_config.py).
+        # (see algorithm.py and algorithm_config.py).
         # The dataset may have an arbitrary number of timesteps
         # (and even episodes) per line.
         # However, each line must only contain consecutive timesteps in

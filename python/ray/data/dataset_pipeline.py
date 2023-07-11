@@ -1112,13 +1112,29 @@ class DatasetPipeline:
         :py:meth:`Dataset.iter_torch_batches
         <ray.data.Dataset.iter_torch_batches>` over the stream of output batches
         from the pipeline."""
-        return DataIterator.iter_torch_batches(
-            self,
+
+        from ray.air._internal.torch_utils import (
+            convert_ndarray_batch_to_torch_tensor_batch,
+        )
+
+        if collate_fn is not None and (dtypes is not None or device is not None):
+            raise ValueError(
+                "collate_fn cannot be used with dtypes and device. It is expected that"
+                "the provided `collate_fn` will move the output Torch tensors to the"
+                "appropriate dtype and device."
+            )
+
+        if collate_fn is None:
+
+            def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
+                return convert_ndarray_batch_to_torch_tensor_batch(
+                    batch, dtypes=dtypes, device=device
+                )
+
+        return self.iter_batches(
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            dtypes=dtypes,
-            device=device,
-            collate_fn=collate_fn,
+            _collate_fn=collate_fn,
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -1310,6 +1326,7 @@ class DatasetPipeline:
             0,
             True,
         )
+        dummy_ds._plan._generated_from_pipeline = True
         # Apply all pipeline operations to the dummy dataset.
         for stage in self._stages:
             dummy_ds = stage(dummy_ds)

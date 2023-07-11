@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
-from ray.air.config import DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
+from ray.train.data_config import DataConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
 
@@ -107,10 +108,9 @@ class AccelerateTrainer(TorchTrainer):
     - Type of launcher
 
     This Trainer requires ``accelerate>=0.17.0`` package.
-    It is tested with ``accelerate==0.17.1``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn as nn
@@ -131,7 +131,7 @@ class AccelerateTrainer(TorchTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 30
             num_workers = 3
 
             # Define your network structure
@@ -147,6 +147,7 @@ class AccelerateTrainer(TorchTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
                 # Initialize the Accelerator
                 accelerator = Accelerator()
@@ -198,9 +199,9 @@ class AccelerateTrainer(TorchTrainer):
                         ),
                     )
 
-            torch.manual_seed(42)
+
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
@@ -224,6 +225,11 @@ class AccelerateTrainer(TorchTrainer):
 
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         train_loop_per_worker: The training function to execute.
@@ -258,7 +264,7 @@ class AccelerateTrainer(TorchTrainer):
         accelerate_config: Optional[Union[dict, str, Path, os.PathLike]] = None,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

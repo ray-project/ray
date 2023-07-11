@@ -40,7 +40,6 @@ colorful
 pyyaml
 rich
 gpustat>=1.0.0
-urllib3
 opentelemetry-sdk
 fastapi
 virtualenv<20.21.1,>=20.0.24
@@ -53,7 +52,7 @@ scikit-image
 prometheus_client>=0.7.1
 requests
 pandas
-tensorboardX>=1.9
+tensorboardX<=2.6.0,>=1.9  # >=2.6.1 uses protobuf>=4, and conflicts with other packages.
 gymnasium==0.26.3
 grpcio<=1.50.0,>=1.42.0  # ray client
 aiohttp>=3.7
@@ -61,5 +60,5 @@ starlette
 typer
 fsspec
 pandas>=1.3
-pydantic
+pydantic<2
 py-spy>=0.2.0

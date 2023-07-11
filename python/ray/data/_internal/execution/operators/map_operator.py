@@ -19,7 +19,9 @@ from ray.data._internal.execution.interfaces import (
     RefBundle,
     TaskContext,
 )
-from ray.data._internal.execution.operators.one_to_one_operator import OneToOneOperator
+from ray.data._internal.execution.operators.base_physical_operator import (
+    OneToOneOperator,
+)
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
@@ -280,13 +282,13 @@ class MapOperator(OneToOneOperator, ABC):
         if self._metrics.cur > self._metrics.peak:
             self._metrics.peak = self._metrics.cur
 
-    def inputs_done(self):
+    def all_inputs_done(self):
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
             bundle = self._block_ref_bundler.get_next_bundle()
             self._add_bundled_input(bundle)
-        super().inputs_done()
+        super().all_inputs_done()
 
     def has_next(self) -> bool:
         assert self._started

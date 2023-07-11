@@ -5,6 +5,9 @@ import gradio as gr
 from gradio_client import Client
 import pytest
 
+import ray
+from ray._private.test_utils import wait_for_condition
+
 from ray import serve
 from ray.serve.gradio_integrations import GradioIngress, GradioServer
 

@@ -9,7 +9,8 @@ doctest(
             "**/tests/**",
             "suggest/**",
             "impl/test_utils.py",
-            "automl/board/**",
+            # Deprecated
+            "automl/**",
             "checkpoint_manager.py",
             "cluster_info.py",
             "config_parser.py",
@@ -21,7 +22,7 @@ doctest(
             "trial.py",
             "trial_runner.py",
             "utils/placement_groups.py",
-            "utils/trainable.py"
+            "utils/trainable.py",
         ]
     ),
     tags = ["team:ml"]
@@ -60,14 +61,6 @@ py_test(
     srcs = ["tests/test_api.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "rllib"],
-)
-
-py_test(
-    name = "test_automl_searcher",
-    size = "small",
-    srcs = ["tests/test_automl_searcher.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
 )
 
 py_test(
@@ -171,14 +164,6 @@ py_test(
     name = "test_function_api_legacy",
     size = "small",
     srcs = ["tests/test_function_api_legacy.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
-    name = "test_legacy_import",
-    size = "medium",
-    srcs = ["tests/test_legacy_import.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive"],
 )
@@ -669,15 +654,6 @@ py_test(
 )
 
 py_test(
-    name = "genetic_example",
-    size = "small",
-    srcs = ["examples/genetic_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hebo_example",
     size = "medium",
     srcs = ["examples/hebo_example.py"],
@@ -790,15 +766,6 @@ py_test(
     srcs = ["examples/mnist_pytorch_trainable.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example", "pytorch"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "mxnet_example",
-    size = "small",
-    srcs = ["examples/mxnet_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
 
@@ -997,16 +964,6 @@ py_test(
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
 )
-
-# Downloads too much data.
-# py_test(
-#     name = "tune_cifar10_gluon",
-#     size = "medium",
-#     srcs = ["examples/tune_cifar10_gluon.py"],
-#     deps = [":tune_lib"],
-#     tags = ["team:ml", "exclusive", "example"],
-#     args = ["--model SqueezeNet1.0", "--smoke-test"]
-# )
 
 py_test(
     name = "tune_mnist_keras",

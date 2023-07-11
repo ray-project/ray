@@ -13,14 +13,13 @@ import ray._private.state
 
 from ray import serve
 from ray._private.test_utils import (
-    run_string_as_driver,
     wait_for_condition,
     SignalActor,
 )
-from ray.cluster_utils import AutoscalingCluster
+from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.constants import (
-    SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve.context import get_global_client
@@ -34,38 +33,6 @@ def shutdown_ray():
     yield
     if ray.is_initialized():
         ray.shutdown()
-
-
-@pytest.fixture()
-def ray_instance(request):
-    """Starts and stops a Ray instance for this test.
-
-    Args:
-        request: request.param should contain a dictionary of env vars and
-            their values. The Ray instance will be started with these env vars.
-    """
-
-    original_env_vars = os.environ.copy()
-
-    try:
-        requested_env_vars = request.param
-    except AttributeError:
-        requested_env_vars = {}
-
-    os.environ.update(requested_env_vars)
-
-    yield ray.init(
-        _metrics_export_port=9999,
-        _system_config={
-            "metrics_report_interval_ms": 1000,
-            "task_retry_delay_ms": 50,
-        },
-    )
-
-    ray.shutdown()
-
-    os.environ.clear()
-    os.environ.update(original_env_vars)
 
 
 @contextmanager
@@ -96,7 +63,7 @@ def start_and_shutdown_ray_cli_function():
     indirect=True,
 )
 def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
-    """Test max_concurrent_queries can be honorded with long poll timeout
+    """Test max_concurrent_queries can be honored with long poll timeout
 
     issue: https://github.com/ray-project/ray/issues/32652
     """
@@ -114,12 +81,12 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     # Clear all the internal longpoll client objects within handle
     # long poll client will receive new updates from long poll host,
     # this is to simulate the longpoll timeout
-    object_snapshots1 = handle.router.long_poll_client.object_snapshots
-    handle.router.long_poll_client._reset()
+    object_snapshots1 = handle._router.long_poll_client.object_snapshots
+    handle._router.long_poll_client._reset()
     wait_for_condition(
-        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
+        lambda: len(handle._router.long_poll_client.object_snapshots) > 0, timeout=10
     )
-    object_snapshots2 = handle.router.long_poll_client.object_snapshots
+    object_snapshots2 = handle._router.long_poll_client.object_snapshots
 
     # Check object snapshots between timeout interval
     assert object_snapshots1.keys() == object_snapshots2.keys()
@@ -133,17 +100,10 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
         == object_snapshots2[key][0].actor_handle._actor_id
     )
 
-    # Make sure the inflight queries still one
-    assert len(handle.router._replica_scheduler.in_flight_queries) == 1
-    key = list(handle.router._replica_scheduler.in_flight_queries.keys())[0]
-    assert len(handle.router._replica_scheduler.in_flight_queries[key]) == 1
-
-    # Make sure the first request is being run.
-    replicas = list(handle.router._replica_scheduler.in_flight_queries.keys())
-    assert len(handle.router._replica_scheduler.in_flight_queries[replicas[0]]) == 1
-    # First ref should be still ongoing
+    # Make sure the first request is still ongoing.
     with pytest.raises(ray.exceptions.GetTimeoutError):
         ray.get(first_ref, timeout=1)
+
     # Unblock the first request.
     signal_actor.send.remote()
     assert ray.get(first_ref) == "hello"
@@ -161,6 +121,10 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     indirect=True,
 )
 @pytest.mark.parametrize("crash", [True, False])
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="No retries w/ new behavior.",
+)
 def test_http_request_number_of_retries(ray_instance, crash):
     """Test HTTP proxy retry requests."""
 
@@ -306,7 +270,6 @@ def test_handle_early_detect_failure(shutdown_ray):
     handle = serve.run(f.bind())
     pids = ray.get([handle.remote() for _ in range(2)])
     assert len(set(pids)) == 2
-    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 2
 
     client = get_global_client()
     # Kill the controller so that the replicas membership won't be updated
@@ -318,7 +281,6 @@ def test_handle_early_detect_failure(shutdown_ray):
 
     pids = ray.get([handle.remote() for _ in range(10)])
     assert len(set(pids)) == 1
-    assert len(handle.router._replica_scheduler.in_flight_queries.keys()) == 1
 
     # Restart the controller, and then clean up all the replicas
     serve.start(detached=True)
@@ -378,41 +340,232 @@ def test_autoscaler_shutdown_node_http_everynode(
         lambda: len(list(filter(lambda n: n["Alive"], ray.nodes()))) == 1
     )
 
+    # Clean up serve.
+    serve.shutdown()
 
-def test_legacy_sync_handle_env_var(call_ray_stop_only):  # noqa: F811
-    script = """
-from ray import serve
-from ray.serve.dag import InputNode
-from ray.serve.drivers import DAGDriver
-import ray
 
-@serve.deployment
-class A:
-    def predict(self, inp):
-        return inp
+def test_healthz_and_routes_on_head_and_worker_nodes(
+    shutdown_ray, call_ray_stop_only  # noqa: F811
+):
+    """Test `/-/healthz` and `/-/routes` return the correct responses for head and
+    worker nodes.
 
-@serve.deployment
-class Dispatch:
-    def __init__(self, handle):
-        self.handle = handle
-
-    def predict(self, inp):
-        ref = self.handle.predict.remote(inp)
-        assert isinstance(ref, ray.ObjectRef), ref
-        return ray.get(ref)
-
-with InputNode() as inp:
-    a = A.bind()
-    d = Dispatch.bind(a)
-    dag = d.predict.bind(inp)
-
-handle = serve.run(DAGDriver.bind(dag))
-assert ray.get(handle.predict.remote(1)) == 1
+    When there are replicas on all nodes, `/-/routes` and `/-/routes` on all nodes
+    should return 200. When there are no replicas on any nodes, `/-/routes` and
+    `/-/routes` on the head node should continue to return 200. `/-/routes` and
+    `/-/routes` on the worker node should start to return 503
     """
+    # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
+    # continue to be pointing to the default port 8000.
+    os.environ["TEST_WORKER_NODE_PORT"] = "8001"
 
-    run_string_as_driver(
-        script, dict(os.environ, **{SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY: "1"})
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+    serve.start(http_options={"location": "EveryNode"})
+
+    # Deploy 2 replicas, both should be on the worker node.
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure worker node has both replicas.
+    def check_replicas_on_worker_nodes():
+        _actors = ray._private.state.actors().values()
+        replica_nodes = [
+            a["Address"]["NodeID"]
+            for a in _actors
+            if a["ActorClassName"].startswith("ServeReplica")
+        ]
+        return len(set(replica_nodes)) == 1
+
+    wait_for_condition(check_replicas_on_worker_nodes)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas, and 2 nodes exist.
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
+    # on both nodes.
+    def check_request(url: str, expected_code: int, expected_text: str):
+        req = requests.get(url)
+        return req.status_code == expected_code and req.text == expected_text
+
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
     )
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8000/-/routes").text
+        == '{"/":"default_HelloModel"}'
+    )
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
+    assert (
+        requests.get("http://127.0.0.1:8001/-/routes").text
+        == '{"/":"default_HelloModel"}'
+    )
+
+    # Delete the deployment should bring the active actors down to 3 and drop
+    # replicas on all nodes.
+    serve.delete(name="default")
+
+    def _check():
+        _actors = ray._private.state.actors().values()
+        return (
+            len(
+                list(
+                    filter(
+                        lambda a: a["State"] == "ALIVE",
+                        _actors,
+                    )
+                )
+            )
+            == 3
+        )
+
+    wait_for_condition(_check)
+
+    # Ensure head node `/-/healthz` and `/-/routes` continue to return 200 and expected
+    # responses. Also, the worker node `/-/healthz` and `/-/routes` should return 503
+    # and unavailable responses.
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8000/-/healthz",
+        expected_code=200,
+        expected_text="success",
+    )
+    assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+    assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+    wait_for_condition(
+        condition_predictor=check_request,
+        url="http://127.0.0.1:8001/-/healthz",
+        expected_code=503,
+        expected_text="This node is being drained.",
+    )
+    assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+    assert (
+        requests.get("http://127.0.0.1:8001/-/routes").text
+        == "This node is being drained."
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+@pytest.mark.parametrize("wait_for_controller_shutdown", (True, False))
+def test_controller_shutdown_gracefully(
+    shutdown_ray, call_ray_stop_only, wait_for_controller_shutdown  # noqa: F811
+):
+    """Test controller shutdown gracefully when calling `graceful_shutdown()`.
+
+    Called `graceful_shutdown()` on the controller, so it will start shutdown and
+    eventually all actors will be in DEAD state. Test both cases whether to wait for
+    the controller shutdown or not should both resolve graceful shutdown.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Call `graceful_shutdown()` on the controller, so it will start shutdown.
+    client = get_global_client()
+    if wait_for_controller_shutdown:
+        # Waiting for controller shutdown will throw RayActorError when the controller
+        # killed itself.
+        with pytest.raises(ray.exceptions.RayActorError):
+            ray.get(client._controller.graceful_shutdown.remote(True))
+    else:
+        ray.get(client._controller.graceful_shutdown.remote(False))
+
+    # Ensure the all resources are shutdown.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        )
+    )
+
+    # Clean up serve.
+    serve.shutdown()
+
+
+def test_client_shutdown_gracefully_when_timeout(
+    shutdown_ray, call_ray_stop_only, caplog  # noqa: F811
+):
+    """Test client shutdown gracefully when timeout.
+
+    When the controller is taking longer than the timeout to shutdown, the client will
+    log timeout message and exit the process. The controller will continue to shutdown
+    everything gracefully.
+    """
+    # Setup a cluster with 2 nodes
+    cluster = Cluster()
+    cluster.add_node()
+    cluster.add_node()
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
+
+    # Deploy 2 replicas
+    @serve.deployment(num_replicas=2)
+    class HelloModel:
+        def __call__(self):
+            return "hello"
+
+    model = HelloModel.bind()
+    serve.run(target=model)
+
+    # Ensure total actors of 2 proxies, 1 controller, and 2 replicas
+    wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+    assert len(ray.nodes()) == 2
+
+    # Ensure client times out if the controller does not shutdown within timeout.
+    timeout_s = 0.0
+    client = get_global_client()
+    client.shutdown(timeout_s=timeout_s)
+    assert (
+        f"Controller failed to shut down within {timeout_s}s. "
+        f"Check controller logs for more details." in caplog.text
+    )
+
+    # Ensure the all resources are shutdown gracefully.
+    wait_for_condition(
+        lambda: all(
+            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+        ),
+    )
+
+    # Clean up serve.
+    serve.shutdown()
 
 
 if __name__ == "__main__":
