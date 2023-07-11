@@ -158,21 +158,25 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         tasks = result.result
 
         pid = tasks[0]["worker_pid"]
+        logger.info(f"pid {type(pid)}: {pid}")
 
         node_id = tasks[0]["node_id"]
         ip = DataSource.node_id_to_ip[node_id]
 
         state = tasks[0].get("state")
+        logger.info(f"ip {type(ip)}: {ip}")
 
         if not pid or not ip:
             raise ValueError(
                 f"pid or ip is None, could not fetch the info you need: pid = {pid}, ip = {ip}"
             )
+        logger.info(f"node_id {type(node_id)}: {node_id}")
 
         if state != "RUNNING":
             raise ValueError(
                 f"The task attempt is not running: the current state is {state}."
             )
+        logger.info(f"state {type(state)}: {state}")
 
         return pid, ip
 
