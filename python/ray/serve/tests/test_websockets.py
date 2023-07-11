@@ -1,7 +1,6 @@
 import asyncio
 import pytest
 import sys
-import time
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 import requests
