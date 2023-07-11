@@ -100,6 +100,8 @@ Raylet::Raylet(instrumented_io_context &main_service,
   self_node_info_.set_instance_id(instance_id ? instance_id : "");
   auto cloud_node_type_name = std::getenv(kNodeTypeNameEnv);
   self_node_info_.set_node_type_name(cloud_node_type_name ? cloud_node_type_name : "");
+  auto instance_type_name = std::getenv(kNodeCloudInstanceTypeNameEnv);
+  self_node_info_.set_instance_type_name(instance_type_name ? instance_type_name : "");
 }
 
 Raylet::~Raylet() {}

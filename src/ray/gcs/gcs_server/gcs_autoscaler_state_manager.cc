@@ -193,6 +193,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
     node_state_proto->set_ray_node_type_name(gcs_node_info.node_type_name());
     node_state_proto->set_node_state_version(last_cluster_resource_state_version_);
+    node_state_proto->set_node_ip_address(gcs_node_info.node_manager_address());
+    node_state_proto->set_instance_type_name(gcs_node_info.instance_type_name());
 
     if (gcs_node_info.state() == rpc::GcsNodeInfo::DEAD) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
