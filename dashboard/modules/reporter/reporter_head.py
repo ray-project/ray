@@ -367,8 +367,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             logger.info("Returning stack trace, size {}".format(len(reply.output)))
             return aiohttp.web.Response(text=reply.output)
         else:
-            return aiohttp.web.HTTPInternalServerError(
-                text="Could not find trackback for task {}".format(task_id)
+            return aiohttp.web.HTTPInternalServerError(text=reply.output)                text="Could not find trackback for task {}".format(task_id)
             )
 
     @routes.get("/worker/cpu_profile")
