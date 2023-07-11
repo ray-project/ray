@@ -135,7 +135,7 @@ try:
     from ray.rllib.extensions import AlgorithmBase
 except ImportError:
 
-    def _get_learner_bundle_counts(total_workers, num_workers_on_same_node):
+    def _get_learner_bundle_counts(total_workers, num_workers_per_bundle):
         """Splits total worker numbers into bundles capped by num_workers_on_same_node.
 
         This helper method calculates the number of learner worker bundles that we can
@@ -144,24 +144,24 @@ except ImportError:
 
         Args:
             total_workers: The total number of learner workers we attempt to schedule.
-            num_workers_on_same_node: The number of learner workers that we want to
+            num_workers_per_bundle: The number of learner workers that we want to
                 schedule together.
 
         Returns:
             A list of integers, where each integer represents the number of workers in
             a bundle.
         """
-        if not num_workers_on_same_node >= 0:
+        if not num_workers_per_bundle >= 0:
             raise ValueError("num_workers_on_same_node must be a non-negative integer.")
 
-        if num_workers_on_same_node == 0:
+        if num_workers_per_bundle == 0:
             # Case where we force all workers into one node.
             return [total_workers]
 
-        num_full_bundes = total_workers // num_workers_on_same_node
-        remainder = total_workers % num_workers_on_same_node
+        num_full_bundes = total_workers // num_workers_per_bundle
+        remainder = total_workers % num_workers_per_bundle
 
-        bundle_counts = [num_workers_on_same_node] * num_full_bundes
+        bundle_counts = [num_workers_per_bundle] * num_full_bundes
         if remainder:
             bundle_counts.extend([remainder])
 
