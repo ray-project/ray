@@ -221,11 +221,6 @@ class TensorflowPredictor(DLPredictor):
 
             predictions = predictor.predict(data)
 
-        .. testoutput::
-            :hide:
-
-            ...
-
         Returns:
             DataBatchType: Prediction result. The return type will be the same as the
                 input type.

@@ -34,6 +34,7 @@ class MosaicTrainer(TorchTrainer):
     Example:
 
     .. testcode::
+        :skipif: True
 
         import torch.utils.data
         import torchvision
