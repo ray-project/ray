@@ -189,6 +189,24 @@ message PendingInstanceRequest {
   string ray_node_type_name = 2;
   // The number of such instance requested to be started.
   int32 count = 3;
+  // The unix timestamp when the request is made.
+  int64 request_ts = 4;
+}
+
+message FailedInstanceRequest {
+  // The instance type name for the cloud, e.g. t1.micro
+  string instance_type_name = 1;
+  // The node type name, e.g. ray-head-node, matching `available_node_types`
+  // in the autoscaler config. See `ray/autoscaler/ray-schema.json`
+  string ray_node_type_name = 2;
+  // The number of such instance requested to be started.
+  int32 count = 3;
+  // Descriptive reasons for the failure.
+  string reason = 4;
+  // The unix timestamp when the request is made.
+  int64 start_ts = 5;
+  // The unix timestamp when the request is failed.
+  int64 failed_ts = 6;
 }
 
 message PendingInstance {
@@ -225,6 +243,8 @@ message AutoscalingState {
   repeated ClusterResourceConstraint infeasible_cluster_resource_constraints = 6;
   /// Instances that are launched but ray hasn't started.
   repeated PendingInstance pending_instances = 7;
+  // Failed instance requests.
+  repeated FailedInstanceRequest failed_instance_requests = 8;
 }
 
 message ReportAutoscalingStateRequest {
