@@ -22,10 +22,7 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     COMPONENT_METRICS_TAG_KEYS,
 )
-from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
-import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
-import ray.dashboard.utils as dashboard_utils
-from opencensus.stats import stats as stats_module
+
 import ray._private.prometheus_exporter as prometheus_exporter
 from prometheus_client.core import REGISTRY
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
