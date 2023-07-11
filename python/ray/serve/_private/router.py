@@ -236,6 +236,7 @@ class ActorReplicaWrapper:
     def send_query(
         self, query: Query
     ) -> Union[ray.ObjectRef, "ray._raylet.StreamingObjectRefGenerator"]:
+        print("ActorReplicaWrapper#send_query!!!", query)
         if self._replica_info.is_cross_language:
             return self._send_query_java(query)
         else:
@@ -606,6 +607,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         in for scheduling. However, in cases where the number of available replicas
         is updated or a task exits unexpectedly, we may need to start multiple.
         """
+        print("maybe_start_scheduling_tasks called!!!")
         tasks_to_start = (
             self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
         )
@@ -624,13 +626,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         Upon cancellation (by the caller), the future is cancelled and will be passed
         over when a replica becomes available.
         """
+        print("PowerOfTwoChoicesReplicaScheduler#choose_replica_for_query called!!!")
+
         pending_request = PendingRequest(asyncio.Future(), query.metadata)
+        print("pending_request", pending_request)
         try:
             self._pending_requests_to_fulfill.append(pending_request)
             self._pending_requests_to_schedule.append(pending_request)
             self.maybe_start_scheduling_tasks()
             replica = await pending_request.future
+            print("PowerOfTwoChoicesReplicaScheduler replica", replica)
         except asyncio.CancelledError as e:
+            print("PowerOfTwoChoicesReplicaScheduler CancelledError")
             pending_request.future.cancel()
 
             raise e from None
@@ -645,7 +652,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         This will block indefinitely if no replicas are available to handle the
         request, so it's up to the caller to time out or cancel the request.
         """
+        print("PowerOfTwoChoicesReplicaScheduler#assign_replica called!!!", query)
         replica = await self.choose_replica_for_query(query)
+        print("assign_replica, replica", replica)
         return replica.send_query(query)
 
 

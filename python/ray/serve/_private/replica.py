@@ -12,7 +12,7 @@ import traceback
 
 import starlette.responses
 
-# from starlette.requests import Request
+from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
 import ray
@@ -64,7 +64,7 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
-
+from google.protobuf.any_pb2 import Any as ProtoAny
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -230,7 +230,9 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[bytes, Any]:
 
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_http_request and False:
+            print("handle_request, request_metadata:", request_metadata)
+            # TODO: double check with this code branch
+            if request_metadata.is_http_request:
                 print("Handling HTTP request", request_metadata)
                 print("Handling HTTP request_args", request_args)
                 # The sole argument passed from `http_proxy.py` is the ASGI scope.
@@ -242,12 +244,15 @@ def create_replica_wrapper(name: str):
                 buffered_receive = make_buffered_asgi_receive(request.body)
                 request_args = (scope, buffered_receive, buffered_send)
 
+            print("before calling call_user_method, request_args:", request_args)
+            print("request_kwargs", request_kwargs)
             result = await self.replica.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
+            print("result from handle_request:", result)
 
-            # if request_metadata.is_http_request:
-            #     result = buffered_send.build_asgi_response()
+            if request_metadata.is_http_request:
+                result = buffered_send.build_asgi_response()
 
             # Returns a small object for router to track request status.
             return b"", result
@@ -334,6 +339,7 @@ def create_replica_wrapper(name: str):
         ) -> AsyncGenerator[Any, None]:
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
+            print("handle_request_streaming, request_metadata:", request_metadata)
             if request_metadata.is_http_request:
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
@@ -717,15 +723,15 @@ class RayServeReplica:
         `RayTaskError`.
         """
         async with self.wrap_user_method_call(request_metadata):
-            # if request_metadata.is_http_request:
-            #     # For HTTP requests we always expect (scope, receive, send) as args.
-            #     assert len(request_args) == 3
-            #     scope, receive, send = request_args
-            #
-            #     if isinstance(self.callable, ASGIAppReplicaWrapper):
-            #         request_args = (scope, receive, send)
-            #     else:
-            #         request_args = (Request(scope, receive, send),)
+            if request_metadata.is_http_request:
+                # For HTTP requests we always expect (scope, receive, send) as args.
+                assert len(request_args) == 3
+                scope, receive, send = request_args
+
+                if isinstance(self.callable, ASGIAppReplicaWrapper):
+                    request_args = (scope, receive, send)
+                else:
+                    request_args = (Request(scope, receive, send),)
 
             runner_method = None
             try:
@@ -748,8 +754,19 @@ class RayServeReplica:
                 ):
                     request_args, request_kwargs = tuple(), {}
 
-                result = await method_to_call(*request_args, **request_kwargs)
-                print("call_user_method!!!", result)
+                print("before call_user_method!!!", request_args, request_kwargs)
+                request_body = await request_args[0].body()
+                print("request_body", request_body)
+                parsed_body = ProtoAny()
+                parsed_body.ParseFromString(request_body)
+                # TODO: make a new code branch to pass in the request object
+                result = await method_to_call(parsed_body)
+                serialized_result = result.SerializeToString()
+                print("call_user_method!!!", serialized_result)
+                await self.send_user_result_over_asgi(
+                    serialized_result, scope, receive, send
+                )
+
                 return result
 
             except Exception as e:
@@ -761,21 +778,19 @@ class RayServeReplica:
                     result = starlette.responses.Response(
                         f"Unexpected error, traceback: {e}.", status_code=500
                     )
-                    # await self.send_user_result_over_asgi(
-                    #     result, scope, receive, send
-                    # )
+                    await self.send_user_result_over_asgi(result, scope, receive, send)
 
                 raise e from None
 
-            # if request_metadata.is_http_request and not isinstance(
-            #     self.callable, ASGIAppReplicaWrapper
-            # ):
-            #     # For the FastAPI codepath, the response has already been sent
-            #     # over the ASGI interface, but for the vanilla deployment
-            #     # codepath we need to send it.
-            #     await self.send_user_result_over_asgi(result, scope, receive, send)
-            #
-            # return result
+            if request_metadata.is_http_request and not isinstance(
+                self.callable, ASGIAppReplicaWrapper
+            ):
+                # For the FastAPI codepath, the response has already been sent
+                # over the ASGI interface, but for the vanilla deployment
+                # codepath we need to send it.
+                await self.send_user_result_over_asgi(result, scope, receive, send)
+
+            return result
 
     async def call_user_method_generator(
         self,
