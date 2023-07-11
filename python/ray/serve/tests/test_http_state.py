@@ -651,9 +651,7 @@ def test_update_draining(
     node http proxy should continue to be healthy while worker node http proxy should
     be healthy.
     """
-    manager = _make_http_proxy_state_manager(
-        HTTPOptions(location=DeploymentMode.EveryNode)
-    )
+    state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
 
     for node_id, node_ip_address in all_nodes:
         manager._proxy_states[node_id] = _create_http_proxy_state(
@@ -674,9 +672,9 @@ def test_update_draining(
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn DRAINING.
     wait_for_condition(
-        condition_predictor=_update_and_check_http_proxy_state_manager,
+        condition_predictor=_update_and_check_http_state,
         timeout=20,
-        http_proxy_state_manager=manager,
+        http_state=state,
         node_ids=node_ids,
         statuses=[HTTPProxyStatus.HEALTHY]
         + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
@@ -689,9 +687,9 @@ def test_update_draining(
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn HEALTHY.
     wait_for_condition(
-        condition_predictor=_update_and_check_http_proxy_state_manager,
+        condition_predictor=_update_and_check_http_state,
         timeout=20,
-        http_proxy_state_manager=manager,
+        http_state=state,
         node_ids=node_ids,
         statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
         active_nodes=active_nodes,
