@@ -15,7 +15,7 @@ This guide shows you how to:
 Reading text files
 ------------------
 
-Ray Data can read lines of text and JSONL. Alternatiely, you can read raw binary
+Ray Data can read lines of text and JSONL. Alternatively, you can read raw binary
 files and manually decode data.
 
 .. tab-set::

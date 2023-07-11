@@ -1,9 +1,10 @@
 import time
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+
+import numpy as np
 
 import ray
 from ray.data._internal.lazy_block_list import LazyBlockList
@@ -14,7 +15,7 @@ from ray.data.datasource.datasource import Reader, ReadTask
 from ray.tests.conftest import *  # noqa
 
 
-# Data source generates random bytes data
+# Datasource generates random bytes data
 class RandomBytesDatasource(Datasource):
     def create_reader(self, **read_args):
         return RandomBytesReader(
