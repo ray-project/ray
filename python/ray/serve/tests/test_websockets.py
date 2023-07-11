@@ -158,7 +158,7 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
     reason="Streaming feature flag is disabled.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="Gradio doesn't work on Windows.")
-@pytest.mark.skipif(sys.version_info.minor < "8", reason="Times out on Python 3.7.")
+@pytest.mark.skipif(sys.version_info.minor < 8, reason="Times out on Python 3.7.")
 def test_gradio_queue(serve_instance):
     """Test the Gradio integration with a Gradio Queue.
 
