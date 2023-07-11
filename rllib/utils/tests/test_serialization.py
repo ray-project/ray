@@ -4,6 +4,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.utils.serialization import (
+    convert_numpy_to_python_primitives,
     gym_space_from_dict,
     gym_space_to_dict,
     space_from_dict,
@@ -42,6 +43,13 @@ class TestGymCheckEnv(unittest.TestCase):
 
         action_space = env.action_space
         self.assertEqual(sp.n, action_space.n)
+
+    def test_multi_binary_space(self):
+        mb = gym.spaces.MultiBinary((2, 3))
+        d = space_to_dict(mb)
+        sp = space_from_dict(d)
+
+        self.assertEqual(sp.n, mb.n)
 
     def test_multi_discrete_space(self):
         md_space = gym.spaces.MultiDiscrete(nvec=np.array([3, 4, 5]))
@@ -175,6 +183,23 @@ class TestGymCheckEnv(unittest.TestCase):
         self.assertTrue(isinstance(sp.original_space, gym.spaces.Dict))
         self.assertTrue(isinstance(sp.original_space["obs1"], gym.spaces.Box))
         self.assertTrue(isinstance(sp.original_space["obs2"], gym.spaces.Box))
+
+
+class TestConvertNumpyToPythonPrimitives(unittest.TestCase):
+    def test_convert_numpy_to_python_primitives(self):
+        # test utility for converting numpy types to python primitives
+        test_cases = [
+            [1, 2, 3],
+            [1.0, 2.0, 3.0],
+            ["abc", "def", "ghi"],
+            [True, False, True],
+        ]
+        for test_case in test_cases:
+            _assert_array_equal(
+                self.assertEqual,
+                convert_numpy_to_python_primitives(np.array(test_case)),
+                test_case,
+            )
 
 
 if __name__ == "__main__":

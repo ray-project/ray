@@ -1,14 +1,16 @@
 import math
+import threading
 import time
 from typing import Dict, List
 
 import ray
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 # Resource requests are considered stale after this number of seconds, and
 # will be purged.
 RESOURCE_REQUEST_TIMEOUT = 60
+PURGE_INTERVAL = RESOURCE_REQUEST_TIMEOUT * 2
 
 # When the autoscaling is driven by memory pressure and there are abundant
 # CPUs to support incremental CPUs needed to launch more tasks, we'll translate
@@ -32,6 +34,23 @@ class AutoscalingRequester:
         self._resource_requests = {}
         # TTL for requests.
         self._timeout = RESOURCE_REQUEST_TIMEOUT
+
+        self._self_handle = ray.get_runtime_context().current_actor
+
+        # Start a thread to purge expired requests periodically.
+        def purge_thread_run():
+            while True:
+                time.sleep(PURGE_INTERVAL)
+                # Call purge_expired_requests() as an actor task,
+                # so we don't need to handle multi-threading.
+                ray.get(self._self_handle.purge_expired_requests.remote())
+
+        self._purge_thread = threading.Thread(target=purge_thread_run, daemon=True)
+        self._purge_thread.start()
+
+    def purge_expired_requests(self):
+        self._purge()
+        ray.autoscaler.sdk.request_resources(bundles=self._aggregate_requests())
 
     def request_resources(self, req: List[Dict], execution_id: str):
         # Purge expired requests before making request to autoscaler.
@@ -88,7 +107,7 @@ class AutoscalingRequester:
 
 
 def get_or_create_autoscaling_requester_actor():
-    ctx = DatasetContext.get_current()
+    ctx = DataContext.get_current()
     scheduling_strategy = ctx.scheduling_strategy
     # Pin the stats actor to the local node so it fate-shares with the driver.
     # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
@@ -96,6 +115,7 @@ def get_or_create_autoscaling_requester_actor():
     scheduling_strategy = NodeAffinitySchedulingStrategy(
         ray.get_runtime_context().get_node_id(),
         soft=True,
+        _spill_on_unavailable=True,
     )
     return AutoscalingRequester.options(
         name="AutoscalingRequester",

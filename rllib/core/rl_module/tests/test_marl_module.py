@@ -7,16 +7,14 @@ from ray.rllib.core.rl_module.marl_module import (
     MultiAgentRLModuleConfig,
 )
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+from ray.rllib.core.testing.utils import DEFAULT_POLICY_ID
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.utils.test_utils import check
 
 
-DEFAULT_POLICY_ID = "default_policy"
-
-
 class TestMARLModule(unittest.TestCase):
     def test_from_config(self):
-
+        """Tests whether a MultiAgentRLModule can be constructed from a config."""
         env_class = make_multi_agent("CartPole-v0")
         env = env_class({"num_agents": 2})
         module1 = SingleAgentRLModuleSpec(

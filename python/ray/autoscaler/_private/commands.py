@@ -144,9 +144,15 @@ def debug_status(status, error, verbose: bool = False) -> str:
                 verbose=verbose,
             )
         else:
-            status = "No cluster status."
+            status = (
+                "No cluster status. It may take a few seconds "
+                "for the Ray internal services to start up."
+            )
     else:
-        status = "No cluster status."
+        status = (
+            "No cluster status. It may take a few seconds "
+            "for the Ray internal services to start up."
+        )
 
     if error:
         status += "\n"
@@ -181,6 +187,11 @@ def request_resources(
     _internal_kv_put(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )
+
+    if ray._config.enable_autoscaler_v2():
+        from ray.autoscaler.v2.sdk import request_cluster_resources
+
+        request_cluster_resources(to_request)
 
 
 def create_or_update_cluster(

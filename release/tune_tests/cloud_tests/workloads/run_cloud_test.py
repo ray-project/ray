@@ -6,7 +6,7 @@ We are considering several scenarios depending on the combination of the
 following Tune properties:
 
 syncer ("auto" or None)
-upload_dir
+storage_path
 
 Generally the flow is as follows:
 
@@ -207,7 +207,7 @@ def wait_for_nodes(
 
 def start_run(
     no_syncer: bool,
-    upload_dir: Optional[str] = None,
+    storage_path: Optional[str] = None,
     experiment_name: str = "cloud_test",
     indicator_file: str = "/tmp/tune_cloud_indicator",
 ) -> subprocess.Popen:
@@ -215,8 +215,8 @@ def start_run(
     if no_syncer:
         args.append("--no-syncer")
 
-    if upload_dir:
-        args.extend(["--upload-dir", upload_dir])
+    if storage_path:
+        args.extend(["--storage-path", storage_path])
 
     if experiment_name:
         args.extend(["--experiment-name", experiment_name])
@@ -309,13 +309,13 @@ def run_tune_script_for_time(
     experiment_name: str,
     indicator_file: str,
     no_syncer: bool,
-    upload_dir: Optional[str],
+    storage_path: Optional[str],
     run_start_timeout: int = 30,
 ):
     # Start run
     process = start_run(
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
         experiment_name=experiment_name,
         indicator_file=indicator_file,
     )
@@ -339,7 +339,7 @@ def run_resume_flow(
     experiment_name: str,
     indicator_file: str,
     no_syncer: bool,
-    upload_dir: Optional[str],
+    storage_path: Optional[str],
     first_run_time: int = 33,
     second_run_time: int = 33,
     run_start_timeout: int = 30,
@@ -377,7 +377,7 @@ def run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
         run_start_timeout=run_start_timeout,
     )
 
@@ -397,7 +397,7 @@ def run_resume_flow(
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=no_syncer,
-        upload_dir=upload_dir,
+        storage_path=storage_path,
     )
 
     if after_experiments_callback:
@@ -883,7 +883,7 @@ def test_no_sync_down():
     No down syncing, so:
 
         syncer=None
-        upload_dir=None
+        storage_path=None
 
     Expected results after first checkpoint:
 
@@ -1014,7 +1014,7 @@ def test_no_sync_down():
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=True,
-        upload_dir=None,
+        storage_path=None,
         first_run_time=run_time,
         second_run_time=run_time,
         between_experiments_callback=between_experiments,
@@ -1027,7 +1027,7 @@ def test_ssh_sync():
     SSH syncing, so:
 
         syncer="auto"
-        upload_dir=None
+        storage_path=None
 
     Expected results after first checkpoint:
 
@@ -1145,7 +1145,7 @@ def test_ssh_sync():
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=False,
-        upload_dir=None,
+        storage_path=None,
         first_run_time=run_time + 10,  # More time because of SSH syncing
         second_run_time=run_time + 10,
         between_experiments_callback=between_experiments,
@@ -1158,7 +1158,7 @@ def test_durable_upload(bucket: str):
     Sync trial and experiment checkpoints to cloud, so:
 
         syncer="auto"
-        upload_dir="s3://"
+        storage_path="s3://"
 
     Expected results after first checkpoint:
 
@@ -1320,7 +1320,7 @@ def test_durable_upload(bucket: str):
         experiment_name=experiment_name,
         indicator_file=indicator_file,
         no_syncer=False,
-        upload_dir=bucket,
+        storage_path=bucket,
         first_run_time=run_time,
         second_run_time=run_time,
         run_start_timeout=run_start_timeout,

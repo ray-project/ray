@@ -1,13 +1,13 @@
-import pytest
-import ray
 import numpy as np
+import pytest
 
-from ray.data._internal.util import _check_pyarrow_version, _split_list
+import ray
 from ray.data._internal.memory_tracing import (
+    leak_report,
     trace_allocation,
     trace_deallocation,
-    leak_report,
 )
+from ray.data._internal.util import _check_pyarrow_version, _split_list
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -43,7 +43,7 @@ def test_check_pyarrow_version_supported():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.trace_allocations = enabled
     ref1 = ray.put(np.zeros(1024 * 1024))
     ref2 = ray.put(np.zeros(1024 * 1024))

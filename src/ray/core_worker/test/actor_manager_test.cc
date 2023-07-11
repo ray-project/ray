@@ -199,7 +199,7 @@ class ActorManagerTest : public ::testing::Test {
                                                        false);
     EXPECT_CALL(*reference_counter_, SetDeleteCallback(_, _))
         .WillRepeatedly(testing::Return(true));
-    actor_manager_->AddNewActorHandle(move(actor_handle),
+    actor_manager_->AddNewActorHandle(std::move(actor_handle),
                                       call_site,
                                       caller_address,
                                       /*is_detached*/ false);
@@ -241,7 +241,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
 
   // Add an actor handle.
   ASSERT_TRUE(actor_manager_->AddNewActorHandle(
-      move(actor_handle), call_site, caller_address, false));
+      std::move(actor_handle), call_site, caller_address, false));
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure the subscription request is sent to GCS.
@@ -263,7 +263,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                       false);
   // Make sure the same actor id adding will return false.
   ASSERT_FALSE(actor_manager_->AddNewActorHandle(
-      move(actor_handle2), call_site, caller_address, false));
+      std::move(actor_handle2), call_site, caller_address, false));
   actor_manager_->SubscribeActorState(actor_id);
 
   // Make sure we can get an actor handle correctly.

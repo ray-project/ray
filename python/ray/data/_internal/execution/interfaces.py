@@ -1,5 +1,6 @@
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Iterable, Iterator, Tuple, Callable, Union
+import os
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.execution.util import memory_string
@@ -8,8 +9,9 @@ from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats, StatsDict
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
+from ray.util.annotations import DeveloperAPI
 
 # Node id string returned by `ray.get_runtime_context().get_node_id()`.
 NodeIdStr = str
@@ -34,7 +36,7 @@ class RefBundle:
     """
 
     # The size_bytes must be known in the metadata, num_rows is optional.
-    blocks: List[Tuple[ObjectRef[Block], BlockMetadata]]
+    blocks: Tuple[Tuple[ObjectRef[Block], BlockMetadata]]
 
     # Whether we own the blocks (can safely destroy them).
     owns_blocks: bool
@@ -47,6 +49,8 @@ class RefBundle:
     _cached_location: Optional[NodeIdStr] = None
 
     def __post_init__(self):
+        if not isinstance(self.blocks, tuple):
+            object.__setattr__(self, "blocks", tuple(self.blocks))
         for b in self.blocks:
             assert isinstance(b, tuple), b
             assert len(b) == 2, b
@@ -56,6 +60,11 @@ class RefBundle:
                 raise ValueError(
                     "The size in bytes of the block must be known: {}".format(b)
                 )
+
+    def __setattr__(self, key, value):
+        if hasattr(self, key) and key in ["blocks", "owns_blocks"]:
+            raise ValueError(f"The `{key}` field of RefBundle cannot be updated.")
+        object.__setattr__(self, key, value)
 
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known."""
@@ -77,7 +86,7 @@ class RefBundle:
         Returns:
             The number of bytes freed.
         """
-        should_free = self.owns_blocks and DatasetContext.get_current().eager_free
+        should_free = self.owns_blocks and DataContext.get_current().eager_free
         for b in self.blocks:
             trace_deallocation(b[0], "RefBundle.destroy_if_owned", free=should_free)
         return self.size_bytes() if should_free else 0
@@ -183,29 +192,39 @@ class ExecutionResources:
         )
 
 
+@DeveloperAPI
 @dataclass
 class ExecutionOptions:
     """Common options for execution.
 
     Some options may not be supported on all executors (e.g., resource limits).
+
+    Attributes:
+        resource_limits: Set a soft limit on the resource usage during execution.
+            This is not supported in bulk execution mode. Autodetected by default.
+        locality_with_output: Set this to prefer running tasks on the same node as the
+            output node (node driving the execution). It can also be set to a list of
+            node ids to spread the outputs across those nodes. Off by default.
+        preserve_order: Set this to preserve the ordering between blocks processed by
+            operators under the streaming executor. The bulk executor always preserves
+            order. Off by default.
+        actor_locality_enabled: Whether to enable locality-aware task dispatch to
+            actors (on by default). This applies to both ActorPoolStrategy map and
+            streaming_split operations.
+        verbose_progress: Whether to report progress individually per operator. By
+            default, only AllToAll operators and global progress is reported. This
+            option is useful for performance debugging. Off by default.
     """
 
-    # Set a soft limit on the resource usage during execution. This is not supported
-    # in bulk execution mode.
-    resource_limits: ExecutionResources = ExecutionResources()
+    resource_limits: ExecutionResources = field(default_factory=ExecutionResources)
 
-    # Set this to prefer running tasks on the same node as the output
-    # node (node driving the execution). It can also be set to a list of node ids
-    # to spread the outputs across those nodes.
     locality_with_output: Union[bool, List[NodeIdStr]] = False
 
-    # Set this to preserve the ordering between blocks processed by operators under the
-    # streaming executor. The bulk executor always preserves order.
     preserve_order: bool = False
 
-    # Whether to enable locality-aware task dispatch to actors (on by default). This
-    # applies to both ActorPoolStrategy map and streaming_split operations.
     actor_locality_enabled: bool = True
+
+    verbose_progress: bool = bool(int(os.environ.get("RAY_DATA_VERBOSE_PROGRESS", "0")))
 
 
 @dataclass
@@ -220,6 +239,23 @@ class TaskContext:
     # bar. Note this is only used on driver side.
     # TODO(chengsu): clean it up from TaskContext with new optimizer framework.
     sub_progress_bar_dict: Optional[Dict[str, ProgressBar]] = None
+
+    # NOTE(hchen): `upstream_map_transform_fn` and `upstream_map_ray_remote_args`
+    # are only used for `RandomShuffle`. DO NOT use them for other operators.
+    # Ideally, they should be handled by the optimizer, and should be transparent
+    # to the specific operators.
+    # But for `RandomShuffle`, the AllToAllOperator doesn't do the shuffle itself.
+    # It uses `ExchangeTaskScheduler` to launch new tasks to do the shuffle.
+    # That's why we need to pass them to `ExchangeTaskScheduler`.
+    # TODO(hchen): Use a physical operator to do the shuffle directly.
+
+    # The underlying function called in a MapOperator; this is used when fusing
+    # an AllToAllOperator with an upstream MapOperator.
+    upstream_map_transform_fn: Optional["MapTransformFn"] = None
+
+    # The Ray remote arguments of the fused upstream MapOperator.
+    # This should be set if upstream_map_transform_fn is set.
+    upstream_map_ray_remote_args: Dict[str, Any] = None
 
 
 # Block transform function applied by task and actor pools in MapOperator.
@@ -269,18 +305,24 @@ class PhysicalOperator(Operator):
         for x in input_dependencies:
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
+        self._dependents_complete = False
         self._started = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
 
     def completed(self) -> bool:
-        """Return True when this operator is done and all outputs are taken."""
+        """Return True when this operator is completed.
+
+        An operator is completed if any of the following conditions are met:
+        - All upstream operators are completed and all outputs are taken.
+        - All downstream operators are completed.
+        """
         return (
             self._inputs_complete
             and len(self.get_work_refs()) == 0
             and not self.has_next()
-        )
+        ) or self._dependents_complete
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -325,6 +367,21 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
+    def should_add_input(self) -> bool:
+        """Return whether it is desirable to add input to this operator right now.
+
+        Operators can customize the implementation of this method to apply additional
+        backpressure (e.g., waiting for internal actors to be created).
+        """
+        return True
+
+    def need_more_inputs(self) -> bool:
+        """Return true if the operator still needs more inputs.
+
+        Once this return false, it should never return true again.
+        """
+        return True
+
     def add_input(self, refs: RefBundle, input_index: int) -> None:
         """Called when an upstream result is available.
 
@@ -339,13 +396,28 @@ class PhysicalOperator(Operator):
         """
         raise NotImplementedError
 
-    def inputs_done(self) -> None:
+    def input_done(self, input_index: int) -> None:
+        """Called when the upstream operator at index `input_index` has completed().
+
+        After this is called, the executor guarantees that no more inputs will be added
+        via `add_input` for the given input index.
+        """
+        pass
+
+    def all_inputs_done(self) -> None:
         """Called when all upstream operators have completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.
         """
         self._inputs_complete = True
+
+    def all_dependents_complete(self) -> None:
+        """Called when all downstream operators have completed().
+
+        After this is called, the operator is marked as completed.
+        """
+        self._dependents_complete = True
 
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
@@ -432,6 +504,17 @@ class PhysicalOperator(Operator):
         ExecutionResources(cpu=1) as its incremental usage.
         """
         return ExecutionResources()
+
+    def notify_resource_usage(
+        self, input_queue_size: int, under_resource_limits: bool
+    ) -> None:
+        """Called periodically by the executor.
+
+        Args:
+            input_queue_size: The number of inputs queued outside this operator.
+            under_resource_limits: Whether this operator is under resource limits.
+        """
+        pass
 
 
 class OutputIterator(Iterator[RefBundle]):

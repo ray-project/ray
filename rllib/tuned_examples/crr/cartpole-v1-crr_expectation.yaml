@@ -2,7 +2,7 @@ cartpole_crr:
     env: 'CartPole-v1'
     run: CRR
     stop:
-      evaluation/episode_reward_mean: 200
+      evaluation/sampler_results/episode_reward_mean: 200
       training_iteration: 100
     config:
         input: 'dataset'

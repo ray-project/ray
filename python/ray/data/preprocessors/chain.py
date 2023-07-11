@@ -1,4 +1,5 @@
 from typing import TYPE_CHECKING, Union
+
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset, DatasetPipeline
 from ray.data.preprocessor import Preprocessor

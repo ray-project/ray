@@ -18,7 +18,11 @@ from ray.rllib.algorithms.maddpg.maddpg_tf_policy import MADDPGTFPolicy
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -100,6 +104,15 @@ class MADDPGConfig(AlgorithmConfig):
         self.train_batch_size = 1024
         self.num_rollout_workers = 1
         self.min_time_s_per_iteration = 0
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # fmt: on
         # __sphinx_doc_end__
 
@@ -192,7 +205,7 @@ class MADDPGConfig(AlgorithmConfig):
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
-                depends on config["multiagent"]["count_steps_by"].
+                depends on config.multi_agent(count_steps_by=..).
             critic_lr: Learning rate for the critic (Q-function) optimizer.
             actor_lr: Learning rate for the actor (policy) optimizer.
             target_network_update_freq: Update the target network every
@@ -298,6 +311,12 @@ def before_learn_on_batch(multi_agent_batch, policies, train_batch_size):
     return MultiAgentBatch(policy_batches, train_batch_size)
 
 
+@Deprecated(
+    old="rllib/algorithms/maddpg/",
+    new="rllib_contrib/maddpg/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class MADDPG(DQN):
     @classmethod
     @override(DQN)

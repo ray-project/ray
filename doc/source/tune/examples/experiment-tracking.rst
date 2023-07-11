@@ -6,42 +6,39 @@ such as CometML, or Weights & Biases. If you're interested in learning how
 to use Ray Tune with Tensorboard, you can find more information in our
 :ref:`Guide to logging and outputs <tune-logging>`.
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
 
-    ---
-    :img-top: /images/aim_logo.png
 
-    +++
-    .. link-button:: tune-aim-ref
-        :type: ref
-        :text: Using Aim with Ray Tune For Experiment Management
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/comet_logo_full.png
+    .. grid-item-card::
+        :img-top:  /images/aim_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    +++
-    .. link-button:: tune-comet-ref
-        :type: ref
-        :text: Using Comet with Ray Tune For Experiment Management
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: tune-aim-ref
 
-    ---
-    :img-top: /images/wandb_logo.png
+            Using Aim with Ray Tune For Experiment Management
 
-    +++
-    .. link-button:: tune-wandb-ref
-        :type: ref
-        :text: Tracking Your Experiment Process Weights & Biases
-        :classes: btn-link btn-block stretched-link
+    .. grid-item-card::
+        :img-top: /images/comet_logo_full.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-    ---
-    :img-top: /images/mlflow.png
+        .. button-ref:: tune-comet-ref
 
-    +++
-    .. link-button:: tune-mlflow-ref
-        :type: ref
-        :text: Using MLflow Tracking & AutoLogging with Tune
-        :classes: btn-link btn-block stretched-link
+            Using Comet with Ray Tune For Experiment Management
+
+    .. grid-item-card::
+        :img-top: /images/wandb_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune-wandb-ref
+
+            Tracking Your Experiment Process Weights & Biases
+
+    .. grid-item-card::
+        :img-top: /images/mlflow.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: tune-mlflow-ref
+
+            Using MLflow Tracking & AutoLogging with Tune

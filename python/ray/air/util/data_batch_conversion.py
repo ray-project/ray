@@ -325,7 +325,7 @@ def _cast_ndarray_columns_to_tensor_extension(df: "pd.DataFrame") -> "pd.DataFra
                     f"Tried to cast column {col_name} to the TensorArray tensor "
                     "extension type but the conversion failed. To disable "
                     "automatic casting to this tensor extension, set "
-                    "ctx = DatasetContext.get_current(); "
+                    "ctx = DataContext.get_current(); "
                     "ctx.enable_tensor_extension_casting = False."
                 ) from e
     return df

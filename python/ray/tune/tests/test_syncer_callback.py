@@ -10,10 +10,11 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
-from ray.tune.result import TRAINING_ITERATION, TIME_TOTAL_S
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
@@ -24,6 +25,17 @@ from ray.tune.trainable import wrap_function
 from ray.tune.trainable.function_trainable import NULL_MARKER
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+
+
+@pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
 
 
 @pytest.fixture
@@ -438,7 +450,9 @@ def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
         assert "At least one" in e
 
 
-def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that errors in a previous sync are logged correctly"""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
@@ -476,7 +490,9 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
     assert_file(True, tmp_target, "level0.txt")
 
 
-def test_syncer_callback_dead_node_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_dead_node_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that we catch + log errors when trying syncing with a dead remote node."""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 

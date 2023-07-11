@@ -1,13 +1,19 @@
 from typing import Mapping
 
-from ray.rllib.algorithms.impala.impala_base_learner import ImpalaBaseLearner
+from ray.rllib.algorithms.impala.impala_learner import (
+    ImpalaLearner,
+    ImpalaLearnerHyperparameters,
+)
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
 )
+from ray.rllib.core.rl_module.rl_module import ModuleID
+from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
@@ -15,18 +21,24 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
+class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
 
-    def __init__(self, *args, **kwargs):
-        TorchLearner.__init__(self, *args, **kwargs)
-        ImpalaBaseLearner.__init__(self, *args, **kwargs)
-
     @override(TorchLearner)
-    def compute_loss_per_module(
-        self, module_id: str, batch: SampleBatch, fwd_out: Mapping[str, TensorType]
+    def compute_loss_for_module(
+        self,
+        *,
+        module_id: ModuleID,
+        hps: ImpalaLearnerHyperparameters,
+        batch: NestedDict,
+        fwd_out: Mapping[str, TensorType],
     ) -> TensorType:
-        target_policy_dist = fwd_out[SampleBatch.ACTION_DIST]
+        action_dist_class_train = (
+            self.module[module_id].unwrapped().get_train_action_dist_cls()
+        )
+        target_policy_dist = action_dist_class_train.from_logits(
+            fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+        )
         values = fwd_out[SampleBatch.VF_PREDS]
 
         behaviour_actions_logp = batch[SampleBatch.ACTION_LOGP]
@@ -38,29 +50,30 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
 
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
+        )
+        rewards_time_major = make_time_major(
+            batch[SampleBatch.REWARDS],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
         values_time_major = make_time_major(
             values,
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
-        bootstrap_value = values_time_major[-1]
-        rewards_time_major = make_time_major(
-            batch[SampleBatch.REWARDS],
-            trajectory_len=self.rollout_frag_or_episode_len,
-            recurrent_seq_len=self.recurrent_seq_len,
-            drop_last=self.vtrace_drop_last_ts,
+        bootstrap_values_time_major = make_time_major(
+            batch[SampleBatch.VALUES_BOOTSTRAPPED],
+            trajectory_len=hps.rollout_frag_or_episode_len,
+            recurrent_seq_len=hps.recurrent_seq_len,
         )
+        bootstrap_value = bootstrap_values_time_major[-1]
 
         # the discount factor that is used should be gamma except for timesteps where
         # the episode is terminated. In that case, the discount factor should be 0.
@@ -68,17 +81,16 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
             1.0
             - make_time_major(
                 batch[SampleBatch.TERMINATEDS],
-                trajectory_len=self.rollout_frag_or_episode_len,
-                recurrent_seq_len=self.recurrent_seq_len,
-                drop_last=self.vtrace_drop_last_ts,
+                trajectory_len=hps.rollout_frag_or_episode_len,
+                recurrent_seq_len=hps.recurrent_seq_len,
             ).type(dtype=torch.float32)
-        ) * self.discount_factor
+        ) * hps.discount_factor
 
         # TODO(Artur) Why was there `TorchCategorical if is_multidiscrete else
         #  dist_class` in the old code torch impala policy?
         device = behaviour_actions_logp_time_major[0].device
 
-        # TODO(Artur): See if we should compute v-trace corrected targets on CPU
+        # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
             target_action_log_probs=target_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
@@ -86,8 +98,8 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_value=bootstrap_value,
-            clip_rho_threshold=self.vtrace_clip_rho_threshold,
-            clip_pg_rho_threshold=self.vtrace_clip_pg_rho_threshold,
+            clip_rho_threshold=hps.vtrace_clip_rho_threshold,
+            clip_pg_rho_threshold=hps.vtrace_clip_pg_rho_threshold,
         )
 
         # Sample size is T x B, where T is the trajectory length and B is the batch size
@@ -110,14 +122,28 @@ class ImpalaTorchLearner(TorchLearner, ImpalaBaseLearner):
         mean_vf_loss = vf_loss / batch_size
 
         # The entropy loss.
-        entropy_loss = -torch.sum(target_actions_logp_time_major)
+        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
 
         # The summed weighted loss.
         total_loss = (
-            pi_loss + vf_loss * self.vf_loss_coeff + entropy_loss * self.entropy_coeff
+            pi_loss
+            + vf_loss * hps.vf_loss_coeff
+            + (
+                mean_entropy_loss
+                * self.entropy_coeff_schedulers_per_module[
+                    module_id
+                ].get_current_value()
+            )
         )
-        return {
-            self.TOTAL_LOSS_KEY: total_loss,
-            "pi_loss": mean_pi_loss,
-            "vf_loss": mean_vf_loss,
-        }
+
+        # Register important loss stats.
+        self.register_metrics(
+            module_id,
+            {
+                "pi_loss": mean_pi_loss,
+                "vf_loss": mean_vf_loss,
+                ENTROPY_KEY: -mean_entropy_loss,
+            },
+        )
+        # Return the total loss.
+        return total_loss

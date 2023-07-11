@@ -110,6 +110,15 @@ class RayClusterOnSpark:
             webui_url = ray_ctx.address_info.get("webui_url", None)
             if webui_url:
                 self.start_hook.on_ray_dashboard_created(self.ray_dashboard_port)
+            else:
+                try:
+                    __import__("ray.dashboard.optional_deps")
+                except ModuleNotFoundError:
+                    _logger.warning(
+                        "Dependencies to launch the optional dashboard API "
+                        "server cannot be found. They can be installed with "
+                        "pip install ray[default]."
+                    )
 
         except Exception:
             self.shutdown()

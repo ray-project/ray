@@ -31,6 +31,7 @@ class ReplicaContext:
     replica_tag: ReplicaTag
     _internal_controller_name: str
     servable_object: Callable
+    app_name: str
 
 
 @PublicAPI(stability="alpha")
@@ -73,10 +74,11 @@ def _set_internal_replica_context(
     replica_tag: ReplicaTag,
     controller_name: str,
     servable_object: Callable,
+    app_name: str,
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object
+        deployment, replica_tag, controller_name, servable_object, app_name
     )
 
 
@@ -98,7 +100,7 @@ def _connect() -> ServeControllerClient:
     """
 
     # Initialize ray if needed.
-    ray._private.worker.global_worker.filter_logs_by_job = False
+    ray._private.worker.global_worker._filter_logs_by_job = False
     if not ray.is_initialized():
         ray.init(namespace=SERVE_NAMESPACE)
 
@@ -146,8 +148,31 @@ def _connect() -> ServeControllerClient:
 class RequestContext:
     route: str = ""
     request_id: str = ""
+    app_name: str = ""
+    multiplexed_model_id: str = ""
 
 
 _serve_request_context = contextvars.ContextVar(
     "Serve internal request context variable", default=RequestContext()
 )
+
+
+def _set_request_context(
+    route: str = "",
+    request_id: str = "",
+    app_name: str = "",
+    multiplexed_model_id: str = "",
+):
+    """Set the request context. If the value is not set,
+    the current context value will be used."""
+
+    current_request_context = _serve_request_context.get()
+    _serve_request_context.set(
+        RequestContext(
+            route=route or current_request_context.route,
+            request_id=request_id or current_request_context.request_id,
+            app_name=app_name or current_request_context.app_name,
+            multiplexed_model_id=multiplexed_model_id
+            or current_request_context.multiplexed_model_id,
+        )
+    )

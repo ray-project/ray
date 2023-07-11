@@ -78,12 +78,6 @@ from ray.autoscaler.tags import (
 )
 from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 
-try:
-    from urllib3.exceptions import MaxRetryError
-except ImportError:
-    MaxRetryError = None
-
-
 logger = logging.getLogger(__name__)
 
 # Status of a node e.g. "up-to-date", see ray/autoscaler/tags.py
@@ -366,6 +360,10 @@ class StandardAutoscaler:
         for local_path in self.config["file_mounts"].values():
             assert os.path.exists(local_path)
         logger.info("StandardAutoscaler: {}".format(self.config))
+
+    @property
+    def all_node_types(self) -> Set[str]:
+        return self.config["available_node_types"].keys()
 
     def update(self):
         try:

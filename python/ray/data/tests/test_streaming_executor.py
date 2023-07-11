@@ -1,34 +1,36 @@
 import collections
-import pytest
 import time
 from unittest.mock import MagicMock
 
+import pytest
+
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
 )
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.streaming_executor import (
     _debug_dump_topology,
     _validate_dag,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     AutoscalingState,
+    DownstreamMemoryInfo,
     OpState,
     TopologyResourceUsage,
-    DownstreamMemoryInfo,
+    _execution_allowed,
     build_streaming_topology,
     process_completed_tasks,
     select_operator_to_run,
-    _execution_allowed,
+    update_operator_states,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.util import make_ref_bundles
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.data.tests.conftest import *  # noqa
-
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 EMPTY_DOWNSTREAM_USAGE = collections.defaultdict(lambda: DownstreamMemoryInfo(0, 0))
 NO_USAGE = TopologyResourceUsage(ExecutionResources(), EMPTY_DOWNSTREAM_USAGE)
@@ -47,14 +49,23 @@ def make_transform(block_fn):
     return map_fn
 
 
-def test_build_streaming_topology():
+@pytest.mark.parametrize(
+    "verbose_progress",
+    [True, False],
+)
+def test_build_streaming_topology(verbose_progress):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o3 = MapOperator.create(make_transform(lambda block: [b * 2 for b in block]), o2)
-    topo, num_progress_bars = build_streaming_topology(o3, ExecutionOptions())
+    topo, num_progress_bars = build_streaming_topology(
+        o3, ExecutionOptions(verbose_progress=verbose_progress)
+    )
     assert len(topo) == 3, topo
-    assert num_progress_bars == 3, num_progress_bars
+    if verbose_progress:
+        assert num_progress_bars == 3, num_progress_bars
+    else:
+        assert num_progress_bars == 1, num_progress_bars
     assert o1 in topo, topo
     assert not topo[o1].inqueues, topo
     assert topo[o1].outqueue == topo[o2].inqueues[0], topo
@@ -70,18 +81,19 @@ def test_disallow_non_unique_operators():
     o3 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
     o4 = PhysicalOperator("test_combine", [o2, o3])
     with pytest.raises(ValueError):
-        build_streaming_topology(o4, ExecutionOptions())
+        build_streaming_topology(o4, ExecutionOptions(verbose_progress=True))
 
 
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(make_transform(lambda block: [b * -1 for b in block]), o1)
-    topo, _ = build_streaming_topology(o2, ExecutionOptions())
+    topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
     # Test processing output bundles.
     assert len(topo[o1].outqueue) == 0, topo
     process_completed_tasks(topo)
+    update_operator_states(topo)
     assert len(topo[o1].outqueue) == 20, topo
 
     # Test processing completed work items.
@@ -89,20 +101,33 @@ def test_process_completed_tasks():
     done_ref = ray.put("done")
     o2.get_work_refs = MagicMock(return_value=[sleep_ref, done_ref])
     o2.notify_work_completed = MagicMock()
-    o2.inputs_done = MagicMock()
+    o2.all_inputs_done = MagicMock()
+    o1.all_dependents_complete = MagicMock()
     process_completed_tasks(topo)
+    update_operator_states(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
-    o2.inputs_done.assert_not_called()
+    o2.all_inputs_done.assert_not_called()
+    o1.all_dependents_complete.assert_not_called()
 
     # Test input finalization.
     o2.get_work_refs = MagicMock(return_value=[done_ref])
     o2.notify_work_completed = MagicMock()
-    o2.inputs_done = MagicMock()
+    o2.all_inputs_done = MagicMock()
+    o1.all_dependents_complete = MagicMock()
     o1.completed = MagicMock(return_value=True)
     topo[o1].outqueue.clear()
     process_completed_tasks(topo)
+    update_operator_states(topo)
     o2.notify_work_completed.assert_called_once_with(done_ref)
-    o2.inputs_done.assert_called_once()
+    o2.all_inputs_done.assert_called_once()
+    o1.all_dependents_complete.assert_not_called()
+
+    # Test dependents completed.
+    o2.need_more_inputs = MagicMock(return_value=False)
+    o1.all_dependents_complete = MagicMock()
+    process_completed_tasks(topo)
+    update_operator_states(topo)
+    o1.all_dependents_complete.assert_called_once()
 
 
 def test_select_operator_to_run():
@@ -226,12 +251,12 @@ def test_validate_dag():
     o2 = MapOperator.create(
         make_transform(lambda block: [b * -1 for b in block]),
         o1,
-        compute_strategy=ray.data.ActorPoolStrategy(8, 8),
+        compute_strategy=ray.data.ActorPoolStrategy(size=8),
     )
     o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
-        compute_strategy=ray.data.ActorPoolStrategy(4, 4),
+        compute_strategy=ray.data.ActorPoolStrategy(size=4),
     )
     _validate_dag(o3, ExecutionResources())
     _validate_dag(o3, ExecutionResources(cpu=20))
@@ -298,7 +323,18 @@ def test_execution_allowed():
     )
 
 
-def test_resource_constrained_triggers_autoscaling():
+def test_resource_constrained_triggers_autoscaling(monkeypatch):
+    RESOURCE_REQUEST_TIMEOUT = 5
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "RESOURCE_REQUEST_TIMEOUT",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
+    monkeypatch.setattr(
+        ray.data._internal.execution.autoscaling_requester,
+        "PURGE_INTERVAL",
+        RESOURCE_REQUEST_TIMEOUT,
+    )
     from ray.data._internal.execution.autoscaling_requester import (
         get_or_create_autoscaling_requester_actor,
     )
@@ -327,7 +363,7 @@ def test_resource_constrained_triggers_autoscaling():
         o4 = MapOperator.create(
             make_transform(lambda block: [b * 3 for b in block]),
             o3,
-            compute_strategy=ray.data.ActorPoolStrategy(1, 2),
+            compute_strategy=ray.data.ActorPoolStrategy(min_size=1, max_size=2),
             ray_remote_args={"num_gpus": incremental_cpu},
         )
         o4.num_active_work_refs = MagicMock(return_value=1)
@@ -427,6 +463,12 @@ def test_resource_constrained_triggers_autoscaling():
         {"CPU": 1},
     ]
 
+    # Test that the resource requests will be purged after the timeout.
+    wait_for_condition(
+        lambda: ray.get(ac._aggregate_requests.remote()) == [],
+        timeout=RESOURCE_REQUEST_TIMEOUT * 2,
+    )
+
 
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
@@ -486,7 +528,7 @@ def test_configure_output_locality():
     o3 = MapOperator.create(
         make_transform(lambda block: [b * 2 for b in block]),
         o2,
-        compute_strategy=ray.data.ActorPoolStrategy(1, 1),
+        compute_strategy=ray.data.ActorPoolStrategy(size=1),
     )
     # No locality.
     build_streaming_topology(o3, ExecutionOptions(locality_with_output=False))

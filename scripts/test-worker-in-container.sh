@@ -1,1 +1,0 @@
-../ci/build/test-worker-in-container.sh

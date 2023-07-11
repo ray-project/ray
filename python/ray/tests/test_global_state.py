@@ -168,15 +168,11 @@ def test_node_name_cluster(ray_start_cluster):
     global_state_accessor = make_global_state_accessor(head_context)
     node_table = global_state_accessor.get_node_table()
     assert len(node_table) == 2
-    for node_data in node_table:
-        node = gcs_utils.GcsNodeInfo.FromString(node_data)
-        if (
-            ray._private.utils.binary_to_hex(node.node_id)
-            == head_context.address_info["node_id"]
-        ):
-            assert node.node_name == "head_node"
+    for node in node_table:
+        if node["NodeID"] == head_context.address_info["node_id"]:
+            assert node["NodeName"] == "head_node"
         else:
-            assert node.node_name == "worker_node"
+            assert node["NodeName"] == "worker_node"
 
     global_state_accessor.disconnect()
     ray.shutdown()
@@ -188,9 +184,8 @@ def test_node_name_init():
     new_head_context = ray.init(_node_name="new_head_node", include_dashboard=False)
 
     global_state_accessor = make_global_state_accessor(new_head_context)
-    node_data = global_state_accessor.get_node_table()[0]
-    node = gcs_utils.GcsNodeInfo.FromString(node_data)
-    assert node.node_name == "new_head_node"
+    node = global_state_accessor.get_node_table()[0]
+    assert node["NodeName"] == "new_head_node"
     ray.shutdown()
 
 
@@ -198,9 +193,8 @@ def test_no_node_name():
     # Test that starting ray with no node name will result in a node_name=ip_address
     new_head_context = ray.init(include_dashboard=False)
     global_state_accessor = make_global_state_accessor(new_head_context)
-    node_data = global_state_accessor.get_node_table()[0]
-    node = gcs_utils.GcsNodeInfo.FromString(node_data)
-    assert node.node_name == ray.util.get_node_ip_address()
+    node = global_state_accessor.get_node_table()[0]
+    assert node["NodeName"] == ray.util.get_node_ip_address()
     ray.shutdown()
 
 

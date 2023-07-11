@@ -20,7 +20,11 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.replay_buffers.utils import validate_buffer_config
 from ray.rllib.utils.replay_buffers import PrioritizedReplayBuffer
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -123,7 +127,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
         }
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
-        # steps  or environment steps depends on config["multiagent"]["count_steps_by"].
+        # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
         self.num_steps_sampled_before_learning_starts = 1000
         self.lr_schedule = None
         self.vf_share_layers = False
@@ -157,6 +161,15 @@ class LeelaChessZeroConfig(AlgorithmConfig):
                 "add_dirichlet_noise": False,
             },
         })
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -239,7 +252,7 @@ class LeelaChessZeroConfig(AlgorithmConfig):
             num_steps_sampled_before_learning_starts: Number of timesteps to collect
                 from rollout workers before we start sampling from replay buffers for
                 learning. Whether we count this in agent steps  or environment steps
-                depends on config["multiagent"]["count_steps_by"].
+                depends on config.multi_agent(count_steps_by=..).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -339,6 +352,12 @@ class LeelaChessZeroPolicyWrapperClass(LeelaChessZeroPolicy):
         )
 
 
+@Deprecated(
+    old="rllib/algorithms/leela_chess_zero/",
+    new="rllib_contrib/leela_chess_zero/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class LeelaChessZero(Algorithm):
     @classmethod
     @override(Algorithm)

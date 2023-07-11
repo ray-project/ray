@@ -87,7 +87,10 @@ def test_predict_batch(ray_start_4_cpus, batch_type):
     data_batch = _convert_pandas_to_batch_type(raw_batch, type=TYPE_TO_ENUM[batch_type])
 
     if batch_type == np.ndarray:
+        # TODO(ekl) how do we fix this to work with "data" column?
         dataset = ray.data.from_numpy(dummy_data)
+        dataset = dataset.add_column("__value__", lambda b: b["data"])
+        dataset = dataset.drop_columns(["data"])
     elif batch_type == pd.DataFrame:
         dataset = ray.data.from_pandas(data_batch)
     elif batch_type == pa.Table:

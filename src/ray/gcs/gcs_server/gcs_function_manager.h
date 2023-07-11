@@ -14,6 +14,7 @@
 
 #pragma once
 #include "absl/container/flat_hash_map.h"
+#include "ray/common/constants.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 
 namespace ray {
@@ -48,7 +49,10 @@ class GcsFunctionManager {
     kv_.Del("fun", "IsolatedExports:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun", "RemoteFunction:" + job_id_hex + ":", true, nullptr);
     kv_.Del("fun", "ActorClass:" + job_id_hex + ":", true, nullptr);
-    kv_.Del("fun", "FunctionsToRun:" + job_id_hex + ":", true, nullptr);
+    kv_.Del("fun",
+            std::string(kWorkerSetupHookKeyName) + ":" + job_id_hex + ":",
+            true,
+            nullptr);
   }
 
   // Handler for internal KV

@@ -178,12 +178,6 @@ Torch utilities
    ~set_torch_seed
    ~softmax_cross_entropy_with_logits
 
-.. autosummary::
-   :toctree: doc/
-   :template: autosummary/class_without_autosummary.rst
-
-   ~Swish
-
 
 Numpy utilities
 ~~~~~~~~~~~~~~~

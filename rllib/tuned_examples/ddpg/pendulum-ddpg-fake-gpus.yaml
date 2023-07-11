@@ -2,7 +2,7 @@ pendulum-ddpg-fake-gpus:
     env: Pendulum-v1
     run: DDPG
     stop:
-        episode_reward_mean: -1000
+        sampler_results/episode_reward_mean: -1000
         timesteps_total: 40000
     config:
         # Works for both torch and tf.

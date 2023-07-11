@@ -43,11 +43,7 @@ if __name__ == "__main__":
 
     num_iter = 10
     print("Running training for %s time steps" % num_iter)
-    config = (
-        BanditLinTSConfig()
-        .environment(WheelBanditEnv)
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
-    )
+    config = BanditLinTSConfig().environment(WheelBanditEnv).framework(args.framework)
     algo = config.build()
 
     policy = algo.get_policy()

@@ -1,74 +1,105 @@
-.. _datasets-examples-ref:
+.. _data-examples-ref:
 
-========
-Examples
-========
+=================
+Ray Data Examples
+=================
+
+..
+   Include all examples in a hidden toctree so Sphinx build does not complain.
+
+.. toctree::
+    :hidden:
+
+    huggingface_vit_batch_prediction
+    pytorch_resnet_batch_prediction
+    batch_inference_object_detection
+    nyc_taxi_basic_processing
+    batch_training
+    ocr_example
+    random-access
+    custom-datasource
+
+
 
 .. tip:: Check out the Datasets :ref:`User Guide <data_user_guide>` to learn more about
-  Datasets' features in-depth.
+  Dataset features in-depth.
 
-.. _datasets-recipes:
+.. _data-recipes:
 
-Simple Data Processing Examples
--------------------------------
-
-Ray Datasets is a data processing engine that supports multiple data
+Ray Data is a data processing engine that supports multiple data
 modalities and types. Here you will find a few end-to-end examples of some basic data
-processing with Ray Datasets on tabular data, text (coming soon!), and imagery (coming
-soon!).
+processing with Ray Data on tabular data, text (coming soon), and images.
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
+Computer Vision
+---------------
+.. grid:: 1 2 2 3
+    :gutter: 1
+    :class-container: container pb-4
 
-    ---
-    :img-top: /images/taxi.png
+    .. grid-item-card::
 
-    +++
-    .. link-button:: nyc_taxi_basic_processing
-        :type: ref
-        :text: Processing the NYC taxi dataset
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/taxi.png
+       .. button-ref:: huggingface_vit_batch_prediction
 
-    +++
-    .. link-button:: batch_training
-        :type: ref
-        :text: Batch Training with Ray Datasets
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: /images/ocr.jpg
+            Image Classification Batch Inference with Huggingface Vision Transformer
 
-    +++
-    .. link-button:: ocr_example
-        :type: ref
-        :text: Scaling OCR with Ray Datasets
-        :classes: btn-link btn-block stretched-link
+
+    .. grid-item-card::
+
+       .. button-ref:: pytorch_resnet_batch_prediction
+
+            Image Classification Batch Inference with PyTorch ResNet152
+
+
+    .. grid-item-card::
+
+        .. button-ref:: batch_inference_object_detection
+
+            Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
+
+
+Simple Data Processing
+----------------------
+
+.. grid:: 1 2 3 3
+    :gutter: 2
+    :class-container: container pb-4
+
+    .. grid-item-card::
+
+        .. button-ref:: nyc_taxi_basic_processing
+
+            Processing the NYC taxi dataset
+
+    .. grid-item-card::
+
+        .. button-ref:: batch_training
+
+            Batch Training with Ray Data
+
+    .. grid-item-card::
+
+        .. button-ref:: ocr_example
+
+            Scaling OCR with Ray Data
+
 
 
 Other Examples
 --------------
 
-.. panels::
-    :container: container pb-4
-    :column: col-md-4 px-2 py-2
-    :img-top-cls: pt-5 w-75 d-block mx-auto
 
-    ---
-    :img-top: /images/dataset-repeat-2.svg
+.. grid:: 1 2 3 3
+    :gutter: 2
+    :class-container: container pb-4
 
-    +++
-    .. link-button:: advanced-pipelines
-        :type: ref
-        :text: Advanced Pipeline Examples
-        :classes: btn-link btn-block stretched-link
-    ---
-    :img-top: ../images/dataset-arch.svg
+    .. grid-item-card::
 
-    +++
-    .. link-button:: random-access
-        :type: ref
-        :text: Random Data Access (Experimental)
-        :classes: btn-link btn-block stretched-link
+        .. button-ref:: random-access
+
+            Random Data Access (Experimental)
+
+    .. grid-item-card::
+
+        .. button-ref:: custom-datasource
+
+            Implementing a Custom Datasource

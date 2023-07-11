@@ -4,7 +4,7 @@ pendulum-sac:
     env: Pendulum-v1
     run: SAC
     stop:
-        episode_reward_mean: -250
+        sampler_results/episode_reward_mean: -250
         timesteps_total: 10000
     config:
         # Works for both torch and tf.

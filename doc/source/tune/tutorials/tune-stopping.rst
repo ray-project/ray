@@ -48,59 +48,61 @@ In addition to manual stopping, Tune provides several ways to stop experiments p
 
 You can implement the stopping criteria using either a dictionary, a function, or a custom :class:`Stopper <ray.tune.stopper.Stopper>`.
 
-.. tabbed:: Dictionary
+.. tab-set::
 
-    If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
-    Function API or ``step()`` in the Class API.
+    .. tab-item:: Dictionary
 
-    .. note::
+        If a dictionary is passed in, the keys may be any field in the return result of ``session.report`` in the
+        Function API or ``step()`` in the Class API.
 
-        This includes :ref:`auto-filled metrics <tune-autofilled-metrics>` such as ``training_iteration``.
+        .. note::
 
-    In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
-    reaches a mean accuracy of ``0.8`` or more.
+            This includes :ref:`auto-filled metrics <tune-autofilled-metrics>` such as ``training_iteration``.
 
-    These metrics are assumed to be **increasing**, so the trial will stop once the reported metric has exceeded the threshold specified in the dictionary.
+        In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
+        reaches a mean accuracy of ``0.8`` or more.
 
-    .. literalinclude:: /tune/doc_code/stopping.py
-        :language: python
-        :start-after: __stopping_dict_start__
-        :end-before: __stopping_dict_end__
+        These metrics are assumed to be **increasing**, so the trial will stop once the reported metric has exceeded the threshold specified in the dictionary.
 
-.. tabbed:: User-defined Function
+        .. literalinclude:: /tune/doc_code/stopping.py
+            :language: python
+            :start-after: __stopping_dict_start__
+            :end-before: __stopping_dict_end__
 
-    For more flexibility, you can pass in a function instead.
-    If a function is passed in, it must take ``(trial_id: str, result: dict)`` as arguments and return a boolean
-    (``True`` if trial should be stopped and ``False`` otherwise).
+    .. tab-item:: User-defined Function
 
-    In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
-    reaches a mean accuracy of ``0.8`` or more.
+        For more flexibility, you can pass in a function instead.
+        If a function is passed in, it must take ``(trial_id: str, result: dict)`` as arguments and return a boolean
+        (``True`` if trial should be stopped and ``False`` otherwise).
 
-    .. literalinclude:: /tune/doc_code/stopping.py
-        :language: python
-        :start-after: __stopping_fn_start__
-        :end-before: __stopping_fn_end__
+        In the example below, each trial will be stopped either when it completes ``10`` iterations or when it
+        reaches a mean accuracy of ``0.8`` or more.
 
-.. tabbed:: Custom Stopper Class
+        .. literalinclude:: /tune/doc_code/stopping.py
+            :language: python
+            :start-after: __stopping_fn_start__
+            :end-before: __stopping_fn_end__
 
-    Finally, you can implement the :class:`~ray.tune.stopper.Stopper` interface for
-    stopping individual trials or even entire experiments based on custom stopping
-    criteria. For example, the following example stops all trials after the criteria
-    is achieved by any individual trial and prevents new ones from starting:
+    .. tab-item:: Custom Stopper Class
 
-    .. literalinclude:: /tune/doc_code/stopping.py
-        :language: python
-        :start-after: __stopping_cls_start__
-        :end-before: __stopping_cls_end__
+        Finally, you can implement the :class:`~ray.tune.stopper.Stopper` interface for
+        stopping individual trials or even entire experiments based on custom stopping
+        criteria. For example, the following example stops all trials after the criteria
+        is achieved by any individual trial and prevents new ones from starting:
 
-    In the example, once any trial reaches a ``mean_accuracy`` of 0.8 or more, all trials will stop.
+        .. literalinclude:: /tune/doc_code/stopping.py
+            :language: python
+            :start-after: __stopping_cls_start__
+            :end-before: __stopping_cls_end__
 
-    .. note::
+        In the example, once any trial reaches a ``mean_accuracy`` of 0.8 or more, all trials will stop.
 
-        When returning ``True`` from ``stop_all``, currently running trials will not stop immediately.
-        They will stop after finishing their ongoing training iteration (after ``session.report`` or ``step``).
+        .. note::
 
-    Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
+            When returning ``True`` from ``stop_all``, currently running trials will not stop immediately.
+            They will stop after finishing their ongoing training iteration (after ``session.report`` or ``step``).
+
+        Ray Tune comes with a set of out-of-the-box stopper classes. See the :ref:`Stopper <tune-stoppers>` documentation.
 
 
 Stop trials after a certain amount of time

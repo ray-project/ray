@@ -44,6 +44,7 @@ class LongPollNamespace(Enum):
 
     RUNNING_REPLICAS = auto()
     ROUTE_TABLE = auto()
+    ACTIVE_NODES = auto()
 
 
 @dataclass
@@ -166,7 +167,8 @@ class LongPollClient:
 
         logger.debug(
             f"LongPollClient {self} received updates for keys: "
-            f"{list(updates.keys())}."
+            f"{list(updates.keys())}.",
+            extra={"log_to_stderr": False},
         )
         for key, update in updates.items():
             self.object_snapshots[key] = update.object_snapshot

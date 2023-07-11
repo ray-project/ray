@@ -63,7 +63,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         checkpoint_path = os.path.join(self.tmpdir, "warmStartTest.pkl")
@@ -82,7 +82,7 @@ class AbstractWarmStartTest:
             scheduler=self.get_scheduler(),
             verbose=0,
             name=self.experiment_name,
-            local_dir=self.tmpdir,
+            storage_path=self.tmpdir,
             reuse_actors=True,
         )
         return results
@@ -470,10 +470,6 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
-@pytest.mark.skipif(
-    os.environ.get("TUNE_NEW_EXECUTION") == "1",
-    reason="BOHB does not currently work with the new execution backend.",
-)
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}

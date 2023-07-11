@@ -27,14 +27,14 @@ def take_table(
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
     from ray.air.util.transform_pyarrow import (
-        _is_column_extension_type,
         _concatenate_extension_column,
+        _is_column_extension_type,
     )
 
     if any(_is_column_extension_type(col) for col in table.columns):
         new_cols = []
         for col in table.columns:
-            if _is_column_extension_type(col):
+            if _is_column_extension_type(col) and col.num_chunks > 1:
                 # .take() will concatenate internally, which currently breaks for
                 # extension arrays.
                 col = _concatenate_extension_column(col)
@@ -50,11 +50,12 @@ def unify_schemas(
 ) -> "pyarrow.Schema":
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas."""
+    import pyarrow as pa
+
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
-    import pyarrow as pa
 
     schemas_to_unify = []
     schema_field_overrides = {}
@@ -124,10 +125,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
-    from ray.data.extensions import (
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
-    )
+    from ray.data.extensions import ArrowTensorType, ArrowVariableShapedTensorType
 
     # Single flat list of chunks across all chunked arrays.
     chunks = []
@@ -152,12 +150,13 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
     """Concatenate provided Arrow Tables into a single Arrow Table. This has special
     handling for extension types that pyarrow.concat_tables does not yet support.
     """
+    import pyarrow as pa
+
     from ray.data.extensions import (
         ArrowTensorArray,
         ArrowTensorType,
         ArrowVariableShapedTensorType,
     )
-    import pyarrow as pa
 
     if not blocks:
         # Short-circuit on empty list of blocks.
@@ -262,3 +261,26 @@ def concat_and_sort(
     ret = concat(blocks)
     indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
     return take_table(ret, indices)
+
+
+def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+    """This is pyarrow.Table.combine_chunks()
+    with support for extension types.
+
+    This will create a new table by combining the chunks the input table has.
+    """
+    from ray.air.util.transform_pyarrow import (
+        _concatenate_extension_column,
+        _is_column_extension_type,
+    )
+
+    cols = table.columns
+    new_cols = []
+    for col in cols:
+        if _is_column_extension_type(col):
+            # Extension arrays don't support concatenation.
+            arr = _concatenate_extension_column(col)
+        else:
+            arr = col.combine_chunks()
+        new_cols.append(arr)
+    return pyarrow.Table.from_arrays(new_cols, schema=table.schema)

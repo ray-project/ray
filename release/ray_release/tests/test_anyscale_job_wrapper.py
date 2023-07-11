@@ -1,6 +1,7 @@
 import pytest
 import sys
 import json
+
 from ray_release.command_runner._anyscale_job_wrapper import (
     main,
     run_bash_command,
@@ -8,11 +9,11 @@ from ray_release.command_runner._anyscale_job_wrapper import (
     OUTPUT_JSON_FILENAME,
 )
 
-s3_kwargs = dict(
-    results_s3_uri=None,
-    metrics_s3_uri=None,
-    output_s3_uri=None,
-    upload_s3_uri=None,
+cloud_storage_kwargs = dict(
+    results_cloud_storage_uri=None,
+    metrics_cloud_storage_uri=None,
+    output_cloud_storage_uri=None,
+    upload_cloud_storage_uri=None,
     artifact_path=None,
 )
 
@@ -47,7 +48,7 @@ def test_prepare_commands_validation(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=["exit 0"],
             prepare_commands_timeouts=[],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
     with pytest.raises(ValueError):
         main(
@@ -56,7 +57,7 @@ def test_prepare_commands_validation(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=[],
             prepare_commands_timeouts=[1],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
 
 
@@ -69,7 +70,7 @@ def test_end_to_end(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=[],
             prepare_commands_timeouts=[],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )
@@ -85,7 +86,7 @@ def test_end_to_end_prepare_commands(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=["exit 0", "exit 0"],
             prepare_commands_timeouts=[1, 1],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )
@@ -101,7 +102,7 @@ def test_end_to_end_long_running(tmpdir):
             test_no_raise_on_timeout=True,
             prepare_commands=[],
             prepare_commands_timeouts=[],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )
@@ -117,7 +118,7 @@ def test_end_to_end_timeout(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=[],
             prepare_commands_timeouts=[],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )
@@ -133,7 +134,7 @@ def test_end_to_end_prepare_timeout(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=["exit 0", "sleep 10"],
             prepare_commands_timeouts=[1, 1],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )
@@ -150,7 +151,7 @@ def test_end_to_end_failure(tmpdir, long_running):
             test_no_raise_on_timeout=long_running,
             prepare_commands=[],
             prepare_commands_timeouts=[],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )
@@ -166,7 +167,7 @@ def test_end_to_end_prepare_failure(tmpdir):
             test_no_raise_on_timeout=False,
             prepare_commands=["exit 0", "exit 1"],
             prepare_commands_timeouts=[1, 1],
-            **s3_kwargs
+            **cloud_storage_kwargs
         )
         == expected_return_code
     )

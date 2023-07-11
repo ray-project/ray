@@ -24,7 +24,7 @@ import asyncio
 import random
 import ray
 from ray import serve
-from ray.serve.handle import RayServeDeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
 
 @serve.deployment
@@ -35,9 +35,7 @@ class Model:
 
 @serve.deployment
 class DynamicDispatcher:
-    def __init__(
-        self, handle_a: RayServeDeploymentHandle, handle_b: RayServeDeploymentHandle
-    ):
+    def __init__(self, handle_a: RayServeHandle, handle_b: RayServeHandle):
         self.handle_a = handle_a
         self.handle_b = handle_b
 
@@ -66,7 +64,7 @@ assert ray.get(ref) == "hello"
 import asyncio
 import ray
 from ray import serve
-from ray.serve.handle import RayServeDeploymentHandle, RayServeSyncHandle
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 
 
 @serve.deployment
@@ -77,9 +75,7 @@ class Model:
 
 @serve.deployment
 class Chain:
-    def __init__(
-        self, handle_a: RayServeDeploymentHandle, handle_b: RayServeDeploymentHandle
-    ):
+    def __init__(self, handle_a: RayServeHandle, handle_b: RayServeHandle):
         self.handle_a = handle_a
         self.handle_b = handle_b
 

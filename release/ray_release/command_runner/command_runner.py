@@ -1,10 +1,11 @@
 import abc
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.reporter.artifacts import DEFAULT_ARTIFACTS_DIR
 from ray_release.util import exponential_backoff_retry
+from ray_release.logger import logger
 from click.exceptions import ClickException
 
 
@@ -99,6 +100,7 @@ class CommandRunner(abc.ABC):
         env: Optional[Dict] = None,
         timeout: float = 3600.0,
         raise_on_timeout: bool = True,
+        pip: Optional[List[str]] = None,
     ) -> float:
         """Run command."""
         raise NotImplementedError
@@ -118,7 +120,14 @@ class CommandRunner(abc.ABC):
             max_retries=3,
         )
 
-    def get_last_logs(self):
+    def get_last_logs(self) -> Optional[str]:
+        try:
+            return self.get_last_logs_ex()
+        except Exception as e:
+            logger.exception(f"Error fetching logs: {e}")
+            return None
+
+    def get_last_logs_ex(self):
         raise NotImplementedError
 
     def fetch_results(self) -> Dict[str, Any]:

@@ -42,6 +42,14 @@ class URI:
         assert self._path.parent != ".", f"{str(self)} has no valid parent URI"
         return URI(self._get_str_representation(self._parsed, self._path.parent))
 
+    @property
+    def scheme(self) -> str:
+        return self._parsed.scheme
+
+    @property
+    def path(self) -> str:
+        return str(self._path)
+
     def __truediv__(self, path_to_append):
         assert isinstance(path_to_append, str)
         return URI(
@@ -59,3 +67,23 @@ class URI:
 
     def __str__(self):
         return self._get_str_representation(self._parsed, self._path)
+
+
+def _join_path_or_uri(base_path: str, path_to_join: str) -> str:
+    """Joins paths to form either a URI (w/ possible URL params) or a local path.
+
+    Example:
+
+        >>> local_path = "/a/b"
+        >>> uri = "s3://bucket/a?scheme=http"
+        >>> path_to_join = "c/d"
+        >>> _join_path_or_uri(local_path, path_to_join)
+        '/a/b/c/d'
+        >>> _join_path_or_uri(uri, path_to_join)
+        's3://bucket/a/c/d?scheme=http'
+
+    """
+    from ray.air._internal.remote_storage import is_local_path
+
+    base_path_or_uri = Path(base_path) if is_local_path(base_path) else URI(base_path)
+    return str(base_path_or_uri / path_to_join)

@@ -12,10 +12,9 @@ from ray._private.utils import (
     import_attr,
     run_background_task,
 )
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
-from ray._private.gcs_utils import GcsClient
-from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
+from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
+from ray._raylet import GcsClient
 from ray.serve._private.common import (
     DeploymentInfo,
     EndpointInfo,
@@ -24,24 +23,33 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
     StatusOverview,
     ServeDeployMode,
+    MultiplexedReplicaInfo,
 )
-from ray.serve.config import DeploymentConfig, HTTPOptions, ReplicaConfig
+from ray.serve.config import HTTPOptions
 from ray.serve._private.constants import (
     CONTROL_LOOP_PERIOD_S,
     SERVE_LOGGER_NAME,
     CONTROLLER_MAX_CONCURRENCY,
     SERVE_ROOT_URL_ENV_KEY,
     SERVE_NAMESPACE,
-    RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE,
+    RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
+    RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
+)
+from ray.serve._private.deploy_utils import (
+    deploy_args_to_deployment_info,
+    get_app_code_version,
 )
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
-from ray.serve._private.logging_utils import configure_component_logger
-from ray.serve._private.long_poll import LongPollHost
+from ray.serve._private.logging_utils import (
+    configure_component_logger,
+    get_component_logger_file_path,
+)
+from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -49,11 +57,14 @@ from ray.serve.schema import (
     ApplicationDetails,
     ServeInstanceDetails,
     HTTPOptionsSchema,
+    ServeActorDetails,
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
+    DEFAULT,
     override_runtime_envs_except_env_vars,
-    get_random_letters,
+    call_function_from_import_path,
+    get_head_node_id,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -98,13 +109,23 @@ class ServeController:
         controller_name: str,
         *,
         http_config: HTTPOptions,
-        head_node_id: str,
         detached: bool = False,
         _disable_http_proxy: bool = False,
     ):
+        self._controller_node_id = ray.get_runtime_context().get_node_id()
+        assert (
+            self._controller_node_id == get_head_node_id()
+        ), "Controller must be on the head node."
+
         configure_component_logger(
             component_name="controller", component_id=str(os.getpid())
         )
+        if RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH:
+            logger.info(
+                "Calling user-provided callback from import path "
+                f"{RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH}."
+            )
+            call_function_from_import_path(RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH)
 
         # Used to read/write checkpoints.
         self.ray_worker_namespace = ray.get_runtime_context().namespace
@@ -117,11 +138,8 @@ class ServeController:
         # Dictionary of deployment_name -> proxy_name -> queue length.
         self.deployment_stats = defaultdict(lambda: defaultdict(dict))
 
-        # Used to ensure that only a single state-changing operation happens
-        # at any given time.
-        self.write_lock = asyncio.Lock()
-
         self.long_poll_host = LongPollHost()
+        self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
             self.http_state = None
@@ -130,7 +148,7 @@ class ServeController:
                 controller_name,
                 detached,
                 http_config,
-                head_node_id,
+                self._controller_node_id,
                 gcs_client,
             )
 
@@ -155,15 +173,29 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager
+            self.deployment_state_manager, self.endpoint_state, self.kv_store
         )
 
         # Keep track of single-app vs multi-app
         self.deploy_mode = ServeDeployMode.UNSET
+        # Controller actor details
+        self._actor_details = ServeActorDetails(
+            node_id=ray.get_runtime_context().get_node_id(),
+            node_ip=ray.util.get_node_ip_address(),
+            actor_id=ray.get_runtime_context().get_actor_id(),
+            actor_name=self.controller_name,
+            worker_id=ray.get_runtime_context().get_worker_id(),
+            log_file_path=get_component_logger_file_path(),
+        )
+        self._shutting_down = False
+        self._shutdown = asyncio.Event()
+        self._shutdown_start_time = None
 
         run_background_task(self.run_control_loop())
 
         self._recover_config_from_checkpoint()
+        self._active_nodes = set()
+        self._update_active_nodes()
 
     def check_alive(self) -> None:
         """No-op to check if this controller is alive."""
@@ -173,6 +205,9 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(self, data: Dict[str, float], send_timestamp: float):
+        logger.debug(
+            f"Received autoscaling metrics: {data} at timestamp {send_timestamp}"
+        )
         self.deployment_state_manager.record_autoscaling_metrics(data, send_timestamp)
 
     def record_handle_metrics(self, data: Dict[str, float], send_timestamp: float):
@@ -199,6 +234,9 @@ class ServeController:
               determine whether or not the host should immediately return the
               data or wait for the value to be changed.
         """
+        if not self.done_recovering_event.is_set():
+            await self.done_recovering_event.wait()
+
         return await (self.long_poll_host.listen_for_change(keys_to_snapshot_ids))
 
     async def listen_for_change_java(self, keys_to_snapshot_ids_bytes: bytes):
@@ -208,6 +246,9 @@ class ServeController:
             keys_to_snapshot_ids_bytes (Dict[str, int]): the protobuf bytes of
               keys_to_snapshot_ids (Dict[str, int]).
         """
+        if not self.done_recovering_event.is_set():
+            await self.done_recovering_event.wait()
+
         return await (
             self.long_poll_host.listen_for_change_java(keys_to_snapshot_ids_bytes)
         )
@@ -248,26 +289,67 @@ class ServeController:
         )
         return actor_name_list.SerializeToString()
 
+    def _update_active_nodes(self):
+        """Update the active nodes set.
+
+        Controller keeps the state of active nodes (head node and nodes with deployment
+        replicas). If the active nodes set changes, it will notify the long poll client.
+        """
+        new_active_nodes = self.deployment_state_manager.get_active_node_ids()
+        new_active_nodes.add(self._controller_node_id)
+        if self._active_nodes != new_active_nodes:
+            self._active_nodes = new_active_nodes
+            self.long_poll_host.notify_changed(
+                LongPollNamespace.ACTIVE_NODES, self._active_nodes
+            )
+
     async def run_control_loop(self) -> None:
         # NOTE(edoakes): we catch all exceptions here and simply log them,
         # because an unhandled exception would cause the main control loop to
         # halt, which should *never* happen.
+        recovering_timeout = RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S
+        start_time = time.time()
         while True:
+            if self._shutting_down:
+                try:
+                    self.shutdown()
+                except Exception:
+                    logger.exception("Exception during shutdown.")
 
-            async with self.write_lock:
-                if self.http_state:
-                    try:
-                        self.http_state.update()
-                    except Exception:
-                        logger.exception("Exception updating HTTP state.")
+            if (
+                not self.done_recovering_event.is_set()
+                and time.time() - start_time > recovering_timeout
+            ):
+                logger.warning(
+                    f"Replicas still recovering after {recovering_timeout}s, "
+                    "setting done recovering event to broadcast long poll updates."
+                )
+                self.done_recovering_event.set()
+
+            # Update the active nodes set before updating the HTTP states, so they
+            # are more consistent.
+            self._update_active_nodes()
+
+            # Don't update http_state until after the done recovering event is set,
+            # otherwise we may start a new HTTP proxy but not broadcast it any
+            # info about available deployments & their replicas.
+            if self.http_state and self.done_recovering_event.is_set():
                 try:
-                    self.deployment_state_manager.update()
+                    self.http_state.update(active_nodes=self._active_nodes)
                 except Exception:
-                    logger.exception("Exception updating deployment state.")
-                try:
-                    self.application_state_manager.update()
-                except Exception:
-                    logger.exception("Exception updating application state.")
+                    logger.exception("Exception updating HTTP state.")
+
+            try:
+                any_recovering = self.deployment_state_manager.update()
+                if not self.done_recovering_event.is_set() and not any_recovering:
+                    self.done_recovering_event.set()
+            except Exception:
+                logger.exception("Exception updating deployment state.")
+
+            try:
+                self.application_state_manager.update()
+            except Exception:
+                logger.exception("Exception updating application state.")
 
             try:
                 self._put_serve_snapshot()
@@ -321,24 +403,20 @@ class ServeController:
     def _recover_config_from_checkpoint(self):
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
         if checkpoint is not None:
+            logger.info("Recovering config from checkpoint.")
             deployment_time, deploy_mode, config_checkpoints_dict = pickle.loads(
                 checkpoint
             )
-            applications = [
-                app_config_dict
-                for app_config_dict, _ in config_checkpoints_dict.values()
-            ]
+            applications = list(config_checkpoints_dict.values())
             if deploy_mode == ServeDeployMode.SINGLE_APP:
                 self.deploy_apps(
                     ServeApplicationSchema.parse_obj(applications[0]),
                     deployment_time,
-                    False,
                 )
             else:
                 self.deploy_apps(
                     ServeDeploySchema.parse_obj({"applications": applications}),
                     deployment_time,
-                    False,
                 )
 
     def _all_running_replicas(self) -> Dict[str, List[RunningReplicaInfo]]:
@@ -370,14 +448,83 @@ class ServeController:
                 )
         return http_config.root_url
 
-    async def shutdown(self):
-        """Shuts down the serve instance completely."""
-        async with self.write_lock:
-            self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
-            self.deployment_state_manager.shutdown()
-            self.endpoint_state.shutdown()
-            if self.http_state:
-                self.http_state.shutdown()
+    def config_checkpoint_deleted(self) -> bool:
+        """Returns whether the config checkpoint has been deleted.
+
+        Get the config checkpoint from the kv store. If it is None, then it has been
+        deleted.
+        """
+        return self.kv_store.get(CONFIG_CHECKPOINT_KEY) is None
+
+    def shutdown(self):
+        """Shuts down the serve instance completely.
+
+        This method will only be triggered when `self._shutting_down` is true. It
+        deletes the kv store for config checkpoints, sets application state to deleting,
+        delete all deployments, and shuts down all HTTP proxies. Once all these
+        resources are released, it then kills the controller actor.
+        """
+        if not self._shutting_down:
+            return
+
+        if self._shutdown_start_time is None:
+            self._shutdown_start_time = time.time()
+
+        logger.info("Controller shutdown started!", extra={"log_to_stderr": False})
+        self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
+        self.application_state_manager.shutdown()
+        self.deployment_state_manager.shutdown()
+        self.endpoint_state.shutdown()
+        if self.http_state:
+            self.http_state.shutdown()
+
+        config_checkpoint_deleted = self.config_checkpoint_deleted()
+        application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
+        deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
+        endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
+        http_state_is_shutdown = (
+            self.http_state is None or self.http_state.is_ready_for_shutdown()
+        )
+        if (
+            config_checkpoint_deleted
+            and application_is_shutdown
+            and deployment_is_shutdown
+            and endpoint_is_shutdown
+            and http_state_is_shutdown
+        ):
+            logger.warning(
+                "All resources have shut down, shutting down controller!",
+                extra={"log_to_stderr": False},
+            )
+            _controller_actor = ray.get_runtime_context().current_actor
+            self._shutdown.set()
+            ray.kill(_controller_actor, no_restart=True)
+        elif time.time() - self._shutdown_start_time > 10:
+            if not config_checkpoint_deleted:
+                logger.warning(
+                    f"{CONFIG_CHECKPOINT_KEY} not yet deleted",
+                    extra={"log_to_stderr": False},
+                )
+            if not application_is_shutdown:
+                logger.warning(
+                    "application not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
+            if not deployment_is_shutdown:
+                logger.warning(
+                    "deployment not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
+            if not endpoint_is_shutdown:
+                logger.warning(
+                    "endpoint not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
+            if not http_state_is_shutdown:
+                logger.warning(
+                    "http_state not yet shutdown",
+                    extra={"log_to_stderr": False},
+                )
 
     def deploy(
         self,
@@ -388,94 +535,66 @@ class ServeController:
         deployer_job_id: Union[str, bytes],
         docs_path: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
+        app_name: str = None,
+        # TODO(edoakes): this is a hack because the deployment_language doesn't seem
+        # to get set properly from Java.
+        is_deployed_from_python: bool = False,
     ) -> bool:
+        """Deploys a deployment."""
         if route_prefix is not None:
             assert route_prefix.startswith("/")
         if docs_path is not None:
             assert docs_path.startswith("/")
 
-        deployment_config = DeploymentConfig.from_proto_bytes(
-            deployment_config_proto_bytes
-        )
-        version = deployment_config.version
-        replica_config = ReplicaConfig.from_proto_bytes(
-            replica_config_proto_bytes, deployment_config.needs_pickle()
-        )
+        # app_name is None for V1 API, reset it to empty string to avoid
+        # breaking metrics.
+        if app_name is None:
+            app_name = ""
 
-        autoscaling_config = deployment_config.autoscaling_config
-        if autoscaling_config is not None:
-            if autoscaling_config.initial_replicas is not None:
-                deployment_config.num_replicas = autoscaling_config.initial_replicas
-            else:
-                previous_deployment = self.deployment_state_manager.get_deployment(name)
-                if previous_deployment is None:
-                    deployment_config.num_replicas = autoscaling_config.min_replicas
-                else:
-                    deployment_config.num_replicas = (
-                        previous_deployment.deployment_config.num_replicas
-                    )
-
-            autoscaling_policy = BasicAutoscalingPolicy(autoscaling_config)
-        else:
-            autoscaling_policy = None
-
-        # Java API passes in JobID as bytes
-        if isinstance(deployer_job_id, bytes):
-            deployer_job_id = ray.JobID.from_int(
-                int.from_bytes(deployer_job_id, "little")
-            ).hex()
-
-        deployment_info = DeploymentInfo(
-            actor_name=name,
-            version=version,
-            deployment_config=deployment_config,
-            replica_config=replica_config,
+        deployment_info = deploy_args_to_deployment_info(
+            deployment_name=name,
+            deployment_config_proto_bytes=deployment_config_proto_bytes,
+            replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
-            start_time_ms=int(time.time() * 1000),
-            autoscaling_policy=autoscaling_policy,
+            route_prefix=route_prefix,
             is_driver_deployment=is_driver_deployment,
+            app_name=app_name,
         )
+
         # TODO(architkulkarni): When a deployment is redeployed, even if
         # the only change was num_replicas, the start_time_ms is refreshed.
         # Is this the desired behaviour?
         updating = self.deployment_state_manager.deploy(name, deployment_info)
 
         if route_prefix is not None:
-            endpoint_info = EndpointInfo(route=route_prefix)
+            endpoint_info = EndpointInfo(
+                route=route_prefix,
+                app_name=app_name,
+                app_is_cross_language=not is_deployed_from_python,
+            )
             self.endpoint_state.update_endpoint(name, endpoint_info)
         else:
             self.endpoint_state.delete_endpoint(name)
 
         return updating
 
-    def deploy_group(self, name: str, deployment_args_list: List[Dict]) -> List[bool]:
+    def deploy_application(self, name: str, deployment_args_list: List[Dict]) -> None:
         """
-        Takes in a list of dictionaries that contain keyword arguments for the
-        controller's deploy() function. Calls deploy on all the argument
-        dictionaries in the list. Effectively executes an atomic deploy on a
-        group of deployments.
+        Takes in a list of dictionaries that contain deployment arguments.
         If same app name deployed, old application will be overwrriten.
 
         Args:
             name: Application name.
             deployment_args_list: List of deployment infomation, each item in the list
                 contains all the information for the single deployment.
-
-        Returns: list of deployment status to indicate whether each deployment is
-            deployed successfully or not.
         """
 
-        deployments_to_delete = self.application_state_manager.deploy_application(
-            name, deployment_args_list
-        )
-        self.delete_deployments(deployments_to_delete)
-        return [self.deploy(**args) for args in deployment_args_list]
+        self.application_state_manager.apply_deployment_args(name, deployment_args_list)
 
     def deploy_apps(
         self,
         config: Union[ServeApplicationSchema, ServeDeploySchema],
         deployment_time: float = 0,
-        _internal: bool = False,
     ) -> None:
         """Kicks off a task that deploys a set of Serve applications.
 
@@ -496,11 +615,6 @@ class ServeController:
 
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
-
-            _internal: whether the config is provided by user or internally (i.e. it is
-                restored from a checkpoint). If it is provided by the user, we need to
-                prepend the app name to each deployment name. If not, it should already
-                be prepended.
         """
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
@@ -545,38 +659,13 @@ class ServeController:
         if not deployment_time:
             deployment_time = time.time()
 
-        # Load checkpointed data from last time deploy_apps was called
-        config_checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if config_checkpoint is None:
-            config_checkpoints_dict = {}
-        else:
-            _, _, config_checkpoints_dict = pickle.loads(config_checkpoint)
-
         new_config_checkpoint = {}
 
         for app_config in applications:
+            code_version = get_app_code_version(app_config)
+
             app_config_dict = app_config.dict(exclude_unset=True)
-
-            # Compare new config options with old ones, set versions of new deployments
-            if app_config.name in config_checkpoints_dict:
-                (prev_app_config, prev_versions) = config_checkpoints_dict[
-                    app_config.name
-                ]
-
-                updated_versions = _generate_deployment_config_versions(
-                    app_config_dict,
-                    prev_app_config,
-                    prev_versions,
-                )
-            else:
-                updated_versions = _generate_deployment_config_versions(app_config_dict)
-
-            deployment_override_options = app_config_dict.get("deployments", [])
-
-            new_config_checkpoint[app_config.name] = (
-                app_config_dict,
-                updated_versions,
-            )
+            new_config_checkpoint[app_config.name] = app_config_dict
 
             logger.info(
                 "Starting deploy_serve_application "
@@ -587,10 +676,11 @@ class ServeController:
             ).remote(
                 app_config.import_path,
                 app_config.runtime_env,
-                deployment_override_options,
-                updated_versions,
+                app_config_dict.get("deployments", []),
+                code_version,
+                app_config_dict.get("route_prefix", DEFAULT.VALUE),
                 app_config.name,
-                app_config_dict.get("route_prefix", "/"),
+                app_config.args,
             )
 
             self.application_state_manager.create_application_state(
@@ -723,6 +813,8 @@ class ServeController:
                 status=app_status_info.status,
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
+                # This can be none if the app was deployed through
+                # serve.run, or if the app is in deleting state
                 deployed_app_config=self.get_app_config(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
@@ -735,11 +827,16 @@ class ServeController:
         # route_prefix is set instead in each application.
         # Eventually we want to remove route_prefix from DeploymentSchema.
         return ServeInstanceDetails(
+            controller_info=self._actor_details,
             proxy_location=http_config.location,
             http_options=HTTPOptionsSchema(
                 host=http_config.host,
                 port=http_config.port,
+                request_timeout_s=http_config.request_timeout_s,
             ),
+            http_proxies=self.http_state.get_http_proxy_details()
+            if self.http_state
+            else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
         ).dict(exclude_unset=True)
@@ -751,7 +848,7 @@ class ServeController:
             is NOT_STARTED.
         """
 
-        app_status = self.application_state_manager.get_app_status(name)
+        app_status = self.application_state_manager.get_app_status_info(name)
         deployment_statuses = self.application_state_manager.get_deployments_statuses(
             name
         )
@@ -779,7 +876,7 @@ class ServeController:
         if checkpoint is not None:
             _, _, config_checkpoints_dict = pickle.loads(checkpoint)
             if name in config_checkpoints_dict:
-                config, _ = config_checkpoints_dict[name]
+                config = config_checkpoints_dict[name]
                 return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
 
     def get_all_deployment_statuses(self) -> List[bytes]:
@@ -805,98 +902,30 @@ class ServeController:
 
         During deletion, the application status is DELETING
         """
-        deployments_to_delete = []
         for name in names:
-            deployments_to_delete.extend(
-                self.application_state_manager.get_deployments(name)
-            )
             self.application_state_manager.delete_application(name)
-        self.delete_deployments(deployments_to_delete)
 
+    def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
+        """Record multiplexed model ids for a replica of deployment
+        Args:
+            info: MultiplexedReplicaInfo including deployment name, replica tag and
+                model ids.
+        """
+        self.deployment_state_manager.record_multiplexed_replica_info(info)
 
-def _generate_deployment_config_versions(
-    new_config: Dict,
-    last_deployed_config: Dict = None,
-    last_deployed_versions: Dict = None,
-) -> Dict[str, str]:
-    """
-    This function determines whether each deployment's version should be changed based
-    on the newly deployed config.
+    async def graceful_shutdown(self, wait: bool = True):
+        """Set the shutting down flag on controller to signal shutdown in
+        run_control_loop().
 
-    When ``import_path`` or ``runtime_env`` is changed, the versions for all deployments
-    should be changed, so old replicas are torn down. When the options for a deployment
-    in ``deployments`` change, its version should generally change. The only deployment
-    options that can be changed without tearing down replicas (i.e. changing the
-    version) are:
-    * num_replicas
-    * user_config
-    * autoscaling_config
+        This is used to signal to the controller that it should proceed with shutdown
+        process, so it can shut down gracefully. It also waits until the shutdown
+        event is triggered if wait is true.
+        """
+        self._shutting_down = True
+        if not wait:
+            return
 
-    A deployment option is considered changed when:
-    * it was not specified in last_deployed_config and is specified in new_config
-    * it was specified in last_deployed_config and is not specified in new_config
-    * it is specified in both last_deployed_config and new_config but the specified
-      value has changed
-
-    Args:
-        new_config: Newly deployed config dict that follows ServeApplicationSchema
-        last_deployed_config: Last deployed config dict that follows
-            ServeApplicationSchema, which is an empty dictionary if there is no previous
-            deployment
-        last_deployed_versions: Dictionary of {deployment_name: str -> version: str}
-            tracking the versions of deployments listed in the last deployed config
-
-    Returns:
-        Dictionary of {deployment_name: str -> version: str} containing updated
-        versions for deployments listed in the new config
-    """
-    # If import_path or runtime_env is changed, it is considered a code change
-    if last_deployed_config is None:
-        last_deployed_config = {}
-    if last_deployed_versions is None:
-        last_deployed_versions = {}
-
-    if last_deployed_config.get("import_path") != new_config.get(
-        "import_path"
-    ) or last_deployed_config.get("runtime_env") != new_config.get("runtime_env"):
-        last_deployed_config, last_deployed_versions = {}, {}
-
-    new_deployments = {d["name"]: d for d in new_config.get("deployments", [])}
-    old_deployments = {
-        d["name"]: d for d in last_deployed_config.get("deployments", [])
-    }
-
-    def exclude_lightweight_update_options(dict):
-        # Exclude config options from dict that qualify for a lightweight config
-        # update. Changes in any other config options are considered a code change,
-        # and require a version change to trigger an update that tears
-        # down existing replicas and replaces them with updated ones.
-        lightweight_update_options = [
-            "num_replicas",
-            "user_config",
-            "autoscaling_config",
-        ]
-        return {
-            option: dict[option]
-            for option in dict
-            if option not in lightweight_update_options
-        }
-
-    updated_versions = {}
-    for name in new_deployments:
-        new_deployment = exclude_lightweight_update_options(new_deployments[name])
-        old_deployment = exclude_lightweight_update_options(
-            old_deployments.get(name, {})
-        )
-
-        # If config options haven't changed, version stays the same
-        # otherwise, generate a new random version
-        if old_deployment == new_deployment:
-            updated_versions[name] = last_deployed_versions[name]
-        else:
-            updated_versions[name] = get_random_letters()
-
-    return updated_versions
+        await self._shutdown.wait()
 
 
 @ray.remote(num_cpus=0, max_calls=1)
@@ -904,10 +933,11 @@ def deploy_serve_application(
     import_path: str,
     runtime_env: Dict,
     deployment_override_options: List[Dict],
-    deployment_versions: Dict,
-    name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = "/",
-):
+    code_version: str,
+    route_prefix: str,
+    name: str,
+    args: Dict,
+) -> Optional[str]:
     """Deploy Serve application from a user-provided config.
 
     Args:
@@ -921,15 +951,19 @@ def deploy_serve_application(
         name: application name. If specified, application will be deployed
             without removing existing applications.
         route_prefix: route_prefix. Define the route path for the application.
+    Returns:
+        Returns None if no error is raised. Otherwise, returns error message.
     """
     try:
         from ray import serve
         from ray.serve.api import build
+        from ray.serve._private.api import call_app_builder_with_args_if_necessary
 
         # Import and build the application.
-        app = build(import_attr(import_path), name)
+        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
+        app = build(app, name)
 
-        # Override options for each deployment.
+        # Override options for each deployment listed in the config.
         for options in deployment_override_options:
             deployment_name = options["name"]
             unique_deployment_name = (
@@ -958,19 +992,26 @@ def deploy_serve_application(
             )
             ray_actor_options.update({"runtime_env": merged_env})
             options["ray_actor_options"] = ray_actor_options
-            options["version"] = deployment_versions[deployment_name]
             options["name"] = unique_deployment_name
             # Update the deployment's options
             app.deployments[unique_deployment_name].set_options(
                 **options, _internal=True
             )
 
+        # Set code version for each deployment
+        for deployment_name in app.deployments:
+            app.deployments[deployment_name].set_options(
+                version=code_version, _internal=True
+            )
+
         # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix)
+        serve.run(app, name=name, route_prefix=route_prefix, _blocking=False)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
         logger.debug("Existing config deployment request terminated.")
+    except Exception as e:
+        return repr(e)
 
 
 @ray.remote(num_cpus=0)
@@ -994,12 +1035,10 @@ class ServeControllerAvatar:
         http_proxy_port: int = 8000,
     ):
         try:
-            self._controller = ray.get_actor(controller_name, namespace="serve")
+            self._controller = ray.get_actor(controller_name, namespace=SERVE_NAMESPACE)
         except ValueError:
             self._controller = None
         if self._controller is None:
-            # Used for scheduling things to the head node explicitly.
-            head_node_id = ray.get_runtime_context().get_node_id()
             http_config = HTTPOptions()
             http_config.port = http_proxy_port
             self._controller = ServeController.options(
@@ -1008,20 +1047,12 @@ class ServeControllerAvatar:
                 lifetime="detached" if detached else None,
                 max_restarts=-1,
                 max_task_retries=-1,
-                # Schedule the controller on the head node with a soft constraint. This
-                # prefers it to run on the head node in most cases, but allows it to be
-                # restarted on other nodes in an HA cluster.
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node_id, soft=True
-                )
-                if RAY_INTERNAL_SERVE_CONTROLLER_PIN_ON_NODE
-                else None,
-                namespace="serve",
+                resources={HEAD_NODE_RESOURCE_NAME: 0.001},
+                namespace=SERVE_NAMESPACE,
                 max_concurrency=CONTROLLER_MAX_CONCURRENCY,
             ).remote(
                 controller_name,
                 http_config=http_config,
-                head_node_id=head_node_id,
                 detached=detached,
             )
 

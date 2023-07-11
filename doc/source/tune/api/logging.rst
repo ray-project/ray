@@ -11,8 +11,7 @@ see :ref:`Trainable Logging <trainable-logging>`.
 
 .. note::
 
-    Tune's per-trial ``Logger`` classes have been deprecated. They can still be used, but we encourage you
-    to use the ``LoggerCallback`` interface instead.
+    Tune's per-trial ``Logger`` classes have been deprecated. Use the ``LoggerCallback`` interface instead.
 
 
 .. currentmodule:: ray
@@ -56,7 +55,6 @@ You can install MLflow via ``pip install mlflow``.
 See the :doc:`tutorial here </tune/examples/tune-mlflow>`.
 
 .. autosummary::
-    :toctree: doc/
 
     air.integrations.mlflow.MLflowLoggerCallback
 
@@ -68,7 +66,6 @@ You can install Wandb via ``pip install wandb``.
 See the :doc:`tutorial here </tune/examples/tune-wandb>`.
 
 .. autosummary::
-    :toctree: doc/
 
     air.integrations.wandb.WandbLoggerCallback
 

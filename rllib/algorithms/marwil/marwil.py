@@ -83,7 +83,7 @@ class MARWILConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
 
         # You should override input_ to point to an offline dataset
-        # (see trainer.py and trainer_config.py).
+        # (see algorithm.py and algorithm_config.py).
         # The dataset may have an arbitrary number of timesteps
         # (and even episodes) per line.
         # However, each line must only contain consecutive timesteps in
@@ -94,6 +94,18 @@ class MARWILConfig(AlgorithmConfig):
         self.postprocess_inputs = True
         self.lr = 1e-4
         self.train_batch_size = 2000
+        # TODO (Artur): MARWIL should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False

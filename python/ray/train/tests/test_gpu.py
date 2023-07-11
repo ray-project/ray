@@ -371,16 +371,16 @@ def test_torch_iter_torch_batches_auto_device(ray_start_4_cpus_2_gpus, use_gpu):
     def train_fn():
         dataset = session.get_dataset_shard("train")
         for batch in dataset.iter_torch_batches(dtypes=torch.float, device="cpu"):
-            assert str(batch.device) == "cpu"
+            assert str(batch["data"].device) == "cpu"
 
         # Autodetect
         for batch in dataset.iter_torch_batches(dtypes=torch.float):
-            assert str(batch.device) == str(train.torch.get_device())
+            assert str(batch["data"].device) == str(train.torch.get_device())
 
     dataset = ray.data.from_numpy(np.array([[1, 2, 3, 4, 5], [1, 2, 3, 4, 5]]).T)
     # Test that this works outside a Train function
     for batch in dataset.iter_torch_batches(dtypes=torch.float, device="cpu"):
-        assert str(batch.device) == "cpu"
+        assert str(batch["data"].device) == "cpu"
 
     trainer = TorchTrainer(
         train_fn,

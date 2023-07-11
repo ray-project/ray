@@ -1,25 +1,25 @@
 import copy
 import os
 import posixpath
+import time
 
-import pytest
-import pyarrow as pa
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
-
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray._private.utils import _get_pyarrow_version
+from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import _ray_start
-from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture(scope="module")
@@ -113,8 +113,9 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
-    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
+
+    from pkg_resources._vendor.packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 
@@ -293,16 +294,16 @@ def assert_base_partitioned_ds():
 
 
 @pytest.fixture
-def restore_dataset_context(request):
-    """Restore any DatasetContext changes after the test runs"""
-    original = copy.deepcopy(ray.data.context.DatasetContext.get_current())
+def restore_data_context(request):
+    """Restore any DataContext changes after the test runs"""
+    original = copy.deepcopy(ray.data.context.DataContext.get_current())
     yield
-    ray.data.context.DatasetContext._set_current(original)
+    ray.data.context.DataContext._set_current(original)
 
 
 @pytest.fixture(params=[True, False])
 def use_push_based_shuffle(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.use_push_based_shuffle
     ctx.use_push_based_shuffle = request.param
     yield request.param
@@ -311,7 +312,7 @@ def use_push_based_shuffle(request):
 
 @pytest.fixture(params=[True, False])
 def enable_automatic_tensor_extension_cast(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_tensor_extension_casting
     ctx.enable_tensor_extension_casting = request.param
     yield request.param
@@ -320,7 +321,7 @@ def enable_automatic_tensor_extension_cast(request):
 
 @pytest.fixture(params=[True, False])
 def enable_auto_log_stats(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.enable_auto_log_stats
     ctx.enable_auto_log_stats = request.param
     yield request.param
@@ -329,7 +330,7 @@ def enable_auto_log_stats(request):
 
 @pytest.fixture(params=[True])
 def enable_dynamic_block_splitting(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.block_splitting_enabled
     ctx.block_splitting_enabled = request.param
     yield request.param
@@ -338,7 +339,7 @@ def enable_dynamic_block_splitting(request):
 
 @pytest.fixture(params=[1024])
 def target_max_block_size(request):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original = ctx.target_max_block_size
     ctx.target_max_block_size = request.param
     yield request.param
@@ -347,7 +348,7 @@ def target_max_block_size(request):
 
 @pytest.fixture
 def enable_optimizer():
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
     original_optimizer = ctx.optimizer_enabled
     ctx.new_execution_backend = True
@@ -359,7 +360,7 @@ def enable_optimizer():
 
 @pytest.fixture
 def enable_streaming_executor():
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     original_backend = ctx.new_execution_backend
     use_streaming_executor = ctx.use_streaming_executor
     ctx.new_execution_backend = True
@@ -465,9 +466,16 @@ def stage_two_block():
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
     }
+
+    block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
         block_exec_stats = BlockExecStats()
+        # The blocks are executing from [0, 5] and [20, 30].
+        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
+        block_exec_stats.end_time_s = (
+            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]

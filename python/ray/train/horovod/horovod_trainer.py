@@ -1,6 +1,7 @@
 from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
 
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
+from ray.air.config import ScalingConfig, RunConfig
+from ray.train.data_config import DataConfig
 from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
 
@@ -24,12 +25,12 @@ class HorovodTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -47,7 +48,7 @@ class HorovodTrainer(DataParallelTrainer):
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
@@ -57,7 +58,7 @@ class HorovodTrainer(DataParallelTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -79,7 +80,9 @@ class HorovodTrainer(DataParallelTrainer):
 
     Example:
 
-    .. code-block:: python
+
+    .. testcode::
+        :skipif: True
 
         import ray
         import ray.train as train
@@ -162,7 +165,7 @@ class HorovodTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -179,7 +182,7 @@ class HorovodTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         horovod_config: Optional[HorovodConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

@@ -1,7 +1,7 @@
 # flake8: noqa
 
 # __deployment_full_start__
-# File name: serve_deployment.py
+# File name: serve_quickstart.py
 from starlette.requests import Request
 
 import ray
@@ -30,11 +30,11 @@ class Translator:
         return self.translate(english_text)
 
 
-translator = Translator.bind()
+translator_app = Translator.bind()
 # __deployment_full_end__
 
-translator = Translator.options(ray_actor_options={}).bind()
-serve.run(translator)
+translator_app = Translator.options(ray_actor_options={}).bind()
+serve.run(translator_app)
 
 import requests
 

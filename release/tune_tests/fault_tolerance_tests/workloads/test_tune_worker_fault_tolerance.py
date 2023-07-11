@@ -26,13 +26,13 @@ import random
 import gc
 
 import ray
-from ray import tune
 from ray.air import session, Checkpoint
 from ray.air.config import RunConfig, FailureConfig, CheckpointConfig
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
 
 from terminate_node_aws import create_instance_killer
+
 
 MAX_ITERS = 40
 ITER_TIME_BOUNDS = (60, 90)
@@ -64,9 +64,9 @@ def main(bucket_uri: str):
         param_space={"start_time": time.monotonic(), "warmup_time_s": WARMUP_TIME_S},
         tune_config=TuneConfig(num_samples=num_samples, metric="iteration", mode="max"),
         run_config=RunConfig(
-            verbose=1,
+            verbose=2,
             failure_config=FailureConfig(max_failures=-1),
-            sync_config=tune.SyncConfig(upload_dir=bucket_uri),
+            storage_path=bucket_uri,
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         ),
     )
@@ -75,8 +75,11 @@ def main(bucket_uri: str):
         probability=0.03, time_between_checks_s=10, warmup_time_s=WARMUP_TIME_S
     )
     results = tuner.fit()
+    print("Fitted:", results)
     del instance_killer
+    print("Deleted instance killer")
     gc.collect()
+    print("Collected garbage")
 
     for result in results:
         checkpoint_dict = result.checkpoint.to_dict()
@@ -92,3 +95,4 @@ if __name__ == "__main__":
     args, _ = parser.parse_known_args()
 
     main(args.bucket or "s3://tune-cloud-tests/worker_fault_tolerance")
+    print("Finished test.")

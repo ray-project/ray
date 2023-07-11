@@ -12,7 +12,13 @@ from ray_release.exception import FileDownloadError, FileUploadError
 from ray_release.file_manager.file_manager import FileManager
 from ray_release.job_manager import JobManager
 from ray_release.logger import logger
-from ray_release.util import exponential_backoff_retry, generate_tmp_s3_path
+from ray_release.util import (
+    exponential_backoff_retry,
+    generate_tmp_cloud_storage_path,
+    S3_CLOUD_STORAGE,
+    GS_CLOUD_STORAGE,
+    GS_BUCKET,
+)
 
 
 class JobFileManager(FileManager):
@@ -22,14 +28,14 @@ class JobFileManager(FileManager):
         super(JobFileManager, self).__init__(cluster_manager=cluster_manager)
 
         self.sdk = self.cluster_manager.sdk
-        self.s3_client = boto3.client("s3")
+        self.s3_client = boto3.client(S3_CLOUD_STORAGE)
         self.cloud_storage_provider = os.environ.get(
-            "ANYSCALE_CLOUD_STORAGE_PROVIDER", "s3"
+            "ANYSCALE_CLOUD_STORAGE_PROVIDER", S3_CLOUD_STORAGE
         )
-        if self.cloud_storage_provider == "s3":
+        if self.cloud_storage_provider == S3_CLOUD_STORAGE:
             self.bucket = str(RELEASE_AWS_BUCKET)
-        elif self.cloud_storage_provider == "gs":
-            self.bucket = "anyscale-oss-dev-bucket"
+        elif self.cloud_storage_provider == GS_CLOUD_STORAGE:
+            self.bucket = GS_BUCKET
             self.gs_client = storage.Client()
         else:
             raise RuntimeError(
@@ -50,14 +56,14 @@ class JobFileManager(FileManager):
             max_retries=3,
         )
 
-    def _generate_tmp_s3_path(self):
-        location = f"tmp/{generate_tmp_s3_path()}"
+    def _generate_tmp_cloud_storage_path(self):
+        location = f"tmp/{generate_tmp_cloud_storage_path()}"
         return location
 
     def download_from_cloud(
         self, key: str, target: str, delete_after_download: bool = False
     ):
-        if self.cloud_storage_provider == "s3":
+        if self.cloud_storage_provider == S3_CLOUD_STORAGE:
             self._run_with_retry(
                 lambda: self.s3_client.download_file(
                     Bucket=self.bucket,
@@ -65,7 +71,7 @@ class JobFileManager(FileManager):
                     Filename=target,
                 )
             )
-        if self.cloud_storage_provider == "gs":
+        if self.cloud_storage_provider == GS_CLOUD_STORAGE:
             bucket = self.gs_client.bucket(self.bucket)
             blob = bucket.blob(key)
             self._run_with_retry(lambda: blob.download_to_filename(target))
@@ -75,7 +81,7 @@ class JobFileManager(FileManager):
 
     def download(self, source: str, target: str):
         # Attention: Only works for single files at the moment
-        remote_upload_to = self._generate_tmp_s3_path()
+        remote_upload_to = self._generate_tmp_cloud_storage_path()
         # remote source -> s3
         bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
         retcode, _ = self._run_with_retry(
@@ -95,7 +101,7 @@ class JobFileManager(FileManager):
         self.download_from_cloud(remote_upload_to, target, delete_after_download=True)
 
     def _push_local_dir(self):
-        remote_upload_to = self._generate_tmp_s3_path()
+        remote_upload_to = self._generate_tmp_cloud_storage_path()
         # pack local dir
         _, local_path = tempfile.mkstemp()
         shutil.make_archive(local_path, "gztar", os.getcwd())
@@ -141,7 +147,7 @@ class JobFileManager(FileManager):
         assert isinstance(source, str)
         assert isinstance(target, str)
 
-        remote_upload_to = self._generate_tmp_s3_path()
+        remote_upload_to = self._generate_tmp_cloud_storage_path()
 
         # local source -> s3
         self._run_with_retry(
@@ -153,7 +159,7 @@ class JobFileManager(FileManager):
         )
 
         # s3 -> remote target
-        bucket_address = f"s3://{self.bucket}/{remote_upload_to}"
+        bucket_address = f"{S3_CLOUD_STORAGE}://{self.bucket}/{remote_upload_to}"
         retcode, _ = self.job_manager.run_and_wait(
             "pip install -q awscli && " f"aws s3 cp {bucket_address} {target}",
             {},
@@ -186,10 +192,10 @@ class JobFileManager(FileManager):
 
     def delete(self, key: str, recursive: bool = False):
         def delete_fn():
-            if self.cloud_storage_provider == "s3":
+            if self.cloud_storage_provider == S3_CLOUD_STORAGE:
                 self._delete_s3_fn(key, recursive)
                 return
-            if self.cloud_storage_provider == "gs":
+            if self.cloud_storage_provider == GS_CLOUD_STORAGE:
                 self._delete_gs_fn(key, recursive)
                 return
 

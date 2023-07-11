@@ -20,7 +20,11 @@ from ray.rllib.policy.sample_batch import (
 from ray.rllib.execution.metric_ops import CollectMetrics
 from ray.rllib.evaluation.metrics import collect_metrics
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    ALGO_DEPRECATION_WARNING,
+)
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
 from ray.rllib.utils.sgd import standardized
 from ray.util.iter import from_actors, LocalIterator
@@ -94,6 +98,15 @@ class MAMLConfig(AlgorithmConfig):
 
         self.batch_mode = "complete_episodes"
         self._disable_execution_plan_api = False
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
         # __sphinx_doc_end__
         # fmt: on
 
@@ -281,6 +294,12 @@ def inner_adaptation(workers, samples):
         e.learn_on_batch.remote(samples[i])
 
 
+@Deprecated(
+    old="rllib/algorithms/maml/",
+    new="rllib_contrib/maml/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class MAML(Algorithm):
     @classmethod
     @override(Algorithm)

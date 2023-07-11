@@ -7,6 +7,7 @@ Core API
     ray.init
     ray.shutdown
     ray.is_initialized
+    ray.job_config.JobConfig
 
 Tasks
 -----

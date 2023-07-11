@@ -1,26 +1,33 @@
+from collections import namedtuple
+import functools
 import itertools
 import unittest
-import functools
-from collections import namedtuple
 
 import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 import numpy as np
 import tree
-from gymnasium.spaces import Box, Discrete, Dict, Tuple, MultiDiscrete
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.core.models.base import ModelConfig, Encoder
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.models.base import STATE_IN, ENCODER_OUT, STATE_OUT
-from ray.rllib.core.models.configs import MLPEncoderConfig, CNNEncoderConfig
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.models.base import (
+    Encoder,
+    STATE_IN,
+    ENCODER_OUT,
+    STATE_OUT,
+)
 from ray.rllib.core.models.catalog import (
     Catalog,
     _multi_action_dist_partial_helper,
     _multi_categorical_dist_partial_helper,
 )
+from ray.rllib.core.models.configs import (
+    MLPEncoderConfig,
+    ModelConfig,
+    CNNEncoderConfig,
+)
+from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
@@ -36,8 +43,8 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchMultiDistribution,
 )
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
 from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
@@ -59,11 +66,15 @@ class TestCatalog(unittest.TestCase):
         convert_method = (
             tf.convert_to_tensor if framework == "tf2" else convert_to_torch_tensor
         )
-        # In order to stay backward compatible, we default to fcnet_hiddens[-1].
-        # See MODEL_DEFAULTS for more details
-        latent_dim = model_config_dict.get(
-            "latent_dim", model_config_dict["fcnet_hiddens"][-1]
-        )
+        expected_latent_dim = model_config_dict.get("latent_dim")
+        if expected_latent_dim is None:
+            # For CNNEncoders, `output_dims` are computed automatically.
+            if isinstance(model.config, CNNEncoderConfig):
+                expected_latent_dim = model.config.output_dims[0]
+            # In order to stay backward compatible, we default to fcnet_hiddens[-1].
+            # See MODEL_DEFAULTS for more details
+            else:
+                expected_latent_dim = model_config_dict["fcnet_hiddens"][-1]
         observations = convert_method(
             get_dummy_batch_for_space(input_space, batch_size=32)
         )
@@ -78,11 +89,14 @@ class TestCatalog(unittest.TestCase):
         }
         outputs = model(inputs)
 
-        self.assertEqual(outputs[ENCODER_OUT].shape, (32, latent_dim))
-        tree.map_structure_with_path(
-            lambda p, v: self.assertEqual(v.shape, states[p].shape),
-            outputs[STATE_OUT],
-        )
+        self.assertEqual(outputs[ENCODER_OUT].shape, (32, expected_latent_dim))
+        if STATE_OUT in outputs:
+            tree.map_structure_with_path(
+                lambda p, v: (
+                    True if v is None else self.assertEqual(v.shape, states[p].shape)
+                ),
+                outputs[STATE_OUT],
+            )
 
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""
@@ -172,9 +186,6 @@ class TestCatalog(unittest.TestCase):
         for config in itertools.product(*config_combinations):
             framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
-            if model_config_type is not MLPEncoderConfig and framework == "tf2":
-                # TODO (Artur): Enable this once we have TF implementations
-                continue
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
                 f"and config: \n{model_config_dict}\n"
@@ -197,8 +208,8 @@ class TestCatalog(unittest.TestCase):
             # Do a forward pass and check if the output has the correct shape
             self._check_model_outputs(model, framework, model_config_dict, input_space)
 
-        # TODO(Artur): Add support for composite spaces and test here
-        # Today, Catalog does not handle composite spaces, so we can't test them
+        # TODO(Artur): Add support for composite spaces and test here.
+        #  Today, Catalog does not handle composite spaces, so we can't test them.
 
     def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.
@@ -360,7 +371,10 @@ class TestCatalog(unittest.TestCase):
                     msg=f"Expected {expected_cls_dict[framework]}, "
                     f"got {type(dist)}",
                 )
+                # Test if sampling works
                 actions = dist.sample()
+                # Test is logp works
+                dist.logp(actions)
 
                 # For any array of actions in a possibly nested space, convert to
                 # numpy and pick the first one to check if it is in the action space.
@@ -381,6 +395,7 @@ class TestCatalog(unittest.TestCase):
                 _enable_rl_module_api=True,
                 rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
             )
+            .training(_enable_learner_api=True)
             .framework("torch")
         )
 
@@ -421,11 +436,11 @@ class TestCatalog(unittest.TestCase):
 
         class MyCostumTorchEncoderConfig(ModelConfig):
             def build(self, framework):
-                return MyCostumTorchEncoder()
+                return MyCostumTorchEncoder(self)
 
         class MyCostumTorchEncoder(TorchModel, Encoder):
-            def __init__(self):
-                super().__init__({})
+            def __init__(self, config):
+                super().__init__(config)
                 self.net = torch.nn.Linear(env.observation_space.shape[0], 10)
 
             def _forward(self, input_dict, **kwargs):
@@ -442,7 +457,6 @@ class TestCatalog(unittest.TestCase):
                 self.latent_dims = (10,)
                 self.encoder_config = MyCostumTorchEncoderConfig(
                     input_dims=self.observation_space.shape,
-                    output_dims=self.latent_dims,
                 )
 
         spec = SingleAgentRLModuleSpec(

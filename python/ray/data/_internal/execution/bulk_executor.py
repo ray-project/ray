@@ -1,18 +1,18 @@
-from typing import Dict, List, Iterator, Optional
+from typing import Dict, Iterator, List, Optional
 
 import ray
-from ray.data.context import DatasetContext
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
 from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
@@ -20,7 +20,7 @@ logger = DatasetLogger(__name__)
 class BulkExecutor(Executor):
     """A bulk (BSP) operator executor.
 
-    This implementation emulates the behavior of the legacy Datasets backend. It
+    This implementation emulates the behavior of the legacy Data backend. It
     is intended to be replaced by default by StreamingExecutor in the future.
     """
 
@@ -62,7 +62,7 @@ class BulkExecutor(Executor):
                 for i, ref_bundles in enumerate(inputs):
                     for r in ref_bundles:
                         op.add_input(r, input_index=i)
-                op.inputs_done()
+                op.all_inputs_done()
                 output = _naive_run_until_complete(op)
             finally:
                 op.shutdown()
@@ -76,7 +76,7 @@ class BulkExecutor(Executor):
                 self._stats.extra_metrics = op_metrics
             stats_summary = self._stats.to_summary()
             stats_summary_string = stats_summary.to_string(include_parent=False)
-            context = DatasetContext.get_current()
+            context = DataContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )

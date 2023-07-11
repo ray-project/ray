@@ -1,5 +1,6 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
+load("//bazel:python.bzl", "doctest")
 
 exports_files(["test_myst_doc.py"])
 
@@ -14,7 +15,7 @@ py_test(
     size = "medium",
     main = "test_myst_doc.py",
     srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "py37"],
+    tags = ["exclusive", "team:ml", "highly_parallel"],
     data = ["//doc/source/ray-core/examples:core_examples"],
     args = ["--path", "doc/source/ray-core/examples/highly_parallel.ipynb"]
 )
@@ -24,7 +25,7 @@ py_test(
     name = "datasets_train",
     size = "medium",
     srcs = ["source/ray-core/_examples/datasets_train/datasets_train.py"],
-    tags = ["exclusive", "team:ml", "py37", "datasets_train"],
+    tags = ["exclusive", "team:ml", "datasets_train"],
     args = ["--smoke-test", "--num-workers=2", "--use-gpu"]
 )
 
@@ -131,6 +132,10 @@ py_test_run_all_subdirectory(
     exclude = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+        "source/serve/doc_code/vllm_example.py",
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:serve"],
@@ -139,13 +144,28 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "medium",
     include = [
+        "source/serve/doc_code/http_guide/streaming_example.py",
+        "source/serve/doc_code/http_guide/websockets_example.py",
+    ],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:serve"],
+    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
+)
+
+py_test_run_all_subdirectory(
+    size = "medium",
+    include = [
         "source/serve/doc_code/distilbert.py",
         "source/serve/doc_code/stable_diffusion.py",
+        "source/serve/doc_code/object_detection.py",
     ],
     exclude = [],
     extra_srcs = [],
     tags = ["exclusive", "team:serve", "gpu"],
+    env = {"RAY_SERVE_PROXY_READY_CHECK_TIMEOUT_S": "60"},
 )
+
 
 
 
@@ -181,10 +201,20 @@ py_test_run_all_subdirectory(
     size = "large",
     include = ["source/ray-air/doc_code/*.py"],
     exclude = [
+        # Too large. Use a custom test below.
+        "source/ray-air/doc_code/computer_vision.py",
         "source/ray-air/doc_code/hf_trainer.py",  # Too large
         "source/ray-air/doc_code/predictors.py",
     ],
     extra_srcs = [],
+    tags = ["exclusive", "team:ml"],
+)
+
+py_test(
+    size = "enormous",
+    name = "computer_vision_test",
+    main = "source/ray-air/doc_code/computer_vision.py",
+    srcs = ["source/ray-air/doc_code/computer_vision.py"],
     tags = ["exclusive", "team:ml"],
 )
 
@@ -221,10 +251,10 @@ py_test_run_all_subdirectory(
     include = ["source/data/doc_code/*.py"],
     exclude = [
         "source/ray-air/doc_code/predictors.py",
-        "source/data/doc_code/creating_datasets_untested.py"
+        "source/data/doc_code/loading_data_untested.py",
     ],
     extra_srcs = [],
-    tags = ["exclusive", "team:core"],
+    tags = ["exclusive", "team:data"],
 )
 
 # --------------
@@ -249,12 +279,66 @@ py_test(
     args = ["--path", "doc/source/train/examples/pytorch/pytorch_resnet_finetune.ipynb"]
 )
 
-py_test(
-    name = "lightning_mnist_example",
+# --------------------------------------------------------------------
+# Test all doc/external code
+# --------------------------------------------------------------------
+
+py_test_run_all_subdirectory(
     size = "large",
-    main = "test_myst_doc.py",
-    srcs = ["test_myst_doc.py"],
-    tags = ["exclusive", "team:ml", "gpu", "ray_air"],
-    data = ["//doc/source/train/examples/lightning:lightning_mnist_example"],
-    args = ["--path", "doc/source/train/examples/lightning/lightning_mnist_example.ipynb"]
+    include = ["external/*.py"],
+    exclude = [],
+    extra_srcs = [],
+    tags = ["exclusive", "team:ml", "external"],
+)
+
+
+# --------------------------------------------------------------------
+# Tests code snippets in user guides.
+# --------------------------------------------------------------------
+
+doctest(
+    files = glob(
+        include=["source/**/*.rst", "source/**/*.md"],
+        exclude=[
+            "source/ray-contribute/getting-involved.rst",
+            "source/ray-core/handling-dependencies.rst",
+            "source/ray-core/tasks/nested-tasks.rst",
+            "source/ray-observability/user-guides/ray-tracing.rst",
+            "source/ray-observability/user-guides/cli-sdk.rst",
+            "source/rllib/rllib-env.rst",
+            "source/rllib/rllib-sample-collection.rst",
+            "source/serve/advanced-guides/inplace-updates.md",
+            "source/serve/deploy-many-models/multi-app.md",
+            "source/serve/production-guide/deploy-vm.md",
+            "source/serve/production-guide/fault-tolerance.md",
+            "source/data/batch_inference.rst",
+            "source/data/transforming-data.rst",
+            "source/train/faq.rst",
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
+        ]
+    ),
+    size = "large",
+    tags = ["team:none"]
+)
+
+
+doctest(
+    name="doctest[workflow]",
+    files = glob(
+        include=[
+            "source/workflows/**/*.rst",
+            "source/workflows/**/*.md"
+        ]
+    ),
+    tags = ["team:core"]
+)
+
+doctest(
+    files = [
+        "source/data/batch_inference.rst",
+        "source/data/transforming-data.rst"
+    ],
+    tags = ["team:data"],
+    gpu = True
 )

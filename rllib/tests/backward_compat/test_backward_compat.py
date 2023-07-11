@@ -9,6 +9,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+from ray.rllib.algorithms.dqn import DQN
 from ray.rllib.algorithms.ppo import PPO
 from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.policy import Policy, PolicySpec
@@ -41,7 +42,7 @@ class TestBackwardCompatibility(unittest.TestCase):
         # gym version conflict (gym==0.23.x not compatible with gym==0.26.x)).
         for v in []:  # "0.1"
             v = version.Version(v)
-            for fw in framework_iterator(with_eager_tracing=True):
+            for fw in framework_iterator():
                 path_to_checkpoint = os.path.join(
                     rllib_dir,
                     "tests",
@@ -128,7 +129,7 @@ class TestBackwardCompatibility(unittest.TestCase):
                 "policies_to_train": ["policy1"],
             },
         }
-        algo = PPO(config=config, env="test")
+        algo = DQN(config=config, env="test")
         self.assertTrue(algo.config.lr == 0.001)
         self.assertTrue(algo.config.evaluation_num_workers == 1)
         self.assertTrue(list(algo.config.policies.keys()) == ["policy1"])

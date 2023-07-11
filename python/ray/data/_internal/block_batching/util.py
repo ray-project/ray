@@ -1,35 +1,26 @@
 import logging
-import queue
 import threading
-import sys
+from collections import deque
+from contextlib import nullcontext
 from typing import Any, Callable, Iterator, List, Optional, Tuple, TypeVar, Union
 
 import ray
-from ray.types import ObjectRef
 from ray.actor import ActorHandle
-from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data._internal.batcher import Batcher, ShufflingBatcher
 from ray.data._internal.block_batching.interfaces import (
     Batch,
-    CollatedBatch,
     BlockPrefetcher,
+    CollatedBatch,
 )
 from ray.data._internal.stats import DatasetPipelineStats, DatasetStats
+from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.types import ObjectRef
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 T = TypeVar("T")
 U = TypeVar("U")
 
 logger = logging.getLogger(__name__)
-
-if sys.version_info >= (3, 7):
-    from contextlib import nullcontext
-else:
-    from contextlib import contextmanager
-
-    @contextmanager
-    def nullcontext(enter_result=None):
-        yield enter_result
 
 
 def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
@@ -182,11 +173,37 @@ def collate(
 
     Args:
         batch_iter: An iterator over formatted batches.
+        collate_fn: A function to apply to each batch.
+        stats: An optional stats object to record formatting times.
     """
     for batch in batch_iter:
         with stats.iter_collate_batch_s.timer() if stats else nullcontext():
             collated_batch = collate_fn(batch.data)
         yield CollatedBatch(batch.batch_idx, collated_batch)
+
+
+def finalize_batches(
+    batch_iter: Iterator[CollatedBatch],
+    finalize_fn: Callable[[Any], Any],
+    stats: Optional[DatasetStats] = None,
+) -> Iterator[CollatedBatch]:
+    """Returns an iterator with the provided finalize_fn applied to items of the batch
+    iterator.
+
+    This is the same as `collate` except the input batches can be of type Any.
+
+    Args:
+        batch_iter: An iterator over processed batches.
+        finalize_fn: A function to apply to each batch.
+        stats: An optional stats object to record formatting times.
+
+    Returns:
+        An iterator over batch index and the finalized batch.
+    """
+    for batch in batch_iter:
+        with stats.iter_finalize_batch_s.timer() if stats else nullcontext():
+            finalized_batch = finalize_fn(batch.data)
+        yield CollatedBatch(batch.batch_idx, finalized_batch)
 
 
 def extract_data_from_batch(batch_iter: Iterator[Batch]) -> Iterator[Any]:
@@ -239,7 +256,7 @@ def make_async_gen(
         def __init__(self, thread_index: int):
             self.thread_index = thread_index
 
-    output_queue = queue.Queue(1)
+    output_queue = Queue(1)
 
     # Because pulling from the base iterator cannot happen concurrently,
     # we must execute the expensive computation in a separate step which
@@ -247,11 +264,14 @@ def make_async_gen(
     def execute_computation(thread_index: int):
         try:
             for item in fn(thread_safe_generator):
-                output_queue.put(item, block=True)
-            output_queue.put(Sentinel(thread_index), block=True)
+                if output_queue.put(item):
+                    # Return early when it's instructed to do so.
+                    return
+            output_queue.put(Sentinel(thread_index))
         except Exception as e:
-            output_queue.put(e, block=True)
+            output_queue.put(e)
 
+    # Use separate threads to produce output batches.
     threads = [
         threading.Thread(target=execute_computation, args=(i,), daemon=True)
         for i in range(num_workers)
@@ -260,22 +280,28 @@ def make_async_gen(
     for thread in threads:
         thread.start()
 
+    # Use main thread to consume output batches.
     num_threads_finished = 0
-    while True:
-        next_item = output_queue.get(block=True)
-        if isinstance(next_item, Exception):
-            output_queue.task_done()
-            raise next_item
-        if isinstance(next_item, Sentinel):
-            output_queue.task_done()
-            logger.debug(f"Thread {next_item.thread_index} finished.")
-            num_threads_finished += 1
-            threads[next_item.thread_index].join()
-        else:
-            yield next_item
-            output_queue.task_done()
-        if num_threads_finished >= num_workers:
-            break
+    try:
+        while True:
+            next_item = output_queue.get()
+            if isinstance(next_item, Exception):
+                raise next_item
+            if isinstance(next_item, Sentinel):
+                logger.debug(f"Thread {next_item.thread_index} finished.")
+                num_threads_finished += 1
+            else:
+                yield next_item
+            if num_threads_finished >= num_workers:
+                break
+    finally:
+        # Cooperatively exit all producer threads.
+        # This is to avoid these daemon threads hanging there with holding batches in
+        # memory, which can cause GRAM OOM easily. This can happen when caller breaks
+        # in the middle of iteration.
+        num_threads_alive = num_workers - num_threads_finished
+        if num_threads_alive > 0:
+            output_queue.release(num_threads_alive)
 
 
 PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
@@ -284,13 +310,52 @@ PREFETCHER_ACTOR_NAMESPACE = "ray.dataset"
 class WaitBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using ray.wait."""
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
-        ray.wait(blocks, num_returns=1, fetch_local=True)
+    def __init__(self):
+        self._blocks = []
+        self._stopped = False
+        self._condition = threading.Condition()
+        self._thread = threading.Thread(
+            target=self._run,
+            name="Prefetcher",
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _run(self):
+        while True:
+            try:
+                blocks_to_wait = []
+                with self._condition:
+                    if len(self._blocks) > 0:
+                        blocks_to_wait, self._blocks = self._blocks[:], []
+                    else:
+                        if self._stopped:
+                            return
+                        blocks_to_wait = []
+                        self._condition.wait()
+                if len(blocks_to_wait) > 0:
+                    ray.wait(blocks_to_wait, num_returns=1, fetch_local=True)
+            except Exception:
+                logger.exception("Error in prefetcher thread.")
+
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
+        with self._condition:
+            if self._stopped:
+                raise RuntimeError("Prefetcher is stopped.")
+            self._blocks = blocks
+            self._condition.notify()
+
+    def stop(self):
+        with self._condition:
+            if self._stopped:
+                return
+            self._stopped = True
+            self._condition.notify()
+
+    def __del__(self):
+        self.stop()
 
 
-# ray.wait doesn't work as expected, so we have an
-# actor-based prefetcher as a work around. See
-# https://github.com/ray-project/ray/issues/23983 for details.
 class ActorBlockPrefetcher(BlockPrefetcher):
     """Block prefetcher using a local actor."""
 
@@ -308,7 +373,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
             get_if_exists=True,
         ).remote()
 
-    def prefetch_blocks(self, blocks: ObjectRef[Block]):
+    def prefetch_blocks(self, blocks: List[ObjectRef[Block]]):
         self.prefetch_actor.prefetch.remote(*blocks)
 
 
@@ -318,3 +383,66 @@ class _BlockPretcher:
 
     def prefetch(self, *blocks) -> None:
         pass
+
+
+class Queue:
+    """A thread-safe queue implementation for multiple producers and consumers.
+
+    Provide `release()` to exit producer threads cooperatively for resource release.
+    """
+
+    def __init__(self, queue_size: int):
+        # The queue shared across multiple producer threads.
+        self._queue = deque()
+        # The boolean varilable to indicate whether producer threads should exit.
+        self._threads_exit = False
+        # The semaphore for producer threads to put item into queue.
+        self._producer_semaphore = threading.Semaphore(queue_size)
+        # The semaphore for consumer threads to get item from queue.
+        self._consumer_semaphore = threading.Semaphore(0)
+        # The mutex lock to guard access of `self._queue` and `self._threads_exit`.
+        self._mutex = threading.Lock()
+
+    def put(self, item: Any) -> bool:
+        """Put an item into the queue.
+
+        Block if necessary until a free slot is available in queue.
+        This method is called by producer threads.
+
+        Returns:
+            True if the caller thread should exit immediately.
+        """
+        self._producer_semaphore.acquire()
+        with self._mutex:
+            if self._threads_exit:
+                return True
+            else:
+                self._queue.append(item)
+        self._consumer_semaphore.release()
+        return False
+
+    def get(self) -> Any:
+        """Remove and return an item from the queue.
+
+        Block if necessary until an item is available in queue.
+        This method is called by consumer threads.
+        """
+        self._consumer_semaphore.acquire()
+        with self._mutex:
+            next_item = self._queue.popleft()
+        self._producer_semaphore.release()
+        return next_item
+
+    def release(self, num_threads: int):
+        """Release `num_threads` of producers so they would exit cooperatively."""
+        with self._mutex:
+            self._threads_exit = True
+        for _ in range(num_threads):
+            # NOTE: After Python 3.9+, Semaphore.release(n) can be used to
+            # release all threads at once.
+            self._producer_semaphore.release()
+
+    def qsize(self):
+        """Return the size of the queue."""
+        with self._mutex:
+            return len(self._queue)

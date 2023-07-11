@@ -15,7 +15,7 @@ export const useNodeDetail = () => {
     setRefresh(event.target.checked);
   };
 
-  const { data: nodeDetail } = useSWR(
+  const { data: nodeDetail, isLoading } = useSWR(
     ["useNodeDetail", params.id],
     async ([_, nodeId]) => {
       const { data } = await getNodeDetail(nodeId);
@@ -47,6 +47,7 @@ export const useNodeDetail = () => {
     selectedTab,
     nodeDetail,
     msg,
+    isLoading,
     isRefreshing,
     onRefreshChange,
     raylet,

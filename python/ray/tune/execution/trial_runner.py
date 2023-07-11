@@ -1,3 +1,4 @@
+import uuid
 from typing import Any, Dict, List, Optional, Union, Tuple, Set
 
 from datetime import datetime
@@ -11,8 +12,9 @@ import warnings
 
 import ray
 from ray.air._internal.uri_utils import URI
-from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.config import CheckpointConfig
+from ray.air.constants import TIME_THIS_ITER_S
 from ray.exceptions import RayTaskError
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.experiment_state import (
@@ -20,6 +22,7 @@ from ray.tune.execution.experiment_state import (
     _find_newest_experiment_checkpoint,
     _experiment_checkpoint_exists,
 )
+from ray.tune.utils.util import _split_remote_local_path
 from ray.util import get_node_ip_address
 from ray.tune import TuneError
 from ray.tune.callback import CallbackList, Callback
@@ -36,14 +39,15 @@ from ray.tune.result import (
     DEBUG_METRICS,
     DEFAULT_METRIC,
     DONE,
-    TIME_THIS_ITER_S,
     RESULT_DUPLICATE,
     SHOULD_CHECKPOINT,
+    _get_defaults_results_dir,
+    DEFAULT_EXPERIMENT_NAME,
 )
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
+from ray.tune.syncer import SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
@@ -84,11 +88,9 @@ class _TuneControllerBase:
             Trial objects.
         scheduler: Defaults to FIFOScheduler.
         experiment_path: Path where global experiment state checkpoints
-            are saved and restored from.
+            are saved and restored from. If this is a remote URI,
+            experiment checkpoints will be synced to this location.
         sync_config: See :class:`~ray.tune.syncer.SyncConfig`.
-            Within sync config, the `upload_dir` specifies cloud storage, and
-            experiment state checkpoints will be synced to the `remote_checkpoint_dir`:
-            `{sync_config.upload_dir}/{experiment_name}`.
         experiment_dir_name: Experiment directory name.
             See :class:`~ray.tune.experiment.Experiment`.
         stopper: Custom class for stopping whole experiments. See ``Stopper``.
@@ -132,28 +134,61 @@ class _TuneControllerBase:
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        _trainer_api: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
         self._placeholder_resolvers = placeholder_resolvers
         self._scheduler_alg = scheduler or FIFOScheduler()
         self._callbacks = CallbackList(callbacks or [])
-        self._insufficient_resources_manager = _InsufficientResourcesManager()
+        self._insufficient_resources_manager = _InsufficientResourcesManager(
+            for_train=_trainer_api
+        )
         self._pending_trial_queue_times = {}
 
         self._max_pending_trials = _get_max_pending_trials(self._search_alg)
 
         self._sync_config = sync_config or SyncConfig()
 
+        # Rename for better code readability
+        local_experiment_path, remote_experiment_path = _split_remote_local_path(
+            experiment_path, None
+        )
+
+        # Derive experiment dir name from local path
+        if not experiment_dir_name and local_experiment_path:
+            # Maybe derive experiment dir name from local storage dir
+            experiment_dir_name = Path(local_experiment_path).name
+        elif not experiment_dir_name:
+            experiment_dir_name = DEFAULT_EXPERIMENT_NAME
+
+        # Set default experiment dir name
+        if not local_experiment_path:
+            local_experiment_path = str(
+                Path(_get_defaults_results_dir()) / experiment_dir_name
+            )
+            os.makedirs(local_experiment_path, exist_ok=True)
+
         self._experiment_dir_name = experiment_dir_name
 
-        # Rename for better code readability
-        local_experiment_path = experiment_path
-        remote_experiment_path = None
-
         if self._sync_config.upload_dir and self._experiment_dir_name:
-            remote_experiment_path = str(
-                URI(self._sync_config.upload_dir) / self._experiment_dir_name
-            )
+            if remote_experiment_path:
+                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
+                    raise ValueError(
+                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
+                        f"pointing to remote storage were passed, but they do not "
+                        f"point to the same location. Got: "
+                        f"`experiment_path={experiment_path}` and "
+                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                    )
+                warnings.warn(
+                    "If `experiment_path` points to a remote storage location, "
+                    "do not set `SyncConfig.upload_dir`. ",
+                    DeprecationWarning,
+                )
+            else:
+                remote_experiment_path = str(
+                    URI(self._sync_config.upload_dir) / self._experiment_dir_name
+                )
 
         self._local_experiment_path = local_experiment_path
         self._remote_experiment_path = remote_experiment_path
@@ -284,9 +319,14 @@ class _TuneControllerBase:
 
     @property
     def experiment_state_path(self) -> str:
+        """Returns the local experiment checkpoint path."""
         return os.path.join(
             self._local_experiment_path, self.experiment_state_file_name
         )
+
+    @property
+    def experiment_path(self) -> str:
+        return self._remote_experiment_path or self._local_experiment_path
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
@@ -296,12 +336,6 @@ class _TuneControllerBase:
             sync_config=self._sync_config,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
         )
-
-    @property
-    def _remote_checkpoint_dir(self):
-        if self._sync_config.upload_dir and self._experiment_dir_name:
-            return str(URI(self._sync_config.upload_dir) / self._experiment_dir_name)
-        return None
 
     @classmethod
     def checkpoint_exists(cls, directory: str) -> bool:
@@ -334,7 +368,9 @@ class _TuneControllerBase:
             },
         }
 
-        tmp_file_name = os.path.join(experiment_dir, ".tmp_experiment_state")
+        tmp_file_name = os.path.join(
+            experiment_dir, f".tmp_experiment_state_{uuid.uuid4()}"
+        )
 
         with open(tmp_file_name, "w") as f:
             json.dump(runner_state, f, indent=2, cls=TuneFunctionEncoder)
@@ -485,6 +521,11 @@ class _TuneControllerBase:
             elif trial.status != Trial.TERMINATED and not resume_unfinished:
                 trial_to_add.status = Trial.TERMINATED
             self.add_trial(trial_to_add)
+
+    def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
+        self._max_pending_trials = max_pending_trials or _get_max_pending_trials(
+            self._search_alg
+        )
 
     def update_pending_trial_resources(
         self, resources: Union[dict, PlacementGroupFactory]
@@ -1219,6 +1260,7 @@ class TrialRunner(_TuneControllerBase):
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        _trainer_api: bool = False,
         # Deprecated
         local_checkpoint_dir: Optional[str] = None,
     ):
@@ -1254,24 +1296,34 @@ class TrialRunner(_TuneControllerBase):
             callbacks=callbacks,
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
+            _trainer_api=_trainer_api,
         )
 
-        self.trial_executor.setup(
-            max_pending_trials=self._max_pending_trials,
-            # TODO(ml-team): Remove these in 2.6.
-            trainable_kwargs={
-                "sync_timeout": self._sync_config.sync_timeout,
-                "custom_syncer": get_node_to_storage_syncer(self._sync_config),
-            },
-        )
+        self.trial_executor.setup(max_pending_trials=self._max_pending_trials)
 
     def _wrapped(self):
         return TrialRunnerWrapper(
             self,
             self.trial_executor,
-            runner_whitelist_attr={"search_alg", "get_trials", "_set_trial_status"},
-            executor_whitelist_attr={"has_resources_for_trial", "pause_trial", "save"},
+            runner_whitelist_attr={
+                "search_alg",
+                "get_trials",
+                "get_live_trials",
+                "_set_trial_status",
+                "pause_trial",
+                "stop_trial",
+            },
+            executor_whitelist_attr={
+                "has_resources_for_trial",
+                "pause_trial",
+                "save",
+                "_resource_updater",
+            },
         )
+
+    def update_max_pending_trials(self, max_pending_trials: Optional[int] = None):
+        super().update_max_pending_trials(max_pending_trials=max_pending_trials)
+        self.trial_executor._max_staged_actors = self._max_pending_trials
 
     def _used_resources_string(self) -> str:
         return self.trial_executor.debug_string()
@@ -1496,6 +1548,9 @@ class _TrialExecutorWrapper:
         self._trial_executor = trial_executor
         self._whitelist_attr = whitelist_attr or set()
 
+        for attr in self._whitelist_attr:
+            assert hasattr(self._trial_executor, attr)
+
     def __getattr__(self, attr):
         if attr not in self._whitelist_attr:
             if log_once("restrict_accessing_trial_executor"):
@@ -1535,6 +1590,9 @@ class TrialRunnerWrapper:
         )
         self._runner_whitelist_attr = runner_whitelist_attr or set()
 
+        for attr in self._runner_whitelist_attr:
+            assert hasattr(self, attr)
+
     def __getattr__(self, attr):
         if attr == self._EXECUTOR_ATTR:
             return self._trial_executor
@@ -1569,7 +1627,9 @@ def _get_max_pending_trials(search_alg: SearchAlgorithm) -> int:
     # Use a minimum of 16 to trigger fast autoscaling
     # Scale up to at most the number of available cluster CPUs
     cluster_cpus = ray.cluster_resources().get("CPU", 1.0)
-    max_pending_trials = max(16, int(cluster_cpus * 1.1))
+    max_pending_trials = min(
+        max(search_alg.total_samples, 16), max(16, int(cluster_cpus * 1.1))
+    )
 
     if max_pending_trials > 128:
         logger.warning(

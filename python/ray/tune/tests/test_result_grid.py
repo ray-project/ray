@@ -12,6 +12,7 @@ import ray
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.air.constants import EXPR_ERROR_FILE
 from ray.air.result import Result
 from ray.tune.registry import get_trainable_cls
 from ray.tune.result_grid import ResultGrid
@@ -332,12 +333,12 @@ def test_result_grid_df(ray_start_2_cpus):
 
 
 def test_num_errors_terminated(tmpdir):
-    error_filename = "error.txt"
+    error_filename = EXPR_ERROR_FILE
 
-    trials = [Trial("foo", local_dir=str(tmpdir), stub=True) for i in range(10)]
+    trials = [Trial("foo", experiment_path=str(tmpdir), stub=True) for i in range(10)]
 
     # Only create 1 shared trial logdir for this test
-    trials[0].init_logdir()
+    trials[0].init_local_path()
     for trial in trials[1:]:
         trial.relative_logdir = trials[0].relative_logdir
 
@@ -354,7 +355,7 @@ def test_num_errors_terminated(tmpdir):
         trials[i].status = Trial.TERMINATED
 
     create_tune_experiment_checkpoint(trials, local_checkpoint_dir=str(tmpdir))
-    result_grid = ResultGrid(tune.ExperimentAnalysis(tmpdir))
+    result_grid = ResultGrid(tune.ExperimentAnalysis(str(tmpdir)))
     assert len(result_grid.errors) == 3
     assert result_grid.num_errors == 3
     assert result_grid.num_terminated == 2
@@ -380,7 +381,7 @@ def test_result_grid_moved_experiment_path(ray_start_2_cpus, tmpdir):
         ),
         run_config=air.RunConfig(
             name="exp_dir",
-            local_dir=str(tmpdir / "ray_results"),
+            storage_path=str(tmpdir / "ray_results"),
             stop={"it": total_iters},
             checkpoint_config=air.CheckpointConfig(
                 # Keep the latest checkpoints
@@ -436,7 +437,7 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
     # Test that checkpoints returned by ResultGrid point to URI
     # if upload_dir is specified in SyncConfig.
     local_dir = Path(tmpdir) / "local_dir"
-    sync_config = tune.SyncConfig(upload_dir="s3://bucket", syncer=MockSyncer())
+    sync_config = tune.SyncConfig(syncer=MockSyncer())
 
     def trainable(config):
         for i in range(5):
@@ -445,7 +446,11 @@ def test_result_grid_cloud_path(ray_start_2_cpus, tmpdir):
 
     tuner = tune.Tuner(
         trainable,
-        run_config=air.RunConfig(sync_config=sync_config, local_dir=str(local_dir)),
+        run_config=air.RunConfig(
+            storage_path="s3://bucket",
+            sync_config=sync_config,
+            local_dir=str(local_dir),
+        ),
         tune_config=tune.TuneConfig(
             metric="metric",
             mode="max",

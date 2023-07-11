@@ -1,9 +1,10 @@
 from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
+from ray.train.data_config import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
+from ray.air.config import ScalingConfig, RunConfig
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
 
@@ -22,12 +23,12 @@ class TensorflowTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -55,7 +56,7 @@ class TensorflowTrainer(DataParallelTrainer):
         at the beginning of your ``train_loop_per_worker`` function.
 
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
@@ -65,7 +66,7 @@ class TensorflowTrainer(DataParallelTrainer):
             # Returns dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Returns the Ray Dataset shard for the given key.
+            # Returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Returns the total number of workers executing training.
@@ -93,9 +94,6 @@ class TensorflowTrainer(DataParallelTrainer):
         from ray.air import session, Checkpoint
         from ray.air.config import ScalingConfig
         from ray.train.tensorflow import TensorflowTrainer
-
-        # If using GPUs, set this to True.
-        use_gpu = False
 
         def build_model():
             # toy neural network : 1-layer
@@ -131,15 +129,15 @@ class TensorflowTrainer(DataParallelTrainer):
         train_dataset = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         trainer = TensorflowTrainer(
             train_loop_per_worker=train_loop_per_worker,
-            scaling_config=ScalingConfig(num_workers=3, use_gpu=use_gpu),
+            scaling_config=ScalingConfig(num_workers=3, use_gpu=True),
             datasets={"train": train_dataset},
             train_loop_config={"num_epochs": 2},
         )
         result = trainer.fit()
 
     .. testoutput::
+        :options:+ELLIPSIS
         :hide:
-        :options: +ELLIPSIS
 
         ...
 
@@ -154,7 +152,7 @@ class TensorflowTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -171,7 +169,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         tensorflow_config: Optional[TensorflowConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

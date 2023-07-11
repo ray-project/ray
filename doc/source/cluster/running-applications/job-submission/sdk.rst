@@ -224,3 +224,22 @@ To be precise, the environment variable ``CUDA_VISIBLE_DEVICES`` will not be set
 .. note::
 
     By default, 0 CPUs and 0 GPUs are reserved for the entrypoint script.
+
+
+Client Configuration
+--------------------------------
+
+Additional client connection options, such as custom HTTP headers and cookies, can be passed to the ``JobSubmissionClient`` class. 
+A full list of options can be found in the :ref:`API Reference <ray-job-submission-sdk-ref>`.
+
+TLS Verification
+~~~~~~~~~~~~~~~~~
+By default, any HTTPS client connections will be verified using system certificates found by the underlying ``requests`` and ``aiohttp`` libraries.
+The ``verify`` parameter can be set to override this behavior. For example:
+
+.. code-block:: python
+
+    client = JobSubmissionClient("https://<job-server-url>", verify="/path/to/cert.pem")
+
+will use the certificate found at ``/path/to/cert.pem`` to verify the job server's certificate.
+Certificate verification can be disabled by setting the ``verify`` parameter to ``False``.

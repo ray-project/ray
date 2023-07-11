@@ -7,6 +7,7 @@ import pytest
 
 import ray
 import ray._private.gcs_utils as gcs_utils
+from ray.util.state import list_actors
 import ray.cluster_utils
 from ray._private.test_utils import (
     SignalActor,
@@ -35,14 +36,14 @@ def test_remote_functions_not_scheduled_on_actors(ray_start_regular):
             pass
 
         def get_id(self):
-            return ray._private.worker.global_worker.worker_id
+            return ray.get_runtime_context().get_worker_id()
 
     a = Actor.remote()
     actor_id = ray.get(a.get_id.remote())
 
     @ray.remote
     def f():
-        return ray._private.worker.global_worker.worker_id
+        return ray.get_runtime_context().get_worker_id()
 
     resulting_ids = ray.get([f.remote() for _ in range(100)])
     assert actor_id not in resulting_ids
@@ -767,8 +768,9 @@ def test_actor_creation_task_crash(ray_start_regular):
 
     # Verify an exception is thrown.
     a = Actor.remote()
-    with pytest.raises(ray.exceptions.RayActorError):
+    with pytest.raises(ray.exceptions.RayActorError) as excinfo:
         ray.get(a.f.remote())
+    assert excinfo.value.actor_id == a._actor_id.hex()
 
     # Test an actor can be restarted successfully
     # afte it dies in its constructor.
@@ -1271,7 +1273,7 @@ def test_actor_gc(monkeypatch, shutdown_only):
         actors = [Actor.remote() for _ in range(10)]
         ray.get([actor.ready.remote() for actor in actors])
         alive_actors = 0
-        for a in ray.experimental.state.api.list_actors():
+        for a in list_actors():
             if a["state"] == "ALIVE":
                 alive_actors += 1
         assert alive_actors == 10
@@ -1279,9 +1281,7 @@ def test_actor_gc(monkeypatch, shutdown_only):
         del actors
 
         def verify_cached_dead_actor_cleaned():
-            return (
-                len(ray.experimental.state.api.list_actors()) == MAX_DEAD_ACTOR_CNT
-            )  # noqa
+            return len(list_actors()) == MAX_DEAD_ACTOR_CNT  # noqa
 
         wait_for_condition(verify_cached_dead_actor_cleaned)
 
@@ -1289,7 +1289,7 @@ def test_actor_gc(monkeypatch, shutdown_only):
         actors = [Actor.options(lifetime="detached").remote() for _ in range(10)]
         ray.get([actor.ready.remote() for actor in actors])
         alive_actors = 0
-        for a in ray.experimental.state.api.list_actors():
+        for a in list_actors():
             if a["state"] == "ALIVE":
                 alive_actors += 1
         assert alive_actors == 10
@@ -1303,7 +1303,7 @@ def test_actor_gc(monkeypatch, shutdown_only):
 
         driver = """
 import ray
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 ray.init("auto")
 
 @ray.remote
@@ -1323,7 +1323,7 @@ assert alive_actors == 10
         run_string_as_driver(driver)
         # Driver exits, so dead actors must be cleaned.
         wait_for_condition(verify_cached_dead_actor_cleaned)
-        print(ray.experimental.state.api.list_actors())
+        print(list_actors())
 
 
 if __name__ == "__main__":
