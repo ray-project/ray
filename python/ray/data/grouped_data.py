@@ -241,7 +241,8 @@ class GroupedData:
 
         While ``.map_groups()`` is very flexible, note that it comes with downsides:
             * It may be slower than using more specific methods such as ``.min()``,
-            ``.max()``.
+              ``.max()``.
+
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use ``.aggregate()`` instead of ``.map_groups()``.
@@ -415,7 +416,7 @@ class GroupedData:
         Examples:
             .. testcode::
                 import ray
-                ray.data.le(100).groupby("value").min()
+                ray.data.range(100).groupby("value").min()
                 ray.data.from_items([
                     {"A": i % 3, "B": i, "C": i**2} for i in range(100)
                 ]).groupby("A").min(["B", "C"])
@@ -452,7 +453,7 @@ class GroupedData:
         Examples:
             .. testcode::
                 import ray
-                ray.data.le(100).groupby("value").max()
+                ray.data.range(100).groupby("value").max()
                 ray.data.from_items([
                     {"A": i % 3, "B": i, "C": i**2} for i in range(100)
                 ]).groupby("A").max(["B", "C"])
@@ -489,7 +490,7 @@ class GroupedData:
         Examples:
             .. testcode::
                 import ray
-                ray.data.le(100).groupby("value").mean()
+                ray.data.range(100).groupby("value").mean()
                 ray.data.from_items([
                     {"A": i % 3, "B": i, "C": i**2} for i in range(100)
                 ]).groupby("A").mean(["B", "C"])
