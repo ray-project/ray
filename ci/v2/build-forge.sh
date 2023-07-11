@@ -26,16 +26,14 @@ echo "--- Build forge"
 
 docker version
 
-DEST_IMAGE="${RAYCI_TEMP_CR_REPO}:${RAYCI_BUILD_ID}-forge"
+DEST_IMAGE="localhost:5000/rayci/forge"
 
 tar --mtime="UTC 2020-01-01" -c -f - \
     ci/v2/forge/Dockerfile \
     | docker build --progress=plain -t "${DEST_IMAGE}" \
         -f ci/v2/forge/Dockerfile -
 
-aws sts get-caller-identity
-aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin "${RAYCI_TEMP_ECR}"
-
+docker save -o forge.tgz "${DEST_IMAGE}"
 echo "TEMP ECR: ${RAYCI_TEMP_ECR}"
 echo "DEST IMAGE: ${DEST_IMAGE}"
 docker push "${DEST_IMAGE}"
