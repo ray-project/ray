@@ -1,10 +1,17 @@
 import_path: "dir.subdir.a.add_and_sub.serve_dag"
 
 runtime_env:
-  working_dir: "https://github.com/ray-project/test_dag/archive/40d61c141b9c37853a7014b8659fc7f23c1d04f6.zip"
+  working_dir: "https://github.com/ray-project/test_dag/archive/445c9611151720716060b1471b29c70219ed33ef.zip"
 
 deployments:
+  - name: "DAGDriver"
+    graceful_shutdown_timeout_s: 0.0001
+  - name: "Router"
+    graceful_shutdown_timeout_s: 0.0001
+  - name: "Add"
+    graceful_shutdown_timeout_s: 0.0001
   - name: "Subtract"
+    graceful_shutdown_timeout_s: 0.0001
     ray_actor_options:
       runtime_env:
         py_modules:
