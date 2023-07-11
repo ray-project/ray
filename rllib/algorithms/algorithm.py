@@ -179,13 +179,11 @@ except ImportError:
                 A list of resource bundles for the learner workers.
             """
 
-            num_on_same_node = cf.force_num_learner_workers_onto_same_node
-            num_total = cf.num_learner_workers
-
             if cf.num_learner_workers > 0:
                 if cf.num_gpus_per_learner_worker:
                     bundle_counts = _get_learner_bundle_counts(
-                        num_total, num_on_same_node
+                        cf.num_learner_workers,
+                        cf.force_num_learner_workers_onto_same_node,
                     )
                     learner_bundles = []
                     for count in bundle_counts:
@@ -194,13 +192,19 @@ except ImportError:
                         )
                 elif cf.num_cpus_per_learner_worker:
                     bundle_counts = _get_learner_bundle_counts(
-                        num_total, num_on_same_node
+                        cf.num_learner_workers,
+                        cf.force_num_learner_workers_onto_same_node,
                     )
                     learner_bundles = []
                     for count in bundle_counts:
                         learner_bundles.extend(
                             [{"CPU": count * cf.num_gpus_per_learner_worker}]
                         )
+                else:
+                    raise ValueError(
+                        "No resources specified for learner workers, "
+                        "but num_learner_workers > 0."
+                    )
             else:
                 learner_bundles = [
                     {
