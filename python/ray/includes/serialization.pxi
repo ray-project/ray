@@ -563,9 +563,8 @@ cdef class ArrowSerializedObject(SerializedObject):
     @cython.boundscheck(False)
     @cython.wraparound(False)
     cdef void write_to(self, uint8_t[:] buffer) nogil:
-        import pyarrow
-
         with gil:
+            import pyarrow
             sink = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
             writer = pyarrow.ipc.new_stream(sink, self.value.schema)
             writer.write(self.value)
