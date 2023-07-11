@@ -10,11 +10,9 @@ import ray
 from ray import serve
 from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
-<<<<<<< HEAD
-from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
-=======
 from ray.serve.handle import HandleOptions
->>>>>>> 36004e659a ([serve] Unify handle option setting (#37199))
+
+from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
