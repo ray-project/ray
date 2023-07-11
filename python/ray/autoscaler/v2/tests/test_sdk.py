@@ -148,6 +148,33 @@ def test_request_cluster_resources_basic(shutdown_only):
     wait_for_condition(verify)
 
 
+def test_node_info_basic(shutdown_only, monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_CLOUD_INSTANCE_ID", "instance-id")
+        m.setenv("RAY_NODE_TYPE_NAME", "node-type-name")
+        m.setenv("RAY_CLOUD_INSTANCE_TYPE_NAME", "instance-type-name")
+
+        ctx = ray.init(num_cpus=1)
+        ip = ctx.address_info["node_ip_address"]
+
+        stub = _autoscaler_state_service_stub()
+
+        def verify():
+            state = get_cluster_resource_state(stub)
+
+            assert len(state.node_states) == 1
+            node = state.node_states[0]
+
+            assert node.instance_id == "instance-id"
+            assert node.ray_node_type_name == "node-type-name"
+            assert node.node_ip_address == ip
+            assert node.instance_type_name == "instance-type-name"
+
+            return True
+
+        wait_for_condition(verify)
+
+
 def test_pg_pending_gang_requests_basic(ray_start_cluster):
     ray.init(num_cpus=1)
 

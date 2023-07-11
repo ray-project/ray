@@ -131,7 +131,6 @@ message NodeState {
   // The time in ms since the node is idle.
   int64 idle_duration_ms = 9;
 
-  // TODO(rickyx): to be populated.
   // Node ip address.
   string node_ip_address = 10;
 
