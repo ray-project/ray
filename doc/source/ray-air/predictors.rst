@@ -138,51 +138,6 @@ Here are some examples:
     :end-before: __configure_batch_predictor_scaling_end__
 
 
-
-Batch Inference Examples
-------------------------
-Below, we provide examples of using common frameworks to do batch inference for different data types:
-
-Tabular
-~~~~~~~
-
-.. tab-set::
-
-    .. tab-item:: XGBoost
-
-        .. literalinclude:: examples/xgboost_batch_prediction.py
-            :language: python
-
-    .. tab-item:: Pytorch
-
-        .. literalinclude:: examples/pytorch_tabular_batch_prediction.py
-            :language: python
-
-    .. tab-item:: Tensorflow
-
-        .. literalinclude:: examples/tf_tabular_batch_prediction.py
-            :language: python
-
-Image
-~~~~~
-
-.. tab-set::
-
-    .. tab-item:: Pytorch
-
-        .. literalinclude:: examples/torch_image_batch_pretrained.py
-            :language: python
-
-
-    .. tab-item:: Tensorflow
-
-        Coming soon!
-
-Text
-~~~~
-
-Coming soon!
-
 Developer Guide: Implementing your own Predictor
 ------------------------------------------------
 
