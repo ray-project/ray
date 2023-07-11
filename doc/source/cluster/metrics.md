@@ -229,7 +229,7 @@ Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
 
 #### Loading Ray Grafana configurations with Docker Compose
-In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus and Grafana configuration files and default dashboards.
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
 
 To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana and Prometheus configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, the shared volume should be mounted on the respective paths for the containers, which contains the recommended configurations and default dashboards to initiate the Prometheus and Grafana servers.
 
