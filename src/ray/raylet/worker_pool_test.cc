@@ -21,7 +21,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/constants.h"
 #include "ray/raylet/node_manager.h"
+#include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/util/process.h"
+#include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 using json = nlohmann::json;
 namespace ray {
@@ -87,39 +89,34 @@ static int GetReferenceCount(const std::string serialized_runtime_env) {
   return it == runtime_env_reference.end() ? 0 : it->second;
 }
 
-class MockRuntimeEnvAgentClient : public rpc::RuntimeEnvAgentClientInterface {
+class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
  public:
-  void GetOrCreateRuntimeEnv(
-      const rpc::GetOrCreateRuntimeEnvRequest &request,
-      const rpc::ClientCallback<rpc::GetOrCreateRuntimeEnvReply> &callback) {
-    rpc::GetOrCreateRuntimeEnvReply reply;
-    if (request.serialized_runtime_env() == BAD_RUNTIME_ENV) {
-      reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
-      reply.set_error_message(BAD_RUNTIME_ENV_ERROR_MSG);
+  void GetOrCreateRuntimeEnv(const JobID &job_id,
+                             const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const std::string &serialized_allocated_resource_instances,
+                             GetOrCreateRuntimeEnvCallback callback) override {
+    if (serialized_runtime_env == BAD_RUNTIME_ENV) {
+      callback(false, "", BAD_RUNTIME_ENV_ERROR_MSG);
     } else {
-      auto it = runtime_env_reference.find(request.serialized_runtime_env());
+      rpc::GetOrCreateRuntimeEnvReply reply;
+      auto it = runtime_env_reference.find(serialized_runtime_env);
       if (it == runtime_env_reference.end()) {
-        runtime_env_reference[request.serialized_runtime_env()] = 1;
+        runtime_env_reference[serialized_runtime_env] = 1;
       } else {
-        runtime_env_reference[request.serialized_runtime_env()] += 1;
+        runtime_env_reference[serialized_runtime_env] += 1;
       }
-
-      reply.set_status(rpc::AGENT_RPC_STATUS_OK);
-      reply.set_serialized_runtime_env_context("{\"dummy\":\"dummy\"}");
+      callback(true, "{\"dummy\":\"dummy\"}", "");
     }
-    callback(Status::OK(), reply);
   };
 
-  void DeleteRuntimeEnvIfPossible(
-      const rpc::DeleteRuntimeEnvIfPossibleRequest &request,
-      const rpc::ClientCallback<rpc::DeleteRuntimeEnvIfPossibleReply> &callback) {
-    auto it = runtime_env_reference.find(request.serialized_runtime_env());
+  void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
+                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
+    auto it = runtime_env_reference.find(serialized_runtime_env);
     RAY_CHECK(it != runtime_env_reference.end());
-    runtime_env_reference[request.serialized_runtime_env()] -= 1;
-    RAY_CHECK(runtime_env_reference[request.serialized_runtime_env()] >= 0);
-    rpc::DeleteRuntimeEnvIfPossibleReply reply;
-    reply.set_status(rpc::AGENT_RPC_STATUS_OK);
-    callback(Status::OK(), reply);
+    runtime_env_reference[serialized_runtime_env] -= 1;
+    RAY_CHECK(runtime_env_reference[serialized_runtime_env] >= 0);
+    callback(true);
   };
 };
 
@@ -421,7 +418,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    StartMockAgent();
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_shared<MockRuntimeEnvAgentClient>());
   }
 
   void TearDown() override {
@@ -480,32 +477,6 @@ class WorkerPoolTest : public ::testing::Test {
     }
     // Check number of starting workers
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), expected_worker_process_count);
-  }
-
-  void StartMockAgent() {
-    std::vector<std::string> agent_commands = {};
-    const NodeID node_id = NodeID::FromRandom();
-    auto options = AgentManager::Options({node_id, agent_commands});
-    auto agent_manager = std::make_shared<AgentManager>(
-        std::move(options),
-        /*delay_executor=*/
-        [this](std::function<void()> task, uint32_t delay_ms) {
-          return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-        },
-        /*runtime_env_agent_factory=*/
-        [](const std::string &ip_address, int port) {
-          return std::shared_ptr<rpc::RuntimeEnvAgentClientInterface>(
-              new MockRuntimeEnvAgentClient());
-        },
-        false);
-    rpc::RegisterAgentRequest request;
-    // Set agent port to a nonzero value to avoid invalid agent client.
-    request.set_agent_port(12345);
-    rpc::RegisterAgentReply reply;
-    auto send_reply_callback =
-        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-    agent_manager->HandleRegisterAgent(request, &reply, send_reply_callback);
-    worker_pool_->SetAgentManager(agent_manager);
   }
 
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
