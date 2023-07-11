@@ -62,3 +62,11 @@ py_test(
     tags = ["team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_utils",
+    size = "small",
+    srcs = ["tests/test_utils.py"],
+    tags = ["team:core"],
+    deps = ["//:ray_lib", ":conftest"],
+)

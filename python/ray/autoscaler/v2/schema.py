@@ -1,6 +1,10 @@
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
+
 NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
 
 
@@ -24,37 +28,33 @@ class NodeUsage:
 
 @dataclass
 class NodeInfo:
-
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # The detailed state of the node/request.
-    # E.g. idle, running, etc.
+    # E.g. idle, running, setting-up, etc.
     node_status: str
-    # ray node id.
-    node_id: str
     # ray node type name.
     ray_node_type_name: str
     # Cloud instance id.
     instance_id: str
     # Ip address of the node when alive.
     ip_address: str
-    # Resource usage breakdown.
-    resource_usage: Optional[NodeUsage]
+    # ray node id. None if still pending.
+    node_id: Optional[str] = None
+    # Resource usage breakdown if node alive.
+    resource_usage: Optional[NodeUsage] = None
     # Failure detail if the node failed.
-    failure_detail: Optional[str]
+    failure_detail: Optional[str] = None
 
 
 @dataclass
-class PendingNode:
+class PendingLaunchRequest:
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # ray node type name.
     ray_node_type_name: str
-    # The current status of the request.
-    # e.g. setting-up-ssh, launching.
-    details: str
-    # IP address if available.
-    ip_address: Optional[str]
+    # count.
+    count: int
 
 
 @dataclass
@@ -64,17 +64,28 @@ class ResourceRequestByCount:
     # Number of bundles with the same shape.
     count: int
 
+    def __str__(self) -> str:
+        return f"[{self.count} {self.bundle}]"
+
 
 @dataclass
 class ResourceDemand:
     # The bundles in the demand with shape and count info.
-    bundles: List[ResourceRequestByCount]
+    bundles_by_count: List[ResourceRequestByCount]
 
 
 @dataclass
 class PlacementGroupResourceDemand(ResourceDemand):
     # Placement group strategy.
     strategy: str
+
+    def __str__(self) -> str:
+        s = ""
+        s += f"{self.strategy}:  "
+        for bundle in self.bundles_by_count[:-1]:
+            s += f"{bundle},"
+        s += f"{self.bundles_by_count[-1]}"
+        return s
 
 
 @dataclass
@@ -88,26 +99,43 @@ class ClusterConstraintDemand(ResourceDemand):
 
 
 @dataclass
+class ResourceDemandSummary:
+    # Placement group demand.
+    placement_group_demand: List[PlacementGroupResourceDemand]
+    # Ray task actor demand.
+    ray_task_actor_demand: List[RayTaskActorDemand]
+    # Cluster constraint demand.
+    cluster_constraint_demand: List[ClusterConstraintDemand]
+
+
+@dataclass
 class Stats:
     # How long it took to get the GCS request.
-    gcs_request_time_s: float
+    gcs_request_time_s: Optional[float] = None
+    # How long it took to get all live instances from node provider.
+    none_terminated_node_request_time_s: Optional[float] = None
+    # How long for autoscaler to process the scaling decision.
+    autoscaler_iteration_time_s: Optional[float] = None
 
 
 @dataclass
 class ClusterStatus:
     # Healthy nodes information (alive)
     healthy_nodes: List[NodeInfo]
-    # Pending nodes requests.
-    pending_nodes: List[PendingNode]
+    # Pending launches.
+    pending_launches: List[PendingLaunchRequest]
+    # Pending nodes.
+    pending_nodes: List[NodeInfo]
     # Failures
     failed_nodes: List[NodeInfo]
     # Resource usage summary for entire cluster.
     cluster_resource_usage: List[ResourceUsage]
     # Demand summary.
-    resource_demands: List[ResourceDemand]
+    resource_demands: ResourceDemandSummary
     # Query metics
     stats: Stats
-
-    def format_str(self, verbose_lvl=0):
-        # This could be what the `ray status` is getting.
-        return "not implemented"
+    # TODO(rickyx): Not sure if this is actually used.
+    # We don't have any tests that cover this is actually
+    # being produced. And I have not seen this either.
+    # Node availability info.
+    node_availability: Optional[NodeAvailabilitySummary]
