@@ -4,8 +4,6 @@ FROM $DOCKER_IMAGE_BASE_TEST
 # Move out of working dir /ray
 # Delete stale data
 WORKDIR /
-# Preserve requirements_compiled.txt
-RUN mv /ray/python/requirements_compiled.txt /tmp/requirements_compiled.txt || true
 RUN rm -rf /ray
 
 RUN mkdir /ray
@@ -13,8 +11,6 @@ WORKDIR /ray
 
 # Copy new ray files.
 COPY . .
-
-RUN mv /tmp/requirements_compiled.txt /ray/python/requirements_compiled.txt || true
 
 RUN bash --login -i ./ci/env/install-dependencies.sh
 

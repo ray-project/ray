@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -xe
+set -e
 
 # shellcheck disable=SC2139
 alias pip="$HOME/anaconda3/bin/pip"
