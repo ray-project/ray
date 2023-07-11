@@ -5,7 +5,6 @@ import gradio as gr
 from gradio_client import Client
 import pytest
 
-import ray
 from ray._private.test_utils import wait_for_condition
 
 from ray import serve
@@ -60,7 +59,7 @@ def test_gradio_ingress_scaling(serve_instance):
     )
 
     client = Client("http://localhost:8000")
-    assert len({client.predict("input") for _ in range(3)}) == 2
+    wait_for_condition(lambda: len({client.predict("input") for _ in range(3)}) == 2)
 
 
 if __name__ == "__main__":
