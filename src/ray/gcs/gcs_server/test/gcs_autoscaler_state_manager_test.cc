@@ -377,7 +377,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
     node->set_instance_id("instance_1");
     AddNode(node);
 
-    auto reply = GetClusterStatusSync();
+    const auto reply = GetClusterStatusSync();
     const auto &state = reply.cluster_resource_state();
     ASSERT_EQ(state.node_states_size(), 1);
     CheckNodeResources(state.node_states(0),
@@ -390,8 +390,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
     rpc::autoscaler::AutoscalingState actual_state;
     actual_state.set_autoscaler_state_version(1);
     ReportAutoscalingState(actual_state);
-
-    const auto &state = GetClusterStatusSync().autoscaling_state();
+    const auto reply = GetClusterStatusSync();
+    const auto &state = reply.autoscaling_state();
     ASSERT_EQ(state.autoscaler_state_version(), 1);
   }
 }
