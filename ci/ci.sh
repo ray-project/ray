@@ -198,7 +198,7 @@ test_python() {
       -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone2 # Multinode not supported on Windows
+      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve:test_gradio
       -python/ray/serve:test_gradio_visualization
       -python/ray/serve:test_air_integrations_gpu
