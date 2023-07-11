@@ -10,6 +10,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 import ray
+from ray._private.test_utils import wait_for_condition
 
 from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -190,8 +191,7 @@ def test_gradio_queue(serve_instance):
     job2 = client.submit(5, api_name="/predict")
     print("Job1 submitted")
 
-    while not (job1.done() and job2.done()):
-        time.sleep(0.1)
+    wait_for_condition(lambda: job1.done() and job2.done())
 
     print("Jobs done")
 
