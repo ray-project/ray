@@ -26,7 +26,7 @@ In this basic example, the `train_ds` object is created in your Ray script befor
 Splitting data across workers
 -----------------------------
 
-By default, Train will split the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. This means that each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. To customize this, we can pass in a :class:`DataConfig <ray.train.DataConfig>` to the Trainer constructor. For example, the following splits dataset ``"a"`` but not ``"b"``.
+By default, Train will split the ``"train"`` dataset across workers using :meth:`Dataset.streaming_split <ray.data.Dataset.streaming_split>`. This means that each worker sees a disjoint subset of the data, instead of iterating over the entire dataset. To customize this, we can pass in a :class:`DataConfig <ray.train.data_config.DataConfig>` to the Trainer constructor. For example, the following splits dataset ``"a"`` but not ``"b"``.
 
 .. literalinclude:: doc_code/air_ingest_new.py
     :language: python
@@ -51,7 +51,7 @@ Datasets are lazy and their execution is streamed, which means that on each epoc
 Ray Data execution options
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Under the hood, Train configures some default Data options for ingest: limiting the data ingest memory usage to 2GB per worker, and telling it to optimize the locality of the output data for ingest. See :meth:`help(DataConfig.default_ingest_options()) <ray.train.DataConfig.default_ingest_options>` if you want to learn more and further customize these settings.
+Under the hood, Train configures some default Data options for ingest: limiting the data ingest memory usage to 2GB per worker, and telling it to optimize the locality of the output data for ingest. See :meth:`help(DataConfig.default_ingest_options()) <ray.train.data_config.DataConfig.default_ingest_options>` if you want to learn more and further customize these settings.
 
 Common options you may want to adjust:
 
@@ -92,7 +92,7 @@ In general, you can use ``DataConfig`` for any shared setup that has to occur ah
 Migrating from the legacy DatasetConfig API
 -------------------------------------------
 
-Starting from Ray 2.6, the ``DatasetConfig`` API is deprecated, and it will be removed in a future release. If your workloads are still using it, consider migrating to the new :class:`DataConfig <ray.train.DataConfig>` API as soon as possible.
+Starting from Ray 2.6, the ``DatasetConfig`` API is deprecated, and it will be removed in a future release. If your workloads are still using it, consider migrating to the new :class:`DataConfig <ray.train.data_config.DataConfig>` API as soon as possible.
 
 The main difference is that preprocessing no longer part of the Trainer. As Dataset operations are lazy. You can apply any operations to your Datasets before passing them to the Trainer. The operations will be re-executed before each epoch.
 
