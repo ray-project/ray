@@ -318,6 +318,9 @@ message GcsNodeInfo {
   // The port at which the node will expose metrics to.
   int32 metrics_export_port = 9;
 
+  // The port at which the runtime env agent listens as HTTP.
+  int32 runtime_env_agent_port = 27;
+
   // The total resources of this node.
   map<string, double> resources_total = 11;
 
