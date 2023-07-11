@@ -8,13 +8,60 @@ import requests
 import ray
 
 from ray import serve
+from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
+from ray.serve.handle import HandleOptions
 from ray.serve._private.constants import (
     DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     SERVE_DEFAULT_APP_NAME,
 )
-from ray.serve.context import get_global_client
+
+
+def test_handle_options():
+    default_options = HandleOptions()
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting method name.
+    only_set_method = default_options.copy_and_update(method_name="hi")
+    assert only_set_method.method_name == "hi"
+    assert only_set_method.multiplexed_model_id == ""
+    assert only_set_method.stream is False
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting model ID.
+    only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
+    assert only_set_model_id.method_name == "__call__"
+    assert only_set_model_id.multiplexed_model_id == "hi"
+    assert only_set_model_id.stream is False
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting stream.
+    only_set_stream = default_options.copy_and_update(stream=True)
+    assert only_set_stream.method_name == "__call__"
+    assert only_set_stream.multiplexed_model_id == ""
+    assert only_set_stream.stream is True
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting multiple.
+    set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
+    assert set_multiple.method_name == "hi"
+    assert set_multiple.multiplexed_model_id == ""
+    assert set_multiple.stream is True
 
 
 @pytest.mark.asyncio
