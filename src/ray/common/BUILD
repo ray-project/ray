@@ -1,55 +1,55 @@
-load("//bazel:ray.bzl", "cc_library")
+load("//bazel:ray.bzl", "ray_cc_library")
 
-cc_library(
+ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
 
-cc_library(
+ray_cc_library(
     name = "test_util",
-    hdrs = ["test_util.h"],
     srcs = ["test_util.cc"],
+    hdrs = ["test_util.h"],
     deps = [
         ":id",
-        ":ray_object",
         ":network",
-        "//src/ray/util:util",
-        "@com_google_googletest//:gtest",
+        ":ray_object",
         "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util",
         "@boost//:optional",
+        "@com_google_googletest//:gtest",
     ],
 )
 
-cc_library(
+ray_cc_library(
     name = "ray_object",
+    srcs = ["ray_object.cc"],
     hdrs = [
         "buffer.h",
-        "ray_object.h"],
-    srcs = ["ray_object.cc"],
+        "ray_object.h",
+    ],
     deps = [
-        "//src/ray/util:util",
-        "//src/ray/protobuf:gcs_cc_proto",
-        ":status",
         ":id",
+        ":status",
+        "//:aligned_alloc",
+        "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util",
         "@com_google_absl//absl/time",
         "@com_google_absl//absl/types:optional",
-        "//:aligned_alloc",
-    ]
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "grpc_util",
     hdrs = ["grpc_util.h"],
     deps = [
-        "@com_github_grpc_grpc//:grpc++",
-        ":status",
         ":ray_config",
+        ":status",
+        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
-    ]
+    ],
 )
 
-
-cc_library(
+ray_cc_library(
     name = "memory_monitor",
     srcs = [
         "file_system_monitor.cc",
@@ -61,15 +61,15 @@ cc_library(
     ],
     deps = [
         ":asio",
-        "//src/ray/util:util",
         ":ray_config",
+        "//src/ray/util",
         "@com_google_absl//absl/strings",
-        "@nlohmann_json",
         "@com_google_googletest//:gtest_prod",
-    ]
+        "@nlohmann_json",
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "runtime_env",
     srcs = [
         "runtime_env_common.cc",
@@ -83,14 +83,15 @@ cc_library(
         ":id",
         "//src/ray/protobuf:common_cc_proto",
         "@com_google_absl//absl/container:flat_hash_map",
-    ]
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "network",
     srcs = [
+        "client_connection.cc",
         "network_util.cc",
-        "client_connection.cc"],
+    ],
     hdrs = [
         "client_connection.h",
         "network_util.h",
@@ -100,75 +101,75 @@ cc_library(
         ":id",
         ":status",
         "//:node_manager_fbs",
-    ]
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "id",
     srcs = [
-        "id.cc",
         "common_protocol.cc",
+        "id.cc",
     ],
     hdrs = [
-        "id.h",
         "common_protocol.h",
+        "id.h",
         "id_def.h",
     ],
     deps = [
-        "//src/ray/util:util",
         ":constants",
-        "//src/ray/protobuf:common_cc_proto",
-        "@com_github_google_flatbuffers//:flatbuffers",
         ":status",
+        "//src/ray/protobuf:common_cc_proto",
+        "//src/ray/util",
+        "@com_github_google_flatbuffers//:flatbuffers",
         "@msgpack",
-    ]
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "task_common",
-    srcs =[
-        "task/task.cc",
-        "task/task_spec.cc",
+    srcs = [
         "bundle_location_index.cc",
         "bundle_spec.cc",
+        "function_descriptor.cc",
+        "placement_group.cc",
         "scheduling/cluster_resource_data.cc",
         "scheduling/fixed_point.cc",
         "scheduling/scheduling_ids.cc",
         "scheduling/scheduling_resources.cc",
-        "placement_group.cc",
-        "function_descriptor.cc",
+        "task/task.cc",
+        "task/task_spec.cc",
     ],
     hdrs = [
+        "bundle_location_index.h",
+        "bundle_spec.h",
+        "function_descriptor.h",
+        "placement_group.h",
         "scheduling/cluster_resource_data.h",
         "scheduling/fixed_point.h",
         "scheduling/scheduling_ids.h",
         "scheduling/scheduling_resources.h",
-        "function_descriptor.h",
-        "bundle_spec.h",
-        "placement_group.h",
-        "bundle_location_index.h",
         "task/task.h",
         "task/task_common.h",
         "task/task_spec.h",
         "task/task_util.h",
     ],
     deps = [
-        "//src/ray/util:util",
-        ":id",
+        ":event_stats",
         ":grpc_util",
-        "//:node_manager_fbs",
+        ":id",
+        ":ray_config",
         ":ray_object",
         ":runtime_env",
+        "//:node_manager_fbs",
+        "//src/ray/util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/strings",
-        ":ray_config",
-        ":event_stats",
-    ]
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "asio",
     srcs = [
         "asio/asio_chaos.cc",
@@ -184,45 +185,49 @@ cc_library(
         "asio/periodical_runner.h",
     ],
     deps = [
-        "@boost//:asio",
-        ":ray_config",
         ":event_stats",
-        "@com_google_absl//absl/synchronization",
+        ":ray_config",
+        "//src/ray/util",
+        "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
-        "//src/ray/util:util",
-    ]
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "event_stats",
     srcs = [
-        "event_stats.cc"
+        "event_stats.cc",
     ],
     hdrs = [
-        "event_stats.h"
+        "event_stats.h",
     ],
     deps = [
-        "@com_google_absl//absl/synchronization",
-        "@com_google_absl//absl/container:flat_hash_map",
         ":ray_config",
-        "//src/ray/util:util",
         "//:stats_metric",
-    ]
+        "//src/ray/util",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/synchronization",
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "ray_config",
     srcs = ["ray_config.cc"],
-    hdrs = ["ray_config_def.h", "ray_config.h", "ray_internal_flag_def.h"],
+    hdrs = [
+        "ray_config.h",
+        "ray_config_def.h",
+        "ray_internal_flag_def.h",
+    ],
     deps = [
-        "@com_google_absl//absl/strings",
+        "//src/ray/util",
         "@com_google_absl//absl/algorithm",
-        "//src/ray/util:util",
+        "@com_google_absl//absl/strings",
         "@nlohmann_json",
-    ]
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "ray_syncer",
     srcs = [
         "ray_syncer/ray_syncer.cc",
@@ -232,24 +237,24 @@ cc_library(
         "ray_syncer/ray_syncer-inl.h",
     ],
     deps = [
-        "//src/ray/util:util",
-        "//:ray_syncer_cc_grpc",
         ":asio",
         ":id",
+        "//:ray_syncer_cc_grpc",
+        "//src/ray/util",
         "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:flat_hash_map",
-    ]
+    ],
 )
 
-cc_library(
+ray_cc_library(
     name = "status",
     srcs = [
-        "status.cc"
+        "status.cc",
     ],
     hdrs = [
-        "status.h"
+        "status.h",
     ],
     deps = [
-        "//src/ray/util:util",
-    ]
+        "//src/ray/util",
+    ],
 )
