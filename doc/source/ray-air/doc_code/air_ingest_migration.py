@@ -37,7 +37,7 @@ my_trainer.fit()
 # __legacy_api_end__
 
 # __new_api__
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 
 train_ds = ray.data.range_tensor(1000)
 test_ds = ray.data.range_tensor(10)
