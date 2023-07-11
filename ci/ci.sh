@@ -134,6 +134,7 @@ compile_pip_dependencies() {
   # Remove some pins from upstream dependencies:
   # ray, xgboost-ray, lightgbm-ray, tune-sklearn
   sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
   cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
