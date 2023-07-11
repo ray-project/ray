@@ -198,7 +198,7 @@ except ImportError:
                     learner_bundles = []
                     for count in bundle_counts:
                         learner_bundles.extend(
-                            [{"CPU": count * cf.num_gpus_per_learner_worker}]
+                            [{"CPU": count * cf.num_cpus_per_learner_worker}]
                         )
                 else:
                     raise ValueError(
