@@ -47,11 +47,9 @@ end-before: __batch_params_update_end__
 Use these methods in the `reconfigure` [method](serve-user-config) to control the `@serve.batch` parameters through your Serve configuration file.
 :::
 
-## Streaming batched requests
+(serve-streaming-batched-requests-guide)=
 
-```{warning}
-Support for HTTP streaming responses is experimental. To enable this feature, set `RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=1` on the cluster before starting Ray. If you encounter any issues, [file an issue on GitHub](https://github.com/ray-project/ray/issues/new/choose).
-```
+## Streaming batched requests
 
 Use an async generator to stream the outputs from your batched requests. Let's convert the `StreamingResponder` class to accept a batch.
 

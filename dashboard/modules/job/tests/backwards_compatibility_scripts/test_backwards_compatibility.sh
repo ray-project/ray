@@ -34,10 +34,8 @@ do
     conda create -y -n "${env_name}" python="${PYTHON_VERSION}"
     conda activate "${env_name}"
 
-    pip install -U ray=="${RAY_VERSION}"
-    pip install -U ray[default]=="${RAY_VERSION}"
-    # pydantic 2.0 brings breaking changes. Today, we force users to downgrade.
-    pip install "pydantic<2"
+    # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
+    pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}"
 
     printf "\n\n\n"
     echo "========================================================="
