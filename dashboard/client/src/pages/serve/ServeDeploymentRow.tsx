@@ -22,7 +22,6 @@ import {
   ServeReplica,
 } from "../../type/serve";
 import { useViewServeDeploymentMetricsButtonUrl } from "./ServeDeploymentMetricsSection";
-import { ServeReplicaLogsLink } from "./ServeReplicaDetailPage";
 
 const useStyles = makeStyles((theme) =>
   createStyles({
@@ -34,23 +33,29 @@ const useStyles = makeStyles((theme) =>
       fontSize: "1.5em",
       verticalAlign: "middle",
     },
+    statusMessage: {
+      maxWidth: 400,
+      display: "inline-flex",
+    },
   }),
 );
 
 export type ServeDeployentRowProps = {
   deployment: ServeDeployment;
   application: ServeApplication;
+  startExpanded?: boolean;
 };
 
 export const ServeDeploymentRow = ({
   deployment,
   application: { last_deployed_time_s },
+  startExpanded = false,
 }: ServeDeployentRowProps) => {
   const { name, status, message, deployment_config, replicas } = deployment;
 
   const classes = useStyles();
 
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(startExpanded);
   const metricsUrl = useViewServeDeploymentMetricsButtonUrl(name);
 
   return (
@@ -101,6 +106,7 @@ export const ServeDeploymentRow = ({
         <TableCell align="center">
           {message ? (
             <CodeDialogButtonWithPreview
+              className={classes.statusMessage}
               title="Message details"
               code={message}
             />
@@ -144,18 +150,24 @@ export const ServeReplicaRow = ({
     <TableRow>
       <TableCell align="center"></TableCell>
       <TableCell align="center">
-        <RouterLink
+        <Link
+          component={RouterLink}
           to={`${encodeURIComponent(name)}/${encodeURIComponent(replica_id)}`}
         >
           {replica_id}
-        </RouterLink>
+        </Link>
       </TableCell>
       <TableCell align="center">-</TableCell>
       <TableCell align="center">
         <StatusChip type="serveReplica" status={state} />
       </TableCell>
       <TableCell align="center">
-        <ServeReplicaLogsLink replica={replica} deployment={deployment} />
+        <Link
+          component={RouterLink}
+          to={`${encodeURIComponent(name)}/${encodeURIComponent(replica_id)}`}
+        >
+          Log
+        </Link>
         {metricsUrl && (
           <React.Fragment>
             <br />

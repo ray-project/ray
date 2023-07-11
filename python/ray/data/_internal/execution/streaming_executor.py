@@ -1,38 +1,39 @@
+import os
 import threading
 import time
-import os
 import uuid
 from typing import Iterator, Optional
 
 import ray
-from ray.data.context import DataContext
-from ray.data._internal.datastream_logger import DatastreamLogger
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    ExecutionResources,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
-    Topology,
-    TopologyResourceUsage,
-    OpState,
-    build_streaming_topology,
-    process_completed_tasks,
-    select_operator_to_run,
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
-)
+from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.streaming_executor_state import (
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
+    AutoscalingState,
+    OpState,
+    Topology,
+    TopologyResourceUsage,
+    build_streaming_topology,
+    process_completed_tasks,
+    select_operator_to_run,
+    update_operator_states,
+)
 from ray.data._internal.progress_bar import ProgressBar
-from ray.data._internal.stats import DatastreamStats
+from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
-logger = DatastreamLogger(__name__)
+logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
 DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
@@ -46,17 +47,17 @@ _num_shutdown = 0
 
 
 class StreamingExecutor(Executor, threading.Thread):
-    """A streaming Datastream executor.
+    """A streaming Dataset executor.
 
-    This implementation executes Datastream DAGs in a fully streamed way. It runs
+    This implementation executes Dataset DAGs in a fully streamed way. It runs
     by setting up the operator topology, and then routing blocks through operators in
     a way that maximizes throughput under resource constraints.
     """
 
     def __init__(self, options: ExecutionOptions):
         self._start_time: Optional[float] = None
-        self._initial_stats: Optional[DatastreamStats] = None
-        self._final_stats: Optional[DatastreamStats] = None
+        self._initial_stats: Optional[DatasetStats] = None
+        self._final_stats: Optional[DatasetStats] = None
         self._global_info: Optional[ProgressBar] = None
 
         self._execution_id = uuid.uuid4().hex
@@ -76,7 +77,7 @@ class StreamingExecutor(Executor, threading.Thread):
         threading.Thread.__init__(self, daemon=True)
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatastreamStats] = None
+        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
     ) -> Iterator[RefBundle]:
         """Executes the DAG using a streaming execution strategy.
 
@@ -137,7 +138,13 @@ class StreamingExecutor(Executor, threading.Thread):
                     self._outer.shutdown()
                     raise
 
+            def __del__(self):
+                self._outer.shutdown()
+
         return StreamIterator(self)
+
+    def __del__(self):
+        self.shutdown()
 
     def shutdown(self):
         context = DataContext.get_current()
@@ -146,7 +153,7 @@ class StreamingExecutor(Executor, threading.Thread):
         with self._shutdown_lock:
             if self._shutdown:
                 return
-            logger.get_logger().info(f"Shutting down {self}.")
+            logger.get_logger().debug(f"Shutting down {self}.")
             _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
@@ -196,9 +203,9 @@ class StreamingExecutor(Executor, threading.Thread):
         else:
             return self._generate_stats()
 
-    def _generate_stats(self) -> DatastreamStats:
+    def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
-        stats = self._initial_stats or DatastreamStats(stages={}, parent=None)
+        stats = self._initial_stats or DatasetStats(stages={}, parent=None)
         for op in self._topology:
             if isinstance(op, InputDataBuffer):
                 continue
@@ -256,6 +263,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
+
+        update_operator_states(topology)
 
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():

@@ -16,10 +16,15 @@ from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
 
 import ray
-from ray._private.dict import unflatten_dict
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint, CheckpointStorage
+from ray.air.constants import (
+    EXPR_ERROR_PICKLE_FILE,
+    EXPR_ERROR_FILE,
+    TRAINING_ITERATION,
+)
+
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.tune import TuneError
@@ -35,7 +40,6 @@ from ray.tune.result import (
     DONE,
     NODE_IP,
     PID,
-    TRAINING_ITERATION,
     TRIAL_ID,
     DEBUG_METRICS,
     TRIAL_INFO,
@@ -222,7 +226,6 @@ def _noop_logger_creator(
 
 def _get_trainable_kwargs(
     trial: "Trial",
-    additional_kwargs: Optional[Dict[str, Any]] = None,
     should_chdir: bool = False,
 ) -> Dict[str, Any]:
     trial.init_local_path()
@@ -249,9 +252,6 @@ def _get_trainable_kwargs(
         # with trainables that don't provide these keyword arguments
         kwargs["remote_checkpoint_dir"] = trial.remote_path
         kwargs["sync_config"] = trial.sync_config
-
-        if additional_kwargs:
-            kwargs.update(additional_kwargs)
 
     return kwargs
 
@@ -924,10 +924,10 @@ class Trial:
             self.num_failures += 1
 
         if self.local_path:
-            self.error_filename = "error.txt"
+            self.error_filename = EXPR_ERROR_FILE
             if isinstance(exc, RayTaskError):
                 # Piping through the actual error to result grid.
-                self.pickled_error_filename = "error.pkl"
+                self.pickled_error_filename = EXPR_ERROR_PICKLE_FILE
                 with open(self.pickled_error_file, "wb") as f:
                     cloudpickle.dump(exc, f)
             with open(self.error_file, "a+") as f:
@@ -989,7 +989,7 @@ class Trial:
     def on_restore(self):
         """Handles restoration completion."""
         assert self.is_restoring
-        self.last_result = unflatten_dict(self.restoring_from.metrics)
+        self.last_result = self.restoring_from.metrics
         self.last_result.setdefault("config", self.config)
         self.restoring_from = None
         self.num_restore_failures = 0

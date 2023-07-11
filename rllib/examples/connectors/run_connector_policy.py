@@ -2,38 +2,25 @@
 and use it in a serving/inference setting.
 """
 
-import argparse
 import gymnasium as gym
-from pathlib import Path
+import os
+import tempfile
 
+from ray.rllib.examples.connectors.prepare_checkpoint import (
+    # For demo purpose only. Would normally not need this.
+    create_appo_cartpole_checkpoint,
+)
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.policy import local_policy_inference
 
 
-parser = argparse.ArgumentParser()
-# This should a checkpoint created with connectors enabled.
-parser.add_argument(
-    "--checkpoint_file",
-    help="Path to an RLlib checkpoint file, relative to //ray/rllib/ folder.",
-)
-parser.add_argument(
-    "--policy_id",
-    default="default_policy",
-    help="ID of policy to load.",
-)
-args = parser.parse_args()
-
-assert args.checkpoint_file, "Must specify flag --checkpoint_file."
-
-
-def run(checkpoint_path):
+def run(checkpoint_path, policy_id):
     # __sphinx_doc_begin__
     # Restore policy.
-    policies = Policy.from_checkpoint(
+    policy = Policy.from_checkpoint(
         checkpoint=checkpoint_path,
-        policy_ids=[args.policy_id],
+        policy_ids=[policy_id],
     )
-    policy = policies[args.policy_id]
 
     # Run CartPole.
     env = gym.make("CartPole-v1")
@@ -46,7 +33,9 @@ def run(checkpoint_path):
         # Use local_policy_inference() to run inference, so we do not have to
         # provide policy states or extra fetch dictionaries.
         # "env_1" and "agent_1" are dummy env and agent IDs to run connectors with.
-        policy_outputs = local_policy_inference(policy, "env_1", "agent_1", obs)
+        policy_outputs = local_policy_inference(
+            policy, "env_1", "agent_1", obs, explore=False
+        )
         assert len(policy_outputs) == 1
         action, _, _ = policy_outputs[0]
         print(f"step {step}", obs, action)
@@ -57,7 +46,17 @@ def run(checkpoint_path):
 
 
 if __name__ == "__main__":
-    checkpoint_path = str(
-        Path(__file__).parent.parent.parent.absolute().joinpath(args.checkpoint_file)
-    )
-    run(checkpoint_path)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        policy_id = "default_policy"
+
+        # Note, this is just for demo purpose.
+        # Normally, you would use a policy checkpoint from a real training run.
+        create_appo_cartpole_checkpoint(tmpdir)
+        policy_checkpoint_path = os.path.join(
+            tmpdir,
+            "checkpoint_000000",
+            "policies",
+            policy_id,
+        )
+
+        run(policy_checkpoint_path, policy_id)

@@ -39,9 +39,9 @@ from ray._private.test_utils import (
 import ray.scripts.scripts as scripts
 from ray.dashboard import dashboard
 from ray.dashboard.head import DashboardHead
-from ray.experimental.state.api import StateApiClient
-from ray.experimental.state.common import ListApiOptions, StateResource
-from ray.experimental.state.exception import ServerUnavailable
+from ray.util.state import StateApiClient
+from ray.util.state.common import ListApiOptions, StateResource
+from ray.util.state.exception import ServerUnavailable
 from ray.experimental.internal_kv import _initialize_internal_kv
 from unittest.mock import MagicMock
 from ray.dashboard.utils import DashboardHeadModule
@@ -227,9 +227,9 @@ def test_agent_report_unexpected_raylet_death(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
     assert (
         os.path.getsize(os.path.join(node.get_session_dir_path(), "logs", "raylet.out"))
         < 1 * 1024**2
@@ -268,9 +268,9 @@ def test_agent_report_unexpected_raylet_death_large_file(shutdown_only):
     errors = get_error_message(p, 1, ray_constants.RAYLET_DIED_ERROR)
     assert len(errors) == 1, errors
     err = errors[0]
-    assert err.type == ray_constants.RAYLET_DIED_ERROR
-    assert "Termination is unexpected." in err.error_message, err.error_message
-    assert "Raylet logs:" in err.error_message, err.error_message
+    assert err["type"] == ray_constants.RAYLET_DIED_ERROR
+    assert "Termination is unexpected." in err["error_message"], err["error_message"]
+    assert "Raylet logs:" in err["error_message"], err["error_message"]
 
 
 @pytest.mark.parametrize(

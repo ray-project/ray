@@ -4,9 +4,9 @@ from unittest.mock import patch
 import pytest
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
-from ray.train._internal.dataset_spec import RayDatasetSpec
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.trainer import TrainingIterator
+from ray.train.data_config import DataConfig
 
 import ray
 from ray.air import session
@@ -77,8 +77,6 @@ def create_iterator(
 
     train_func = construct_train_func(train_func, None)
 
-    dataset_spec = RayDatasetSpec(dataset_or_dict=None)
-
     remote_executor = ray.remote(num_cpus=0)(backend_executor)
 
     backend_executor_actor = remote_executor.remote(
@@ -100,7 +98,8 @@ def create_iterator(
         backend_config=backend_config,
         train_func=train_func,
         run_dir=None,
-        dataset_spec=dataset_spec,
+        datasets={},
+        data_config=DataConfig(),
         checkpoint_manager=CheckpointManager(checkpoint_strategy=checkpoint_strategy),
         checkpoint=None,
         checkpoint_strategy=checkpoint_strategy,

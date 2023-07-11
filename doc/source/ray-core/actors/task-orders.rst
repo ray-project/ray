@@ -15,7 +15,7 @@ the same submitter have finished execution.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             import ray
 
@@ -40,6 +40,11 @@ the same submitter have finished execution.
             # Output: 3. The later submitted task is executed later.
             print(ray.get(value1))
 
+        .. testoutput::
+
+            1
+            3
+
 
 However, the actor does not guarantee the execution order of the tasks from different
 submitters. For example, suppose an unfulfilled argument blocks a previously submitted
@@ -49,7 +54,7 @@ task. In this case, the actor can still execute tasks submitted by a different w
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             import time
             import ray
@@ -87,6 +92,11 @@ task. In this case, the actor can still execute tasks submitted by a different w
             # Output: 2. The later submitted task is executed first.
             print(ray.get(value1))
 
+        .. testoutput::
+
+            3
+            2
+
 
 Asynchronous or Threaded Actor
 ------------------------------
@@ -98,7 +108,7 @@ even though previously submitted tasks are pending execution.
 
     .. tab-item:: Python
 
-        .. code-block:: python
+        .. testcode::
 
             import time
             import ray
@@ -130,3 +140,8 @@ even though previously submitted tasks are pending execution.
             print(ray.get(value0))
             # Output: 2. The later submitted task is executed first.
             print(ray.get(value1))
+
+        .. testoutput::
+
+            3
+            2

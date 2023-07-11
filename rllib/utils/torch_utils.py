@@ -1,5 +1,5 @@
-import os
 import logging
+import os
 import warnings
 from typing import Dict, List, Optional, TYPE_CHECKING, Union
 
@@ -7,11 +7,13 @@ import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 from gymnasium.spaces import Discrete, MultiDiscrete
+from packaging import version
 
 import ray
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     SpaceStruct,
@@ -20,6 +22,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
+    from ray.rllib.core.learner.learner import ParamDict
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -30,6 +33,13 @@ torch, nn = try_import_torch()
 # since -inf / inf cause NaNs during backprop.
 FLOAT_MIN = -3.4e38
 FLOAT_MAX = 3.4e38
+
+if torch:
+    TORCH_COMPILE_REQUIRED_VERSION = version.parse("2.0.0")
+else:
+    TORCH_COMPILE_REQUIRED_VERSION = ValueError(
+        "torch is not installed. " "TORCH_COMPILE_REQUIRED_VERSION is " "not defined."
+    )
 
 
 # TODO (sven): Deprecate this function once we have moved completely to the Learner API.
@@ -92,11 +102,11 @@ def atanh(x: TensorType) -> TensorType:
 
 @PublicAPI
 def clip_gradients(
-    gradients_dict: Dict[str, "torch.Tensor"],
+    gradients_dict: "ParamDict",
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-) -> None:
+) -> Optional[float]:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
     Changes the provided gradient dict in place.
@@ -106,6 +116,10 @@ def clip_gradients(
         grad_clip: The value to clip with. The way gradients are clipped is defined
             by the `grad_clip_by` arg (see below).
         grad_clip_by: One of 'value', 'norm', or 'global_norm'.
+
+    Returns:
+        If `grad_clip_by`="global_norm" and `grad_clip` is not None, returns the global
+        norm of all tensors, otherwise returns None.
     """
     # No clipping, return.
     if grad_clip is None:
@@ -121,9 +135,12 @@ def clip_gradients(
     # Clip by L2-norm (per gradient tensor).
     elif grad_clip_by == "norm":
         for k, v in gradients_dict.copy().items():
-            gradients_dict[k] = (
-                None if v is None else nn.utils.clip_grad_norm_(v, grad_clip)
-            )
+            if v is not None:
+                # Compute the L2-norm of the gradient tensor.
+                norm = v.norm(2)
+                # Clip all the gradients.
+                if norm > grad_clip:
+                    v.mul_(grad_clip / norm)
 
     # Clip by global L2-norm (across all gradient tensors).
     else:
@@ -131,23 +148,29 @@ def clip_gradients(
             grad_clip_by == "global_norm"
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
 
-        # Compute the global L2-norm of all the gradient tensors.
-        total_l2_norm = sum(
-            # `.norm()` is the square root of the sum of all squares.
-            # We need to "undo" the square root b/c we want to compute the global
-            # norm afterwards -> `** 2`.
-            t.norm(2) ** 2
-            for t in gradients_dict.values()
-            if t is not None
-        )
-        # Now we do the square root.
-        total_l2_norm = torch.sqrt(total_l2_norm)
+        grads = [g for g in gradients_dict.values() if g is not None]
+        norm_type = 2.0
+        if len(grads) == 0:
+            return torch.tensor(0.0)
+        device = grads[0].device
 
-        # Clip all the gradients.
-        if total_l2_norm > grad_clip:
-            for tensor in gradients_dict.values():
-                if tensor is not None:
-                    tensor.mul_(grad_clip / total_l2_norm)
+        total_norm = torch.norm(
+            torch.stack([torch.norm(g.detach(), norm_type).to(device) for g in grads]),
+            norm_type,
+        )
+        if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
+            raise RuntimeError(
+                f"The total norm of order {norm_type} for gradients from "
+                "`parameters` is non-finite, so it cannot be clipped. "
+            )
+        clip_coef = grad_clip / (total_norm + 1e-6)
+        # Note: multiplying by the clamped coef is redundant when the coef is clamped to
+        # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
+        # CPU <=> device synchronization when the gradients do not reside in CPU memory.
+        clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
+        for g in grads:
+            g.detach().mul_(clip_coef_clamped.to(g.device))
+        return total_norm
 
 
 @PublicAPI
@@ -285,12 +308,9 @@ def explained_variance(y: TensorType, pred: TensorType) -> TensorType:
         The explained variance given a pair of labels and predictions.
     """
     y_var = torch.var(y, dim=[0])
-    if y_var == 0.0:
-        # Model case in which y does not vary with explained variance of -1
-        return torch.tensor(-1.0).to(pred.device)
     diff_var = torch.var(y - pred, dim=[0])
     min_ = torch.tensor([-1.0]).to(pred.device)
-    return torch.max(min_, 1 - (diff_var / y_var))[0]
+    return torch.max(min_, 1 - (diff_var / y_var + SMALL_NUMBER))[0]
 
 
 @PublicAPI
@@ -609,12 +629,11 @@ def sequence_mask(
     """
     # If maxlen not given, use the longest lengths in the `lengths` tensor.
     if maxlen is None:
-        maxlen = int(lengths.max())
+        maxlen = lengths.max()
 
-    mask = ~(
-        torch.ones((len(lengths), maxlen)).to(lengths.device).cumsum(dim=1).t()
-        > lengths
-    )
+    mask = torch.ones(tuple(lengths.shape) + (int(maxlen),))
+
+    mask = ~(mask.to(lengths.device).cumsum(dim=1).t() > lengths)
     # Time major transformation.
     if not time_major:
         mask = mask.t()
@@ -676,3 +695,14 @@ def softmax_cross_entropy_with_logits(
         The resulting softmax cross-entropy given predictions and labels.
     """
     return torch.sum(-labels * nn.functional.log_softmax(logits, -1), -1)
+
+
+def _dynamo_is_available():
+    # This only works if torch._dynamo is available
+    try:
+        # TODO(Artur): Remove this once torch._dynamo is available on CI
+        import torch._dynamo as dynamo  # noqa: F401
+
+        return True
+    except ImportError:
+        return False

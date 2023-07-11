@@ -1048,6 +1048,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
+            labels=self._ray_params.labels,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

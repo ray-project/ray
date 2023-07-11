@@ -8,8 +8,20 @@ from ray.train.huggingface.huggingface_trainer import (
     HuggingFaceTrainer,
 )
 
+from ray.train.huggingface.accelerate import AccelerateTrainer
+
+from ray.train.huggingface.transformers import (
+    TransformersCheckpoint,
+    TransformersPredictor,
+    TransformersTrainer,
+)
+
 __all__ = [
+    "AccelerateTrainer",
     "HuggingFaceCheckpoint",
     "HuggingFacePredictor",
     "HuggingFaceTrainer",
+    "TransformersCheckpoint",
+    "TransformersPredictor",
+    "TransformersTrainer",
 ]

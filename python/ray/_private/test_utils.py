@@ -39,7 +39,6 @@ import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsErrorSubscriber, GcsLogSubscriber
 from ray._private.internal_api import memory_summary
 from ray._private.tls_utils import generate_self_signed_tls_certs
 from ray._raylet import GcsClientOptions, GlobalStateAccessor
@@ -99,6 +98,30 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
+def get_redis_cli(port, enable_tls):
+    try:
+        # If there is no redis libs installed, skip the check.
+        # This could happen In minimal test, where we don't have
+        # redis.
+        import redis
+    except Exception:
+        return True
+
+    params = {}
+    if enable_tls:
+        from ray._raylet import Config
+
+        params = {"ssl": True, "ssl_cert_reqs": "required"}
+        if Config.REDIS_CA_CERT():
+            params["ssl_ca_certs"] = Config.REDIS_CA_CERT()
+        if Config.REDIS_CLIENT_CERT():
+            params["ssl_certfile"] = Config.REDIS_CLIENT_CERT()
+        if Config.REDIS_CLIENT_KEY():
+            params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
+
+    return redis.Redis("localhost", str(port), **params)
+
+
 def start_redis_instance(
     session_dir_path: str,
     port: int,
@@ -115,6 +138,7 @@ def start_redis_instance(
     replica_of=None,
     leader_id=None,
     db_dir=None,
+    free_port=0,
 ):
     """Start a single Redis server.
 
@@ -167,11 +191,6 @@ def start_redis_instance(
     if redis_replicas() > 1:
         command += ["--cluster-enabled", "yes", "--cluster-config-file", f"node-{port}"]
     if enable_tls:
-        import socket
-
-        with socket.socket() as s:
-            s.bind(("", 0))
-            free_port = s.getsockname()[1]
         command += [
             "--tls-port",
             str(port),
@@ -194,7 +213,9 @@ def start_redis_instance(
             command += ["--tls-cert-file", Config.REDIS_CLIENT_CERT()]
         if Config.REDIS_CLIENT_KEY():
             command += ["--tls-key-file", Config.REDIS_CLIENT_KEY()]
-        command += ["--tls-replication", "yes"]
+        if replica_of is not None:
+            command += ["--tls-replication", "yes"]
+        command += ["--tls-auth-clients", "no", "--tls-cluster", "yes"]
     if sys.platform != "win32":
         command += ["--save", "", "--appendonly", "no"]
     if db_dir is not None:
@@ -213,13 +234,13 @@ def start_redis_instance(
 
         while True:
             try:
-                redis_cli = redis.Redis("localhost", str(port))
+                redis_cli = get_redis_cli(port, enable_tls)
                 if replica_of is None:
                     slots = [str(i) for i in range(16384)]
                     redis_cli.cluster("addslots", *slots)
                 else:
-                    redis_cli.cluster("meet", "127.0.0.1", str(replica_of))
-                    redis_cli.cluster("replicate", leader_id)
+                    print(redis_cli.cluster("meet", "127.0.0.1", str(replica_of)))
+                    print(redis_cli.cluster("replicate", leader_id))
                 node_id = redis_cli.cluster("myid")
                 break
             except (
@@ -228,7 +249,7 @@ def start_redis_instance(
             ) as e:
                 from time import sleep
 
-                print(f"Waiting for redis to be up {e}")
+                print(f"Waiting for redis to be up {e} ")
                 sleep(0.1)
 
     return node_id, process_info
@@ -510,7 +531,11 @@ def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
 
 
 def wait_for_condition(
-    condition_predictor, timeout=10, retry_interval_ms=100, **kwargs: Any
+    condition_predictor,
+    timeout=10,
+    retry_interval_ms=100,
+    raise_exceptions=False,
+    **kwargs: Any,
 ):
     """Wait until a condition is met or time out with an exception.
 
@@ -518,6 +543,8 @@ def wait_for_condition(
         condition_predictor: A function that predicts the condition.
         timeout: Maximum timeout in seconds.
         retry_interval_ms: Retry interval in milliseconds.
+        raise_exceptions: If true, exceptions that occur while executing
+            condition_predictor won't be caught and instead will be raised.
 
     Raises:
         RuntimeError: If the condition is not met before the timeout expires.
@@ -529,6 +556,8 @@ def wait_for_condition(
             if condition_predictor(**kwargs):
                 return
         except Exception:
+            if raise_exceptions:
+                raise
             last_ex = ray._private.utils.format_error_message(traceback.format_exc())
         time.sleep(retry_interval_ms / 1000.0)
     message = "The condition wasn't met before the timeout expired."
@@ -890,7 +919,9 @@ def get_non_head_nodes(cluster):
 
 def init_error_pubsub():
     """Initialize error info pub/sub"""
-    s = GcsErrorSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsErrorSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -908,7 +939,7 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
         if not error_data:
             # Timed out before any data is received.
             break
-        if error_type is None or error_type == error_data.type:
+        if error_type is None or error_type == error_data["type"]:
             msgs.append(error_data)
         else:
             time.sleep(0.01)
@@ -918,7 +949,9 @@ def get_error_message(subscriber, num=1e6, error_type=None, timeout=20):
 
 def init_log_pubsub():
     """Initialize log pub/sub"""
-    s = GcsLogSubscriber(address=ray._private.worker.global_worker.gcs_client.address)
+    s = ray._raylet.GcsLogSubscriber(
+        address=ray._private.worker.global_worker.gcs_client.address
+    )
     s.subscribe()
     return s
 
@@ -1863,3 +1896,62 @@ def get_current_unused_port():
     port = sock.getsockname()[1]
     sock.close()
     return port
+
+
+def search_words(string: str, words: str):
+    """Check whether each word is in the given string.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return [word in string for word in words.split(" ")]
+
+
+def has_all_words(string: str, words: str):
+    """Check that string has all of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return all(search_words(string, words))
+
+
+def has_no_words(string, words):
+    """Check that string has none of the given words.
+
+    Args:
+        string: String to search
+        words: Space-separated string of words to search for
+    """
+    return not any(search_words(string, words))
+
+
+def find_available_port(start, end, port_num=1):
+    ports = []
+    for _ in range(port_num):
+        random_port = 0
+        with socket.socket() as s:
+            s.bind(("", 0))
+            random_port = s.getsockname()[1]
+        if random_port >= start and random_port <= end and random_port not in ports:
+            ports.append(random_port)
+            continue
+
+        for port in range(start, end + 1):
+            if port in ports:
+                continue
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.bind(("", port))
+                ports.append(port)
+                break
+            except OSError:
+                pass
+
+    if len(ports) != port_num:
+        raise RuntimeError(
+            f"Can't find {port_num} available port from {start} to {end}."
+        )
+    return ports

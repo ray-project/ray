@@ -284,10 +284,10 @@ class ModelV2:
 
         Example:
             >>> from ray.rllib.algorithms.ppo import PPO
-            >>> trainer = PPO(...)  # doctest: +SKIP
-            >>> trainer.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
+            >>> algo = PPO(...)  # doctest: +SKIP
+            >>> algo.import_policy_model_from_h5("/tmp/weights.h5") # doctest: +SKIP
             >>> for _ in range(10): # doctest: +SKIP
-            >>>     trainer.train() # doctest: +SKIP
+            >>>     algo.train() # doctest: +SKIP
         """
         raise NotImplementedError
 

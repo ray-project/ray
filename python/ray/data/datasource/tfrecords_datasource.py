@@ -1,21 +1,21 @@
+import struct
 from typing import (
     TYPE_CHECKING,
     Any,
     Callable,
     Dict,
-    Optional,
-    Union,
     Iterable,
     Iterator,
+    Optional,
+    Union,
 )
-import struct
 
 import numpy as np
 
-from ray.util.annotations import PublicAPI
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
@@ -32,9 +32,9 @@ class TFRecordDatasource(FileBasedDatasource):
     def _read_stream(
         self, f: "pyarrow.NativeFile", path: str, **reader_args
     ) -> Iterator[Block]:
-        from google.protobuf.message import DecodeError
         import pyarrow as pa
         import tensorflow as tf
+        from google.protobuf.message import DecodeError
 
         tf_schema: Optional["schema_pb2.Schema"] = reader_args.get("tf_schema", None)
 
@@ -213,8 +213,8 @@ def _value_to_feature(
     value: Union["pyarrow.Scalar", "pyarrow.Array"],
     schema_feature_type: Optional["schema_pb2.FeatureType"] = None,
 ) -> "tf.train.Feature":
-    import tensorflow as tf
     import pyarrow as pa
+    import tensorflow as tf
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in

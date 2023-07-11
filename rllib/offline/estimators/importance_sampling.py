@@ -5,7 +5,10 @@ from ray.data import Dataset
 
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.offline.offline_evaluator import OfflineEvaluator
-from ray.rllib.offline.offline_evaluation_utils import compute_is_weights
+from ray.rllib.offline.offline_evaluation_utils import (
+    remove_time_dim,
+    compute_is_weights,
+)
 from ray.rllib.offline.estimators.off_policy_estimator import OffPolicyEstimator
 from ray.rllib.policy.sample_batch import SampleBatch
 
@@ -96,6 +99,9 @@ class ImportanceSampling(OffPolicyEstimator):
                     the behavior policy.
         """
         batch_size = max(dataset.count() // n_parallelism, 1)
+        dataset = dataset.map_batches(
+            remove_time_dim, batch_size=batch_size, batch_format="pandas"
+        )
         updated_ds = dataset.map_batches(
             compute_is_weights,
             batch_size=batch_size,

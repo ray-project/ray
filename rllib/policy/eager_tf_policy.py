@@ -17,8 +17,12 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import add_mixins, force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
+from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    deprecation_warning,
+    Deprecated,
+)
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics import (
@@ -141,7 +145,7 @@ def _check_too_many_retraces(obj):
     return _func
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class EagerTFPolicy(Policy):
     """Dummy class to recognize any eagerized TFPolicy by its inheritance."""
 
@@ -175,22 +179,39 @@ def _traced_eager_policy(eager_policy_cls):
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
 
-            # NOTE: In the new RLModule stack the sampling side is not traced with this
-            # justification that in order to speed up sampling we need to use more
-            # actors.
             # Create a traced version of `self._compute_actions_helper`.
-            if (
-                not self.config.get("_enable_rl_module_api", False)
-                and self._traced_compute_actions_helper is False
-                and not self._no_tracing
-            ):
-                self._compute_actions_helper = _convert_eager_inputs(
-                    tf.function(
-                        super(TracedEagerPolicy, self)._compute_actions_helper,
-                        autograph=False,
-                        reduce_retracing=True,
+            if self._traced_compute_actions_helper is False and not self._no_tracing:
+                if self.config.get("_enable_rl_module_api"):
+                    self._compute_actions_helper_rl_module_explore = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_explore,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
                     )
-                )
+                    self._compute_actions_helper_rl_module_inference = (
+                        _convert_eager_inputs(
+                            tf.function(
+                                super(
+                                    TracedEagerPolicy, self
+                                )._compute_actions_helper_rl_module_inference,
+                                autograph=True,
+                                reduce_retracing=True,
+                            )
+                        )
+                    )
+                else:
+                    self._compute_actions_helper = _convert_eager_inputs(
+                        tf.function(
+                            super(TracedEagerPolicy, self)._compute_actions_helper,
+                            autograph=False,
+                            reduce_retracing=True,
+                        )
+                    )
                 self._traced_compute_actions_helper = True
 
             # Now that the helper method is traced, call super's
@@ -281,6 +302,7 @@ class _OptimizerWrapper:
         return list(zip(self.tape.gradient(loss, var_list), var_list))
 
 
+@Deprecated(error=False)
 def _build_eager_tf_policy(
     name,
     loss_fn,
@@ -423,15 +445,20 @@ def _build_eager_tf_policy(
             # action).
             self._lock = threading.RLock()
 
-            # Auto-update model's inference view requirements, if recurrent.
-            self._update_model_view_requirements_from_init_state()
+            if self.config.get("_enable_rl_module_api", False):
+                # Maybe update view_requirements, e.g. for recurrent case.
+                self.view_requirements = self.model.update_default_view_requirements(
+                    self.view_requirements
+                )
+            else:
+                # Auto-update model's inference view requirements, if recurrent.
+                self._update_model_view_requirements_from_init_state()
+                # Combine view_requirements for Model and Policy.
+                self.view_requirements.update(self.model.view_requirements)
 
             self.exploration = self._create_exploration()
             self._state_inputs = self.model.get_initial_state()
             self._is_recurrent = len(self._state_inputs) > 0
-
-            # Combine view_requirements for Model and Policy.
-            self.view_requirements.update(self.model.view_requirements)
 
             if before_loss_init:
                 before_loss_init(self, observation_space, action_space, config)

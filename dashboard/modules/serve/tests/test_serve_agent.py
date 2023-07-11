@@ -10,7 +10,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 import ray._private.ray_constants as ray_constants
-from ray.experimental.state.api import list_actors
+from ray.util.state import list_actors
 from ray.serve._private.constants import SERVE_NAMESPACE, MULTI_APP_MIGRATION_MESSAGE
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.serve.schema import ServeInstanceDetails
@@ -473,6 +473,12 @@ def test_get_status(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
+def test_get_serve_instance_details_not_started(ray_start_stop):
+    """Test rest api when serve isn't started yet."""
+    ServeInstanceDetails(**requests.get(GET_OR_PUT_URL_V2).json())
+
+
+@pytest.mark.skipif(sys.platform == "darwin", reason="Flaky on OSX.")
 @pytest.mark.parametrize(
     "f_deployment_options",
     [
@@ -490,7 +496,7 @@ def test_get_status(ray_start_stop):
 def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
     world_import_path = "ray.serve.tests.test_config_files.world.DagNode"
     fastapi_import_path = "ray.serve.tests.test_config_files.fastapi_deployment.node"
-    config1 = {
+    config = {
         "proxy_location": "HeadOnly",
         "http_options": {
             "host": "127.0.0.1",
@@ -523,7 +529,7 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         },
     }
 
-    deploy_config_multi_app(config1)
+    deploy_config_multi_app(config)
 
     def applications_running():
         response = requests.get(GET_OR_PUT_URL_V2, timeout=15)
@@ -549,13 +555,21 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
         assert proxy.status == HTTPProxyStatus.HEALTHY
         assert os.path.exists("/tmp/ray/session_latest/logs" + proxy.log_file_path)
     print("Checked HTTP Proxy details.")
+    # Check controller info
+    assert serve_details.controller_info.actor_id
+    assert serve_details.controller_info.actor_name
+    assert serve_details.controller_info.node_id
+    assert serve_details.controller_info.node_ip
+    assert os.path.exists(
+        "/tmp/ray/session_latest/logs" + serve_details.controller_info.log_file_path
+    )
 
     app_details = serve_details.applications
     # CHECK: application details
     for i, app in enumerate(["app1", "app2"]):
         assert (
             app_details[app].deployed_app_config.dict(exclude_unset=True)
-            == config1["applications"][i]
+            == config["applications"][i]
         )
         assert app_details[app].last_deployed_time_s > 0
         assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
@@ -586,6 +600,8 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options):
                 )
                 assert replica.actor_id and replica.node_id and replica.node_ip
                 assert replica.start_time_s > app_details[app].last_deployed_time_s
+                file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
+                assert os.path.exists(file_path)
 
     print("Finished checking application details.")
 

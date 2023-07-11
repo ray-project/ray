@@ -81,11 +81,43 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service) {
+Status GcsClient::Connect(instrumented_io_context &io_service,
+                          const ClusterID &cluster_id) {
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
+
+  if (cluster_id.IsNil()) {
+    rpc::GetClusterIdReply reply;
+    std::promise<void> cluster_known;
+    std::atomic<bool> stop_io_service{false};
+    gcs_rpc_client_->GetClusterId(
+        rpc::GetClusterIdRequest(),
+        [this, &cluster_known, &stop_io_service, &io_service](
+            const Status &status, const rpc::GetClusterIdReply &reply) {
+          RAY_CHECK(status.ok()) << "Failed to get Cluster ID! Status: " << status;
+          auto cluster_id = ClusterID::FromBinary(reply.cluster_id());
+          RAY_LOG(DEBUG) << "Setting cluster ID to " << cluster_id;
+          client_call_manager_->SetClusterId(cluster_id);
+          if (stop_io_service.load()) {
+            io_service.stop_without_lock();
+          } else {
+            cluster_known.set_value();
+          }
+        });
+    // Run the IO service here to make the above call synchronous.
+    // If it is already running, then wait for our particular callback
+    // to be processed.
+    io_service.run_if_not_running([&stop_io_service]() { stop_io_service.store(true); });
+    if (stop_io_service.load()) {
+      io_service.restart();
+    } else {
+      cluster_known.get_future().get();
+    }
+  } else {
+    client_call_manager_->SetClusterId(cluster_id);
+  }
 
   resubscribe_func_ = [this]() {
     job_accessor_->AsyncResubscribe();
@@ -146,15 +178,13 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status PythonGcsClient::Connect() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
-  channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -399,10 +429,77 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::RequestClusterResourceConstraint(
+    int64_t timeout_ms,
+    const std::vector<std::unordered_map<std::string, double>> &bundles) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+  rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+
+  for (auto bundle : bundles) {
+    request.mutable_cluster_resource_constraint()
+        ->add_min_bundles()
+        ->mutable_resources_bundle()
+        ->insert(bundle.begin(), bundle.end());
+  }
+
+  grpc::Status status =
+      autoscaler_stub_->RequestClusterResourceConstraint(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
                                                  node_info.resources_total().end());
+}
+
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, std::string>(node_info.labels().begin(),
+                                                      node_info.labels().end());
+}
+
+Status PythonCheckGcsHealth(const std::string &gcs_address,
+                            const int gcs_port,
+                            const int64_t timeout_ms,
+                            const std::string &ray_version,
+                            const bool skip_version_check,
+                            bool &is_healthy) {
+  auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
+  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+  rpc::CheckAliveRequest request;
+  rpc::CheckAliveReply reply;
+  grpc::Status status = stub->CheckAlive(&context, request, &reply);
+  if (!status.ok()) {
+    is_healthy = false;
+    return Status::RpcError(status.error_message(), status.error_code());
+  }
+  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+    is_healthy = false;
+    return HandleGcsError(reply.status());
+  }
+  if (!skip_version_check) {
+    // Check for Ray version match
+    if (reply.ray_version() != ray_version) {
+      is_healthy = false;
+      std::ostringstream ss;
+      ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
+         << reply.ray_version() << ", but this process"
+         << "is running Ray version " << ray_version << ".";
+      return Status::Invalid(ss.str());
+    }
+  }
+  is_healthy = true;
+  return Status::OK();
 }
 
 }  // namespace gcs

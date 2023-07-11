@@ -13,6 +13,46 @@ compile_pip_requirements(
     visibility = ["//visibility:private"],
 )
 
+compile_pip_requirements(
+    name = "requirements_byod_3.8",
+    requirements_in = "ray_release/byod/requirements_byod_3.8.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.8.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
+    name = "requirements_byod_3.9",
+    requirements_in = "ray_release/byod/requirements_byod_3.9.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.9.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
+    name = "requirements_ml_byod_3.8",
+    requirements_in = "ray_release/byod/requirements_ml_byod_3.8.in",
+    requirements_txt = "ray_release/byod/requirements_ml_byod_3.8.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
+    name = "requirements_ml_byod_3.9",
+    requirements_in = "ray_release/byod/requirements_ml_byod_3.9.in",
+    requirements_txt = "ray_release/byod/requirements_ml_byod_3.9.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
 test_srcs = glob(["**/*.py"])
 
 ####
@@ -409,6 +449,8 @@ py_library(
         bk_require("click"),
         bk_require("google-cloud-storage"),
         bk_require("jinja2"),
+        bk_require("pybuildkite"),
+        bk_require("pygithub"),
         bk_require("retry"),
     ],
 )
@@ -424,6 +466,21 @@ py_test(
     name = "test_alerts",
     size = "small",
     srcs = ["ray_release/tests/test_alerts.py"],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_anyscale_job_manager",
+    size = "small",
+    srcs = ["ray_release/tests/test_anyscale_job_manager.py"],
     exec_compatible_with = [":hermetic_python"],
     tags = [
         "release_unit",
@@ -482,6 +539,24 @@ py_test(
 )
 
 py_test(
+    name = "test_byod_build",
+    size = "small",
+    srcs = ["ray_release/tests/test_byod_build.py"],
+    exec_compatible_with = [":hermetic_python"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_cluster_manager",
     size = "small",
     srcs = ["ray_release/tests/test_cluster_manager.py"],
@@ -507,6 +582,7 @@ py_test(
         exclude = ["ray_release/**/*.yaml"],
     ) + [
         "//python/ray/autoscaler/aws:test_configs",
+        "//python/ray/autoscaler/gcp:test_configs",
     ],
     exec_compatible_with = [":hermetic_python"],
     tags = [
@@ -566,6 +642,21 @@ py_test(
 )
 
 py_test(
+    name = "test_result",
+    size = "small",
+    srcs = ["ray_release/tests/test_result.py"],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release", 
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_run_script",
     size = "small",
     srcs = ["ray_release/tests/test_run_script.py"],
@@ -575,6 +666,54 @@ py_test(
         "run_release_test.sh",
     ],
     exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_state_machine",
+    size = "small",
+    srcs = ["ray_release/tests/test_state_machine.py"],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_template",
+    size = "small",
+    srcs = ["ray_release/tests/test_template.py"],
+    exec_compatible_with = [":hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_test",
+    size = "small",
+    srcs = ["ray_release/tests/test_test.py"],
+    exec_compatible_with = [":hermetic_python"],
+    data = [
+        "ray_release/configs/oss_config.yaml",
+    ],
     tags = [
         "release_unit",
         "team:ci",
