@@ -829,8 +829,8 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
     // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        main_service_, redis_client_->GetPrimaryContext(), []() {
+    gcs_redis_failure_detector_ =
+        std::make_shared<GcsRedisFailureDetector>(main_service_, redis_client_, []() {
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
