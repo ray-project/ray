@@ -61,7 +61,7 @@ def test_start_shutdown(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy(ray_start_stop):
+def test_deploy_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
     # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
