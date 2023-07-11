@@ -86,3 +86,8 @@ constexpr char kLibraryPathEnvName[] = "PATH";
 #else
 constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #endif
+
+#define RAY_LABEL_KEY_PREFIX "ray.io/"
+/// Default node label key: node_id
+constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+#undef RAY_LABEL_KEY_PREFIX

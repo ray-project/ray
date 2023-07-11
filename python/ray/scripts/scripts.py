@@ -21,7 +21,10 @@ import yaml
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
-from ray._private.utils import parse_resources_json, parse_node_labels_json
+from ray._private.utils import (
+    parse_resources_json,
+    parse_node_labels_json,
+)
 from ray._private.internal_api import memory_summary
 from ray._private.storage import _load_class
 from ray._private.usage import usage_lib

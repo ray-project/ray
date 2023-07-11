@@ -112,6 +112,8 @@ struct NodeManagerConfig {
   int64_t min_spilling_size;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+
+  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,

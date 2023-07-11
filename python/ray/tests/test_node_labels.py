@@ -5,6 +5,11 @@ import pytest
 import ray
 
 
+def add_default_labels(node_info, labels):
+    labels["ray.io/node_id"] = node_info["NodeID"]
+    return labels
+
+
 @pytest.mark.parametrize(
     "call_ray_start",
     ['ray start --head --labels={"gpu_type":"A100","region":"us"}'],
@@ -12,7 +17,10 @@ import ray
 )
 def test_ray_start_set_node_labels(call_ray_start):
     ray.init(address=call_ray_start)
-    assert ray.nodes()[0]["Labels"] == {"gpu_type": "A100", "region": "us"}
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(
+        node_info, {"gpu_type": "A100", "region": "us"}
+    )
 
 
 @pytest.mark.parametrize(
@@ -24,16 +32,19 @@ def test_ray_start_set_node_labels(call_ray_start):
 )
 def test_ray_start_set_empty_node_labels(call_ray_start):
     ray.init(address=call_ray_start)
-    assert ray.nodes()[0]["Labels"] == {}
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(node_info, {})
 
 
 def test_ray_init_set_node_labels(shutdown_only):
     labels = {"gpu_type": "A100", "region": "us"}
     ray.init(labels=labels)
-    assert ray.nodes()[0]["Labels"] == labels
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(node_info, labels)
     ray.shutdown()
     ray.init(labels={})
-    assert ray.nodes()[0]["Labels"] == {}
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(node_info, {})
 
 
 def test_ray_init_set_node_labels_value_error(ray_start_cluster):
@@ -49,14 +60,15 @@ def test_cluster_add_node_with_labels(ray_start_cluster):
     cluster.add_node(num_cpus=1, labels=labels)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
-    assert ray.nodes()[0]["Labels"] == labels
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"] == add_default_labels(node_info, labels)
     head_node_id = ray.nodes()[0]["NodeID"]
 
     cluster.add_node(num_cpus=1, labels={})
     cluster.wait_for_nodes()
     for node in ray.nodes():
         if node["NodeID"] != head_node_id:
-            assert node["Labels"] == {}
+            assert node["Labels"] == add_default_labels(node, {})
 
 
 if __name__ == "__main__":
