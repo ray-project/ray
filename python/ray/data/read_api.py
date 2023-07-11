@@ -1094,7 +1094,7 @@ def read_csv(
         variety       string
 
         Convert a date column with a custom format from a CSV file. For more uses of ConvertOptions see https://arrow.apache.org/docs/python/generated/pyarrow.csv.ConvertOptions.html  # noqa: #501
-        
+
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
@@ -1165,7 +1165,7 @@ def read_csv(
             `pyarrow.csv.open_csv <https://arrow.apache.org/docs/python/generated/\
             pyarrow.csv.open_csv.html#pyarrow.csv.open_csv>`_ 
             when opening CSV files.
-        
+
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
@@ -2081,9 +2081,12 @@ def from_spark(
 
 
 @PublicAPI
-def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
+def from_huggingface(
+    dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
+) -> Union[MaterializedDataset, Dict[str, MaterializedDataset]]:
     """Create a :class:`~ray.data.Dataset` from a
-    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
+    or `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_.
 
     This function isn't parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
@@ -2114,13 +2117,12 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
             )
 
     Args:
-        dataset: A `Hugging Face Datasets Dataset`_.
-            ``IterableDataset`` and
-            `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
-            are not supported.
+        dataset: A `Hugging Face Datasets Dataset`_ or `DatasetDict`_.
+            :class:`~ray.data.IterableDataset` isn't supported.
 
     Returns:
-        A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
+        A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_,
+        or a dict of :class:`Datasets <ray.data.Dataset>` in case ``dataset`` is a `DatasetDict`_.
     """  # noqa: E501
     import datasets
 

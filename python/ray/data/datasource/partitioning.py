@@ -43,7 +43,7 @@ class Partitioning:
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
         >>> ds = ray.data.read_csv(
-        ...     "s3://anonymous@ray-example-data/iris.csv",
+        ...     "example://iris.csv",
         ...     partitioning=Partitioning("hive"),
         ... )
 
@@ -250,7 +250,7 @@ class PathPartitionParser:
         """
         if not path.startswith(self._scheme.normalized_base_dir):
             return None
-        path = path[len(self._scheme.normalized_base_dir) :]
+        path = path[len(self._scheme.normalized_base_dir):]
         return posixpath.dirname(path)
 
     def _parse_hive_path(self, dir_path: str) -> Dict[str, str]:
