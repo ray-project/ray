@@ -34,9 +34,15 @@ def _make_http_state(
 
 
 @pytest.fixture
-def all_nodes() -> List[Tuple[str, str]]:
+def number_of_worker_nodes() -> int:
+    return 100
+
+
+@pytest.fixture
+def all_nodes(number_of_worker_nodes) -> List[Tuple[str, str]]:
     return [(HEAD_NODE_ID, "fake-head-ip")] + [
-        (f"worker-node-id-{i}", f"fake-worker-ip-{i}") for i in range(100)
+        (f"worker-node-id-{i}", f"fake-worker-ip-{i}")
+        for i in range(number_of_worker_nodes)
     ]
 
 
@@ -624,7 +630,10 @@ def test_unhealthy_retry_correct_number_of_times():
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
+@pytest.mark.parametrize("number_of_worker_nodes", [0, 1, 2, 3])
+def test_update_draining(
+    mock_get_all_node_ids, all_nodes, setup_controller, number_of_worker_nodes
+):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
@@ -632,7 +641,6 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     node http proxy should continue to be healthy while worker node http proxy should
     be healthy.
     """
-    worker_node_id = all_nodes[1][0]
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
 
     for node_id, node_ip_address in all_nodes:
@@ -646,6 +654,7 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
             controller_name=SERVE_CONTROLLER_NAME,
             node_ip_address=node_ip_address,
         )
+    node_ids = [node_id for node_id, _ in all_nodes]
 
     # No active nodes
     active_nodes = set()
@@ -654,24 +663,25 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     # Worker node proxy should turn DRAINING.
     wait_for_condition(
         condition_predictor=_update_and_check_http_state,
-        timeout=15,
+        timeout=20,
         http_state=state,
-        node_ids=[HEAD_NODE_ID, worker_node_id],
-        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING],
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY]
+        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
         active_nodes=active_nodes,
     )
 
     # All nodes are active
-    active_nodes = {node_id for node_id, _ in all_nodes}
+    active_nodes = set(node_ids)
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn HEALTHY.
     wait_for_condition(
         condition_predictor=_update_and_check_http_state,
-        timeout=15,
+        timeout=20,
         http_state=state,
-        node_ids=[HEAD_NODE_ID, worker_node_id],
-        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.HEALTHY],
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
         active_nodes=active_nodes,
     )
 
