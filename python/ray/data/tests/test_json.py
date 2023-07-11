@@ -15,12 +15,12 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
 )
 from ray.data.datasource.file_based_datasource import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 

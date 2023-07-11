@@ -19,7 +19,6 @@ from ray.data.datasource import (
     FastFileMetadataProvider,
     FileMetadataProvider,
     ParquetMetadataProvider,
-    PathPartitionEncoder,
 )
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,
@@ -32,6 +31,7 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_serial,
 )
 from ray.data.tests.conftest import *  # noqa
+from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.tests.conftest import *  # noqa
 
 
