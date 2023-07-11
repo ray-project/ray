@@ -224,7 +224,6 @@ Partitioning API
 
    datasource.Partitioning
    datasource.PartitionStyle
-   datasource.PathPartitionEncoder
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
    datasource.FileExtensionFilter
