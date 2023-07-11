@@ -104,30 +104,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
   RAY_CORE_WORKER_DECLARE_RPC_HANDLERS
 };
 
-/// The `ServerCallFactory` for `CoreWorkerService`. It waits until the
-/// `CoreWorkerServiceHandler` is initialized before creating a new call.
-class CoreWorkerServerCallFactory : public ServerCallFactory {
- public:
-  /// Constructor.
-  CoreWorkerServerCallFactory(std::unique_ptr<ServerCallFactory> delegate,
-                              CoreWorkerServiceHandler &service_handler)
-      : delegate_(std::move(delegate)), service_handler_(service_handler) {}
-
-  void CreateCall() const override {
-    service_handler_.WaitUntilInitialized();
-    delegate_->CreateCall();
-  }
-
-  /// Get the maximum request number to handle at the same time. -1 means no limit.
-  virtual int64_t GetMaxActiveRPCs() const override {
-    return delegate_->GetMaxActiveRPCs();
-  }
-
- private:
-  std::unique_ptr<ServerCallFactory> delegate_;
-  CoreWorkerServiceHandler &service_handler_;
-};
-
 /// The `GrpcServer` for `CoreWorkerService`.
 class CoreWorkerGrpcService : public GrpcService {
  public:

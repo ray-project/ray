@@ -64,6 +64,8 @@ enum class ServerCallState {
 
 class ServerCallFactory;
 
+/// Represents a service handler that might not
+/// be ready to serve RPCs immediately after construction.
 class DelayedServiceHandler {
  public:
   virtual ~DelayedServiceHandler() = default;
