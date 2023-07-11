@@ -766,6 +766,7 @@ class TestDeployApp:
             ApplicationStatus.DEPLOYING,
             ApplicationStatus.RUNNING,
         }
+        self.check_single_app()
 
     def test_deploy_multi_app_update_timestamp(self, client: ServeControllerClient):
         assert client.get_serve_status("app1").app_status.deployment_timestamp == 0
@@ -813,6 +814,10 @@ class TestDeployApp:
             ApplicationStatus.DEPLOYING,
             ApplicationStatus.RUNNING,
         }
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
 
     def test_deploy_app_overwrite_apps(self, client: ServeControllerClient):
         """Check that overwriting a live app with a new one works."""

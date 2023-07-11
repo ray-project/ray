@@ -49,9 +49,10 @@ CHECKPOINT_KEY = "serve-application-state-checkpoint"
 class BuildAppStatus(Enum):
     """Status of the build application task."""
 
-    IN_PROGRESS = 1
-    SUCCEEDED = 2
-    FAILED = 3
+    NO_TASK_STARTED = 1
+    IN_PROGRESS = 2
+    SUCCEEDED = 3
+    FAILED = 4
 
 
 @dataclass
@@ -404,29 +405,39 @@ class ApplicationState:
         else:
             return ApplicationStatus.DEPLOYING, ""
 
-    def _start_or_reconcile_build_app_task(
-        self, code_version: str
-    ) -> Tuple[List, BuildAppStatus, str]:
-        """Start or reconcile the in-progress build task.
+    def _start_or_reconcile_build_app_task(self) -> Tuple[Tuple, BuildAppStatus, str]:
+        """If necessary, start or reconcile the in-progress build task.
 
-        If there is no in-progress build task with the correct code
-        version, start a new one. Otherwise, reconcile the in-progress
-        build task (resets self._build_app_task_info when task finishes,
-        regardless of whether it finished successfully)
+        If the current code version is inconsistent with that of the
+        target config, either start a new build task or reconcile an
+        in-progress one. Note self._build_app_task_info is reset when
+        task finishes, regardless of whether it finished successfully
 
         Returns:
-            Deploy arguments (List[Dict]):
-                The deploy arguments returned from the build app task.
+            Deploy arguments (Tuple[List, str]):
+                The deploy arguments returned from the build app task
+                and their code version.
             Status (BuildAppStatus):
+                NO_TASK_STARTED:
                 SUCCEEDED: task finished successfully.
                 FAILED: an error occurred during execution of build app task
                 IN_PROGRESS: task hasn't finished yet.
             Error message (str):
                 Non-empty string if status is DEPLOY_FAILED or UNHEALTHY
         """
+        if self._target_state.config is None:
+            return None, BuildAppStatus.NO_TASK_STARTED, ""
+
+        config_version = get_app_code_version(self._target_state.config)
+        if config_version == self._target_state.code_version:
+            return None, BuildAppStatus.NO_TASK_STARTED, ""
+
+        # If there is a non-null target config, and the current code
+        # version is out of sync with that target config, we need to
+        # rebuild the application with the new target config
         if (
             self._build_app_task_info is None
-            or self._build_app_task_info.code_version != code_version
+            or self._build_app_task_info.code_version != config_version
         ):
             # If there is an in progress build task, cancel it.
             if self._build_app_task_info:
@@ -448,12 +459,12 @@ class ApplicationState:
             ).remote(
                 self._target_state.config.import_path,
                 self._target_state.config.deployment_names,
-                code_version,
+                config_version,
                 self._target_state.config.name,
                 self._target_state.config.args,
             )
             self._build_app_task_info = BuildAppTaskInfo(
-                build_app_obj_ref, code_version
+                build_app_obj_ref, config_version
             )
         elif check_obj_ref_ready_nowait(self._build_app_task_info.obj_ref):
             build_app_obj_ref = self._build_app_task_info.obj_ref
@@ -462,7 +473,7 @@ class ApplicationState:
                 args, err = ray.get(build_app_obj_ref)
                 if err is None:
                     logger.info(f"Deploy task for app '{self._name}' ran successfully.")
-                    return args, BuildAppStatus.SUCCEEDED, ""
+                    return (args, config_version), BuildAppStatus.SUCCEEDED, ""
                 else:
                     error_msg = (
                         f"Deploying app '{self._name}' failed with "
@@ -520,17 +531,11 @@ class ApplicationState:
             deleted.
         """
 
-        if (
-            self._target_state.config
-            and get_app_code_version(self._target_state.config)
-            != self._target_state.code_version
-        ):
-            version = get_app_code_version(self._target_state.config)
-            args, task_status, msg = self._start_or_reconcile_build_app_task(version)
-            if task_status == BuildAppStatus.SUCCEEDED:
-                self.apply_deployment_args(args, version)
-            elif task_status == BuildAppStatus.FAILED:
-                self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
+        args, task_status, msg = self._start_or_reconcile_build_app_task()
+        if task_status == BuildAppStatus.SUCCEEDED:
+            self.apply_deployment_args(*args)
+        elif task_status == BuildAppStatus.FAILED:
+            self._update_status(ApplicationStatus.DEPLOY_FAILED, msg)
 
         # If we're waiting on the build app task to finish, we don't
         # have info on what the target list of deployments is, so don't
