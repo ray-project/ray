@@ -663,7 +663,7 @@ py_test(
     name = "test_serve_ha",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "xcommit"],
     deps = [":serve_lib"],
 )
 
