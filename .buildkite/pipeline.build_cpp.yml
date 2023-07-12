@@ -14,7 +14,7 @@
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - bazel test --config=ci --config=llvm $(./ci/run/bazel_export_options)
       --build_tests_only
-      -- //:all -rllib/... -core_worker_test
+      -- //:all //src/... -rllib/... -core_worker_test
 
 - label: ":cpp: Tests (ASAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
@@ -24,7 +24,7 @@
     - bazel test --config=ci --config=asan-clang $(./ci/run/bazel_export_options)
       --build_tests_only
       --jobs=2
-      -- //:all -//:core_worker_test
+      -- //:all //src/... -//:core_worker_test
 
 - label: ":cpp: Tests (UBSAN)"
   conditions: [ "RAY_CI_CORE_CPP_AFFECTED" ]
