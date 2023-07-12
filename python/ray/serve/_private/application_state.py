@@ -473,11 +473,40 @@ class ApplicationState:
 
         return None, BuildAppStatus.IN_PROGRESS, ""
 
-    def _reconcile_target_deployments(self) -> None:
+    def _check_deployment_routes(
+        self, deployment_infos: Dict[str, DeploymentInfo]
+    ) -> Optional[str]:
+        """Check route prefixes of deployments in application.
+
+        There should only be one non-null route prefix. If there is one,
+        set it as the application route prefix. This function must be
+        run every control loop iteration because the target config could
+        be updated without kicking off a new task.
+
+        Returns: error if there is any.
+        """
+        num_route_prefixes = 0
+        for info in deployment_infos.values():
+            # Update route prefix of application, which may be updated
+            # through a redeployed config.
+            if info.route_prefix is not None:
+                self._route_prefix = info.route_prefix
+                num_route_prefixes += 1
+
+        if num_route_prefixes > 1:
+            return (
+                f'Found multiple route prefixes from application "{self._name}",'
+                " Please specify only one route prefix for the application "
+                "to avoid this issue."
+            )
+
+    def _reconcile_target_deployments(self) -> Optional[str]:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
+
+        Returns: error is there is any
         """
 
         # Apply override options from target config to each deployment
@@ -486,11 +515,10 @@ class ApplicationState:
             self._target_state.deployment_infos,
             self._target_state.config,
         )
-        # Update route prefix of application, which may be updated
-        # through a redeployed config.
-        for info in overrided_infos.values():
-            if info.route_prefix is not None:
-                self._route_prefix = info.route_prefix
+        err = self._check_deployment_routes(overrided_infos)
+        if err:
+            return err
+
         # Set target state for each deployment
         for deployment_name, info in overrided_infos.items():
             self.apply_deployment_info(deployment_name, info)
@@ -521,10 +549,13 @@ class ApplicationState:
         # have info on what the target list of deployments is, so don't
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
-
-            status, status_msg = self._determine_app_status()
-            self._update_status(status, status_msg)
+            err = self._reconcile_target_deployments()
+            if err:
+                logger.info(f"Failed to deploy application {self._name}: {err}")
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, err)
+            else:
+                status, status_msg = self._determine_app_status()
+                self._update_status(status, status_msg)
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:
