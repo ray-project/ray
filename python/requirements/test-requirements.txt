@@ -23,7 +23,7 @@ dataclasses; python_version < '3.7'
 # 0.85.0 of fastapi is breaking the ci because
 # requires newer starlette -> newer version typing-extensions
 # conflicting with tensorflow 2.6
-fastapi==0.75.0
+fastapi==0.99.1
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3
