@@ -290,6 +290,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     # received within this deadline, the replica will not be considered.
     queue_len_response_deadline_s = 0.1
 
+    # TODO:
+    max_num_attempts_matching_model_id = 2
+
     def __init__(
         self,
         event_loop: asyncio.AbstractEventLoop,
@@ -387,26 +390,26 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def _get_candidate_replica_ids(
         self,
-        blacklist_replica_ids: Set[str],
-        request_metadata: Optional[RequestMetadata] = None,
+        request_metadata: Optional[RequestMetadata],
+        *,
+        limit_to_matching_model_id: bool,
     ) -> Set[str]:
         """Get candidates from the current replica set excluding the blacklist.
 
-        If a model ID is present in request_metadata, any replicas that have it are
-        prioritized.
+        If limit_to_matching_model_id is `True` and any replicas have it, the set is
+        limited to those replicas.
         """
         if (
-            request_metadata is not None
+            limit_to_matching_model_id
+            and request_metadata is not None
             and request_metadata.multiplexed_model_id
             in self._multiplexed_model_id_to_replica_ids
         ):
-            candidates = self._multiplexed_model_id_to_replica_ids[
+            return self._multiplexed_model_id_to_replica_ids[
                 request_metadata.multiplexed_model_id
-            ].difference(blacklist_replica_ids)
-            if len(candidates) > 0:
-                return candidates
+            ]
 
-        return self._replica_id_set.difference(blacklist_replica_ids)
+        return self._replica_id_set
 
     async def choose_two_replicas_with_backoff(
         self,
@@ -420,7 +423,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """
 
         backoff_index = 0
-        replica_ids_attempted = set()
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
@@ -440,18 +442,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # Get candidates to sample from; this will exclude replicas used in a
             # previous iteration until all replicas have been tried.
             candidate_replica_ids = self._get_candidate_replica_ids(
-                replica_ids_attempted, request_metadata
+                request_metadata,
+                limit_to_matching_model_id=(
+                    backoff_index < self.max_num_attempts_matching_model_id
+                ),
             )
             chosen_ids = random.sample(
                 candidate_replica_ids, k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
-
-            # If another iteration occurrs, the chosen replicas did not accept the
-            # request. Blacklist them until we've attempted all replicas.
-            replica_ids_attempted.update(chosen_ids)
-            if replica_ids_attempted.issuperset(self._replica_id_set):
-                replica_ids_attempted.clear()
 
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
