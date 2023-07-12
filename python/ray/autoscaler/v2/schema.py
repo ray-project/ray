@@ -133,6 +133,10 @@ class Stats:
     none_terminated_node_request_time_s: Optional[float] = None
     # How long for autoscaler to process the scaling decision.
     autoscaler_iteration_time_s: Optional[float] = None
+    # The last seen autoscaler state version from Ray.
+    autoscaler_version: Optional[str] = None
+    # The last seen cluster state resource version.
+    cluster_resource_state_version: Optional[str] = None
 
 
 @dataclass

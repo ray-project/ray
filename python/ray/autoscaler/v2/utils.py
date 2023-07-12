@@ -1,4 +1,5 @@
 from collections import defaultdict
+from copy import deepcopy
 from typing import Dict, List, Tuple
 
 from ray._private.utils import binary_to_hex
@@ -46,6 +47,9 @@ class ClusterStatusParser:
         # parse resource demands
         resource_demands = cls._parse_resource_demands(proto.cluster_resource_state)
 
+        # parse stats
+        stats = cls._parse_stats(proto, stats)
+
         return ClusterStatus(
             healthy_nodes=healthy_nodes,
             pending_launches=pending_launches,
@@ -56,6 +60,27 @@ class ClusterStatusParser:
             stats=stats,
             node_availability=None,
         )
+
+    @classmethod
+    def _parse_stats(cls, reply: GetClusterStatusReply, stats: Stats) -> Stats:
+        """
+        Parse the stats from the get cluster status reply.
+        Args:
+            reply: the get cluster status reply
+            stats: the stats
+        Returns:
+            stats: the parsed stats
+        """
+        stats = deepcopy(stats)
+
+        stats.gcs_request_time_s = stats.gcs_request_time_s
+        # TODO(rickyx): Populate other autoscaler stats once available.
+        stats.autoscaler_version = str(reply.autoscaling_state.autoscaler_state_version)
+        stats.cluster_resource_state_version = str(
+            reply.cluster_resource_state.cluster_resource_state_version
+        )
+
+        return stats
 
     @classmethod
     def _parse_resource_demands(

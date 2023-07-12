@@ -108,6 +108,7 @@ def test_cluster_status_parser_cluster_resource_state():
                     ]
                 }
             ],
+            "cluster_resource_state_version": 10,
         },
         "autoscaling_state": {},
     }
@@ -173,6 +174,9 @@ def test_cluster_status_parser_cluster_resource_state():
         ResourceRequestByCount(bundle={"GPU": 2, "CPU": 100}, count=1)
     ]
 
+    # Assert on the node stats
+    assert cluster_status.stats.cluster_resource_state_version == "10"
+
 
 def test_cluster_status_parser_autoscaler_state():
     test_data = {
@@ -199,6 +203,7 @@ def test_cluster_status_parser_autoscaler_state():
                     "details": "Starting Ray",
                 },
             ],
+            "autoscaler_state_version": 10,
         },
     }
     reply = _gen_cluster_status_reply(test_data)
@@ -221,6 +226,9 @@ def test_cluster_status_parser_autoscaler_state():
     assert cluster_status.pending_nodes[0].instance_id == "instance1"
     assert cluster_status.pending_nodes[0].ip_address == "10.10.10.10"
     assert cluster_status.pending_nodes[0].details == "Starting Ray"
+
+    # Assert on stats
+    assert cluster_status.stats.autoscaler_version == "10"
 
 
 if __name__ == "__main__":
