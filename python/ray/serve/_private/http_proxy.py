@@ -1,5 +1,5 @@
 import asyncio
-from asyncio.tasks import FIRST_COMPLETED, ALL_COMPLETED
+from asyncio.tasks import FIRST_COMPLETED
 import json
 import os
 import logging
@@ -1061,10 +1061,10 @@ class HTTPProxyActor:
             # Either the HTTP setup has completed.
             # The event is set inside self.run.
             setup_task,
-            # setup_task_grpc,
+            setup_task_grpc,
             # Or self.run errored.
             self.running_task,
-            # self.running_task_grpc,
+            self.running_task_grpc,
         ]
         done_set, _ = await asyncio.wait(
             waiting_tasks,

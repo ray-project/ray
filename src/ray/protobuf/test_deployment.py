@@ -1,8 +1,10 @@
-from google.protobuf.any_pb2 import Any
-from ray.serve.generated import serve_pb2
-from ray import serve
 import time
+
+from google.protobuf.any_pb2 import Any
 from starlette.requests import Request
+
+from ray import serve
+from ray.serve.generated import serve_pb2
 
 
 @serve.deployment

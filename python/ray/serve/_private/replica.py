@@ -763,8 +763,8 @@ class RayServeReplica:
                 # result = await method_to_call(*request_args, **request_kwargs)
                 # if inspect.isgenerator(result) or inspect.isasyncgen(result):
                 #     raise TypeError(
-                #         f"Method '{runner_method.__name__}' returned a generator. You "
-                #         "must use `handle.options(stream=True)` to call "
+                #         f"Method '{runner_method.__name__}' returned a generator. You"
+                #         " must use `handle.options(stream=True)` to call "
                 #         "generators on a deployment."
                 #     )
 
