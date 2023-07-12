@@ -508,6 +508,8 @@ class NodeState(StateSchema):
     resources_total: dict = state_column(
         filterable=False, format_fn=Humanify.node_resources
     )
+    #: The labels of the node.
+    labels: dict = state_column(filterable=False)
     #: The time when the node (raylet) starts.
     start_time_ms: Optional[int] = state_column(
         filterable=False, detail=True, format_fn=Humanify.timestamp
