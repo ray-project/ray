@@ -1,6 +1,6 @@
 """
 This example shows how to take full control over what models and action distribution
-are being built inside an RL Module. With the pattern, we can bypass a Catalog and
+are being built inside an RL Module. With this pattern, we can bypass a Catalog and
 explicitly define our own models within a given RL Module.
 """
 # __sphinx_doc_begin__
@@ -40,6 +40,7 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
     take full control over what models and action distribution are being built.
     In this example, we do this to modify an existing RLModule with a custom encoder.
     """
+
     def setup(self):
         self.encoder = MobileNetV2Encoder(config=None)
 
@@ -48,10 +49,7 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
             output_layer_dim=2,
         )
 
-        vf_config = MLPHeadConfig(
-            input_dims=[1000],
-            output_layer_dim=1
-        )
+        vf_config = MLPHeadConfig(input_dims=[1000], output_layer_dim=1)
 
         self.pi = pi_config.build(framework="torch")
         self.vf = vf_config.build(framework="torch")
@@ -61,18 +59,22 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
 
 config = (
     PPOConfig()
-    .rl_module(rl_module_spec=SingleAgentRLModuleSpec(
-        module_class=MobileNetTorchPPORLModule))
-        .environment(RandomEnv, env_config={
-        "action_space": gym.spaces.Discrete(2),
-        # Test a simple Image observation space.
-        "observation_space": gym.spaces.Box(
-            0.0,
-            1.0,
-            shape=MOBILENET_INPUT_SHAPE,
-            dtype=np.float32,
-        ),
-    }, )
+    .rl_module(
+        rl_module_spec=SingleAgentRLModuleSpec(module_class=MobileNetTorchPPORLModule)
+    )
+    .environment(
+        RandomEnv,
+        env_config={
+            "action_space": gym.spaces.Discrete(2),
+            # Test a simple Image observation space.
+            "observation_space": gym.spaces.Box(
+                0.0,
+                1.0,
+                shape=MOBILENET_INPUT_SHAPE,
+                dtype=np.float32,
+            ),
+        },
+    )
 )
 
 config.build().train()

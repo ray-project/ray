@@ -25,7 +25,7 @@ MOBILENET_INPUT_SHAPE = (3, 224, 224)
 
 class MobileNetV2EncoderConfig(ModelConfig):
     # MobileNet v2 has a flat output of (1000,).
-    output_dims = (1000, )
+    output_dims = (1000,)
 
     def build(self, framework):
         assert framework == "torch", "Unsupported framework `{}`!".format(framework)
@@ -47,7 +47,10 @@ class MobileNetV2Encoder(TorchModel, Encoder):
 # decision tree of what model to choose
 class MobileNetEnhancedPPOCatalog(PPOCatalog):
     def __post_init__(self):
-        if isinstance(self.observation_space, gym.spaces.Box) and self.observation_space.shape == MOBILENET_INPUT_SHAPE:
+        if (
+            isinstance(self.observation_space, gym.spaces.Box)
+            and self.observation_space.shape == MOBILENET_INPUT_SHAPE
+        ):
             # Inject our custom encoder here, only if the observation space fits it
             self.encoder_config = MobileNetV2EncoderConfig()
         else:
@@ -71,21 +74,28 @@ class MobileNetEnhancedPPOCatalog(PPOCatalog):
 # Create a generic config with our enhanced Catalog
 ppo_config = (
     PPOConfig()
-    .rl_module(rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MobileNetEnhancedPPOCatalog))
+    .rl_module(
+        rl_module_spec=SingleAgentRLModuleSpec(
+            catalog_class=MobileNetEnhancedPPOCatalog
+        )
+    )
     .rollouts(num_rollout_workers=0)
 )
 
 # Train with our MobileNetEncoder on a fitting RandomEnv
-ppo_config.environment(RandomEnv, env_config={
-            "action_space": gym.spaces.Discrete(2),
-            # Test a simple Image observation space.
-            "observation_space": gym.spaces.Box(
-                0.0,
-                1.0,
-                shape=MOBILENET_INPUT_SHAPE,
-                dtype=np.float32,
-            ),
-        },)
+ppo_config.environment(
+    RandomEnv,
+    env_config={
+        "action_space": gym.spaces.Discrete(2),
+        # Test a simple Image observation space.
+        "observation_space": gym.spaces.Box(
+            0.0,
+            1.0,
+            shape=MOBILENET_INPUT_SHAPE,
+            dtype=np.float32,
+        ),
+    },
+)
 results = ppo_config.build().train()
 print(results)
 

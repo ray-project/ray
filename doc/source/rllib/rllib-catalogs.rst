@@ -23,7 +23,7 @@ You can override Catalogs’ methods to alter the default components used by exi
     If you simply want to modify a :py:class:`~ray.rllib.core.models.Model` by changing its default values,
     have a look at the ``model config dict``:
 
-    .. dropdown:: **``MODEL_DEFAULTS`` dict**
+    .. dropdown:: ``MODEL_DEFAULTS`` dict
         :animate: fade-in-slide-down
 
         This dict (or an overriding sub-set) is part of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`

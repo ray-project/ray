@@ -302,7 +302,6 @@ In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the 
 To learn more, see the `SpecType` documentation.
 
 
-
 Writing Custom Multi-Agent RL Modules (Advanced)
 ------------------------------------------------
 
@@ -396,18 +395,27 @@ There are two possible ways to extend existing RL Modules:
             )
 
 
-The following example shows how to extend an existing `~ray.rllib.core.rl_module.rl_module.RLModule` with your own sub-components.
+The following example shows how to take full control over what models and action distribution
+are being built inside an `~ray.rllib.core.rl_module.rl_module.RLModule`.
+With this pattern, we can bypass a Catalog and explicitly define our own models within a given RL Module.
 
 
-.. dropdown:: **Writing an RL Module with MobileNet v2 **
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: ../../../rllib/examples/rl_module/mobilenet_rlm.py
-            :language: python
-            :start-after: __sphinx_doc_begin__
-            :end-before: __sphinx_doc_end__
+.. literalinclude:: ../../../rllib/examples/rl_module/mobilenet_rlm.py
+        :language: python
+        :start-after: __sphinx_doc_begin__
+        :end-before: __sphinx_doc_end__
 
 
+Checkpointing RL Modules
+-----------------------
+
+RL Modules can be checkpointed with their two methods :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_checkpoint` and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint`.
+The following example shows how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
+
+.. literalinclude:: doc_code/rlmodule_guide.py
+        :language: python
+        :start-after: __checkpointing-begin__
+        :end-before: __checkpointing-end__
 
 Migrating from Custom Policies and Models to RL Modules
 -------------------------------------------------------
@@ -571,9 +579,3 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
 
                 def _forward_exploration(self, batch):
                     ...
-
-
-Notable TODOs
--------------
-
-- [] Checkpointing.
