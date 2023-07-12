@@ -53,7 +53,7 @@ AggType = TypeVar("AggType")
 
 def _validate_key_fn(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-    key: Optional[str],
+    key: Optional[Union[str, List[str]]],
 ) -> None:
     """Check the key function is valid on the given schema."""
     if schema is None:
