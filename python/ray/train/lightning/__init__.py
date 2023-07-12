@@ -13,6 +13,8 @@ from ray.train.lightning.lightning_predictor import LightningPredictor
 from ray.train.lightning.lightning_trainer import (
     LightningTrainer,
     LightningConfigBuilder,
+    setup,
+    prepare_trainer,
 )
 from ray.train.lightning._lightning_utils import (
     RayDDPStrategy,
@@ -20,7 +22,6 @@ from ray.train.lightning._lightning_utils import (
     RayDeepSpeedStrategy,
     RayEnvironment,
     RayModelCheckpoint,
-    setup
 )
 
 __all__ = [
@@ -33,5 +34,6 @@ __all__ = [
     "RayDeepSpeedStrategy",
     "RayEnvironment",
     "RayModelCheckpoint",
-    "setup"
+    "setup",
+    "prepare_trainer",
 ]

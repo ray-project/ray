@@ -480,3 +480,77 @@ def _huggingface_train_loop_per_worker(config):
             trainer.train(resume_from_checkpoint=checkpoint_path)
     else:
         trainer.train()
+
+
+def prepare_trainer(trainer):
+    strategies = [
+        strategy
+        for strategy in (trainer.args.evaluation_strategy, trainer.args.save_strategy)
+        if strategy not in ("no", IntervalStrategy.NO)
+    ]
+    strategies = [trainer.args.logging_strategy] + strategies
+    if not all(strategy == strategies[0] for strategy in strategies[1:]):
+        raise ValueError(
+            "When using Ray AIR,`logging_strategy`, `evaluation_strategy` "
+            "and `save_strategy` must all be set to the same value. "
+            "`evaluation_strategy` or `save_strategy` may also be set to 'no'.\n"
+            f"Got `logging_strategy`={trainer.args.logging_strategy}\n"
+            f"`evaluation_strategy`={trainer.args.evaluation_strategy}\n"
+            f"`save_strategy`={trainer.args.save_strategy}"
+        )
+
+    if trainer.args.save_strategy in ("steps", IntervalStrategy.STEPS):
+        if (
+            trainer.args.save_steps < trainer.args.logging_steps
+            or trainer.args.save_steps % trainer.args.logging_steps != 0
+        ):
+            raise ValueError(
+                "When using 'steps' `save_strategy`, `save_steps` must be "
+                "equal or bigger to `logging_steps`, and must be divisible "
+                "by `logging_steps` (so that saving occurs at the same time "
+                f"logging does). Got `save_steps`={trainer.args.save_steps}, "
+                f"`logging_steps`={trainer.args.logging_steps}."
+            )
+
+    if trainer.args.evaluation_strategy in ("steps", IntervalStrategy.STEPS):
+        if trainer.args.logging_steps != trainer.args.eval_steps:
+            raise ValueError(
+                "`logging_steps` must be equal to `eval_steps`. "
+                f"Got `logging_steps`={trainer.args.logging_steps}, "
+                f"`eval_steps`={trainer.args.eval_steps}"
+            )
+
+    if trainer.args.load_best_model_at_end:
+        raise ValueError(
+            "As Ray AIR replaces Transformers checkpointing, "
+            "`load_best_model_at_end` must be set to False.\n"
+            "You can obtain the AIR Checkpoint with "
+            "`Result.checkpoint` returned by the `fit()` method "
+            "of this Trainer, and the model itself by calling "
+            "`Checkpoint.get_model()`.\n"
+            "You can configure the checkpointing by setting "
+            "`run_config.checkpoint_config`."
+        )
+
+    if trainer.args.push_to_hub and not trainer.args.hub_token:
+        warnings.warn(
+            "You have set `push_to_hub=True` but didn't specify `hub_token`. "
+            "Pushing to hub will most likely fail, as the credentials will not "
+            "be automatically propagated from the local enviroment to the Ray Actors. "
+            "If that happens, specify `hub_token` in `TrainingArguments`.",
+            stacklevel=2,
+        )
+
+    trainer = wrap_transformers_trainer(trainer)
+
+    # ensure no HF logging callbacks are added
+    # aside from doubling functionality with our callbacks,
+    # the Wandb callbacks causes training to freeze
+    integration_callbacks = transformers.trainer.get_reporting_integration_callbacks(
+        trainer.args.report_to
+    )
+    for callback in integration_callbacks:
+        trainer.pop_callback(callback)
+
+    trainer.add_callback(TrainReportCallback)
+    
