@@ -1,1 +1,1 @@
-../ci/v2/lint/format.sh
+../ci/lint/format.sh
