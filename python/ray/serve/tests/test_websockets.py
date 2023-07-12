@@ -9,6 +9,7 @@ from websockets.exceptions import ConnectionClosed
 from websockets.sync.client import connect
 
 import ray
+from ray._private.test_utils import wait_for_condition
 
 from ray import serve
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
@@ -150,6 +151,48 @@ def test_unary_streaming_websocket_same_deployment(serve_instance):
     with connect("ws://localhost:8000/ws") as ws:
         ws.send("hi")
         assert ws.recv() == "hi"
+
+
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    reason="Streaming feature flag is disabled.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="Gradio doesn't work on Windows.")
+@pytest.mark.skipif(sys.version_info.minor < 8, reason="Times out on Python 3.7.")
+def test_gradio_queue(serve_instance):
+    """Test the Gradio integration with a Gradio Queue.
+
+    Gradio Queues use websockets under the hood.
+    """
+
+    # Delayed imports because these aren't installed on Windows.
+    import gradio as gr
+    from gradio_client import Client
+    from ray.serve.gradio_integrations import GradioIngress
+
+    def counter(num_steps: int = 3):
+        for i in range(num_steps):
+            yield str(i)
+
+    @serve.deployment
+    class GradioGenerator(GradioIngress):
+        def __init__(self):
+            g = gr.Interface(counter, inputs=gr.Slider(1, 10, 3), outputs="text")
+            super().__init__(lambda: g.queue())
+
+    serve.run(GradioGenerator.bind())
+
+    client = Client("http://localhost:8000")
+    job1 = client.submit(3, api_name="/predict")
+    job2 = client.submit(5, api_name="/predict")
+
+    wait_for_condition(
+        lambda: (
+            (job1.done() and job2.done())
+            and job1.outputs() == [str(i) for i in range(3)]
+            and job2.outputs() == [str(i) for i in range(5)]
+        )
+    )
 
 
 if __name__ == "__main__":
