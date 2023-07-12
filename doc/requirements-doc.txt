@@ -12,7 +12,7 @@ fairscale<=0.4.0; python_version < '3.7'
 filelock
 flask
 flatbuffers
-fastapi
+fastapi==0.99.1
 jsonschema
 mock
 numpy
