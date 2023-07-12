@@ -1,5 +1,5 @@
 import ray
-from ray.air import Checkpoint
+from ray.train import Checkpoint
 
 import os
 import torch

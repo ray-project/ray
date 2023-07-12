@@ -2,7 +2,7 @@
 import logging
 from typing import Callable, Optional
 
-from ray.air.config import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air._internal.checkpoint_manager import (
     _CheckpointManager as CommonCheckpointManager,
     _TrackedCheckpoint,

@@ -13,7 +13,7 @@ Fully integrated with the Ray ecosystem, Trainers leverage :ref:`Ray Data <air-i
 and performant distributed data ingestion. Also, Trainers can be composed with :class:`Tuners <ray.tune.Tuner>` for distributed hyperparameter tuning.
 
 After executing training, Trainers output the trained model in the form of
-a :class:`Checkpoint <ray.air.checkpoint.Checkpoint>`, which can be used for batch or online prediction inference.
+a :class:`Checkpoint <ray.train.Checkpoint>`, which can be used for batch or online prediction inference.
 
 There are three broad categories of Trainers that AIR offers:
 
@@ -27,8 +27,8 @@ Trainer Basics
 All trainers inherit from the :class:`BaseTrainer <ray.train.base_trainer.BaseTrainer>` interface. To
 construct a Trainer, you can provide:
 
-* A :class:`scaling_config <ray.air.config.ScalingConfig>`, which specifies how many parallel training workers and what type of resources (CPUs/GPUs) to use per worker during training.
-* A :class:`run_config <ray.air.config.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
+* A :class:`scaling_config <ray.train.ScalingConfig>`, which specifies how many parallel training workers and what type of resources (CPUs/GPUs) to use per worker during training.
+* A :class:`run_config <ray.train.RunConfig>`, which configures a variety of runtime parameters such as fault tolerance, logging, and callbacks.
 * A collection of :ref:`datasets <air-ingest>` and a :ref:`preprocessor <air-preprocessors>` for the provided datasets, which configures preprocessing and the datasets to ingest from.
 * ``resume_from_checkpoint``, which is a checkpoint path to resume from, should your training run be interrupted.
 
@@ -50,7 +50,7 @@ Ray Train offers 3 main deep learning trainers:
 These three trainers all take a ``train_loop_per_worker`` parameter, which is a function that defines
 the main training logic that runs on each training worker.
 
-Under the hood, Ray AIR will use the provided ``scaling_config`` to instantiate
+Under the hood, Ray Train will use the provided ``scaling_config`` to instantiate
 the correct number of workers.
 
 Upon instantiation, each worker will be able to reference a global :ref:`Session <air-session-ref>` object,
@@ -59,7 +59,7 @@ which provides functionality for reporting metrics, saving checkpoints, and more
 You can provide multiple datasets to a trainer via the ``datasets`` parameter.
 If ``datasets`` includes a training dataset (denoted by the "train" key), then it will be split into multiple dataset
 shards, with each worker training on a single shard. All other datasets will not be split.
-You can access the data shard within a worker via :func:`~ray.air.session.get_dataset_shard()`, and use 
+You can access the data shard within a worker via :func:`~ray.train.get_dataset_shard()`, and use 
 :meth:`~ray.data.Dataset.to_tf` or `iter_torch_batches` to generate batches of Tensorflow or Pytorch tensors.
 You can read more about :ref:`data ingest <air-ingest>` here.
 
@@ -216,7 +216,7 @@ RLTrainer provides an interface to RL Trainables. This enables you to use the sa
 as in the other trainers to define the scaling behavior, and to use Ray Data for offline training.
 
 Please note that some scaling behavior still has to be defined separately.
-The :class:`scaling_config <ray.air.config.ScalingConfig>` will set the number of
+The :class:`scaling_config <ray.train.ScalingConfig>` will set the number of
 training workers ("Rollout workers"). To set the number of e.g. evaluation workers, you will
 have to specify this in the ``config`` parameter of the ``RLTrainer``:
 
@@ -227,7 +227,7 @@ have to specify this in the ``config`` parameter of the ``RLTrainer``:
 How to interpret training results?
 ----------------------------------
 
-Calling ``Trainer.fit()`` returns a :class:`Result <ray.air.Result>`, providing you access to metrics, checkpoints, and errors.
+Calling ``Trainer.fit()`` returns a :class:`Result <ray.train.Result>`, providing you access to metrics, checkpoints, and errors.
 You can interact with a `Result` object as follows:
 
 .. code-block:: python
@@ -250,4 +250,4 @@ You can interact with a `Result` object as follows:
     result.metrics_dataframe
 
 
-See :class:`the Result docstring <ray.air.result.Result>` for more details.
+See :class:`the Result docstring <ray.train.Result>` for more details.

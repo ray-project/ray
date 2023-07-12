@@ -22,7 +22,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from ray.air import CheckpointConfig
+from ray.train import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
 from ray.tune.error import TuneError
@@ -204,7 +204,7 @@ class Experiment:
                 raise ValueError(
                     "'checkpoint_at_end' cannot be used with a function trainable. "
                     "You should include one last call to "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` at the end "
+                    "`ray.train.session.report(metrics=..., checkpoint=...)` at the end "
                     "of your training loop to get this behavior."
                 )
             if checkpoint_config.checkpoint_frequency:
@@ -212,7 +212,7 @@ class Experiment:
                     "'checkpoint_frequency' cannot be set for a function trainable. "
                     "You will need to report a checkpoint every "
                     "`checkpoint_frequency` iterations within your training loop using "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.session.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
         try:

@@ -5,9 +5,8 @@ import horovod.torch as hvd
 import torch
 import torch.nn as nn
 from ray import train
-from ray.train import Checkpoint
+from ray.train import Checkpoint, ScalingConfig
 from ray.train.horovod import HorovodTrainer
-from ray.air.config import ScalingConfig
 
 # If using GPUs, set this to True.
 use_gpu = False

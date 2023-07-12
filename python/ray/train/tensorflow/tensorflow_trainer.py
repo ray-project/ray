@@ -4,8 +4,7 @@ from ray.train.data_config import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import ScalingConfig, RunConfig
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint, ScalingConfig, RunConfig
 from ray.util import PublicAPI
 
 if TYPE_CHECKING:

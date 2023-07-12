@@ -3,7 +3,7 @@ import pytest
 import requests
 
 import ray
-from ray.air.checkpoint import Checkpoint
+from ray.train import Checkpoint
 from ray.serve.air_integrations import PredictorDeployment
 from ray.train.predictor import Predictor
 

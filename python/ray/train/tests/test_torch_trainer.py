@@ -13,7 +13,7 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.batch_predictor import BatchPredictor
 from ray.train.constants import DISABLE_LAZY_CHECKPOINTING_ENV
 from ray.train.torch import TorchPredictor, TorchTrainer
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import TrainingFailedError
 import ray.train as train
@@ -171,9 +171,9 @@ def test_checkpoint_freq(ray_start_4_cpus):
     # checkpoint_freq is not supported so raise an error
     trainer = TorchTrainer(
         train_loop_per_worker=lambda config: None,
-        scaling_config=ray.air.ScalingConfig(num_workers=1),
-        run_config=ray.air.RunConfig(
-            checkpoint_config=ray.air.CheckpointConfig(
+        scaling_config=train.ScalingConfig(num_workers=1),
+        run_config=train.RunConfig(
+            checkpoint_config=train.CheckpointConfig(
                 checkpoint_frequency=2,
             ),
         ),
@@ -258,7 +258,7 @@ def test_tune_torch_get_device_gpu(num_gpus_per_worker):
     """Tests if GPU ids are set correctly when running train concurrently in nested actors
     (for example when used with Tune).
     """
-    from ray.air.config import ScalingConfig
+    from ray.train import ScalingConfig
 
     num_samples = 2
     num_workers = 2

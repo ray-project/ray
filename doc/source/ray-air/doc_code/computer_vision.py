@@ -285,7 +285,7 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     # __tensorflow_training_loop_stop__
 
     # __tensorflow_trainer_start__
-    from ray.air import ScalingConfig
+    from ray.train import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
     # The following transform operation is lazy.

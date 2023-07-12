@@ -11,7 +11,8 @@ from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.air import Checkpoint, AcquiredResources
+from ray.train import Checkpoint
+from ray.air import AcquiredResources
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.constants import (
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,

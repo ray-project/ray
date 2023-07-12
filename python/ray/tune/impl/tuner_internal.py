@@ -25,7 +25,7 @@ from ray.util import inspect_serializability
 from ray.air._internal.remote_storage import download_from_uri, is_non_local_path_uri
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
@@ -79,7 +79,7 @@ class TunerInternal:
             Refer to ray.tune.tune_config.TuneConfig for more info.
         run_config: Runtime configuration that is specific to individual trials.
             If passed, this will overwrite the run config passed to the Trainer,
-            if applicable. Refer to ray.air.config.RunConfig for more info.
+            if applicable. Refer to ray.train.RunConfig for more info.
     """
 
     def __init__(
@@ -623,7 +623,7 @@ class TunerInternal:
                     "custom training loop, you will need to "
                     "report a checkpoint every `checkpoint_frequency` iterations "
                     "within your training loop using "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.session.report(metrics=..., checkpoint=...)` "
                     "to get this behavior."
                 )
             elif handle_checkpoint_freq is True:
@@ -644,7 +644,7 @@ class TunerInternal:
                     "to your CheckpointConfig, but this trainer does not support "
                     "this argument. If you passed in an AIR trainer that takes in a "
                     "custom training loop, you should include one last call to "
-                    "`ray.air.session.report(metrics=..., checkpoint=...)` "
+                    "`ray.train.session.report(metrics=..., checkpoint=...)` "
                     "at the end of your training loop to get this behavior."
                 )
             elif handle_cp_at_end is True:

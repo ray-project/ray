@@ -31,7 +31,6 @@ from torch.utils.data import DataLoader
 from ray import train
 from ray.train import ScalingConfig
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
 
 # Define model
 class NeuralNetwork(nn.Module):

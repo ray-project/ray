@@ -3,7 +3,7 @@ import argparse
 import ray
 from ray import tune
 from ray.train.tensorflow import TensorflowTrainer
-from ray.air.config import ScalingConfig
+from ray.train import ScalingConfig
 
 from ray.train.examples.tf.tensorflow_mnist_example import train_func
 from ray.tune.tune_config import TuneConfig

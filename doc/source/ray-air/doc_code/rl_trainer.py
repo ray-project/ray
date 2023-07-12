@@ -1,4 +1,4 @@
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.rl import RLTrainer
 
 trainer = RLTrainer(

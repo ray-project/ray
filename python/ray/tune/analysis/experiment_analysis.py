@@ -14,13 +14,13 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal.uri_utils import _join_path_or_uri, URI
-from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
     EXPR_PARAM_FILE,
     TRAINING_ITERATION,
 )
+from ray.train import Checkpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
@@ -380,7 +380,7 @@ class ExperimentAnalysis:
         `get_best_checkpoint(trial, metric, mode)` instead.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object.
+            :class:`Checkpoint <ray.train.Checkpoint>` object.
         """
         if not self.default_metric or not self.default_mode:
             raise ValueError(
@@ -608,7 +608,7 @@ class ExperimentAnalysis:
                 (client) node. Can also contain a cloud URI.
 
         Returns:
-            :class:`Checkpoint <ray.air.Checkpoint>` object or string
+            :class:`Checkpoint <ray.train.Checkpoint>` object or string
             if ``return_path=True``.
         """
         metric = metric or self.default_metric or TRAINING_ITERATION
