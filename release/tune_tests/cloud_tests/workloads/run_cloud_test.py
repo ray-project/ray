@@ -1055,7 +1055,7 @@ def test_head_node_syncing_disabled_error():
         def on_trial_start(self, iteration, trials, trial, **info):
             print("\n==============================")
             print(f"trial {trial.trial_id} running on ip:", trial.get_runner_ip())
-            print("available resources (CPU):", ray.available_resources()["CPU"])
+            print("available resources (CPU):", ray.available_resources())
             print("==============================\n")
 
     # Raise an error for checkpointing + no storage path
