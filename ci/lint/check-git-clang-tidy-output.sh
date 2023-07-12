@@ -28,16 +28,16 @@ printInfo "Generating compilation database ..."
 case "${OSTYPE}" in
   linux*)
     printInfo "Running on Linux, using clang to build C++ targets. Please make sure it is installed with install-llvm-binaries.sh"
-    bazel build //ci/v2/lint/generate_compile_commands:extract_compile_command //:ray_pkg --config=llvm \
-        --experimental_action_listener=//ci/v2/lint/generate_compile_commands:compile_command_listener;;
+    bazel build //ci/lint/generate_compile_commands:extract_compile_command //:ray_pkg --config=llvm \
+        --experimental_action_listener=//ci/lint/generate_compile_commands:compile_command_listener;;
   darwin*)
     printInfo "Running on MacOS, assuming default C++ compiler is clang."
-    bazel build //ci/v2/lint/generate_compile_commands:extract_compile_command //:ray_pkg \
-        --experimental_action_listener=//ci/v2/lint/generate_compile_commands:compile_command_listener;;
+    bazel build //ci/lint/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/lint/generate_compile_commands:compile_command_listener;;
   msys*)
     printInfo "Running on Windows, using clang-cl to build C++ targets. Please make sure it is installed."
-    CC=clang-cl bazel build //ci/v2/lint/generate_compile_commands:extract_compile_command //:ray_pkg \
-        --experimental_action_listener=//ci/v2/lint/generate_compile_commands:compile_command_listener;;
+    CC=clang-cl bazel build //ci/lint/generate_compile_commands:extract_compile_command //:ray_pkg \
+        --experimental_action_listener=//ci/lint/generate_compile_commands:compile_command_listener;;
 esac
 
 printInfo "Assembling compilation database ..."
@@ -77,7 +77,7 @@ fi
 
 trap - EXIT
 
-if git diff -U0 "$base_commit" | ci/v2/lint/clang-tidy-diff.py -p1 -fix; then
+if git diff -U0 "$base_commit" | ci/lint/clang-tidy-diff.py -p1 -fix; then
   printInfo "clang-tidy passed."
 else
   printError "clang-tidy failed. See above for details including suggested fixes."
@@ -87,6 +87,6 @@ else
   printError
   printError "To run clang-tidy locally with fix suggestions, make sure clang and clang-tidy are installed and"
   printError "available in PATH (version 12 is preferred). Then run"
-  printError "ci/v2/lint/check-git-clang-tidy-output.sh"
+  printError "ci/lint/check-git-clang-tidy-output.sh"
   printError "from repo root."
 fi
