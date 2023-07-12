@@ -249,6 +249,7 @@ class DatasetStats:
         self.iter_next_batch_s: Timer = Timer()
         self.iter_format_batch_s: Timer = Timer()
         self.iter_collate_batch_s: Timer = Timer()
+        self.iter_finalize_batch_s: Timer = Timer()
         self.iter_total_blocked_s: Timer = Timer()
         self.iter_user_s: Timer = Timer()
         self.iter_total_s: Timer = Timer()
@@ -319,6 +320,7 @@ class DatasetStats:
             self.iter_next_batch_s,
             self.iter_format_batch_s,
             self.iter_collate_batch_s,
+            self.iter_finalize_batch_s,
             self.iter_total_blocked_s,
             self.iter_user_s,
             self.iter_total_s,
@@ -732,6 +734,8 @@ class IterStatsSummary:
     format_time: Timer
     # Time spent in collate fn, in seconds
     collate_time: Timer
+    # Time spent in finalize_fn, in seconds
+    finalize_batch_time: Timer
     # Total time user thread is blocked by iter_batches
     block_time: Timer
     # Time spent in user code, in seconds
@@ -760,6 +764,7 @@ class IterStatsSummary:
             or self.next_time.get()
             or self.format_time.get()
             or self.collate_time.get()
+            or self.finalize_batch_time.get()
         ):
             out += "\nDataset iterator time breakdown:\n"
             if self.block_time.get():
@@ -813,6 +818,16 @@ class IterStatsSummary:
                     fmt(self.collate_time.max()),
                     fmt(self.collate_time.avg()),
                     fmt(self.collate_time.get()),
+                )
+            if self.finalize_batch_time.get():
+                format_str = (
+                    "   * In host->device transfer: {} min, {} max, {} avg, {} total\n"
+                )
+                out += format_str.format(
+                    fmt(self.finalize_batch_time.min()),
+                    fmt(self.finalize_batch_time.max()),
+                    fmt(self.finalize_batch_time.avg()),
+                    fmt(self.finalize_batch_time.get()),
                 )
 
         return out
@@ -881,6 +896,7 @@ class DatasetPipelineStats:
             "iter_next_batch_s": Timer(),
             "iter_format_batch_s": Timer(),
             "iter_collate_batch_s": Timer(),
+            "iter_finalize_batch_s": Timer(),
             "iter_user_s": Timer(),
             "iter_total_s": Timer(),
         }
