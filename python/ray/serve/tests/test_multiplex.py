@@ -353,6 +353,10 @@ def test_multiplexed_lru_policy(serve_instance):
     )
 
 
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_NEW_ROUTING,
+    reason="Old routing not enforcing `max_concurrent_queries` properly.",
+)
 def test_multiplexed_multiple_replicas(serve_instance):
     """Test multiplexed traffic can be sent to multiple replicas"""
     signal = SignalActor.remote()
