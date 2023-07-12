@@ -93,7 +93,7 @@ COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV = (
 # as Trainable)
 DISABLE_LAZY_CHECKPOINTING_ENV = "TRAIN_DISABLE_LAZY_CHECKPOINTING"
 
-# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
+# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.8
 # Whether or not the sync-to-head behavior is enabled by default.
 # If unset, running AIR on a multi-node cluster with checkpointing will raise
 # an error telling the user to switch to cloud/NFS.

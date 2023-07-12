@@ -578,7 +578,7 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
     assert_file(False, tmp_target, "save_to_object1234")
 
 
-# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
+# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.8
 def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
     syncer_callback = SyncerCallback(sync_period=0)
     trial = MockTrial(trial_id="a", logdir=None)
@@ -622,7 +622,7 @@ def test_head_node_syncing_disabled_error(monkeypatch, tmp_path):
     )
 
 
-# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.7.
+# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.8
 def test_head_node_syncing_disabled_warning(propagate_logs, caplog, monkeypatch):
     monkeypatch.setenv(REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE, "0")
     syncer_callback = SyncerCallback(sync_period=0)
