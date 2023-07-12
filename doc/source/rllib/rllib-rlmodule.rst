@@ -396,6 +396,19 @@ There are two possible ways to extend existing RL Modules:
             )
 
 
+The following example shows how to extend an existing `~ray.rllib.core.rl_module.rl_module.RLModule` with your own sub-components.
+
+
+.. dropdown:: **Writing an RL Module with MobileNet v2 **
+    :animate: fade-in-slide-down
+
+    .. literalinclude:: ../../../rllib/examples/rl_module/mobilenet_rlm.py
+            :language: python
+            :start-after: __sphinx_doc_begin__
+            :end-before: __sphinx_doc_end__
+
+
+
 Migrating from Custom Policies and Models to RL Modules
 -------------------------------------------------------
 
@@ -563,6 +576,4 @@ See `Writing Custom Single Agent RL Modules`_ for more details on how to impleme
 Notable TODOs
 -------------
 
-- [] Add support for RNNs.
 - [] Checkpointing.
-- [] End to end example for custom RL Modules extending PPORLModule (e.g. LLM)

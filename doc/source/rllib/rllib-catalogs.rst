@@ -158,25 +158,35 @@ Have a look at these lines from the constructor of the :py:class:`~ray.rllib.alg
 Consequently, in order to build a custom :py:class:`~ray.rllib.core.models.Model` compatible with a PPORLModule,
 you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
 or write a :py:class:`~ray.rllib.core.models.catalog.Catalog` that implements them from scratch.
-The following showcases such modifications.
-
-This example shows two modifications:
-
-- How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
-- How to inject a custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
-
-.. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+The following examples showcase such modifications.
 
 
+.. tab-set::
 
-Notable TODOs
--------------
+    .. tab-item:: Adding a custom Encoder
 
-- Add cross references to Model and Distribution API docs
-- Add example that shows how to inject own model
-- Add more instructions on how to write a catalog from scratch
-- Add section "Extend RLlib’s selection of Models and Distributions with your own"
-- Add section "Write a Catalog from scratch"
+        This example shows two modifications:
+
+        - How to write a custom :py:class:`~ray.rllib.models.base.Encoder`
+        - How to inject the custom Encoder into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
+
+        Note that, if you only want to inject your encoder into a single :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, the recommended workflow is to inherit
+        from an existing RL Module and place the Encoder there. You can find an example of this using the same mobilenet v2 encoder
+
+        .. literalinclude:: ../../../rllib/examples/catalog/mobilenet_v2_encoder.py
+           :language: python
+           :start-after: __sphinx_doc_begin__
+           :end-before: __sphinx_doc_end__
+
+
+    .. tab-item:: Adding a custom action distribution
+
+        This example shows two modifications:
+
+        - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
+        - How to inject the custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
+
+        .. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
+           :language: python
+           :start-after: __sphinx_doc_begin__
+           :end-before: __sphinx_doc_end__
