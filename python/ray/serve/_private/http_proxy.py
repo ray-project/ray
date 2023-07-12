@@ -456,7 +456,7 @@ class GenericProxy:
 
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
-        route_path = scope["path"][len(root_path):]
+        route_path = scope["path"][len(root_path) :]
 
         if route_path == "/-/routes":
             if self._draining:
@@ -921,7 +921,7 @@ class GRPCProxy(GenericProxy):
             "path": f"/{request.target}",
             "root_path": "/",
             "headers": [
-                (SERVE_MULTIPLEXED_MODEL_ID.encode('utf-8'), b"11"),
+                (SERVE_MULTIPLEXED_MODEL_ID.encode("utf-8"), b"11"),
             ],
         }
         receive = make_buffered_asgi_receive(request.input.SerializeToString())
