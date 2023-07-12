@@ -109,6 +109,7 @@ if __name__ == "__main__":
     do_link("experimental", force=args.yes, skip_list=args.skip)
     do_link("util", force=args.yes, skip_list=args.skip)
     do_link("workflow", force=args.yes, skip_list=args.skip)
+    do_link("serve", force=args.yes, skip_list=args.skip)
     do_link("dag", force=args.yes, skip_list=args.skip)
     do_link("widgets", force=args.yes, skip_list=args.skip)
     do_link("cluster_utils.py", force=args.yes, skip_list=args.skip)
