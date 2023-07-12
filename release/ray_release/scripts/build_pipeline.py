@@ -192,6 +192,7 @@ def main(
                 ray_wheels=this_ray_wheels_url,
                 env=env,
                 priority_val=priority.value,
+                global_config=global_config,
             )
 
             if no_concurrency_limit:
