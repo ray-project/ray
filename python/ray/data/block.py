@@ -71,9 +71,14 @@ def _validate_key_fn(
                 "The column '{}' does not exist in the "
                 "schema '{}'.".format(key, schema)
             )
-    else:
-        # TODO: Decide on how to handle list of keys
-        pass
+    elif isinstance(key, list):
+        if len(schema.names) > 0:
+            for k in key:
+                if k not in schema.names:
+                    raise ValueError(
+                        "The column '{}' does not exist in the "
+                        "schema '{}'.".format(k, schema)
+                    )
 
 
 # Represents a batch of records to be stored in the Ray object store.

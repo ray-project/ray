@@ -433,7 +433,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
-        table_items = [tuple(d.values()) for d in table.select(columns).to_pylist()]
+        table_items = [tuple(d.values()) for d in _to_pylist(table.select(columns))]
         if descending:
             bounds = [
                 len(table) - bisect.bisect_left(table_items[::-1], b)
@@ -649,3 +649,14 @@ class ArrowBlockAccessor(TableBlockAccessor):
 def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
     """Copy the provided Arrow table."""
     return transform_pyarrow.combine_chunks(table)
+
+
+def _to_pylist(table: "pyarrow.Table") -> "pyarrow.Table":
+    """Convert the Table to a list of rows / dictionaries. Required for compatibility with Arrow 6."""
+    pydict = table.to_pydict()
+    names = table.schema.names
+    pylist = [
+        {column: pydict[column][row] for column in names}
+        for row in range(table.num_rows)
+    ]
+    return pylist
