@@ -9,7 +9,7 @@ filelock
 gcsfs
 gsutil
 gym
-gymnasium[atari,mujoco]
+gymnasium[atari,mujoco]==0.26.3
 memray
 mujoco-py
 modin
