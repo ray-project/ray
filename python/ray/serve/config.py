@@ -374,6 +374,11 @@ class ReplicaConfig:
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
 
+    def update_ray_actor_options(self, ray_actor_options):
+        self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
+
     @classmethod
     def create(
         cls,

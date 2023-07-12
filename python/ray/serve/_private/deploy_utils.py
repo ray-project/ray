@@ -64,17 +64,6 @@ def get_deploy_args(
 
     deployment_config.version = version
 
-    if (
-        deployment_config.autoscaling_config is not None
-        and deployment_config.max_concurrent_queries
-        < deployment_config.autoscaling_config.target_num_ongoing_requests_per_replica  # noqa: E501
-    ):
-        logger.warning(
-            "Autoscaling will never happen, "
-            "because 'max_concurrent_queries' is less than "
-            "'target_num_ongoing_requests_per_replica' now."
-        )
-
     controller_deploy_args = {
         "name": name,
         "deployment_config_proto_bytes": deployment_config.to_proto_bytes(),
@@ -141,6 +130,7 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
         {
             "import_path": app_config.import_path,
             "runtime_env": app_config.runtime_env,
+            "args": app_config.args,
         },
         sort_keys=True,
     ).encode("utf-8")
