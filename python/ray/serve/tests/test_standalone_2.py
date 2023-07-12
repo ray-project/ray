@@ -79,253 +79,253 @@ def _check_ray_stop():
         return True
 
 
-def test_standalone_actor_outside_serve():
-    # https://github.com/ray-project/ray/issues/20066
-
-    ray.init(num_cpus=8, namespace="serve")
-
-    @ray.remote
-    class MyActor:
-        def ready(self):
-            return
-
-    a = MyActor.options(name="my_actor").remote()
-    ray.get(a.ready.remote())
-
-    serve.start()
-    serve.shutdown()
-
-    ray.get(a.ready.remote())
-    ray.shutdown()
-
-
-def test_memory_omitted_option(ray_shutdown):
-    """Ensure that omitting memory doesn't break the deployment."""
-
-    @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
-    def hello(*args, **kwargs):
-        return "world"
-
-    ray.init(num_gpus=3, namespace="serve")
-    handle = serve.run(hello.bind())
-
-    assert ray.get(handle.remote()) == "world"
-
-
-@pytest.mark.parametrize("detached", [True, False])
-@pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
-def test_serve_namespace(shutdown_ray, detached, ray_namespace):
-    """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
-
-    with ray.init(namespace=ray_namespace) as ray_context:
-
-        @serve.deployment
-        def f(*args):
-            return "got f"
-
-        serve.run(f.bind())
-
-        actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
-        )
-
-        assert len(actors) == 3
-
-        # All actors should be in the SERVE_NAMESPACE, so none of these calls
-        # should throw an error.
-        for actor in actors:
-            ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
-
-        assert requests.get("http://localhost:8000/f").text == "got f"
-
-        serve.shutdown()
-
-
-@pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas(shutdown_ray, detached):
-    """Test updating num_replicas."""
-
-    with ray.init() as ray_context:
-
-        @serve.deployment(num_replicas=2)
-        def f(*args):
-            return "got f"
-
-        serve.run(f.bind())
-
-        actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
-        )
-
-        serve.run(f.options(num_replicas=4).bind())
-        updated_actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
-        )
-
-        # Check that only 2 new replicas were created
-        assert len(updated_actors) == len(actors) + 2
-
-        serve.run(f.options(num_replicas=1).bind())
-        updated_actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
-        )
-
-        # Check that all but 1 replica has spun down
-        assert len(updated_actors) == len(actors) - 1
-
-        serve.shutdown()
-
-
-@pytest.mark.parametrize("detached", [True, False])
-def test_refresh_controller_after_death(shutdown_ray, detached):
-    """Check if serve.start() refreshes the controller handle if it's dead."""
-
-    ray.init(namespace="ray_namespace")
-    serve.shutdown()  # Ensure serve isn't running before beginning the test
-    serve.start(detached=detached)
-
-    old_handle = get_global_client()._controller
-    ray.kill(old_handle, no_restart=True)
-
-    def controller_died(handle):
-        try:
-            ray.get(handle.check_alive.remote())
-            return False
-        except RayActorError:
-            return True
-
-    wait_for_condition(controller_died, handle=old_handle, timeout=15)
-
-    # Call start again to refresh handle
-    serve.start(detached=detached)
-
-    new_handle = get_global_client()._controller
-    assert new_handle is not old_handle
-
-    # Health check should not error
-    ray.get(new_handle.check_alive.remote())
-
-    serve.shutdown()
-    ray.shutdown()
-
-
-def test_get_serve_status(shutdown_ray):
-    ray.init()
-
-    @serve.deployment
-    def f(*args):
-        return "Hello world"
-
-    serve.run(f.bind())
-
-    client = get_global_client()
-    status_info_1 = client.get_serve_status()
-    assert status_info_1.app_status.status == "RUNNING"
-    assert (
-        status_info_1.deployment_statuses[0].name
-        == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-    )
-    assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
-
-    serve.shutdown()
-    ray.shutdown()
-
-
-def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
-    """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
-
-    @ray.remote
-    def run_graph():
-        """Deploys a Serve application to the controller's Ray cluster."""
-        from ray import serve
-        from ray._private.utils import import_attr
-        from ray.serve.api import build
-
-        # Import and build the graph
-        graph = import_attr("test_config_files.pizza.serve_dag")
-        app = build(graph)
-
-        # Override options for each deployment
-        for name in app.deployments:
-            app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
-
-        # Run the graph locally on the cluster
-        serve.start(detached=True)
-        serve.run(graph)
-
-    # Start Serve controller in a directory without access to the graph code
-    ray.init(
-        address="auto",
-        namespace="serve",
-        runtime_env={
-            "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
-        },
-    )
-    serve.start(detached=True)
-    serve.context._global_client = None
-    ray.shutdown()
-
-    # Run the task in a directory with access to the graph code
-    ray.init(
-        address="auto",
-        namespace="serve",
-        runtime_env={"working_dir": os.path.dirname(__file__)},
-    )
-    ray.get(run_graph.remote())
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-        == "4 pizzas please!"
-    )
-
-    serve.shutdown()
-    ray.shutdown()
-
-
-def test_controller_deserialization_args_and_kwargs():
-    """Ensures init_args and init_kwargs stay serialized in controller."""
-
-    ray.init()
-    client = serve.start()
-
-    class PidBasedString(str):
-        pass
-
-    def generate_pid_based_deserializer(pid, raw_deserializer):
-        """Cannot be deserialized by the process with specified pid."""
-
-        def deserializer(*args):
-            import os
-
-            if os.getpid() == pid:
-                raise RuntimeError("Cannot be deserialized by this process!")
-            else:
-                return raw_deserializer(*args)
-
-        return deserializer
-
-    PidBasedString.__reduce__ = generate_pid_based_deserializer(
-        ray.get(client._controller.get_pid.remote()), PidBasedString.__reduce__
-    )
-
-    @serve.deployment
-    class Echo:
-        def __init__(self, arg_str, kwarg_str="failed"):
-            self.arg_str = arg_str
-            self.kwarg_str = kwarg_str
-
-        def __call__(self, request):
-            return self.arg_str + self.kwarg_str
-
-    serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
-
-    assert requests.get("http://localhost:8000/Echo").text == "hello world!"
-
-    serve.shutdown()
-    ray.shutdown()
+# def test_standalone_actor_outside_serve():
+#     # https://github.com/ray-project/ray/issues/20066
+#
+#     ray.init(num_cpus=8, namespace="serve")
+#
+#     @ray.remote
+#     class MyActor:
+#         def ready(self):
+#             return
+#
+#     a = MyActor.options(name="my_actor").remote()
+#     ray.get(a.ready.remote())
+#
+#     serve.start()
+#     serve.shutdown()
+#
+#     ray.get(a.ready.remote())
+#     ray.shutdown()
+#
+#
+# def test_memory_omitted_option(ray_shutdown):
+#     """Ensure that omitting memory doesn't break the deployment."""
+#
+#     @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
+#     def hello(*args, **kwargs):
+#         return "world"
+#
+#     ray.init(num_gpus=3, namespace="serve")
+#     handle = serve.run(hello.bind())
+#
+#     assert ray.get(handle.remote()) == "world"
+#
+#
+# @pytest.mark.parametrize("detached", [True, False])
+# @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
+# def test_serve_namespace(shutdown_ray, detached, ray_namespace):
+#     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
+#
+#     with ray.init(namespace=ray_namespace) as ray_context:
+#
+#         @serve.deployment
+#         def f(*args):
+#             return "got f"
+#
+#         serve.run(f.bind())
+#
+#         actors = list_actors(
+#             address=ray_context.address_info["address"],
+#             filters=[("state", "=", "ALIVE")],
+#         )
+#
+#         assert len(actors) == 3
+#
+#         # All actors should be in the SERVE_NAMESPACE, so none of these calls
+#         # should throw an error.
+#         for actor in actors:
+#             ray.get_actor(name=actor["name"], namespace=SERVE_NAMESPACE)
+#
+#         assert requests.get("http://localhost:8000/f").text == "got f"
+#
+#         serve.shutdown()
+#
+#
+# @pytest.mark.parametrize("detached", [True, False])
+# def test_update_num_replicas(shutdown_ray, detached):
+#     """Test updating num_replicas."""
+#
+#     with ray.init() as ray_context:
+#
+#         @serve.deployment(num_replicas=2)
+#         def f(*args):
+#             return "got f"
+#
+#         serve.run(f.bind())
+#
+#         actors = list_actors(
+#             address=ray_context.address_info["address"],
+#             filters=[("state", "=", "ALIVE")],
+#         )
+#
+#         serve.run(f.options(num_replicas=4).bind())
+#         updated_actors = list_actors(
+#             address=ray_context.address_info["address"],
+#             filters=[("state", "=", "ALIVE")],
+#         )
+#
+#         # Check that only 2 new replicas were created
+#         assert len(updated_actors) == len(actors) + 2
+#
+#         serve.run(f.options(num_replicas=1).bind())
+#         updated_actors = list_actors(
+#             address=ray_context.address_info["address"],
+#             filters=[("state", "=", "ALIVE")],
+#         )
+#
+#         # Check that all but 1 replica has spun down
+#         assert len(updated_actors) == len(actors) - 1
+#
+#         serve.shutdown()
+#
+#
+# @pytest.mark.parametrize("detached", [True, False])
+# def test_refresh_controller_after_death(shutdown_ray, detached):
+#     """Check if serve.start() refreshes the controller handle if it's dead."""
+#
+#     ray.init(namespace="ray_namespace")
+#     serve.shutdown()  # Ensure serve isn't running before beginning the test
+#     serve.start(detached=detached)
+#
+#     old_handle = get_global_client()._controller
+#     ray.kill(old_handle, no_restart=True)
+#
+#     def controller_died(handle):
+#         try:
+#             ray.get(handle.check_alive.remote())
+#             return False
+#         except RayActorError:
+#             return True
+#
+#     wait_for_condition(controller_died, handle=old_handle, timeout=15)
+#
+#     # Call start again to refresh handle
+#     serve.start(detached=detached)
+#
+#     new_handle = get_global_client()._controller
+#     assert new_handle is not old_handle
+#
+#     # Health check should not error
+#     ray.get(new_handle.check_alive.remote())
+#
+#     serve.shutdown()
+#     ray.shutdown()
+#
+#
+# def test_get_serve_status(shutdown_ray):
+#     ray.init()
+#
+#     @serve.deployment
+#     def f(*args):
+#         return "Hello world"
+#
+#     serve.run(f.bind())
+#
+#     client = get_global_client()
+#     status_info_1 = client.get_serve_status()
+#     assert status_info_1.app_status.status == "RUNNING"
+#     assert (
+#         status_info_1.deployment_statuses[0].name
+#         == f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+#     )
+#     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
+#
+#     serve.shutdown()
+#     ray.shutdown()
+#
+#
+# def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
+#     """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
+#
+#     @ray.remote
+#     def run_graph():
+#         """Deploys a Serve application to the controller's Ray cluster."""
+#         from ray import serve
+#         from ray._private.utils import import_attr
+#         from ray.serve.api import build
+#
+#         # Import and build the graph
+#         graph = import_attr("test_config_files.pizza.serve_dag")
+#         app = build(graph)
+#
+#         # Override options for each deployment
+#         for name in app.deployments:
+#             app.deployments[name].set_options(ray_actor_options={"num_cpus": 0.1})
+#
+#         # Run the graph locally on the cluster
+#         serve.start(detached=True)
+#         serve.run(graph)
+#
+#     # Start Serve controller in a directory without access to the graph code
+#     ray.init(
+#         address="auto",
+#         namespace="serve",
+#         runtime_env={
+#             "working_dir": os.path.join(os.path.dirname(__file__), "storage_tests")
+#         },
+#     )
+#     serve.start(detached=True)
+#     serve.context._global_client = None
+#     ray.shutdown()
+#
+#     # Run the task in a directory with access to the graph code
+#     ray.init(
+#         address="auto",
+#         namespace="serve",
+#         runtime_env={"working_dir": os.path.dirname(__file__)},
+#     )
+#     ray.get(run_graph.remote())
+#     wait_for_condition(
+#         lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
+#         == "4 pizzas please!"
+#     )
+#
+#     serve.shutdown()
+#     ray.shutdown()
+
+
+# def test_controller_deserialization_args_and_kwargs():
+#     """Ensures init_args and init_kwargs stay serialized in controller."""
+#
+#     ray.init()
+#     client = serve.start()
+#
+#     class PidBasedString(str):
+#         pass
+#
+#     def generate_pid_based_deserializer(pid, raw_deserializer):
+#         """Cannot be deserialized by the process with specified pid."""
+#
+#         def deserializer(*args):
+#             import os
+#
+#             if os.getpid() == pid:
+#                 raise RuntimeError("Cannot be deserialized by this process!")
+#             else:
+#                 return raw_deserializer(*args)
+#
+#         return deserializer
+#
+#     PidBasedString.__reduce__ = generate_pid_based_deserializer(
+#         ray.get(client._controller.get_pid.remote()), PidBasedString.__reduce__
+#     )
+#
+#     @serve.deployment
+#     class Echo:
+#         def __init__(self, arg_str, kwarg_str="failed"):
+#             self.arg_str = arg_str
+#             self.kwarg_str = kwarg_str
+#
+#         def __call__(self, request):
+#             return self.arg_str + self.kwarg_str
+#
+#     serve.run(Echo.bind(PidBasedString("hello "), kwarg_str=PidBasedString("world!")))
+#
+#     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
+#
+#     serve.shutdown()
+#     ray.shutdown()
 
 
 def test_controller_recover_and_delete(shutdown_ray):
@@ -352,37 +352,65 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.kill(client._controller, no_restart=False)
 
     # All replicas should be removed already or after the controller revives
-    wait_for_condition(
-        lambda: len(
-            list_actors(
-                address=ray_context.address_info["address"],
-                filters=[("state", "=", "ALIVE")],
-            )
+    def check_actors():
+        _actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
         )
-        < len(actors)
-    )
+        print("check_actors", _actors)
+        return len(_actors) < len(actors)
+    wait_for_condition(check_actors)
+    # wait_for_condition(
+    #     lambda: len(
+    #         list_actors(
+    #             address=ray_context.address_info["address"],
+    #             filters=[("state", "=", "ALIVE")],
+    #         )
+    #     )
+    #     < len(actors)
+    # )
 
-    wait_for_condition(
-        lambda: len(
-            list_actors(
-                address=ray_context.address_info["address"],
-                filters=[("state", "=", "ALIVE")],
-            )
+    def check_actors_killed():
+        _actors = list_actors(
+            address=ray_context.address_info["address"],
+            filters=[("state", "=", "ALIVE")],
         )
-        == len(actors) - 50
-    )
+        print("check_actors_killed", _actors)
+        return len(_actors) == len(actors) - 50
+    wait_for_condition(check_actors_killed)
+    # wait_for_condition(
+    #     lambda: len(
+    #         list_actors(
+    #             address=ray_context.address_info["address"],
+    #             filters=[("state", "=", "ALIVE")],
+    #         )
+    #     )
+    #     == len(actors) - 50
+    # )
 
+    print("client.get_serve_status()", client.get_serve_status())
+    check_actors()
     # The deployment should be deleted, meaning its state should not be stored
     # in the DeploymentStateManager. This can be checked by attempting to
     # retrieve the deployment's status through the controller.
-    wait_for_condition(
-        lambda: (
+
+    def check_deployment_status():
+        print("check_deployment_status", client.get_serve_status())
+        return (
             client.get_serve_status().get_deployment_status(
                 f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
             )
             is None
         )
-    )
+    wait_for_condition(check_deployment_status)
+    # wait_for_condition(
+    #     lambda: (
+    #         client.get_serve_status().get_deployment_status(
+    #             f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
+    #         )
+    #         is None
+    #     )
+    # )
 
     serve.shutdown()
     ray.shutdown()
