@@ -1,8 +1,7 @@
 steps:
-  - name: "Release tests place holder"
-    # TODO(can-anyscale): add runtime release tests here.
+  - name: "Nightly release tests"
     command:
-      - echo "TODO"
+      - /bin/bash anyscale/ci/run-release-tests.sh nightly
     artifact_paths:
       - "/artifacts/**/*"
     env:

@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# run-release-test.sh bootstrap buildkite release test pipeline.
+
+set -euo pipefail
+
+
+if [[ "${BUILDKITE_COMMIT}" == "HEAD" ]]; then export BUILDKITE_COMMIT=$(git rev-parse HEAD); fi 
+pip3 install --user -U pip
+pip3 install --user -r release/requirements_buildkite.txt
+pip3 install --user --no-deps -e release/
+export RELEASE_QUEUE_DEFAULT="default"
+export RELEASE_AWS_BUCKET="runtime-release-test-artifacts"
+# This is a dummy wheel that will not be used to run tests, its existence
+# is to bypass some invariant checks in the release test pipeline. 
+# TODO(can-anyscale): remove this once we deprecated completely non-byod tests
+export RAY_WHEELS="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl"
+export RELEASE_FREQUENCY="$1"
+export TEST_ATTR_REGEX_FILTERS="name:.*"
+cd release
+(python3 ray_release/scripts/build_pipeline.py --run-jailed-tests --run-unstable-tests --global-config runtime_config.yaml) | buildkite-agent pipeline upload

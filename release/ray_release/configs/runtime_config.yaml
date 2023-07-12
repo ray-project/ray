@@ -1,0 +1,7 @@
+byod:
+  ray_ecr: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale
+  ray_cr_repo: runtime
+  ray_ml_cr_repo: runtime-ml
+  byod_ecr: 830883877497.dkr.ecr.us-west-2.amazonaws.com
+state_machine:
+  aws_bucket: ray-ci-results
