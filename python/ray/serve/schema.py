@@ -365,6 +365,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         description="Arguments that will be passed to the application builder.",
     )
 
+    @property
+    def deployment_names(self) -> List[str]:
+        return [d.name for d in self.deployments]
+
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
         # Ensure that all uris in py_modules and working_dir are remote

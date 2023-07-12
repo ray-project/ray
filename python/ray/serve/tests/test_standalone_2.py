@@ -532,7 +532,7 @@ class TestDeployApp:
         client.deploy_apps(config)
         self.check_single_app()
 
-    def test_deploy_multi_app(self, client: ServeControllerClient):
+    def test_deploy_multi_app_basic(self, client: ServeControllerClient):
         config = ServeDeploySchema.parse_obj(self.get_test_deploy_config())
         client.deploy_apps(config)
         self.check_multi_app()
@@ -766,6 +766,7 @@ class TestDeployApp:
             ApplicationStatus.DEPLOYING,
             ApplicationStatus.RUNNING,
         }
+        self.check_single_app()
 
     def test_deploy_multi_app_update_timestamp(self, client: ServeControllerClient):
         assert client.get_serve_status("app1").app_status.deployment_timestamp == 0
@@ -813,6 +814,10 @@ class TestDeployApp:
             ApplicationStatus.DEPLOYING,
             ApplicationStatus.RUNNING,
         }
+        wait_for_condition(
+            lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
+            == "4 pizzas please!"
+        )
 
     def test_deploy_app_overwrite_apps(self, client: ServeControllerClient):
         """Check that overwriting a live app with a new one works."""
@@ -1105,7 +1110,7 @@ class TestDeployApp:
         wait_for_condition(
             lambda: len(
                 list_tasks(
-                    filters=[("func_or_class_name", "=", "deploy_serve_application")],
+                    filters=[("func_or_class_name", "=", "build_serve_application")],
                 )
             )
             > 0

@@ -5,6 +5,7 @@ from typing import (
 )
 
 from ray.serve.deployment import Deployment
+from ray.serve._private.deploy_utils import get_deploy_args
 from ray.util.annotations import PublicAPI
 
 
@@ -76,3 +77,24 @@ class BuiltApplication:
                     return None
 
         return ingress
+
+
+def _get_deploy_args_from_built_app(app: BuiltApplication):
+    """Get list of deploy args from a BuiltApplication."""
+    deploy_args_list = []
+    for deployment in list(app.deployments.values()):
+        deploy_args_list.append(
+            get_deploy_args(
+                deployment._name,
+                deployment._func_or_class,
+                deployment.init_args,
+                deployment.init_kwargs,
+                deployment._ray_actor_options,
+                deployment._config,
+                deployment._version,
+                deployment.route_prefix,
+                deployment._is_driver_deployment,
+                deployment._docs_path,
+            )
+        )
+    return deploy_args_list

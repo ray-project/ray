@@ -236,6 +236,29 @@ class DeploymentInfo:
     def set_autoscaled_num_replicas(self, autoscaled_num_replicas):
         self.autoscaled_num_replicas = autoscaled_num_replicas
 
+    def update(
+        self,
+        deployment_config: DeploymentConfig = None,
+        replica_config: ReplicaConfig = None,
+        version: str = None,
+        is_driver_deployment: bool = None,
+        route_prefix: str = None,
+    ) -> "DeploymentInfo":
+        return DeploymentInfo(
+            deployment_config=deployment_config or self.deployment_config,
+            replica_config=replica_config or self.replica_config,
+            start_time_ms=self.start_time_ms,
+            deployer_job_id=self.deployer_job_id,
+            actor_name=self.actor_name,
+            version=version or self.version,
+            end_time_ms=self.end_time_ms,
+            is_driver_deployment=is_driver_deployment
+            if is_driver_deployment is not None
+            else self.is_driver_deployment,
+            app_name=self.app_name,
+            route_prefix=route_prefix or self.route_prefix,
+        )
+
     @property
     def actor_def(self):
         # Delayed import as replica depends on this file.
