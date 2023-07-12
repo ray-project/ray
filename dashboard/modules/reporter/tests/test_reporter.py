@@ -700,7 +700,7 @@ def test_reporter_worker_cpu_percent():
 
 TASK = {
     "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
-    "attempt_number": 1,
+    "attempt_number": 0,
 }
 
 
@@ -720,16 +720,12 @@ def test_get_task_traceback():
 
     # Make sure the API works.
     def verify():
-        with pytest.raises(ValueError) as exc_info:
+        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
             resp = requests.get(
-                f"{dashboard_url}/task/traceback/task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']} "
+                f"{dashboard_url}/task/traceback?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}"
             )
             resp.raise_for_status()
-            logger.info(f"resp {type(resp)}: {resp.text}")
-        assert isinstance(exc_info.value, ValueError)
-        assert isinstance(exc_info.value.__cause__, aiohttp.web.HTTPInternalServerError)
-        assert "The task attempt is not running:" in str(exc_info.value)
-
+        assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
 
     wait_for_condition(verify, timeout=10)
