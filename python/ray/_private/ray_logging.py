@@ -102,15 +102,13 @@ def run_callback_on_events_in_ipython(event: str, cb: Callable):
     Args:
         cb: The callback to run.
     """
-    try:
+    if "IPython" in sys.modules:
         from IPython import get_ipython
 
         ipython = get_ipython()
         # Register a callback on cell completion.
         if ipython is not None:
             ipython.events.register(event, cb)
-    except ImportError:
-        pass
 
 
 """
