@@ -322,9 +322,9 @@ class ApplicationState:
         }
 
         # Check route prefix
-        err = self._check_deployment_routes(deployment_infos)
-        if err:
-            raise RayServeException(err)
+        self._route_prefix, self._docs_path = self._check_deployment_routes(
+            deployment_infos
+        )
 
         self._set_target_state(
             deployment_infos=deployment_infos,
@@ -481,7 +481,7 @@ class ApplicationState:
 
     def _check_deployment_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
-    ) -> Optional[str]:
+    ) -> Tuple[str, str]:
         """Check route prefixes and docs paths of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
@@ -489,22 +489,26 @@ class ApplicationState:
         run every control loop iteration because the target config could
         be updated without kicking off a new task.
 
-        Returns: error if there is any.
+        Returns: tuple of route prefix, docs path.
+        Raises: RayServeException if more than one route prefix or docs
+            path is found among deployments.
         """
         num_route_prefixes = 0
         num_docs_paths = 0
+        route_prefix = None
+        docs_path = None
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
             # through a redeployed config.
             if info.route_prefix is not None:
-                self._route_prefix = info.route_prefix
+                route_prefix = info.route_prefix
                 num_route_prefixes += 1
             if info.docs_path is not None:
-                self._docs_path = info.docs_path
+                docs_path = info.docs_path
                 num_docs_paths += 1
 
         if num_route_prefixes > 1:
-            return (
+            raise RayServeException(
                 f'Found multiple route prefixes from application "{self._name}",'
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
@@ -512,12 +516,14 @@ class ApplicationState:
         # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
         # if user sets the docs path to None in their FastAPI app.
         if num_docs_paths > 1:
-            return (
+            raise RayServeException(
                 f'Found multiple deployments in application "{self._name}" that have '
                 "a docs path. This may be due to using multiple FastAPI deployments "
                 "in your application. Please only include one deployment with a docs "
                 "path in your application to avoid this issue."
             )
+
+        return route_prefix, docs_path
 
     def _reconcile_target_deployments(self) -> Optional[str]:
         """Reconcile target deployments in application target state.
@@ -534,9 +540,12 @@ class ApplicationState:
             self._target_state.deployment_infos,
             self._target_state.config,
         )
-        err = self._check_deployment_routes(overrided_infos)
-        if err:
-            return err
+        try:
+            self._route_prefix, self._docs_path = self._check_deployment_routes(
+                overrided_infos
+            )
+        except RayServeException as e:
+            return repr(e)
 
         # Set target state for each deployment
         for deployment_name, info in overrided_infos.items():
