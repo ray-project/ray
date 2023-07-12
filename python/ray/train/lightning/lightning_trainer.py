@@ -621,7 +621,7 @@ def _lightning_train_loop_per_worker(config):
         trainer.fit(lightning_module, **trainer_fit_params)
 
 
-def setup() -> [List[int], RayEnvironment]:
+def setup() -> List[int]:
     # Change the working directory for all workers to the same directory.
     # This aligns with Lightning's settings and avoids inconsistency. Otherwise,
     # each worker will have a different log and checkpoint directory if they are
@@ -632,10 +632,7 @@ def setup() -> [List[int], RayEnvironment]:
 
     # Configure parallel settings for Ray Cluster
     current_device = get_worker_root_device()
-    parallel_devices = [current_device.index]
-    ray_environment = RayEnvironment()
-
-    return parallel_devices, ray_environment
+    return [current_device.index]
 
 
 RAY_STRATEGY_CLASSES = [RayDDPStrategy, RayFSDPStrategy, RayDeepSpeedStrategy]
@@ -645,21 +642,27 @@ def prepare_trainer(trainer):
     strategy = trainer.strategy
     current_device = get_worker_root_device()
 
+    # Check Strategy setup
     if not any(issubclass(type(strategy), cls) for cls in RAY_STRATEGY_CLASSES):
         raise RuntimeError(
             "strategy must be one of `RayDDPStrategy`, `RayFSDPStrategy`, or `RayDeepSpeedStrategy`!"
         )
 
-    if strategy.devices != [current_device.index] or not issubclass(
-        strategy.cluster_environment, RayEnvironment
-    ):
+    # Check parallel devices setup
+    if trainer.device_ids != [current_device.index]:
         raise RuntimeError(
-            "Please call ray.train.lightning.setup() and put `device` and "
-            "`cluster_environment` into your `pl.Trainer`!"
+            "Please call `ray.train.lightning.setup()` and set the output into `pl.Trainer(devices=)`!"
         )
 
+    # Check Environment setup
+    if not issubclass(type(strategy.cluster_environment), RayEnvironment):
+        raise RuntimeError(
+            "Please provide a RayEnvironment object into `pl.Trainer(plugins=)`."
+        )
+
+    # Check ModelCheckpoint callback setup
     if not any(
-        issubclass(callback, RayModelCheckpoint) for callback in trainer.callbacks
+        issubclass(type(callback), RayModelCheckpoint) for callback in trainer.callbacks
     ):
         raise RuntimeError(
             "You must provide one RayModelCheckpoint callback in your pl.Trainer!"

@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader, random_split
 from torchmetrics import Accuracy
 
 import ray
-from ray.train.lightning import RayDDPStrategy, RayModelCheckpoint
+from ray.train.lightning import RayDDPStrategy, RayEnvironment, RayModelCheckpoint
 from ray.train.torch import TorchTrainer
 from ray.air.config import RunConfig, CheckpointConfig, ScalingConfig
 
@@ -94,7 +94,7 @@ class MNISTClassifier(pl.LightningModule):
 
 
 def train_loop_per_worker(config):
-    devices, ray_environment = ray.train.lightning.setup()
+    parallel_devices = ray.train.lightning.setup()
 
     model = MNISTClassifier(lr=config["lr"], feature_dim=config["feature_dim"])
 
@@ -113,14 +113,14 @@ def train_loop_per_worker(config):
     trainer = pl.Trainer(
         max_epochs=5,
         accelerator="gpu",
-        devices=devices,
+        devices=parallel_devices,
         strategy=strategy,
-        plugins=[ray_environment],
+        plugins=[RayEnvironment()],
         callbacks=[checkpoint_callback],
         logger=logger,
     )
 
-    # ray.train.lightning.prepare_trainer(trainer) # WIP
+    ray.train.lightning.prepare_trainer(trainer)
 
     trainer.fit(model, datamodule=dm)
 
