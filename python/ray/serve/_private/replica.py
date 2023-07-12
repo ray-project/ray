@@ -702,6 +702,15 @@ class RayServeReplica:
         else:
             self.error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
+    async def call_user_method_with_grpc_serialization(self, request_args, method_to_call) -> bytes:
+        request_body = await request_args[0].body()
+        print("request_body", request_body)
+        parsed_body = ProtoAny()
+        parsed_body.ParseFromString(request_body)
+        result = await method_to_call(parsed_body)
+        serialized_result = result.SerializeToString()
+        print("call_user_method!!!", serialized_result)
+        return serialized_result
 
     async def call_user_method(
         self,
@@ -749,16 +758,8 @@ class RayServeReplica:
 
                 # TODO: make a new code branch to serialize the request object
                 print("before call_user_method!!!", request_args, request_kwargs)
-                request_body = await request_args[0].body()
-                print("request_body", request_body)
-                parsed_body = ProtoAny()
-                parsed_body.ParseFromString(request_body)
-                result = await method_to_call(parsed_body)
-                serialized_result = result.SerializeToString()
-                print("call_user_method!!!", serialized_result)
-                await self.send_user_result_over_asgi(
-                    serialized_result, scope, receive, send
-                )
+                print(f"the method to call is {runner_method.__name__} {method_to_call}")
+                result = await self.call_user_method_with_grpc_serialization(request_args, method_to_call)
 
                 # result = await method_to_call(*request_args, **request_kwargs)
                 # if inspect.isgenerator(result) or inspect.isasyncgen(result):

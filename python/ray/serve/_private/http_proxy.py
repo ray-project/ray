@@ -67,22 +67,6 @@ from ray.serve._private.utils import (
 from google.protobuf.any_pb2 import Any as ProtoAny
 
 
-class PredictAPIsServicer(serve_pb2_grpc.PredictAPIsServiceServicer):
-    async def Predict(self, request: serve_pb2.PredictRequest, context):
-        print("Predict called!!", request)
-        handle = serve.context.get_global_client().get_handle(
-            request.target,
-            sync=False,
-            missing_ok=True,
-        )
-        print("handle", handle)
-        print("request.input", request.input)
-
-        output_ref = await handle.remote(request.input)
-        output_any = await output_ref
-        return serve_pb2.PredictResponse(output=output_any)
-
-
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 HTTP_REQUEST_MAX_RETRIES = int(os.environ.get("RAY_SERVE_HTTP_REQUEST_MAX_RETRIES", 10))
@@ -243,7 +227,7 @@ class GRPCRouter(LongestPrefixRouter):
 class GenericProxy:
     """This class is meant to be instantiated and run by an ASGI HTTP server.
 
-    It also serve as the base class for proxies.
+    It also served as the base class for proxies.
 
     >>> import uvicorn
     >>> controller_name = ... # doctest: +SKIP
@@ -472,7 +456,7 @@ class GenericProxy:
 
         # only use the non-root part of the path for routing
         root_path = scope["root_path"]
-        route_path = scope["path"][len(root_path) :]
+        route_path = scope["path"][len(root_path):]
 
         if route_path == "/-/routes":
             if self._draining:
@@ -549,7 +533,10 @@ class GenericProxy:
                 "app_name": app_name,
             }
             start_time = time.time()
+            print("before setting request context")
             for key, value in scope.get("headers", []):
+                print("key: ", key)
+                print("value: ", value)
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                     multiplexed_model_id = value.decode()
                     handle = handle.options(multiplexed_model_id=multiplexed_model_id)
@@ -929,7 +916,14 @@ class GRPCProxy(GenericProxy):
         print("context.invocation_metadata()", context.invocation_metadata())
         print("context.details()", context.details())
 
-        scope = {"type": "http", "path": f"/{request.target}", "root_path": "/"}
+        scope = {
+            "type": "http",
+            "path": f"/{request.target}",
+            "root_path": "/",
+            "headers": [
+                (SERVE_MULTIPLEXED_MODEL_ID.encode('utf-8'), b"11"),
+            ],
+        }
         receive = make_buffered_asgi_receive(request.input.SerializeToString())
         send = BufferedASGISender()
         await self(
