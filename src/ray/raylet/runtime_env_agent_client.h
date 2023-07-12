@@ -42,6 +42,7 @@ using DeleteRuntimeEnvIfPossibleCallback = std::function<void(bool successful)>;
 class RuntimeEnvAgentClient {
  public:
   // Creates a concrete Client that can make HTTP requests to address:port.
+  // Retries all requests every `agent_manager_retry_interval_ms` on NotFound.
   static std::shared_ptr<RuntimeEnvAgentClient> Create(
       instrumented_io_context &io_context,
       const std::string &address,
@@ -54,22 +55,25 @@ class RuntimeEnvAgentClient {
 
   /// Request agent to increase the runtime env reference. This API is not idempotent.
   /// \param[in] job_id The job id which the runtime env belongs to.
-  /// \param[in] serialized_runtime_env The serialized runtime environment.
-  /// \param[in] serialized_allocated_resource_instances The serialized allocated
-  /// resource instances. \param[in] callback The callback function.
+  /// \param[in] serialized_runtime_env The runtime environment serialized in JSON as from
+  /// `RuntimeEnv::Serialize` method.
+  ///  \param[in] serialized_allocated_resource_instances The serialized allocated
+  ///  resource instances.
+  /// \param[in] callback The callback function.
   virtual void GetOrCreateRuntimeEnv(
       const JobID &job_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
       const std::string &serialized_allocated_resource_instances,
-      GetOrCreateRuntimeEnvCallback callback) = 0;
+      GetOrCreateRuntimeEnvCallback &callback) = 0;
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent.
-  /// \param[in] serialized_runtime_env The serialized runtime environment.
+  /// \param[in] serialized_runtime_env The runtime environment serialized in JSON as from
+  /// `RuntimeEnv::Serialize` method.
   /// \param[in] callback The callback function.
   virtual void DeleteRuntimeEnvIfPossible(
       const std::string &serialized_runtime_env,
-      DeleteRuntimeEnvIfPossibleCallback callback) = 0;
+      DeleteRuntimeEnvIfPossibleCallback &callback) = 0;
 
   // NOTE: The service has another method `GetRuntimeEnvsInfo` but nobody in raylet uses
   // it.
