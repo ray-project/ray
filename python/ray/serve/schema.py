@@ -365,6 +365,10 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         description="Arguments that will be passed to the application builder.",
     )
 
+    @property
+    def deployment_names(self) -> List[str]:
+        return [d.name for d in self.deployments]
+
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
         # Ensure that all uris in py_modules and working_dir are remote
@@ -511,6 +515,10 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
             'Root path to mount the serve application (for example, "/serve"). All '
             'deployment routes will be prefixed with this path. Defaults to "".'
         ),
+    )
+    request_timeout_s: float = Field(
+        default=None,
+        description="The timeout for HTTP requests. Defaults to no timeout.",
     )
 
 

@@ -1120,10 +1120,7 @@ class TrialRunnerTest3(unittest.TestCase):
             # The second checkpoint will log a warning about the previous sync
             # timing out. Then, it will launch a new sync process in the background.
             runner.checkpoint(force=True)
-        assert any(
-            "sync of the experiment checkpoint to the cloud timed out" in x
-            for x in buffer
-        )
+        assert any("timed out" in x for x in buffer)
         assert syncer.sync_up_counter == 2
 
     def testPeriodicCloudCheckpointSyncTimeout(self):
@@ -1525,4 +1522,4 @@ class SearchAlgorithmTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

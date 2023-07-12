@@ -1,9 +1,10 @@
 from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
+from ray.train.data_config import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.air.config import ScalingConfig, RunConfig, DatasetConfig
+from ray.air.config import ScalingConfig, RunConfig
 from ray.air.checkpoint import Checkpoint
 from ray.util import PublicAPI
 
@@ -22,12 +23,12 @@ class TensorflowTrainer(DataParallelTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -55,7 +56,7 @@ class TensorflowTrainer(DataParallelTrainer):
         at the beginning of your ``train_loop_per_worker`` function.
 
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
@@ -168,7 +169,7 @@ class TensorflowTrainer(DataParallelTrainer):
         train_loop_config: Optional[Dict] = None,
         tensorflow_config: Optional[TensorflowConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         preprocessor: Optional["Preprocessor"] = None,

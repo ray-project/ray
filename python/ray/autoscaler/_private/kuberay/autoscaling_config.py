@@ -4,7 +4,6 @@ import logging
 import time
 from typing import Any, Dict, Optional
 
-import kubernetes
 import requests
 
 from ray.autoscaler._private.constants import (
@@ -14,7 +13,7 @@ from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
-from ray.autoscaler._private.kuberay import node_provider
+from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
@@ -343,9 +342,7 @@ def _round_up_k8s_quantity(quantity: str) -> int:
     Returns:
         The quantity, rounded up, as an integer.
     """
-    resource_decimal: decimal.Decimal = kubernetes.utils.quantity.parse_quantity(
-        quantity
-    )
+    resource_decimal: decimal.Decimal = utils.parse_quantity(quantity)
     rounded = resource_decimal.to_integral_value(rounding=decimal.ROUND_UP)
     return int(rounded)
 

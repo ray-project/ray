@@ -12,9 +12,8 @@ from typing import Dict
 
 # Load the data.
 train_ds = ray.data.read_parquet("example://iris.parquet")
-
-# Randomize the block order each epoch.
-train_ds = train_ds.randomize_block_order()
+## Uncomment to randomize the block order each epoch.
+# train_ds = train_ds.randomize_block_order()
 
 
 # Define a preprocessing function.

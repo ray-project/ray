@@ -34,7 +34,6 @@ from ray.data.datasource.parquet_datasource import ParquetDatasource
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
-    PathPartitionEncoder,
     PathPartitionFilter,
     PathPartitionParser,
 )
@@ -67,7 +66,6 @@ __all__ = [
     "ParquetDatasource",
     "ParquetMetadataProvider",
     "PartitionStyle",
-    "PathPartitionEncoder",
     "PathPartitionFilter",
     "PathPartitionParser",
     "Partitioning",

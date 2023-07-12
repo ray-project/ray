@@ -21,6 +21,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
@@ -153,6 +154,7 @@ class ServerCallImpl : public ServerCall {
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
+      const ClusterID &cluster_id,
       bool record_metrics)
       : state_(ServerCallState::PENDING),
         factory_(factory),
@@ -161,6 +163,7 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
@@ -255,6 +258,7 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     if (io_service_.stopped()) {
+      RAY_LOG_EVERY_N(WARNING, 100) << "Not sending reply because executor stopped.";
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
@@ -297,6 +301,10 @@ class ServerCallImpl : public ServerCall {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  const ClusterID &cluster_id_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -360,6 +368,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service,
       std::string call_name,
+      const ClusterID &cluster_id,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -369,6 +378,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         max_active_rpcs_(max_active_rpcs),
         record_metrics_(record_metrics) {}
 
@@ -381,6 +391,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
                                                            handle_request_function_,
                                                            io_service_,
                                                            call_name_,
+                                                           cluster_id_,
                                                            record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
@@ -415,6 +426,10 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  const ClusterID cluster_id_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

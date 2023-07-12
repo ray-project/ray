@@ -7,6 +7,9 @@ Transforming Data
 Transformations let you process and modify your dataset. You can compose transformations
 to express a chain of computations.
 
+.. note::
+    Transformations are lazy by default. They aren't executed until you trigger consumption of the data by :ref:`iterating over the Dataset <iterating-over-data>`, :ref:`saving the Dataset <saving-data>`, or :ref:`inspecting properties of the Dataset <inspecting-data>`.
+
 This guide shows you how to:
 
 * `Transform rows <#transforming-rows>`_
@@ -332,9 +335,9 @@ Repartitioning data
 
 A :class:`~ray.data.dataset.Dataset` operates on a sequence of distributed data
 :term:`blocks <block>`. If you want to achieve more fine-grained parallelization,
-increase the number of blocks.
+increase the number of blocks by setting a higher ``parallelism`` at read time.
 
-To change the number of blocks, call
+To change the number of blocks for an existing Dataset, call
 :meth:`Dataset.repartition() <ray.data.Dataset.repartition>`.
 
 .. testcode::
