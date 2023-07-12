@@ -448,11 +448,11 @@ class TestRequestContextMetrics:
         metrics_summary_route = DefaultDict(set)
         metrics_summary_app = DefaultDict(str)
 
-        for request_metrcis in metrics:
-            metrics_summary_route[request_metrcis["deployment"]].add(
-                request_metrcis["route"]
+        for request_metrics in metrics:
+            metrics_summary_route[request_metrics["deployment"]].add(
+                request_metrics["route"]
             )
-            metrics_summary_app[request_metrcis["deployment"]] = request_metrcis[
+            metrics_summary_app[request_metrics["deployment"]] = request_metrics[
                 "application"
             ]
         return metrics_summary_route, metrics_summary_app
