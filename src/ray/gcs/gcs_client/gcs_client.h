@@ -237,8 +237,7 @@ class RAY_EXPORT PythonGcsClient {
   // For rpc::autoscaler::AutoscalerStateService
   Status RequestClusterResourceConstraint(
       int64_t timeout_ms,
-      const std::vector<std::unordered_map<std::string, double>> &bundles,
-      const std::vector<int64_t> &count_array);
+      const std::vector<std::unordered_map<std::string, double>> &bundles);
   Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
 
  private:

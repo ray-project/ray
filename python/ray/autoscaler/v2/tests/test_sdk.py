@@ -11,11 +11,12 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
-from ray.autoscaler.v2.schema import (
-    ClusterStatus,
-    LaunchRequest,
-    NodeInfo,
-    ResourceRequestByCount,
+from ray.autoscaler.v2.sdk import _get_cluster_status, request_cluster_resources
+from ray.autoscaler.v2.tests.util import get_cluster_resource_state
+from ray.core.generated.experimental import autoscaler_pb2_grpc
+from ray.core.generated.experimental.autoscaler_pb2 import (
+    ClusterResourceState,
+    NodeStatus,
 )
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import (
@@ -418,241 +419,21 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
     wait_for_condition(verify_cluster_no_node)
 
 
-def test_get_cluster_status_resources(ray_start_cluster):
-    cluster = ray_start_cluster
-    # Head node
-    cluster.add_node(num_cpus=1, _system_config={"enable_autoscaler_v2": True})
-    ray.init(address=cluster.address)
-
-    # Worker node
-    cluster.add_node(num_cpus=2)
-
-    @ray.remote(num_cpus=1)
-    class Actor:
-        def loop(self):
-            while True:
-                pass
-
-    # Schedule tasks to use all resources.
-    @ray.remote(num_cpus=1)
-    def loop():
-        while True:
-            pass
-
-    [loop.remote() for _ in range(2)]
-    actor = Actor.remote()
-    actor.loop.remote()
-
-    def verify_cpu_resources_all_used():
-        cluster_status = get_cluster_status()
-        total_cluster_resources = get_total_resources(
-            cluster_status.cluster_resource_usage
-        )
-        assert total_cluster_resources["CPU"] == 3.0
-
-        available_cluster_resources = get_available_resources(
-            cluster_status.cluster_resource_usage
-        )
-        assert available_cluster_resources["CPU"] == 0.0
-        return True
-
-    wait_for_condition(verify_cpu_resources_all_used)
-
-    # Schedule more tasks should show up as task demands
-    [loop.remote() for _ in range(2)]
-
-    def verify_task_demands():
-        resource_demands = get_cluster_status().resource_demands
-        assert len(resource_demands.ray_task_actor_demand) == 1
-        assert resource_demands.ray_task_actor_demand[0].bundles_by_count == [
-            ResourceRequestByCount(
-                bundle={"CPU": 1.0},
-                count=2,
-            )
-        ]
-        return True
-
-    wait_for_condition(verify_task_demands)
-
-    # Request resources through SDK
-    request_cluster_resources(to_request=[{"GPU": 1, "CPU": 2}])
-
-    def verify_cluster_constraint_demand():
-        resource_demands = get_cluster_status().resource_demands
-        assert len(resource_demands.cluster_constraint_demand) == 1
-        assert resource_demands.cluster_constraint_demand[0].bundles_by_count == [
-            ResourceRequestByCount(
-                bundle={"GPU": 1.0, "CPU": 2.0},
-                count=1,
-            )
-        ]
-        return True
-
-    wait_for_condition(verify_cluster_constraint_demand)
-
-    # Try to schedule some PGs
-    pg1 = ray.util.placement_group([{"CPU": 1}] * 3)
-
-    def verify_pg_demands():
-        resource_demands = get_cluster_status().resource_demands
-        assert len(resource_demands.placement_group_demand) == 1
-        assert resource_demands.placement_group_demand[0].bundles_by_count == [
-            ResourceRequestByCount(
-                bundle={"CPU": 1.0},
-                count=3,
-            )
-        ]
-        assert resource_demands.placement_group_demand[0].pg_id == pg1.id.hex()
-        assert resource_demands.placement_group_demand[0].strategy == "PACK"
-        assert resource_demands.placement_group_demand[0].state == "PENDING"
-        return True
-
-    wait_for_condition(verify_pg_demands)
-
-
-def test_get_cluster_status(ray_start_cluster):
+def test_get_cluster_status(shutdown_only):
     # This test is to make sure the grpc stub is working.
     # TODO(rickyx): Add e2e tests for the autoscaler state service in a separate PR
     # to validate the data content.
 
-    cluster = ray_start_cluster
-    # Head node
-    cluster.add_node(num_cpus=1, _system_config={"enable_autoscaler_v2": True})
-    ray.init(address=cluster.address)
-    # Worker node
-    cluster.add_node(num_cpus=2)
+    ray.init(num_cpus=1)
 
-    head_node_id, worker_node_ids = get_node_ids()
-
-    def verify_nodes():
-        cluster_status = get_cluster_status()
-        assert_nodes(
-            cluster_status.healthy_nodes,
-            [
-                ExpectedNodeInfo(
-                    worker_node_ids[0],
-                    "IDLE",
-                    lambda idle_ms: idle_ms > 0,
-                    total_resources={"CPU": 2.0},
-                    available_resources={"CPU": 2.0},
-                ),
-                ExpectedNodeInfo(
-                    head_node_id,
-                    "IDLE",
-                    lambda idle_ms: idle_ms > 0,
-                    total_resources={"CPU": 1.0},
-                    available_resources={"CPU": 1.0},
-                ),
-            ],
-        )
+    def verify():
+        reply = _get_cluster_status()
+        assert reply.autoscaling_state is not None
+        assert reply.cluster_resource_state is not None
+        assert len(reply.cluster_resource_state.node_states) == 1
         return True
 
-    wait_for_condition(verify_nodes)
-
-    # Schedule a task running
-    @ray.remote(num_cpus=2)
-    def f():
-        while True:
-            pass
-
-    f.remote()
-
-    def verify_nodes_busy():
-        cluster_status = get_cluster_status()
-        assert_nodes(
-            cluster_status.healthy_nodes,
-            [
-                ExpectedNodeInfo(
-                    worker_node_ids[0],
-                    "RUNNING",
-                    lambda idle_ms: idle_ms == 0,
-                    total_resources={"CPU": 2.0},
-                    available_resources={"CPU": 0.0},
-                ),
-                ExpectedNodeInfo(head_node_id, "IDLE", lambda idle_ms: idle_ms > 0),
-            ],
-        )
-        return True
-
-    wait_for_condition(verify_nodes_busy)
-
-    stub = _autoscaler_state_service_stub()
-    state = autoscaler_pb2.AutoscalingState(
-        last_seen_cluster_resource_state_version=0,
-        autoscaler_state_version=1,
-        pending_instance_requests=[
-            autoscaler_pb2.PendingInstanceRequest(
-                instance_type_name="m5.large",
-                ray_node_type_name="worker",
-                count=2,
-                request_ts=1000,
-            )
-        ],
-        failed_instance_requests=[
-            autoscaler_pb2.FailedInstanceRequest(
-                instance_type_name="m5.large",
-                ray_node_type_name="worker",
-                count=2,
-                start_ts=1000,
-                failed_ts=2000,
-                reason="insufficient quota",
-            )
-        ],
-        pending_instances=[
-            autoscaler_pb2.PendingInstance(
-                instance_id="instance-id",
-                instance_type_name="m5.large",
-                ray_node_type_name="worker",
-                ip_address="10.10.10.10",
-                details="launching",
-            )
-        ],
-    )
-    report_autoscaling_state(stub, autoscaling_state=state)
-
-    def verify_autoscaler_state():
-        # TODO(rickyx): Add infeasible asserts.
-
-        cluster_status = get_cluster_status()
-        assert len(cluster_status.pending_launches) == 1
-        assert_launches(
-            cluster_status,
-            expected_pending_launches=[
-                LaunchRequest(
-                    instance_type_name="m5.large",
-                    ray_node_type_name="worker",
-                    count=2,
-                    state=LaunchRequest.Status.PENDING,
-                    request_ts_s=1000,
-                )
-            ],
-            expected_failed_launches=[
-                LaunchRequest(
-                    instance_type_name="m5.large",
-                    ray_node_type_name="worker",
-                    count=2,
-                    state=LaunchRequest.Status.FAILED,
-                    request_ts_s=1000,
-                    failed_ts_s=2000,
-                    details="insufficient quota",
-                )
-            ],
-        )
-
-        assert_nodes(
-            cluster_status.pending_nodes,
-            [
-                ExpectedNodeInfo(
-                    instance_id="instance-id",
-                    ray_node_type_name="worker",
-                    details="launching",
-                    ip_address="10.10.10.10",
-                )
-            ],
-        )
-        return True
-
-    wait_for_condition(verify_autoscaler_state)
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

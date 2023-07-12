@@ -2332,13 +2332,25 @@ cdef class GcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, double]],
-            count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
         with nogil:
             check_status(self.inner.get().RequestClusterResourceConstraint(
                 timeout_ms, bundles, count_array))
+
+    @_auto_reconnect
+    def get_cluster_status(
+            self,
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().GetClusterStatus(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
 
     @_auto_reconnect
     def get_cluster_status(
