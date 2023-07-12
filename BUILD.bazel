@@ -749,7 +749,6 @@ cc_library(
         "//src/ray/protobuf:agent_manager_cc_proto",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/util",
-        "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "@boost//:asio",
         "@boost//:system",
         "@boost//:beast",
@@ -1418,21 +1417,6 @@ cc_test(
     name = "placement_group_resource_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/placement_group_resource_manager_test.cc"],
-    copts = COPTS,
-    tags = ["team:core"],
-    deps = [
-        "gcs_test_util_lib",
-        "ray_common",
-        "raylet_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-cc_test(
-    name = "runtime_env_agent_client_test",
-    size = "small",
-    srcs = ["src/ray/raylet/runtime_env_agent_client_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
     deps = [
