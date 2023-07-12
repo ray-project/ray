@@ -249,3 +249,13 @@ message TestIn {
 message TestOut {
   string greeting = 1;
 }
+
+message UserRequest {
+  string message = 1;
+  map<string, bytes> input = 2;
+}
+
+message UserResponse {
+  bytes response = 1;
+}
+

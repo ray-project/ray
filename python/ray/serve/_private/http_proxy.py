@@ -46,6 +46,7 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
+    SERVE_GRPC_REQUEST,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
@@ -198,28 +199,23 @@ class LongestPrefixRouter:
 
 
 class GRPCRouter(LongestPrefixRouter):
-    def match_route(
-        self, target_route: str
-    ) -> Optional[Tuple[str, RayServeHandle, str, bool]]:
+    def get_route_from_target(
+        self, target: str
+    ) -> Optional[str]:
         """Return the target endpoint to match for the route.
 
         Args:
-            target_route: the endpoint to match against.
+            target: the target to match against endpoint.
 
         Returns:
             (route, handle, app_name, is_cross_language) if found, else None.
         """
-        print("GRPCRouter#match_route", target_route)
+        print("GRPCRouter#match_route", target)
         for route, endpoint_and_app_name in self.route_info.items():
             endpoint, app_name = endpoint_and_app_name
             print("app_name", app_name, "endpoint", endpoint)
-            if target_route.endswith(endpoint):
-                return (
-                    route,
-                    self.handles[endpoint],
-                    app_name,
-                    self.app_to_is_cross_language[app_name],
-                )
+            if target.endswith(endpoint):
+                return route
 
         return None
 
@@ -543,6 +539,10 @@ class GenericProxy:
                     request_context_info["multiplexed_model_id"] = multiplexed_model_id
                 if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
                     request_context_info["request_id"] = value.decode()
+                # if key.decode() == SERVE_GRPC_REQUEST:
+                #     serve_grpc_request = value.decode()
+                #     handle = handle.options(serve_grpc_request=serve_grpc_request)
+                #     request_context_info[SERVE_GRPC_REQUEST] = serve_grpc_request
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
             )
@@ -916,13 +916,20 @@ class GRPCProxy(GenericProxy):
         print("context.invocation_metadata()", context.invocation_metadata())
         print("context.details()", context.details())
 
+        path = self.prefix_router.get_route_from_target(request.target)
+        request_id = ray.serve.context._serve_request_context.get().request_id
+        headers = [
+            (SERVE_MULTIPLEXED_MODEL_ID.encode("utf-8"), b"11"),
+            (RAY_SERVE_REQUEST_ID_HEADER.encode("utf-8"), request_id.encode("utf-8")),
+        ]
+        print("path", path)
+        print("request_id", request_id)
+
         scope = {
             "type": "http",
-            "path": f"/{request.target}",
-            "root_path": "/",
-            "headers": [
-                (SERVE_MULTIPLEXED_MODEL_ID.encode("utf-8"), b"11"),
-            ],
+            "path": path,
+            "root_path": "",
+            "headers": headers,
         }
         receive = make_buffered_asgi_receive(request.input.SerializeToString())
         send = BufferedASGISender()
