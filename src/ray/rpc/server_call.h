@@ -209,7 +209,10 @@ class ServerCallImpl : public ServerCall {
   void HandleRequestImpl() {
     if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
       if (!service_handler_.IsInitialized()) {
-        SendReply(Status::Invalid("Service handler is not initialized yet"));
+        RAY_LOG(INFO) << "Failed to handle request, service handler has not been "
+                         "initialized yet";
+        SendReply(Status::Invalid("Service handler has not been initialized yet"));
+        return;
       }
     }
     state_ = ServerCallState::PROCESSING;

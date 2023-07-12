@@ -1521,7 +1521,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   /// Wait until the worker is initialized.
-  void IsInitialized() override {
+  bool IsInitialized() override {
     return initialized_.load();
   }
 
