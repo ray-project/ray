@@ -4,7 +4,6 @@ from pydantic import BaseModel
 import pytest
 import requests
 import starlette.requests
-from starlette.testclient import TestClient
 
 from ray.serve.drivers import DAGDriver
 from ray.serve.air_integrations import SimpleSchemaIngress
@@ -41,7 +40,13 @@ class EchoIngress(SimpleSchemaIngress):
         return inp
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="TestClient not working on Windows."
+)
 def test_unit_schema_injection():
+    # Delayed import because TestClient is missing a dependency on Windows.
+    from starlette.testclient import TestClient
+
     async def resolver(my_custom_param: int):
         return my_custom_param
 
@@ -70,7 +75,12 @@ class MyType(BaseModel):
     b: str
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="TestClient not working on Windows."
+)
 def test_unit_pydantic_class_adapter():
+    # Delayed import because TestClient is missing a dependency on Windows.
+    from starlette.testclient import TestClient
 
     server = EchoIngress(http_adapter=MyType)
     client = TestClient(server.app)
