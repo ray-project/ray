@@ -583,7 +583,7 @@ class RuntimeEnvAgent(
             runtime_env_states[runtime_env].runtime_env = runtime_env
             runtime_env_states[runtime_env].success = result.success
             if not result.success:
-                runtime_env_states[runtime_env].error = result.result
+                runtime_env_states[runtime_env].error = result.error_message
             runtime_env_states[runtime_env].creation_time_ms = result.creation_time_ms
 
         reply = runtime_env_agent_pb2.GetRuntimeEnvsInfoReply()
