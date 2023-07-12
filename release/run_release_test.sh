@@ -38,14 +38,15 @@ export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES B
 if [ -n "${RAY_COMMIT_OF_WHEEL-}" ]; then 
   git config --global --add safe.directory /workdir
   HEAD_COMMIT=$(git rev-parse HEAD)
+  HEAD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
   echo "The test repo has head commit of ${HEAD_COMMIT}"
-  # if [ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" ]; then
-  #   echo "The checked out test code doesn't match with the installed wheel. \
-  #         This is likely due to a racing condition when a PR is landed between \
-  #         a wheel is installed and test code is checked out."
-  #   echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_COMMIT_OF_WHEEL}."
-  #   git reset --hard "${RAY_COMMIT_OF_WHEEL}"
-  # fi
+  if [[ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" && ("${HEAD_BRANCH}" == "master" || "${HEAD_BRANCH}" = releases/*) ]]; then
+    echo "The checked out test code doesn't match with the installed wheel. \
+          This is likely due to a racing condition when a PR is landed between \
+          a wheel is installed and test code is checked out."
+    echo "Hard resetting from ${HEAD_COMMIT} to ${RAY_COMMIT_OF_WHEEL}."
+    git reset --hard "${RAY_COMMIT_OF_WHEEL}"
+  fi
 fi
 
 if [ -z "${NO_INSTALL}" ]; then
