@@ -1,16 +1,5 @@
 group: Linux wheels and images
 steps:
-  - label: "forge"
-    key: "forge"
-    command: bash ci/v2/build-forge.sh
-    job_env: "ubuntu-focal"
-
-  - wait: ~
-
-  - label: "wheel forge"
-    key: "wheel-forge"
-    command: bash ci/v2/build-wheel-forge.sh
-
   - label: "wheel {{matrix}}"
     key: wheels
     command: BUILD_ONE_PYTHON_ONLY={{matrix}} bash ci/v2/build-wheel.sh
