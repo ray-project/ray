@@ -29,7 +29,7 @@ from ray.train.data_parallel_trainer import DataParallelTrainer
 
 def train_fn(config):
     context = ray.train.get_context()
-    dataset_shard = context.get_dataset_shard("train")
+    dataset_shard = train.get_dataset_shard("train")
 
     ray.train.report(
         {
