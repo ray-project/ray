@@ -11,6 +11,10 @@ def get_gcs_client(gcs_address: Optional[str] = None):
     """Get the GCS client."""
     if gcs_address is None:
         gcs_address = ray.get_runtime_context().gcs_address
+    assert gcs_address is not None, (
+        "GCS address should have been detected if getting from runtime context"
+        "or passed in explicitly."
+    )
     return GcsClient(address=gcs_address)
 
 
