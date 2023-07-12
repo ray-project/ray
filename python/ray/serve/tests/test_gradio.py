@@ -2,17 +2,27 @@ import os
 import sys
 
 import gradio as gr
-from gradio_client import Client
 import pytest
+import requests
 
+import ray
 from ray._private.test_utils import wait_for_condition
 
 from ray import serve
 from ray.serve.gradio_integrations import GradioIngress, GradioServer
 
 
+@pytest.fixture
+def serve_start_shutdown():
+    ray.init()
+    serve.start()
+    yield
+    serve.shutdown()
+    ray.shutdown()
+
+
 @pytest.mark.parametrize("use_user_defined_class", [False, True])
-def test_gradio_ingress_correctness(serve_instance, use_user_defined_class: bool):
+def test_gradio_ingress_correctness(serve_start_shutdown, use_user_defined_class: bool):
     """
     Ensure a Gradio app deployed to a cluster through GradioIngress still
     produces the correct output.
@@ -38,11 +48,16 @@ def test_gradio_ingress_correctness(serve_instance, use_user_defined_class: bool
 
     serve.run(app)
 
-    client = Client("http://localhost:8000")
-    assert client.predict("Alice") == "Good morning Alice!"
+    test_input = "Alice"
+    response = requests.post(
+        "http://127.0.0.1:8000/api/predict/", json={"data": [test_input]}
+    )
+    assert response.status_code == 200 and response.json()["data"][0] == greet(
+        test_input
+    )
 
 
-def test_gradio_ingress_scaling(serve_instance):
+def test_gradio_ingress_scaling(serve_start_shutdown):
     """
     Check that a Gradio app that has been deployed to a cluster through
     GradioIngress scales as needed, i.e. separate client requests are served by
@@ -52,15 +67,26 @@ def test_gradio_ingress_scaling(serve_instance):
     def f(*args):
         return os.getpid()
 
-    serve.run(
-        GradioServer.options(num_replicas=2).bind(
-            lambda: gr.Interface(fn=f, inputs="text", outputs="text")
-        )
+    app = GradioServer.options(num_replicas=2).bind(
+        lambda: gr.Interface(fn=f, inputs="text", outputs="text")
     )
+    serve.run(app)
 
-    client = Client("http://localhost:8000")
+    def two_pids_returned():
+        @ray.remote
+        def get_pid_from_request():
+            r = requests.post(
+                "http://127.0.0.1:8000/api/predict/", json={"data": ["input"]}
+            )
+            r.raise_for_status()
+            return r.json()["data"][0]
+
+        return (
+            len(set(ray.get([get_pid_from_request.remote() for _ in range(10)]))) == 2
+        )
+
     # Verify that the requests are handled by two separate replicas.
-    wait_for_condition(lambda: len({client.predict("input") for _ in range(3)}) == 2)
+    wait_for_condition(two_pids_returned)
 
 
 if __name__ == "__main__":
