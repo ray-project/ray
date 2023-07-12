@@ -158,6 +158,10 @@ std::string NodeResourceInstances::DebugString() const {
            << FixedPointVectorToString(available.Get(resource_id)) << "/"
            << FixedPointVectorToString(total.Get(resource_id));
   }
+  buffer << "}, \"labels\":{";
+  for (const auto &[key, value] : labels) {
+    buffer << "\"" << key << "\":\"" << value << "\",";
+  }
   buffer << "}";
   return buffer.str();
 };
