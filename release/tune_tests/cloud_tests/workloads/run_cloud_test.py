@@ -1033,6 +1033,25 @@ def test_head_node_syncing_disabled_error():
     would have been required to synchronize checkpoints.
     """
 
+    import ray
+    import ray.tune
+    from ray.tune import Callback
+
+    print(
+        "===== deprecation message: =====\n",
+        ray.tune.syncer._SYNC_TO_HEAD_DEPRECATION_MESSAGE,
+        "\n==============================\n",
+    )
+
+    class TestCallback(Callback):
+        def on_checkpoint(self, iteration, trials, trial, checkpoint, **info):
+            print("\n==============================")
+            print("checkpoint dir = ", checkpoint.dir_or_data)
+            print("head node_ip = ", ray.util.get_node_ip_address())
+            print("checkpoint node_ip = ", checkpoint.node_ip)
+            print("checkpoint dir exists = ", os.path.exists(checkpoint.dir_or_data))
+            print("==============================\n")
+
     # Raise an error for checkpointing + no storage path
     def train_fn(config):
         session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
@@ -1040,7 +1059,9 @@ def test_head_node_syncing_disabled_error():
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
         run_config=air.RunConfig(
-            storage_path=None, failure_config=air.FailureConfig(fail_fast="raise")
+            storage_path=None,
+            failure_config=air.FailureConfig(fail_fast="raise"),
+            callbacks=[TestCallback()],
         ),
         tune_config=tune.TuneConfig(num_samples=4),
     )
