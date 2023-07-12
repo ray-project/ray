@@ -60,9 +60,7 @@ def trainer_init_per_worker(config):
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     evaluator = Evaluator(
-        dataloader=test_dataloader,
-        label="my_evaluator",
-        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
+        dataloader=test_dataloader, label="my_evaluator", metrics=Accuracy()
     )
 
     # prepare optimizer

@@ -5,6 +5,8 @@ import torch.utils.data
 import torchvision
 from torchvision import transforms, datasets
 
+from torchmetrics.classification.accuracy import Accuracy
+
 
 import ray
 from ray.air.config import ScalingConfig
@@ -16,7 +18,6 @@ def trainer_init_per_worker(config):
     from composer.core.evaluator import Evaluator
     from composer.models.tasks import ComposerClassifier
     import composer.optim
-    from torchmetrics.classification.accuracy import Accuracy
 
     BATCH_SIZE = 64
     # prepare the model for distributed training and wrap with ComposerClassifier for
@@ -56,9 +57,7 @@ def trainer_init_per_worker(config):
     test_dataloader = train.torch.prepare_data_loader(test_dataloader)
 
     evaluator = Evaluator(
-        dataloader=test_dataloader,
-        label="my_evaluator",
-        metrics=Accuracy(task="multiclass", num_classes=10, top_k=1),
+        dataloader=test_dataloader, label="my_evaluator", metrics=Accuracy()
     )
 
     # prepare optimizer
@@ -116,6 +115,6 @@ if __name__ == "__main__":
 
     args, _ = parser.parse_known_args()
 
-    runtime_env = {"pip": ["mosaicml==0.12.1"]}
+    runtime_env = {"pip": ["mosaicml==0.10.1"]}
     ray.init(address=args.address, runtime_env=runtime_env)
     train_mosaic_cifar10(num_workers=args.num_workers, use_gpu=args.use_gpu)
