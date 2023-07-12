@@ -39,6 +39,29 @@ class RuntimeEnvContext:
         self.container = container or {}
         self.java_jars = java_jars or []
         self.cwd = cwd
+        # `symlink_dirs_to_cwd` provides a way that we can link any content to
+        # the working directory of the workers. Note that the dirs in this list
+        # will not be linked directly. Instead, we will walk through each dir
+        # and link each content to the working directory.
+        # For example, if the tree of a dir named "resource_dir1" is:
+        # resource_dir1
+        # ├── file1.txt
+        # └── txt_dir
+        #     └── file2.txt
+        # And the tree of another dir named "resource_dir2" is:
+        # resource_dir2
+        # └── file3.txt
+        # If you append this two dirs into `symlink_dirs_to_cwd`:
+        # self.symlink_dirs_to_cwd.append("/xxx/xxx/resource_dir1")
+        # self.symlink_dirs_to_cwd.append("/xxx/xxx/resource_dir2")
+        # The final working directory of the worker process will be:
+        # /xxx/xxx/working_dirs/{worker_id}
+        # ├── file1.txt
+        # └── txt_dir
+        #     └── file2.txt
+        # └── file3.txt
+        # Note that if there are conflict file or sub dir names in different
+        # resource dirs, some contents will be covered and we don't guarantee it.
         self.symlink_dirs_to_cwd = symlink_dirs_to_cwd or []
 
     def serialize(self) -> str:

@@ -572,10 +572,13 @@ def test_override_failure(shutdown_only):
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
 @pytest.mark.parametrize("disable_working_dir_gc", [True, False])
-def test_id_named_working_dir(start_cluster, tmp_working_dir, disable_working_dir_gc):
+def test_id_named_working_dir(tmp_working_dir, disable_working_dir_gc, shutdown_only):
     """Tests the case where we pass an empty directory as the working_dir."""
-    _, address = start_cluster
-    ray.init(address, runtime_env={"working_dir": tmp_working_dir})
+    if disable_working_dir_gc:
+        os.environ["RAY_DISABLE_WORKING_DIR_GC"] = "true"
+    else:
+        os.environ["RAY_DISABLE_WORKING_DIR_GC"] = "false"
+    ray.init(runtime_env={"working_dir": tmp_working_dir})
 
     @ray.remote
     class A:
@@ -587,6 +590,14 @@ def test_id_named_working_dir(start_cluster, tmp_working_dir, disable_working_di
         def get_cwd(self):
             return os.getcwd()
 
+        def write_file(self, file_name):
+            with open(file_name, "w") as file:
+                file.write("working_dir_test")
+            return True
+
+        def check_file(self, file_name):
+            return os.path.exists(file_name)
+
     a = A.remote()
     assert ray.get(a.test_import.remote()) == 1
     actor_cwd = ray.get(a.get_cwd.remote())
@@ -594,13 +605,21 @@ def test_id_named_working_dir(start_cluster, tmp_working_dir, disable_working_di
     assert os.path.exists(actor_cwd) and os.path.isdir(actor_cwd)
     ray.kill(a, no_restart=True)
 
-    def _check_path_exists(path):
+    def _check_path_does_not_exist(path):
         return not os.path.exists(path)
 
     if not disable_working_dir_gc:
-        wait_for_condition(_check_path_exists, path=actor_cwd, timeout=5)
+        wait_for_condition(_check_path_does_not_exist, path=actor_cwd, timeout=3)
     else:
-        assert os.path.exists(actor_cwd) and os.path.isdir(actor_cwd)
+        time.sleep(3)
+        assert os.path.exists(actor_cwd)
+
+    b = A.remote()
+    c = A.remote()
+    test_file_name = "working_dir_test.txt"
+    assert ray.get(b.write_file.remote(test_file_name))
+    assert ray.get(b.check_file.remote(test_file_name))
+    assert not ray.get(c.check_file.remote(test_file_name))
 
 
 if __name__ == "__main__":
