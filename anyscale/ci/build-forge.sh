@@ -15,6 +15,7 @@ DEST_IMAGE="${CI_TMP_REPO}:${IMAGE_PREFIX}-forge"
 tar --mtime="UTC 2020-01-01" -c -f - \
 	anyscale/ci/rayforge/Dockerfile \
     | docker build --progress=plain -t "${DEST_IMAGE}" \
+        --build-arg BAZEL_REMOTE_CACHE_URL \
         -f anyscale/ci/rayforge/Dockerfile -
 
 docker push "${DEST_IMAGE}"

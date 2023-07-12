@@ -4,7 +4,11 @@
 # wheel.
 
 ARG BASE_IMAGE=quay.io/pypa/manylinux2014_x86_64:2022-12-20-b4884d9
+
 FROM $BASE_IMAGE
+
+ARG BAZEL_REMOTE_CACHE_URL=https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime
+ENV BAZEL_REMOTE_CACHE_URL=${BAZEL_REMOTE_CACHE_URL}
 
 RUN <<EOF
 #!/bin/bash
@@ -44,7 +48,10 @@ ln -s "$(which bazelisk)" /usr/local/bin/bazel
 
 echo "build --config=ci" > ~/.bazelrc
 echo "build --announce_rc" >> ~/.bazelrc
-echo "build:ci --remote_cache=https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime" >> ~/.bazelrc
+
+if [[ "${BAZEL_REMOTE_CACHE_URL}" != "" ]]; then
+  echo "build:ci --remote_cache=${BAZEL_REMOTE_CACHE_URL}" >> ~/.bazelrc
+fi
 
 EOF
 

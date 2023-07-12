@@ -7,83 +7,106 @@ steps:
       queue: "small"
     retry:
       automatic:
-        limit: 3
+        limit: 1
+
+  - group: "wheels and container images"
+    steps:
+    - name: "forge"
+      key: "forge"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-forge.sh
+      agents:
+        queue: "large"
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix}} wheel"
+      depends_on: "forge"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        - py37
+        - py38
+        - py39
+        - py310
+        - py311
+      retry:
+        automatic:
+          limit: 1
+
+    - name: "{{matrix.py}} {{matrix.type}} base image"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py38
+            - py39
+          type:
+            - cpu
+            - gpu
+      retry:
+        automatic:
+          limit: 3
+
+    - wait: ~
+
+    - name: "{{matrix.py}} {{matrix.type}} image"
+      command:
+        - source anyscale/ci/setup-env.sh
+        - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
+      agents:
+        queue: "large"
+      artifact_paths:
+        - "/artifacts/**/*"
+      env:
+        BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
+      matrix:
+        setup:
+          py:
+            - py38
+            - py39
+          type:
+            - cpu
+            - gpu
+      retry:
+        automatic:
+          limit: 1
   
-  - name: "forge"
-    key: "forge"
+  - name: "ci build image"
+    key: "ci-build-image"
     command:
       - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/build-forge.sh
+      - /bin/bash anyscale/ci/build-ci-build-image.sh
     agents:
       queue: "large"
     retry:
       automatic:
-        limit: 3
+        limit: 1
 
-  - name: "{{matrix}} wheel"
-    depends_on: "forge"
+  - name: "serve tests"
+    depends_on: "ci-build-image"
     command:
       - source anyscale/ci/setup-env.sh
-      - BUILD_ONE_PYTHON_ONLY={{matrix}} /bin/bash anyscale/ci/build-wheels.sh
+      - /bin/bash anyscale/ci/run-serve-tests-in-docker.sh
     agents:
       queue: "large"
-    artifact_paths:
-      - "/artifacts/**/*"
-    env:
-      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
-    matrix:
-      - py37
-      - py38
-      - py39
-      - py310
-      - py311
     retry:
       automatic:
-        limit: 3
-  
-  - name: "{{matrix.py}} {{matrix.type}} base image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/build-ray-base-image.sh {{matrix.py}} {{matrix.type}}
-    agents:
-      queue: "large"
-    artifact_paths:
-      - "/artifacts/**/*"
-    env:
-      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
-    matrix:
-      setup:
-        py:
-          - py38
-          - py39
-        type:
-          - cpu
-          - gpu
-    retry:
-      automatic:
-        limit: 3
-
-  - wait: ~
-
-  - name: "{{matrix.py}} {{matrix.type}} image"
-    command:
-      - source anyscale/ci/setup-env.sh
-      - /bin/bash anyscale/ci/build-ray-image.sh {{matrix.py}} {{matrix.type}}
-    agents:
-      queue: "large"
-    artifact_paths:
-      - "/artifacts/**/*"
-    env:
-      BUILDKITE_ARTIFACT_DESTINATION: "s3://bk-premerge-first-jawfish-artifacts/runtime"
-    matrix:
-      setup:
-        py:
-          - py38
-          - py39
-        type:
-          - cpu
-          - gpu
-    retry:
-      automatic:
-        limit: 3
-
+        limit: 1
