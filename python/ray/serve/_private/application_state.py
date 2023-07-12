@@ -309,35 +309,10 @@ class ApplicationState:
             RayServeException: If there is more than one deployment with
                 a non-null route prefix or docs path.
         """
-        # Makes sure that at most one deployment has a non-null route
-        # prefix and docs path.
-        num_route_prefixes = 0
-        num_docs_paths = 0
-        for deploy_param in deployment_params:
-            if deploy_param.get("route_prefix") is not None:
-                self._route_prefix = deploy_param["route_prefix"]
-                num_route_prefixes += 1
-
-            if deploy_param.get("docs_path") is not None:
-                self._docs_path = deploy_param["docs_path"]
-                num_docs_paths += 1
-        if num_route_prefixes > 1:
-            raise RayServeException(
-                f'Found multiple route prefixes from application "{self._name}",'
-                " Please specify only one route prefix for the application "
-                "to avoid this issue."
-            )
-        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
-        # if user sets the docs path to None in their FastAPI app.
-        if num_docs_paths > 1:
-            raise RayServeException(
-                f'Found multiple deployments in application "{self._name}" that have '
-                "a docs path. This may be due to using multiple FastAPI deployments "
-                "in your application. Please only include one deployment with a docs "
-                "path in your application to avoid this issue."
-            )
 
         for params in deployment_params:
+            if params["docs_path"] is not None:
+                self._docs_path = params["docs_path"]
             params["deployment_name"] = params.pop("name")
             params["app_name"] = self._name
 
@@ -511,6 +486,11 @@ class ApplicationState:
             self._target_state.deployment_infos,
             self._target_state.config,
         )
+        # Update route prefix of application, which may be updated
+        # through a redeployed config.
+        for info in overrided_infos.values():
+            if info.route_prefix is not None:
+                self._route_prefix = info.route_prefix
         # Set target state for each deployment
         for deployment_name, info in overrided_infos.items():
             self.apply_deployment_info(deployment_name, info)
@@ -839,6 +819,17 @@ def build_serve_application(
                     f'There is no deployment named "{deployment_name}" in the '
                     f'application "{name}".'
                 )
+
+        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
+        # if user sets the docs path to None in their FastAPI app.
+        num_docs_paths = sum(d._docs_path is not None for d in app.deployments.values())
+        if num_docs_paths > 1:
+            raise RayServeException(
+                f'Found multiple deployments in application "{name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
+            )
 
         # Set code version and runtime env for each deployment
         for deployment_name in app.deployments:
