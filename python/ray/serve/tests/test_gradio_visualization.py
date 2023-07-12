@@ -1,9 +1,8 @@
 import pytest
 from collections import defaultdict
 import asyncio
+import aiohttp
 import random
-
-from gradio_client import Client
 
 from ray.serve.experimental.gradio_visualize_graph import GraphVisualizer
 from ray.dag.utils import _DAGNodeNameGenerator
@@ -235,9 +234,28 @@ async def test_gradio_visualization_e2e(graph1):
     visualizer = GraphVisualizer()
     (_, url, _) = visualizer.visualize_with_gradio(handle, _launch=True, _block=False)
 
-    client = Client(url)
-    client.predict(random.randint(0, 100), 1, 2, fn_index=0)
-    assert {client.predict(fn_index=1), client.predict(fn_index=2)} == {1, 2}
+    async with aiohttp.ClientSession() as session:
+
+        async def fetch(data, fn_index):
+            async with session.post(
+                f"{url.strip('/')}/api/predict/",
+                json={
+                    "session_hash": "random_hash",
+                    "data": data,
+                    "fn_index": fn_index,
+                },
+            ) as resp:
+                return (await resp.json())["data"]
+
+        await fetch(
+            [random.randint(0, 100), 1, 2], 0
+        )  # sends request to dag with input (1,2)
+        values = await asyncio.gather(
+            fetch([], 1),  # fetches return value for one of the nodes
+            fetch([], 2),  # fetches return value for the other node
+        )
+
+    assert [1] in values and [2] in values
 
 
 @pytest.mark.asyncio
