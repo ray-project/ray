@@ -38,28 +38,31 @@ using BundlesOnNodeMap = absl::flat_hash_map<PlacementGroupID, std::vector<int64
 // Test suite for AutoscalerState related functionality.
 class GcsAutoscalerStateManagerTest : public ::testing::Test {
  public:
-  GcsAutoscalerStateManagerTest() : cluster_resource_manager_(io_service_) {
+  GcsAutoscalerStateManagerTest() {}
+
+ protected:
+  instrumented_io_context io_service_;
+  std::unique_ptr<ClusterResourceManager> cluster_resource_manager_;
+  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
+  std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
+
+  void SetUp() override {
+    cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-        io_service_, cluster_resource_manager_, NodeID::FromRandom());
+        io_service_, *cluster_resource_manager_, NodeID::FromRandom());
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
 
     gcs_autoscaler_state_manager_.reset(
-        new GcsAutoscalerStateManager(cluster_resource_manager_,
+        new GcsAutoscalerStateManager(*cluster_resource_manager_,
                                       *gcs_resource_manager_,
                                       *gcs_node_manager_,
                                       *gcs_placement_group_manager_));
   }
-
- protected:
-  instrumented_io_context io_service_;
-  ClusterResourceManager cluster_resource_manager_;
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
-  std::shared_ptr<MockGcsNodeManager> gcs_node_manager_;
-  std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
-  std::shared_ptr<MockGcsPlacementGroupManager> gcs_placement_group_manager_;
 
  public:
   void AddNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
@@ -136,6 +139,17 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                               available_resources_changed,
                               idle_ms);
     gcs_resource_manager_->UpdateFromResourceReport(resources_data);
+  }
+
+  rpc::autoscaler::GetClusterStatusReply GetClusterStatusSync() {
+    rpc::autoscaler::GetClusterStatusRequest request;
+    rpc::autoscaler::GetClusterStatusReply reply;
+    auto send_reply_callback =
+        [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
+
+    gcs_autoscaler_state_manager_->HandleGetClusterStatus(
+        request, &reply, send_reply_callback);
+    return reply;
   }
 
   void UpdateResourceLoads(const std::string &node_id,
@@ -350,6 +364,35 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeAddUpdateRemove) {
                        /*total*/ {},
                        /*available*/ {},
                        rpc::autoscaler::NodeStatus::DEAD);
+  }
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestGetClusterStatusBasic) {
+  auto node = Mocker::GenNodeInfo();
+
+  // Test basic cluster resource.
+  {
+    node->mutable_resources_total()->insert({"CPU", 2});
+    node->mutable_resources_total()->insert({"GPU", 1});
+    node->set_instance_id("instance_1");
+    AddNode(node);
+
+    const auto reply = GetClusterStatusSync();
+    const auto &state = reply.cluster_resource_state();
+    ASSERT_EQ(state.node_states_size(), 1);
+    CheckNodeResources(state.node_states(0),
+                       /* available */ {{"CPU", 2}, {"GPU", 1}},
+                       /* total */ {{"CPU", 2}, {"GPU", 1}});
+  }
+
+  // Test autoscaler info.
+  {
+    rpc::autoscaler::AutoscalingState actual_state;
+    actual_state.set_autoscaler_state_version(1);
+    ReportAutoscalingState(actual_state);
+    const auto reply = GetClusterStatusSync();
+    const auto &state = reply.autoscaling_state();
+    ASSERT_EQ(state.autoscaler_state_version(), 1);
   }
 }
 

@@ -454,6 +454,24 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
+Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
+                                         std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusReply reply;
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterStatusReply");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
 std::unordered_map<std::string, double> PythonGetResourcesTotal(
     const rpc::GcsNodeInfo &node_info) {
   return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
