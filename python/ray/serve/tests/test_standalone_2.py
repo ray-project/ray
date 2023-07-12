@@ -47,6 +47,17 @@ def shutdown_ray():
         ray.shutdown()
 
 
+@pytest.fixture
+def shutdown_ray_and_serve():
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
+    yield
+    serve.shutdown()
+    if ray.is_initialized():
+        ray.shutdown()
+
+
 @contextmanager
 def start_and_shutdown_ray_cli():
     subprocess.check_output(["ray", "stop", "--force"])
@@ -79,7 +90,7 @@ def _check_ray_stop():
         return True
 
 
-def test_standalone_actor_outside_serve():
+def test_standalone_actor_outside_serve(shutdown_ray_and_serve):
     # https://github.com/ray-project/ray/issues/20066
 
     ray.init(num_cpus=8, namespace="serve")
@@ -99,7 +110,7 @@ def test_standalone_actor_outside_serve():
     ray.shutdown()
 
 
-def test_memory_omitted_option(ray_shutdown):
+def test_memory_omitted_option(shutdown_ray_and_serve):
     """Ensure that omitting memory doesn't break the deployment."""
 
     @serve.deployment(ray_actor_options={"num_cpus": 1, "num_gpus": 1})
@@ -114,7 +125,7 @@ def test_memory_omitted_option(ray_shutdown):
 
 @pytest.mark.parametrize("detached", [True, False])
 @pytest.mark.parametrize("ray_namespace", ["arbitrary", SERVE_NAMESPACE, None])
-def test_serve_namespace(shutdown_ray, detached, ray_namespace):
+def test_serve_namespace(shutdown_ray_and_serve, detached, ray_namespace):
     """Test that Serve starts in SERVE_NAMESPACE regardless of driver namespace."""
 
     with ray.init(namespace=ray_namespace) as ray_context:
@@ -139,11 +150,9 @@ def test_serve_namespace(shutdown_ray, detached, ray_namespace):
 
         assert requests.get("http://localhost:8000/f").text == "got f"
 
-        serve.shutdown()
-
 
 @pytest.mark.parametrize("detached", [True, False])
-def test_update_num_replicas(shutdown_ray, detached):
+def test_update_num_replicas(shutdown_ray_and_serve, detached):
     """Test updating num_replicas."""
 
     with ray.init() as ray_context:
@@ -177,11 +186,9 @@ def test_update_num_replicas(shutdown_ray, detached):
         # Check that all but 1 replica has spun down
         assert len(updated_actors) == len(actors) - 1
 
-        serve.shutdown()
-
 
 @pytest.mark.parametrize("detached", [True, False])
-def test_refresh_controller_after_death(shutdown_ray, detached):
+def test_refresh_controller_after_death(shutdown_ray_and_serve, detached):
     """Check if serve.start() refreshes the controller handle if it's dead."""
 
     ray.init(namespace="ray_namespace")
@@ -209,11 +216,8 @@ def test_refresh_controller_after_death(shutdown_ray, detached):
     # Health check should not error
     ray.get(new_handle.check_alive.remote())
 
-    serve.shutdown()
-    ray.shutdown()
 
-
-def test_get_serve_status(shutdown_ray):
+def test_get_serve_status(shutdown_ray_and_serve):
     ray.init()
 
     @serve.deployment
@@ -231,11 +235,8 @@ def test_get_serve_status(shutdown_ray):
     )
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
-    serve.shutdown()
-    ray.shutdown()
 
-
-def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function):
+def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function, shutdown_ray_and_serve):
     """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
 
     @ray.remote
@@ -281,11 +282,8 @@ def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_fu
         == "4 pizzas please!"
     )
 
-    serve.shutdown()
-    ray.shutdown()
 
-
-def test_controller_deserialization_args_and_kwargs():
+def test_controller_deserialization_args_and_kwargs(shutdown_ray_and_serve):
     """Ensures init_args and init_kwargs stay serialized in controller."""
 
     ray.init()
@@ -324,11 +322,8 @@ def test_controller_deserialization_args_and_kwargs():
 
     assert requests.get("http://localhost:8000/Echo").text == "hello world!"
 
-    serve.shutdown()
-    ray.shutdown()
 
-
-def test_controller_recover_and_delete(shutdown_ray):
+def test_controller_recover_and_delete(shutdown_ray_and_serve):
     """Ensure that in-progress deletion can finish even after controller dies."""
 
     ray_context = ray.init()
@@ -352,71 +347,37 @@ def test_controller_recover_and_delete(shutdown_ray):
     ray.kill(client._controller, no_restart=False)
 
     # All replicas should be removed already or after the controller revives
-    def check_actors():
-        _actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
+    wait_for_condition(
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
         )
-        print("check_actors", _actors)
-        return len(_actors) < len(actors)
+        < len(actors)
+    )
 
-    wait_for_condition(check_actors)
-    # wait_for_condition(
-    #     lambda: len(
-    #         list_actors(
-    #             address=ray_context.address_info["address"],
-    #             filters=[("state", "=", "ALIVE")],
-    #         )
-    #     )
-    #     < len(actors)
-    # )
-
-    def check_actors_killed():
-        _actors = list_actors(
-            address=ray_context.address_info["address"],
-            filters=[("state", "=", "ALIVE")],
+    wait_for_condition(
+        lambda: len(
+            list_actors(
+                address=ray_context.address_info["address"],
+                filters=[("state", "=", "ALIVE")],
+            )
         )
-        print("check_actors_killed", _actors)
-        return len(_actors) == len(actors) - 50
+        == len(actors) - 50
+    )
 
-    wait_for_condition(check_actors_killed)
-    # wait_for_condition(
-    #     lambda: len(
-    #         list_actors(
-    #             address=ray_context.address_info["address"],
-    #             filters=[("state", "=", "ALIVE")],
-    #         )
-    #     )
-    #     == len(actors) - 50
-    # )
-
-    print("client.get_serve_status()", client.get_serve_status())
-    check_actors()
     # The deployment should be deleted, meaning its state should not be stored
     # in the DeploymentStateManager. This can be checked by attempting to
     # retrieve the deployment's status through the controller.
-
-    def check_deployment_status():
-        print("check_deployment_status", client.get_serve_status())
-        return (
+    wait_for_condition(
+        lambda: (
             client.get_serve_status().get_deployment_status(
                 f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
             )
             is None
         )
-
-    wait_for_condition(check_deployment_status)
-    # wait_for_condition(
-    #     lambda: (
-    #         client.get_serve_status().get_deployment_status(
-    #             f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
-    #         )
-    #         is None
-    #     )
-    # )
-
-    serve.shutdown()
-    ray.shutdown()
+    )
 
 
 def test_serve_stream_logs(start_and_shutdown_ray_cli_function):
@@ -454,7 +415,7 @@ serve.run(B.bind())"""
 
 class TestDeployApp:
     @pytest.fixture(scope="function")
-    def client(self):
+    def client(self, shutdown_ray_and_serve):
         with start_and_shutdown_ray_cli():
             wait_for_condition(
                 lambda: requests.get(
@@ -465,8 +426,6 @@ class TestDeployApp:
             )
             ray.init(address="auto", namespace=SERVE_NAMESPACE)
             yield serve.start(detached=True)
-            serve.shutdown()
-            ray.shutdown()
 
     def check_running(self, client: ServeControllerClient):
         serve_status = client.get_serve_status()
