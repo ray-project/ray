@@ -281,31 +281,31 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGenPlacementConstraintForPlacementGrou
   auto pg = PlacementGroupID::Of(JobID::FromInt(0));
   {
     auto strict_spread_constraint = GenPlacementConstraintForPlacementGroup(
-        pg.Hex(), rpc::PlacementStrategy::STRICT_SPREAD);
+        pg.Binary(), rpc::PlacementStrategy::STRICT_SPREAD);
     ASSERT_TRUE(strict_spread_constraint.has_value());
     ASSERT_TRUE(strict_spread_constraint->has_anti_affinity());
     ASSERT_EQ(strict_spread_constraint->anti_affinity().label_name(),
-              FormatPlacementGroupLabelName(pg.Hex()));
+              FormatPlacementGroupLabelName(pg.Binary()));
   }
 
   {
     auto strict_pack_constraint = GenPlacementConstraintForPlacementGroup(
-        pg.Hex(), rpc::PlacementStrategy::STRICT_PACK);
+        pg.Binary(), rpc::PlacementStrategy::STRICT_PACK);
     ASSERT_TRUE(strict_pack_constraint.has_value());
     ASSERT_TRUE(strict_pack_constraint->has_affinity());
     ASSERT_EQ(strict_pack_constraint->affinity().label_name(),
-              FormatPlacementGroupLabelName(pg.Hex()));
+              FormatPlacementGroupLabelName(pg.Binary()));
   }
 
   {
-    auto no_pg_constraint_for_pack =
-        GenPlacementConstraintForPlacementGroup(pg.Hex(), rpc::PlacementStrategy::PACK);
+    auto no_pg_constraint_for_pack = GenPlacementConstraintForPlacementGroup(
+        pg.Binary(), rpc::PlacementStrategy::PACK);
     ASSERT_FALSE(no_pg_constraint_for_pack.has_value());
   }
 
   {
-    auto no_pg_constraint_for_spread =
-        GenPlacementConstraintForPlacementGroup(pg.Hex(), rpc::PlacementStrategy::SPREAD);
+    auto no_pg_constraint_for_spread = GenPlacementConstraintForPlacementGroup(
+        pg.Binary(), rpc::PlacementStrategy::SPREAD);
     ASSERT_FALSE(no_pg_constraint_for_spread.has_value());
   }
 }
@@ -378,8 +378,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestNodeDynamicLabelsWithPG) {
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.node_states_size(), 1);
     CheckNodeLabels(state.node_states(0),
-                    {{FormatPlacementGroupLabelName(pg1.Hex()), ""},
-                     {FormatPlacementGroupLabelName(pg2.Hex()), ""}});
+                    {{FormatPlacementGroupLabelName(pg1.Binary()), ""},
+                     {FormatPlacementGroupLabelName(pg2.Binary()), ""}});
   }
 }
 
@@ -450,7 +450,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
                               {{GenPlacementConstraintForPlacementGroup(
-                                    pg.Hex(), rpc::PlacementStrategy::STRICT_SPREAD)
+                                    pg.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
                                     ->DebugString(),
                                 {{{"CPU", 1}}, {{"GPU", 1}}}}});
   }
@@ -469,7 +469,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsBasic) {
     auto state = GetClusterResourceStateSync();
     CheckGangResourceRequests(state,
                               {{GenPlacementConstraintForPlacementGroup(
-                                    pg.Hex(), rpc::PlacementStrategy::STRICT_PACK)
+                                    pg.Binary(), rpc::PlacementStrategy::STRICT_PACK)
                                     ->DebugString(),
                                 {{{"CPU", 1}}, {{"GPU", 1}}}}});
   }
@@ -534,7 +534,7 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGangResourceRequestsPartialReschedulin
     // CPU_success_2 should not be reported as needed.
     CheckGangResourceRequests(state,
                               {{GenPlacementConstraintForPlacementGroup(
-                                    pg1.Hex(), rpc::PlacementStrategy::STRICT_SPREAD)
+                                    pg1.Binary(), rpc::PlacementStrategy::STRICT_SPREAD)
                                     ->DebugString(),
                                 {{{"CPU_failed_1", 1}}}}});
   }
