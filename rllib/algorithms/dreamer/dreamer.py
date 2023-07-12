@@ -19,6 +19,7 @@ from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
@@ -334,6 +335,12 @@ class DreamerIteration:
         return _postprocess_gif(gif=gif)
 
 
+@Deprecated(
+    old="rllib/algorithms/dreamer/",
+    new="rllib_contrib/dreamer/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class Dreamer(Algorithm):
     @classmethod
     @override(Algorithm)

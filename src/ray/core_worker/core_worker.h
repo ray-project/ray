@@ -360,15 +360,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   NodeID GetCurrentNodeId() const { return NodeID::FromBinary(rpc_address_.raylet_id()); }
 
-  /// Create the ObjectRefStream of generator_id.
-  ///
-  /// It is a pass-through method. See TaskManager::CreateObjectRefStream
-  /// for details.
-  ///
-  /// \param[in] generator_id The object ref id of the streaming
-  /// generator task.
-  void CreateObjectRefStream(const ObjectID &generator_id);
-
   /// Read the next index of a ObjectRefStream of generator_id.
   /// This API always return immediately.
   ///
@@ -384,8 +375,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   Status TryReadObjectRefStream(const ObjectID &generator_id,
                                 rpc::ObjectReference *object_ref_out);
 
-  /// Delete the ObjectRefStream of generator_id
-  /// created by CreateObjectRefStream.
+  /// Read the next index of a ObjectRefStream of generator_id without
+  /// consuming an index.
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \return A object reference of the next index.
+  /// It should not be nil.
+  rpc::ObjectReference PeekObjectRefStream(const ObjectID &generator_id);
+
+  /// Delete the ObjectRefStream that was
+  /// created upon the initial task
+  /// submission.
   ///
   /// It is a pass-through method. See TaskManager::DelObjectRefStream
   /// for details.
@@ -764,15 +764,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that created a generator_id.
   /// \param[in] item_index The index of the task return. It is used to reorder the
   /// report from the caller side.
-  /// \param[in] finished True indicates there's going to be no more intermediate
-  /// task return. When finished is provided dynamic_return_object's key must be
-  /// pair<nil, empty_pointer>
+  /// \param[in] attempt_number The number of time the current task is retried.
+  /// 0 means it is the first attempt.
   Status ReportGeneratorItemReturns(
       const std::pair<ObjectID, std::shared_ptr<RayObject>> &dynamic_return_object,
       const ObjectID &generator_id,
       const rpc::Address &caller_address,
       int64_t item_index,
-      bool finished);
+      uint64_t attempt_number);
 
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
@@ -1199,6 +1198,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                rpc::AssignObjectOwnerReply *reply,
                                rpc::SendReplyCallback send_reply_callback) override;
 
+  // Get the number of pending tasks.
+  void HandleNumPendingTasks(rpc::NumPendingTasksRequest request,
+                             rpc::NumPendingTasksReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
   ///
   /// Public methods related to async actor call. This should only be used when
   /// the actor is (1) direct actor and (2) using asyncio mode.
@@ -1517,6 +1520,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  /// Wait until the worker is initialized.
+  void WaitUntilInitialized() override {
+    absl::MutexLock lock(&initialize_mutex_);
+    while (!initialized_) {
+      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
+    }
+  }
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1544,6 +1555,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   std::string main_thread_task_name_ GUARDED_BY(mutex_);
+
+  /// States that used for initialization.
+  absl::Mutex initialize_mutex_;
+  absl::CondVar intialize_cv_;
+  bool initialized_ GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;
@@ -1727,6 +1743,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
+
+  /// Worker's PID
+  uint32_t pid_;
 };
 
 // Lease request rate-limiter based on cluster node size.

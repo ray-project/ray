@@ -22,15 +22,20 @@ PYTHON_NUMPYS=(
   "py311 cp311-cp311 1.22.0"
 )
 
-yum -y install unzip zip sudo
-yum -y install java-1.8.0-openjdk java-1.8.0-openjdk-devel maven xz
-yum -y install openssl
+YUM_PKGS=(
+  unzip zip sudo openssl xz
+  java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
+)
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  yum install "libasan-4.8.5-44.el7.${HOSTTYPE}" -y
-  yum install "libubsan-7.3.1-5.10.el7.${HOSTTYPE}" -y
-  yum install "devtoolset-8-libasan-devel.${HOSTTYPE}" -y
+  YMB_PKGS+=(
+    "libasan-4.8.5-44.el7.x86_64"
+    "libubsan-7.3.1-5.10.el7.x86_64"
+    "devtoolset-8-libasan-devel.x86_64"
+  )
 fi
+
+yum -y install "${YUM_PKGS[@]}"
 
 java -version
 JAVA_BIN="$(readlink -f "$(command -v java)")"
@@ -38,12 +43,6 @@ echo "java_bin path ${JAVA_BIN}"
 export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 
 /ray/ci/env/install-bazel.sh
-# Put bazel into the PATH if building Bazel from source
-# export PATH=/root/bazel-3.2.0/output:$PATH:/root/bin
-
-# If converting down to manylinux2010, the following configuration should
-# be set for bazel
-#echo "build --config=manylinux2010" >> /root/.bazelrc
 echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
 if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
@@ -82,7 +81,7 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   PYTHON="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f2)"
   NUMPY_VERSION="$(echo "${PYTHON_NUMPY}" | cut -d' ' -f3)"
 
-  echo "---- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
+  echo "--- Build wheel for ${PYTHON}, numpy=${NUMPY_VERSION}"
 
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
@@ -104,12 +103,12 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
     fi
 
     # build ray wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
-    "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    PATH="/opt/python/${PYTHON}/bin:$PATH" \
+    "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:/root/bazel-3.2.0/output:$PATH" \
-    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py bdist_wheel
+    PATH="/opt/python/${PYTHON}/bin:$PATH" \
+    RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # In the future, run auditwheel here.
     mv dist/*.whl ../.whl/
@@ -130,6 +129,7 @@ done
 # Clean the build output so later operations is on a clean directory.
 git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
 
+echo "--- Build JAR"
 if [ "${BUILD_JAR-}" == "1" ]; then
   ./java/build-jar-multiplatform.sh linux
 fi

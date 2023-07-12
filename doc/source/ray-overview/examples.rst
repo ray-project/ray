@@ -5,23 +5,26 @@ Ray Examples
 
 .. raw:: html
 
-    <div class="searchWrap">
+    <link rel="stylesheet" type="text/css" href="../_static/css/examples.css">
+
+    <div>
        <div class="searchDiv">
           <input type="text" id="searchInput" class="searchTerm"
-           placeholder="What are you looking for? (Ex.: PyTorch, Tune, RL)">
-          <button id="filterButton" type="button" class="searchButton">
-            <i class="fa fa-search"></i>
-         </button>
+           placeholder='Search "serving"'>
        </div>
-    </div>
-
-..
-    NOTE: available tags for the grid-item-card (double-check with tags.js):
-    Use cases: llm, cv, ts, nlp, rl
-    ML Workloads: data-processing, training, tuning, serving, inference
-    MLOps: tracking, monitoring
-    Frameworks: pytorch, tensorflow, huggingface
-
+       <div id="noMatches" class="hidden">
+          <div id="noMatchesInnerContent">
+              <svg width="119" height="119" viewBox="0 0 119 119" fill="none" xmlns="http://www.w3.org/2000/svg"> <circle cx="59.5" cy="59.5" r="59.5" fill="url(#paint0_linear_362_3841)" fill-opacity="0.2"/> <path d="M19.1665 6.66663C19.1665 5.8382 19.8381 5.16663 20.6665 5.16663H58.9165H78.0702C78.5301 5.16663 78.9647 5.37767 79.2491 5.73919L88.8648 17.9624L88.8658 17.9637L98.3484 30.0984C98.5545 30.3622 98.6665 30.6873 98.6665 31.0221V56V105.333C98.6665 106.162 97.9949 106.833 97.1665 106.833H20.6665C19.8381 106.833 19.1665 106.162 19.1665 105.333V6.66663Z" fill="#FBFEFF" stroke="#D0EAF9"/> <path d="M77.485 29.4856C76.3051 29.4097 75.4482 28.3324 75.6397 27.1657L79.2591 5.11847C79.2874 4.94627 79.5072 4.89033 79.6143 5.02808L99.477 30.5658C99.5829 30.702 99.4784 30.8993 99.3063 30.8882L77.485 29.4856Z" fill="#11608D"/> <rect x="25.6665" y="15.1666" width="46.6667" height="3.5" rx="1.75" fill="#D6EEFC"/> <rect x="25.6665" y="31.5" width="46.6667" height="3.5" rx="1.75" fill="#D6EEFC"/> <rect x="25.6665" y="23.3334" width="16.3333" height="3.5" rx="1.75" fill="#D6EEFC"/> <rect x="25.6665" y="39.6666" width="16.3333" height="3.5" rx="1.75" fill="#D6EEFC"/> <rect x="45.5" y="23.3334" width="26.8333" height="3.5" rx="1.75" fill="#D6EEFC"/> <rect x="22.1665" y="98" width="30.3333" height="3.5" rx="1.75" fill="#D6EEFC"/> <g clip-path="url(#clip0_362_3841)"> <path d="M90.5158 91.8128L104.257 105.551L99.7173 110.091L85.9792 96.3494C80.8675 100.447 74.5094 102.676 67.958 102.667C52.019 102.667 39.083 89.7306 39.083 73.7916C39.083 57.8526 52.019 44.9166 67.958 44.9166C83.897 44.9166 96.833 57.8526 96.833 73.7916C96.8423 80.343 94.6135 86.7011 90.5158 91.8128ZM84.0799 89.4323C88.1516 85.245 90.4255 79.6322 90.4163 73.7916C90.4163 61.3818 80.3646 51.3333 67.958 51.3333C55.5482 51.3333 45.4997 61.3818 45.4997 73.7916C45.4997 86.1982 55.5482 96.25 67.958 96.25C73.7985 96.2592 79.4114 93.9852 83.5986 89.9135L84.0799 89.4323Z" fill="#60ABD7"/> </g> <ellipse cx="61.8335" cy="71.1667" rx="3.5" ry="4.66667" fill="#60ABD7"/> <ellipse cx="73.5" cy="71.1667" rx="3.5" ry="4.66667" fill="#60ABD7"/> <path d="M60.6665 84.5834V84.5834C65.0731 82.3801 70.2599 82.3801 74.6665 84.5834V84.5834" stroke="#60ABD7" stroke-width="2"/> <defs> <linearGradient id="paint0_linear_362_3841" x1="59.5" y1="0" x2="59.5" y2="119" gradientUnits="userSpaceOnUse"> <stop stop-color="#19B1E2"/> <stop offset="1" stop-color="#3D89E9"/> </linearGradient> <clipPath id="clip0_362_3841"> <rect width="77" height="77" fill="white" transform="translate(32.6665 38.5)"/> </clipPath> </defs> </svg>
+              <h4>Sorry! We could not find an example matching that filter.</h4>
+              <a id="newExampleIssueLink" href="https://github.com/ray-project/ray/issues/new?assignees=&labels=docs%2Ctriage&projects=&template=documentation-issue.yml&title=%5B%3CRay+component%3A+Core%7CRLlib%7Cetc...%3E%5D+"
+                  <span id="newExampleIssueText">
+                    Help us improve our examples by suggesting one. Tell us what example you would like to
+                    have.
+                  </span>
+              </a>
+          </div>
+       </div>
+    <div>
 
 .. grid:: 1 2 2 2
     :gutter: 1
@@ -159,13 +162,6 @@ Ray Examples
         .. button-ref:: /ray-air/examples/dreambooth_finetuning
 
             How to fine-tune a DreamBooth text-to-image model with your own images.
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing inference
-
-        .. button-ref:: /ray-air/examples/opt_deepspeed_batch_inference
-
-            How to run batch inference on a dataset of texts with a 30B OPT model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item training
@@ -636,13 +632,6 @@ Ray Examples
         .. button-ref:: tune-pytorch-lightning-ref
 
             How To Tune PyTorch Lightning Models
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
-        .. button-ref:: tune-mxnet-example
-
-            How To Tune MXNet Models
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning serving

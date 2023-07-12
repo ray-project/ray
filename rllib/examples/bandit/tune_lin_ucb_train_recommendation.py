@@ -57,7 +57,7 @@ if __name__ == "__main__":
                 "user_time_budget": 1.0,
             },
         )
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         # Test with batched inference.
         .rollouts(num_envs_per_worker=2)
         .evaluation(

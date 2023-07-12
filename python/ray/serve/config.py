@@ -175,7 +175,7 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.LightWeight
     )
 
-    # This flag is used to let replica know they are deplyed from
+    # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
 
@@ -560,6 +560,7 @@ class HTTPOptions(pydantic.BaseModel):
     root_path: str = ""
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
+    request_timeout_s: Optional[float] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):

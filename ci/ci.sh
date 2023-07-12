@@ -89,30 +89,53 @@ _need_wheels() {
 
 NEED_WHEELS="$(_need_wheels)"
 
-upload_wheels() {
-  local branch="" commit
-  commit="$(git rev-parse --verify HEAD)"
-  if [ -z "${branch}" ]; then branch="${GITHUB_BASE_REF-}"; fi
-  if [ -z "${branch}" ]; then branch="${GITHUB_REF#refs/heads/}"; fi
-  if [ -z "${branch}" ]; then branch="${TRAVIS_BRANCH-}"; fi
-  if [ -z "${branch}" ]; then echo "Unable to detect branch name" 1>&2; return 1; fi
-  local local_dir="python/dist"
-  if [ -d "${local_dir}" ]; then
-    ls -a -l -- "${local_dir}"
-    local remote_dir
-    for remote_dir in latest "${branch}/${commit}"; do
-      if command -V aws; then
-        aws s3 sync --acl public-read --no-progress "${local_dir}" "s3://ray-wheels/${remote_dir}"
-      fi
-    done
+compile_pip_dependencies() {
+  # Compile boundaries
+
+  if [[ "${HOSTTYPE}" == "aarch64" || "${HOSTTYPE}" = "arm64" ]]; then
+    # Resolution currently does not work on aarch64 as some pinned packages
+    # are not available. Once they are reasonably upgraded we should be able
+    # to enable this here.p
+    echo "Skipping for aarch64"
+    return 0
   fi
-  (
-    cd "${WORKSPACE_DIR}"/python
-    if ! python -s -c "import ray, sys; sys.exit(0 if ray._raylet.OPTIMIZED else 1)"; then
-      echo "ERROR: Uploading non-optimized wheels! Performance will suffer for users!"
-      false
-    fi
-  )
+
+  # shellcheck disable=SC2262
+  alias pip="python -m pip"
+  pip install pip-tools
+
+  # Required packages to lookup e.g. dragonfly-opt
+  HAS_TORCH=0
+  python -c "import torch" 2>/dev/null && HAS_TORCH=1
+  pip install --no-cache-dir numpy torch
+
+  if [ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt" ]; then
+    echo requirements_compiled already exists
+  else
+    pip-compile --resolver=backtracking -q \
+       --pip-args --no-deps --strip-extras --no-annotate --no-header -o \
+      "${WORKSPACE_DIR}/python/requirements_compiled.txt" \
+      "${WORKSPACE_DIR}/python/requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/lint-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/docker/ray-docker-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/core-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/data-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/dl-cpu-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
+      "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+  fi
+
+  cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
+  if [ "$HAS_TORCH" -eq 0 ]; then
+    pip uninstall -y torch
+  fi
 }
 
 test_core() {
@@ -123,7 +146,7 @@ test_core() {
     msys)
       args+=(
         -//:core_worker_test
-        -//:event_test
+        -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
         -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_health_check_manager_test
@@ -175,7 +198,7 @@ test_python() {
       -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone2 # Multinode not supported on Windows
+      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve:test_gradio
       -python/ray/serve:test_gradio_visualization
       -python/ray/serve:test_air_integrations_gpu
@@ -202,7 +225,6 @@ test_python() {
       -python/ray/tests/xgboost/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/lightgbm/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/horovod/... # Requires ML dependencies, should not be run on Windows
-      -python/ray/tests/ray_lightning/... # Requires ML dependencies, should not be run on Windows
       -python/ray/tests/ml_py37_compat/... # Required ML dependencies, should not be run on Windows
       -python/ray/tests:test_batch_node_provider_unit.py # irrelevant on windows
       -python/ray/tests:test_batch_node_provider_integration.py # irrelevant on windows
@@ -261,19 +283,16 @@ test_cpp() {
 }
 
 test_wheels() {
-  local result=0
-  local flush_logs=0
+  local TEST_WHEEL_RESULT=0
 
-  if [[ "${NEED_WHEELS}" == "true" ]]; then
-    "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || { result=$? && flush_logs=1; }
-  fi
+  "${WORKSPACE_DIR}"/ci/build/test-wheels.sh || TEST_WHEEL_RESULT=$?
 
-  if [[ 0 -ne "${flush_logs}" ]]; then
+  if [[ "${TEST_WHEEL_RESULT}" != 0 ]]; then
     cat -- /tmp/ray/session_latest/logs/* || true
     sleep 60  # Explicitly sleep 60 seconds for logs to go through
   fi
 
-  return "${result}"
+  return "${TEST_WHEEL_RESULT}"
 }
 
 install_npm_project() {
@@ -309,6 +328,9 @@ build_dashboard_front_end() {
 }
 
 build_sphinx_docs() {
+  _bazel_build_protobuf
+  install_ray
+
   (
     cd "${WORKSPACE_DIR}"/doc
     if [ "${OSTYPE}" = msys ]; then
@@ -416,6 +438,8 @@ validate_wheels_commit_str() {
 }
 
 build_wheels_and_jars() {
+  _bazel_build_before_install
+
   # Create wheel output directory and empty contents
   # If buildkite runners are re-used, wheels from previous builds might be here, so we delete them.
   mkdir -p .whl
@@ -431,8 +455,6 @@ build_wheels_and_jars() {
         -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
-        -e "encrypted_1c30b31fe1ee_key=${encrypted_1c30b31fe1ee_key-}"
-        -e "encrypted_1c30b31fe1ee_iv=${encrypted_1c30b31fe1ee_iv-}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
         -e "CI=${CI}"
         -e "RAY_INSTALL_JAVA=${RAY_INSTALL_JAVA:-}"
@@ -732,29 +754,24 @@ init() {
 }
 
 build() {
-  if [ "${LINT-}" != 1 ]; then
-    _bazel_build_before_install
-  else
-    _bazel_build_protobuf
-  fi
-
-  if [[ "${NEED_WHEELS}" != "true" ]]; then
-    install_ray
-    if [ "${LINT-}" = 1 ]; then
-      # Try generating Sphinx documentation. To do this, we need to install Ray first.
-      build_sphinx_docs
-    fi
-  fi
-
   if [[ "${NEED_WHEELS}" == "true" ]]; then
     build_wheels_and_jars
+    return
   fi
+
+  # Build and install ray into the system.
+  # For building the wheel, see build_wheels_and_jars.
+  _bazel_build_before_install
+  install_ray
 }
 
 run_minimal_test() {
+  EXPECTED_PYTHON_VERSION=$1
   BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
   # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
   # bazel test cannot recognize the option.
+  # shellcheck disable=SC2086
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=EXPECTED_PYTHON_VERSION=$EXPECTED_PYTHON_VERSION ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_minimal_install
   # shellcheck disable=SC2086
   bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
   # shellcheck disable=SC2086
@@ -796,7 +813,7 @@ test_minimal() {
   ./ci/env/install-minimal.sh "$1"
   echo "Installed minimal dependencies."
   ./ci/env/env_info.sh
-  python ./ci/env/check_minimal_install.py
+  python ./ci/env/check_minimal_install.py --expected-python-version "$1"
   run_minimal_test "$1"
 }
 

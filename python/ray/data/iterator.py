@@ -17,7 +17,13 @@ import numpy as np
 from ray.data._internal.block_batching import batch_block_refs
 from ray.data._internal.block_batching.iter_batches import iter_batches
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch
+from ray.data.block import (
+    Block,
+    BlockAccessor,
+    BlockMetadata,
+    DataBatch,
+    _apply_strict_mode_batch_format,
+)
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import PublicAPI
@@ -48,9 +54,9 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_blocks=5, num_rows=5, schema={id: int64})
+        Dataset(num_blocks=..., num_rows=5, schema={id: int64})
         >>> ds.iterator()
-        DataIterator(Dataset(num_blocks=5, num_rows=5, schema={id: int64}))
+        DataIterator(Dataset(num_blocks=..., num_rows=5, schema={id: int64}))
 
     .. tip::
         For debugging purposes, use
@@ -88,6 +94,7 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _finalize_fn: Optional[Callable[[Any], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -150,11 +157,21 @@ class DataIterator(abc.ABC):
         time_start = time.perf_counter()
 
         block_iterator, stats, blocks_owned_by_consumer = self._to_block_iterator()
+        batch_format = _apply_strict_mode_batch_format(batch_format)
         if use_legacy:
             # Legacy iter_batches does not use metadata.
             def drop_metadata(block_iterator):
                 for block_ref, metadata in block_iterator:
                     yield block_ref
+
+            # Legacy iter_batches does not have a distinction between
+            # collate_fn and finalize_fn since batches are not prefetched.
+            def collate_and_finalize(batch):
+                if _collate_fn is not None:
+                    batch = _collate_fn(batch)
+                if _finalize_fn is not None:
+                    batch = _finalize_fn(batch)
+                return batch
 
             yield from batch_block_refs(
                 drop_metadata(block_iterator),
@@ -164,7 +181,7 @@ class DataIterator(abc.ABC):
                 batch_size=batch_size,
                 batch_format=batch_format,
                 drop_last=drop_last,
-                collate_fn=_collate_fn,
+                collate_fn=collate_and_finalize,
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
             )
@@ -177,6 +194,7 @@ class DataIterator(abc.ABC):
                 batch_format=batch_format,
                 drop_last=drop_last,
                 collate_fn=_collate_fn,
+                finalize_fn=_finalize_fn,
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
@@ -278,13 +296,14 @@ class DataIterator(abc.ABC):
                 will be inferred from the tensor data.
             device: The device on which the tensor should be placed; if None, the Torch
                 tensor will be constructed on the CPU.
-            collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                Potential use cases include collating along a dimension other than the
-                first, padding sequences of various lengths, or generally handling
-                batches of different length tensors. If not provided, the default
-                collate function is used which simply converts the batch of numpy
-                arrays to a batch of PyTorch tensors. This API is still experimental
-                and is subject to change.
+            collate_fn: A function to apply to each data batch before returning it. When
+                this parameter is specified, the user should manually handle the host
+                to device data transfer outside of collate_fn. Potential use cases
+                include collating along a dimension other than the first, padding
+                sequences of various lengths, or generally handling batches of different
+                length tensors. This API is still experimental and is subject to change.
+                This parameter cannot be used in conjunction with ``dtypes`` or
+                ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
@@ -307,33 +326,52 @@ class DataIterator(abc.ABC):
 
         if collate_fn is not None and (dtypes is not None or device is not None):
             raise ValueError(
-                "collate_fn cannot be used with dtypes and device. It is expected that"
-                "the provided `collate_fn` will move the output Torch tensors to the"
-                "appropriate dtype and device."
+                "collate_fn cannot be used with dtypes and device."
+                "You should manually move the output Torch tensors to the"
+                "desired dtype and device outside of collate_fn."
             )
 
         if collate_fn is None:
-
             # Automatically move torch tensors to the appropriate device.
             if device is None:
                 default_device = get_device()
                 if default_device.type != "cpu":
                     device = default_device
 
+            # The default collate_fn handles formatting and Tensor creation.
+            # Here, we set device=None to defer host to device data transfer
+            # to the subsequent finalize_fn.
             def collate_fn(batch: Union[np.ndarray, Dict[str, np.ndarray]]):
                 return convert_ndarray_batch_to_torch_tensor_batch(
-                    batch, dtypes=dtypes, device=device
+                    batch,
+                    dtypes=dtypes,
+                    device=None,
                 )
+
+            # The default finalize_fn handles the host to device data transfer.
+            # This is executed in a 1-thread pool separately from collate_fn
+            # to allow independent parallelism of these steps.
+            def finalize_fn(batch: Union["torch.Tensor", Dict[str, "torch.Tensor"]]):
+                if device is not None:
+                    if isinstance(batch, dict):
+                        for k, t in batch.items():
+                            batch[k] = t.to(device=device)
+                    else:
+                        batch = batch.to(device=device)
+                return batch
+
+        else:
+            finalize_fn = None
 
         yield from self.iter_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             _collate_fn=collate_fn,
+            _finalize_fn=finalize_fn,
         )
 
     def iter_tf_batches(
@@ -406,7 +444,6 @@ class DataIterator(abc.ABC):
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
             batch_size=batch_size,
-            batch_format="numpy",
             drop_last=drop_last,
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
@@ -635,7 +672,7 @@ class DataIterator(abc.ABC):
             ... )
             >>> it = ds.iterator(); it
             DataIterator(Dataset(
-               num_blocks=1,
+               num_blocks=...,
                num_rows=150,
                schema={
                   sepal length (cm): double,
@@ -666,7 +703,7 @@ class DataIterator(abc.ABC):
             >>> it
             DataIterator(Concatenator
             +- Dataset(
-                  num_blocks=1,
+                  num_blocks=...,
                   num_rows=150,
                   schema={
                      sepal length (cm): double,
@@ -765,7 +802,6 @@ class DataIterator(abc.ABC):
                 drop_last=drop_last,
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
-                batch_format="numpy",
             ):
                 assert isinstance(batch, dict)
                 features = convert_batch_to_tensors(

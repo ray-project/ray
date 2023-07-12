@@ -28,6 +28,7 @@ ApplicationName = str
 class EndpointInfo:
     route: str
     app_name: str
+    app_is_cross_language: bool = False
 
 
 # Keep in sync with ServeReplicaState in dashboard/client/src/type/serve.ts
@@ -42,8 +43,9 @@ class ReplicaState(str, Enum):
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
-    RUNNING = "RUNNING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
 
 
@@ -58,7 +60,7 @@ class ApplicationStatusInfo:
 
     def to_proto(self):
         return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status}",
+            status=f"APPLICATION_STATUS_{self.status.name}",
             message=self.message,
             deployment_timestamp=self.deployment_timestamp,
         )
@@ -91,7 +93,7 @@ class DeploymentStatusInfo:
     def to_proto(self):
         return DeploymentStatusInfoProto(
             name=self.name,
-            status=f"DEPLOYMENT_STATUS_{self.status}",
+            status=f"DEPLOYMENT_STATUS_{self.status.name}",
             message=self.message,
         )
 
@@ -172,9 +174,11 @@ class StatusOverview:
         )
 
 
-HEALTH_CHECK_CONCURRENCY_GROUP = "health_check"
+# Concurrency group used for operations that cannot be blocked by user code
+# (e.g., health checks and fetching queue length).
+CONTROL_PLANE_CONCURRENCY_GROUP = "control_plane"
 REPLICA_DEFAULT_ACTOR_OPTIONS = {
-    "concurrency_groups": {HEALTH_CHECK_CONCURRENCY_GROUP: 1}
+    "concurrency_groups": {CONTROL_PLANE_CONCURRENCY_GROUP: 1}
 }
 
 
@@ -375,6 +379,7 @@ class HTTPProxyStatus(str, Enum):
     STARTING = "STARTING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
 
 
 class ServeComponentType(str, Enum):
@@ -386,3 +391,11 @@ class MultiplexedReplicaInfo:
     deployment_name: str
     replica_tag: str
     model_ids: List[str]
+
+
+@dataclass
+class StreamingHTTPRequest:
+    """Sent from the HTTP proxy to replicas on the streaming codepath."""
+
+    pickled_asgi_scope: bytes
+    http_proxy_handle: ActorHandle

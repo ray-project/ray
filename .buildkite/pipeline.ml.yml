@@ -1,3 +1,5 @@
+#ci:group=ML tests
+
 - label: ":airplane: AIR tests (ray/air)"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_ML_AFFECTED"]
   instance_size: large
@@ -33,6 +35,8 @@
   parallelism: 4
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    # Todo (krfricke): Move mosaicml to train-test-requirements.txt
+    - pip install "mosaicml==0.12.1"
     - TRAIN_TESTING=1 DATA_PROCESSING_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh
@@ -48,6 +52,20 @@
     - TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=tune,-gpu_only,-ray_air,-gpu,-doctest python/ray/train/...
+
+- label: ":brain: RLlib: Benchmarks (Torch 2.x)"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - RLLIB_TESTING=1 ./ci/env/install-dependencies.sh
+    - ./ci/env/env_info.sh
+    # Install torch 2.x locally until we move to torch 2.x in the CI.
+    - pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --build_tests_only
+      --test_tag_filters=torch_2.x_only_benchmark
+      rllib/...
 
 - label: ":brain: RLlib: Learning tests TF2-static-graph"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_AFFECTED"]
@@ -196,7 +214,7 @@
     - ./ci/env/env_info.sh
     - ./ci/run/run_bazel_test_with_sharding.sh --config=ci $(./ci/run/bazel_export_options)
       --build_tests_only
-      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu
+      --test_tag_filters=-learning_tests,-memory_leak_tests,-examples,-tests_dir,-documentation,-multi_gpu,-no_cpu,-torch_2.x_only_benchmark
       --test_env=RAY_USE_MULTIPROCESSING_CPU_COUNT=1 rllib/...
 
 - label: ":brain: RLlib: RLModule tests"
@@ -315,7 +333,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/xgboost/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only python/ray/tests/horovod/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) python/ray/tests/ray_lightning/...
 
 ### OLD EXECUTION PATH COMPATIBILITY TESTS
 
@@ -366,7 +383,6 @@
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_env=TUNE_NEW_EXECUTION=1 python/ray/tests/xgboost/...
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_env=TUNE_NEW_EXECUTION=1 python/ray/tests/horovod/...
-    - bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=TUNE_NEW_EXECUTION=1 python/ray/tests/ray_lightning/...
 
 
 # TODO(amogkam): Re-enable Ludwig tests after Ludwig supports Ray 2.0
@@ -474,6 +490,9 @@
   commands:
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+    # TODO (shrekris-anyscale): Remove transformers after core transformer
+    # requirement is upgraded
+    - pip install "transformers==4.30.2"
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-timeseries_libs,-external,-ray_air,-gpu,-post_wheel_build,-doctest,-datasets_train,-highly_parallel doc/...
 
@@ -544,3 +563,21 @@
     - (cd rllib_contrib/maml && pip install -r requirements.txt && pip install -e .)
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
+
+- label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/r2d2 && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/r2d2/tests/
+    - python rllib_contrib/r2d2/examples/r2d2_stateless_cartpole.py --run-as-test
+
+- label: ":exploding_death_star: RLlib Contrib: DDPG Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/ddpg && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/ddpg/tests/
+    - python rllib_contrib/ddpg/examples/ddpg_pendulum_v1.py --run-as-test
