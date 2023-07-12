@@ -123,9 +123,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       pid_(getpid()) {
   // Notify that core worker is initialized.
   auto initialzed_scope_guard = absl::MakeCleanup([this] {
-    absl::MutexLock lock(&initialize_mutex_);
     initialized_ = true;
-    intialize_cv_.SignalAll();
   });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 

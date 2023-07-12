@@ -1521,11 +1521,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   /// Wait until the worker is initialized.
-  void WaitUntilInitialized() override {
-    absl::MutexLock lock(&initialize_mutex_);
-    while (!initialized_) {
-      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
-    }
+  void IsInitialized() override {
+    return initialized_.load();
   }
 
   const CoreWorkerOptions options_;
@@ -1557,9 +1554,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::string main_thread_task_name_ GUARDED_BY(mutex_);
 
   /// States that used for initialization.
-  absl::Mutex initialize_mutex_;
-  absl::CondVar intialize_cv_;
-  bool initialized_ GUARDED_BY(initialize_mutex_) = false;
+  std::atomic<bool> initialized_ = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;

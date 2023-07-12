@@ -88,8 +88,7 @@ namespace rpc {
 /// Interface of the `CoreWorkerServiceHandler`, see `src/ray/protobuf/core_worker.proto`.
 class CoreWorkerServiceHandler : public DelayedServiceHandler {
  public:
-  /// Blocks until the service is ready to serve RPCs.
-  virtual void WaitUntilInitialized() = 0;
+  virtual bool IsInitialized() = 0;
 
   /// Handlers. For all of the following handlers, the implementations can
   /// handle the request asynchronously. When handling is done, the
