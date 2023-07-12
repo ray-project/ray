@@ -2,6 +2,9 @@
 
 Here we use callbacks to track the average CartPole pole angle magnitude as a
 custom metric.
+
+We then use `keep_per_episode_custom_metrics` to keep the per-episode values
+of our custom metrics and do our own summarization of them.
 """
 
 from typing import Dict, Tuple
@@ -16,6 +19,7 @@ from ray.rllib.env import BaseEnv
 from ray.rllib.evaluation import Episode, RolloutWorker
 from ray.rllib.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.algorithms.pg.pg import PGConfig
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -109,6 +113,18 @@ class MyCallbacks(DefaultCallbacks):
         )
         # you can mutate the result dict to add new fields to return
         result["callback_ok"] = True
+        # Normally, RLlib would aggregate any custom metric into a mean, max and min
+        # of the given metric.
+        # For the sake of this example, we will instead compute the variance and mean
+        # of the pole angle over the evaluation episodes.
+        pole_angle = result["custom_metrics"]["pole_angle"]
+        var = np.var(pole_angle)
+        mean = np.mean(pole_angle)
+        result["custom_metrics"]["pole_angle_var"] = var
+        result["custom_metrics"]["pole_angle_mean"] = mean
+        # We are not interested in these original values
+        del result["custom_metrics"]["pole_angle"]
+        del result["custom_metrics"]["num_batches"]
 
     def on_learn_on_batch(
         self, *, policy: Policy, train_batch: SampleBatch, result: dict, **kwargs
@@ -141,7 +157,17 @@ class MyCallbacks(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    ray.init()
+    config = (
+        PGConfig()
+        .environment("CartPole-v1")
+        .framework(args.framework)
+        .callbacks(MyCallbacks)
+        .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rollouts(enable_connectors=False)
+        .reporting(keep_per_episode_custom_metrics=True)
+    )
+
+    ray.init(local_mode=True)
     tuner = tune.Tuner(
         "PG",
         run_config=air.RunConfig(
@@ -149,17 +175,7 @@ if __name__ == "__main__":
                 "training_iteration": args.stop_iters,
             },
         ),
-        param_space={
-            "env": "CartPole-v1",
-            "num_envs_per_worker": 2,
-            "callbacks": MyCallbacks,
-            "framework": args.framework,
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            "num_gpus": int(os.environ.get("RLLIB_NUM_GPUS", "0")),
-            # TODO(avnishn): This example uses functions specific to episode v1
-            # that is not compatible with episode v2. Needs to be updated
-            "enable_connectors": False,
-        },
+        param_space=config,
     )
     # there is only one trial involved.
     result = tuner.fit().get_best_result()
@@ -168,7 +184,4 @@ if __name__ == "__main__":
     custom_metrics = result.metrics["custom_metrics"]
     print(custom_metrics)
     assert "pole_angle_mean" in custom_metrics
-    assert "pole_angle_min" in custom_metrics
-    assert "pole_angle_max" in custom_metrics
-    assert "num_batches_mean" in custom_metrics
-    assert "callback_ok" in result.metrics
+    assert "pole_angle_var" in custom_metrics
