@@ -21,7 +21,7 @@ aws_gpu_cpu_to_concurrency_groups = [
         min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu", limit=8
     ),
     Condition(
-        min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous", limit=1
+        min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous", limit=100
     ),
     Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large", limit=8),
     Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium", limit=6),
