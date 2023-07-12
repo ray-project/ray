@@ -331,7 +331,7 @@ export const GrafanaNotRunningAlert = ({
       Time-series charts are hidden because either Prometheus or Grafana server
       is not detected. Follow{" "}
       <a
-        href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
+        href="https://docs.ray.io/en/latest/cluster/metrics.html"
         target="_blank"
         rel="noreferrer"
       >
