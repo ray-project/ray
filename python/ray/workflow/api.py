@@ -129,24 +129,32 @@ def run(
     If the workflow with the given id already exists, it will be resumed.
 
     Examples:
-        >>> import ray
-        >>> from ray import workflow
-        >>> Flight, Reservation, Trip = ... # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... def book_flight(origin: str, dest: str) -> Flight: # doctest: +SKIP
-        ...    return Flight(...) # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... def book_hotel(location: str) -> Reservation: # doctest: +SKIP
-        ...    return Reservation(...) # doctest: +SKIP
-        >>> @ray.remote # doctest: +SKIP
-        ... def finalize_trip(bookings: List[Any]) -> Trip: # doctest: +SKIP
-        ...    return Trip(...) # doctest: +SKIP
+        .. testcode::
 
-        >>> flight1 = book_flight.bind("OAK", "SAN") # doctest: +SKIP
-        >>> flight2 = book_flight.bind("SAN", "OAK") # doctest: +SKIP
-        >>> hotel = book_hotel.bind("SAN") # doctest: +SKIP
-        >>> trip = finalize_trip.bind([flight1, flight2, hotel]) # doctest: +SKIP
-        >>> result = workflow.run(trip) # doctest: +SKIP
+            import ray
+            from ray import workflow
+
+            @ray.remote
+            def book_flight(origin: str, dest: str):
+               return f"Flight: {origin}->{dest}"
+
+            @ray.remote
+            def book_hotel(location: str):
+               return f"Hotel: {location}"
+
+            @ray.remote
+            def finalize_trip(bookings: List[Any]):
+               return ' | '.join(ray.get(bookings))
+
+            flight1 = book_flight.bind("OAK", "SAN")
+            flight2 = book_flight.bind("SAN", "OAK")
+            hotel = book_hotel.bind("SAN")
+            trip = finalize_trip.bind([flight1, flight2, hotel])
+            print(workflow.run(trip))
+
+        .. testoutput::
+
+            Flight: OAK->SAN | Flight: SAN->OAK | Hotel: SAN
 
     Args:
         workflow_id: A unique identifier that can be used to resume the
@@ -237,12 +245,18 @@ def resume(workflow_id: str) -> Any:
     complete, returns the result immediately.
 
     Examples:
-        >>> from ray import workflow
-        >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.bind() # doctest: +SKIP
-        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
-        >>> res2 = workflow.resume_async("trip1") # doctest: +SKIP
-        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def start_trip():
+                return 3
+
+            trip = start_trip.bind()
+            res1 = workflow.run_async(trip, workflow_id="trip1")
+            res2 = workflow.resume("trip1")
+            assert ray.get(res1) == res2
 
     Args:
         workflow_id: The id of the workflow to resume.
@@ -262,12 +276,18 @@ def resume_async(workflow_id: str) -> ray.ObjectRef:
     complete, returns the result immediately.
 
     Examples:
-        >>> from ray import workflow
-        >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.bind() # doctest: +SKIP
-        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
-        >>> res2 = workflow.resume_async("trip1") # doctest: +SKIP
-        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def start_trip():
+                return 3
+
+            trip = start_trip.bind()
+            res1 = workflow.run_async(trip, workflow_id="trip1")
+            res2 = workflow.resume_async("trip1")
+            assert ray.get(res1) == ray.get(res2)
 
     Args:
         workflow_id: The id of the workflow to resume.
@@ -303,15 +323,21 @@ def get_output(workflow_id: str, *, task_id: Optional[str] = None) -> Any:
             workflow.
 
     Examples:
-        >>> from ray import workflow
-        >>> start_trip = ... # doctest: +SKIP
-        >>> trip = start_trip.options(task_id="trip").bind() # doctest: +SKIP
-        >>> res1 = workflow.run_async(trip, workflow_id="trip1") # doctest: +SKIP
-        >>> # you could "get_output()" in another machine
-        >>> res2 = workflow.get_output_async("trip1") # doctest: +SKIP
-        >>> assert ray.get(res1) == ray.get(res2) # doctest: +SKIP
-        >>> task_output = workflow.get_output_async("trip1", "trip") # doctest: +SKIP
-        >>> assert ray.get(task_output) == ray.get(res1) # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def start_trip():
+                return 1
+
+            trip = start_trip.options(**workflow.options(task_id="trip")).bind()
+            res1 = workflow.run_async(trip, workflow_id="trip1")
+            # you could "get_output()" in another machine
+            res2 = workflow.get_output("trip1")
+            assert ray.get(res1) == res2
+            task_output = workflow.get_output_async("trip1", task_id="trip")
+            assert ray.get(task_output) == ray.get(res1)
 
     Returns:
         The output of the workflow task.
@@ -363,20 +389,25 @@ def list_all(
             be a single status or set of statuses. The string form of the
             status is also acceptable, i.e.,
             "RUNNING"/"FAILED"/"SUCCESSFUL"/"CANCELED"/"RESUMABLE"/"PENDING".
+
     Examples:
-        >>> from ray import workflow
-        >>> long_running_job = ... # doctest: +SKIP
-        >>> workflow_task = long_running_job.bind() # doctest: +SKIP
-        >>> wf = workflow.run_async(workflow_task, # doctest: +SKIP
-        ...     workflow_id="long_running_job")
-        >>> jobs = workflow.list_all() # doctest: +SKIP
-        >>> assert jobs == [ ("long_running_job", workflow.RUNNING) ] # doctest: +SKIP
-        >>> ray.get(wf) # doctest: +SKIP
-        >>> jobs = workflow.list_all({workflow.RUNNING}) # doctest: +SKIP
-        >>> assert jobs == [] # doctest: +SKIP
-        >>> jobs = workflow.list_all(workflow.SUCCESSFUL) # doctest: +SKIP
-        >>> assert jobs == [ # doctest: +SKIP
-        ...     ("long_running_job", workflow.SUCCESSFUL)]
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def long_running_job():
+                import time
+                time.sleep(2)
+
+            workflow_task = long_running_job.bind()
+            wf = workflow.run_async(workflow_task,
+                workflow_id="long_running_job")
+            jobs = workflow.list_all(workflow.RUNNING)
+            assert jobs == [ ("long_running_job", workflow.RUNNING) ]
+            ray.get(wf)
+            jobs = workflow.list_all({workflow.RUNNING})
+            assert jobs == []
 
     Returns:
         A list of tuple with workflow id and workflow status
@@ -474,19 +505,29 @@ def resume_all(include_failed: bool = False) -> List[Tuple[str, ray.ObjectRef]]:
         include_failed: Whether to resume FAILED workflows.
 
     Examples:
-        >>> from ray import workflow
-        >>> failed_job = ... # doctest: +SKIP
-        >>> workflow_task = failed_job.bind() # doctest: +SKIP
-        >>> output = workflow.run_async( # doctest: +SKIP
-        ...     workflow_task, workflow_id="failed_job")
-        >>> try: # doctest: +SKIP
-        >>>     ray.get(output) # doctest: +SKIP
-        >>> except Exception: # doctest: +SKIP
-        >>>     print("JobFailed") # doctest: +SKIP
-        >>> jobs = workflow.list_all() # doctest: +SKIP
-        >>> assert jobs == [("failed_job", workflow.FAILED)] # doctest: +SKIP
-        >>> assert workflow.resume_all( # doctest: +SKIP
-        ...    include_failed=True).get("failed_job") is not None # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def failed_job():
+                raise ValueError()
+
+            workflow_task = failed_job.bind()
+            output = workflow.run_async(
+                workflow_task, workflow_id="failed_job")
+            try:
+                ray.get(output)
+            except Exception:
+                print("JobFailed")
+
+            assert workflow.get_status("failed_job") == workflow.FAILED
+            print(workflow.resume_all(include_failed=True))
+
+        .. testoutput::
+
+            JobFailed
+            [('failed_job', ObjectRef(...))]
 
     Returns:
         A list of (workflow_id, returned_obj_ref) resumed.
@@ -537,11 +578,17 @@ def get_status(workflow_id: str) -> WorkflowStatus:
         workflow_id: The workflow to query.
 
     Examples:
-        >>> from ray import workflow
-        >>> trip = ... # doctest: +SKIP
-        >>> workflow_task = trip.bind() # doctest: +SKIP
-        >>> output = workflow.run(workflow_task, workflow_id="trip") # doctest: +SKIP
-        >>> assert workflow.SUCCESSFUL == workflow.get_status("trip") # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def trip():
+                pass
+
+            workflow_task = trip.bind()
+            output = workflow.run(workflow_task, workflow_id="local_trip")
+            assert workflow.SUCCESSFUL == workflow.get_status("local_trip")
 
     Returns:
         The status of that workflow
@@ -621,29 +668,35 @@ def get_metadata(workflow_id: str, task_id: Optional[str] = None) -> Dict[str, A
             the metadata of the workflow.
 
     Examples:
-        >>> from ray import workflow
-        >>> trip = ... # doctest: +SKIP
-        >>> workflow_task = trip.options( # doctest: +SKIP
-        ...     **workflow.options(task_id="trip", metadata={"k1": "v1"})).bind()
-        >>> workflow.run(workflow_task, # doctest: +SKIP
-        ...     workflow_id="trip1", metadata={"k2": "v2"})
-        >>> workflow_metadata = workflow.get_metadata("trip1") # doctest: +SKIP
-        >>> assert workflow_metadata["status"] == "SUCCESSFUL" # doctest: +SKIP
-        >>> assert workflow_metadata["user_metadata"] == {"k2": "v2"} # doctest: +SKIP
-        >>> assert "start_time" in workflow_metadata["stats"] # doctest: +SKIP
-        >>> assert "end_time" in workflow_metadata["stats"] # doctest: +SKIP
-        >>> task_metadata = workflow.get_metadata("trip1", "trip") # doctest: +SKIP
-        >>> assert task_metadata["task_type"] == "FUNCTION" # doctest: +SKIP
-        >>> assert task_metadata["user_metadata"] == {"k1": "v1"} # doctest: +SKIP
-        >>> assert "start_time" in task_metadata["stats"] # doctest: +SKIP
-        >>> assert "end_time" in task_metadata["stats"] # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def trip():
+               pass
+
+            workflow_task = trip.options(
+                **workflow.options(task_id="trip", metadata={"k1": "v1"})).bind()
+            workflow.run(workflow_task,
+                workflow_id="trip1", metadata={"k2": "v2"})
+            workflow_metadata = workflow.get_metadata("trip1")
+            print(workflow_metadata)
+
+            task_metadata = workflow.get_metadata("trip1", "trip")
+            print(task_metadata)
+
+        .. testoutput::
+
+            {'status': 'SUCCESSFUL', 'user_metadata': {'k2': 'v2'}, 'stats': {'start_time': ..., 'end_time': ...}}
+            {'task_id': 'trip', 'task_options': {'task_type': 'FUNCTION', 'max_retries': 3, 'catch_exceptions': False, 'retry_exceptions': False, 'checkpoint': True, 'ray_options': {'_metadata': {'workflow.io/options': {'task_id': 'trip', 'metadata': {'k1': 'v1'}}}}}, 'user_metadata': {'k1': 'v1'}, 'workflow_refs': [], 'stats': {'start_time': ..., 'end_time': ...}}
 
     Returns:
         A dictionary containing the metadata of the workflow.
 
     Raises:
         ValueError: if given workflow or workflow task does not exist.
-    """
+    """  # noqa: E501
     _ensure_workflow_initialized()
     store = WorkflowStorage(workflow_id)
     if task_id is None:
@@ -661,14 +714,18 @@ def cancel(workflow_id: str) -> None:
         workflow_id: The workflow to cancel.
 
     Examples:
-        >>> from ray import workflow
-        >>> some_job = ... # doctest: +SKIP
-        >>> workflow_task = some_job.bind() # doctest: +SKIP
-        >>> output = workflow.run_async(workflow_task,  # doctest: +SKIP
-        ...     workflow_id="some_job")
-        >>> workflow.cancel(workflow_id="some_job") # doctest: +SKIP
-        >>> assert [ # doctest: +SKIP
-        ...     ("some_job", workflow.CANCELED)] == workflow.list_all()
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def some_job():
+               return 1
+
+            workflow_task = some_job.bind()
+            workflow.run(workflow_task, workflow_id="some_job")
+            workflow.cancel(workflow_id="some_job")
+            assert workflow.get_status("some_job") == workflow.CANCELED
 
     Returns:
         None
@@ -695,13 +752,17 @@ def delete(workflow_id: str) -> None:
         WorkflowNotFoundError: The workflow does not exist.
 
     Examples:
-        >>> from ray import workflow
-        >>> some_job = ... # doctest: +SKIP
-        >>> workflow_task = some_job.bind() # doctest: +SKIP
-        >>> output = workflow.run_async(workflow_task, # doctest: +SKIP
-        ...     workflow_id="some_job")
-        >>> workflow.delete(workflow_id="some_job") # doctest: +SKIP
-        >>> assert [] == workflow.list_all() # doctest: +SKIP
+        .. testcode::
+
+            from ray import workflow
+
+            @ray.remote
+            def some_job():
+                pass
+
+            workflow_task = some_job.bind()
+            workflow.run(workflow_task, workflow_id="some_job")
+            workflow.delete(workflow_id="some_job")
     """
     _ensure_workflow_initialized()
     workflow_manager = workflow_access.get_management_actor()
@@ -748,7 +809,7 @@ class options:
 
             # specify workflow options in ".options"
             foo_new = foo.options(**workflow.options(catch_exceptions=False))
-    """  # noqa: E501
+    """
 
     def __init__(self, **workflow_options: Dict[str, Any]):
         # TODO(suquark): More rigid arguments check like @ray.remote arguments. This is
