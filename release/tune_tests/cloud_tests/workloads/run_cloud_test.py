@@ -1037,12 +1037,6 @@ def test_head_node_syncing_disabled_error():
     import ray.tune
     from ray.tune import Callback
 
-    print(
-        "===== deprecation message: =====\n",
-        ray.tune.syncer._SYNC_TO_HEAD_DEPRECATION_MESSAGE,
-        "\n==============================\n",
-    )
-
     class TestCallback(Callback):
         def on_checkpoint(self, iteration, trials, trial, checkpoint, **info):
             print("\n==============================")
