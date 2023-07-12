@@ -170,11 +170,11 @@ on the head node.
 .. testoutput::
     :options: +NORMALIZE_WHITESPACE
 
-         sepal.length  sepal.width  petal.length  petal.width    variety
-    0             5.1          3.5           1.4          0.2     Setosa
-    1             4.9          3.0           1.4          0.2     Setosa
+         sepal length (cm)  sepal width (cm)  petal length (cm)  petal width (cm)  target
+    0                  5.1               3.5                1.4               0.2       0
+    1                  4.9               3.0                1.4               0.2       0
     ...
-    149           5.9          3.0           5.1          1.8  Virginica
+    149                5.9               3.0                5.1               1.8       2
     <BLANKLINE>
     [150 rows x 5 columns]
 
