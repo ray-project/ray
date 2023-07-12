@@ -20,7 +20,6 @@
 
 #include <google/protobuf/util/json_util.h>
 
-#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
@@ -121,12 +120,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
       pid_(getpid()) {
-  // Notify that core worker is initialized.
-  auto initialzed_scope_guard = absl::MakeCleanup([this] {
-    absl::MutexLock lock(&initialize_mutex_);
-    initialized_ = true;
-    intialize_cv_.SignalAll();
-  });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
