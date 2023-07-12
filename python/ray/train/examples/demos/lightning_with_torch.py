@@ -104,8 +104,9 @@ def train_loop_per_worker(config):
         name="demo_run", save_dir="./wandb_logs", offline=True, id="unique_id"
     )
 
-    # Create Strategy and ModelCheckpoint provided by Ray AIR
+    # Create Strategy, Environment and ModelCheckpoint provided by Ray AIR
     strategy = RayDDPStrategy()
+    environment = RayEnvironment()
     checkpoint_callback = RayModelCheckpoint(
         monitor="val_accuracy", mode="max", save_top_k=3, save_last=True
     )
@@ -115,7 +116,7 @@ def train_loop_per_worker(config):
         accelerator="gpu",
         devices=parallel_devices,
         strategy=strategy,
-        plugins=[RayEnvironment()],
+        plugins=[environment],
         callbacks=[checkpoint_callback],
         logger=logger,
     )
