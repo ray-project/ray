@@ -354,8 +354,9 @@ def test_multiplexed_lru_policy(serve_instance):
 
 
 def test_multiplexed_multiple_replicas(serve_instance):
-    """Test multiplexed traffic can be sent to multiple replicas"""
-    signal = SignalActor.remote()
+    """Test multiplexed traffic can be sent to multiple replicas."""
+    started_executing_signal = SignalActor.remote()
+    finish_executing_signal = SignalActor.remote()
 
     @serve.deployment(num_replicas=2, max_concurrent_queries=1)
     class Model:
@@ -364,17 +365,19 @@ def test_multiplexed_multiple_replicas(serve_instance):
             return tag
 
         async def __call__(self):
+            await started_executing_signal.send.remote()
             tag = serve.get_multiplexed_model_id()
             await self.get_model(tag)
-            await signal.wait.remote()
+            await finish_executing_signal.wait.remote()
             # return pid to check if the same model is used
             return os.getpid()
 
     handle = serve.run(Model.bind())
     pid1_ref = handle.options(multiplexed_model_id="1").remote()
+    ray.get(started_executing_signal.wait.remote())
     # Second request should be sent to the second replica
     pid2_ref = handle.options(multiplexed_model_id="1").remote()
-    signal.send.remote()
+    ray.get(finish_executing_signal.send.remote())
     assert ray.get(pid1_ref) != ray.get(pid2_ref)
 
     wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="1")
