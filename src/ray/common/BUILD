@@ -52,11 +52,9 @@ ray_cc_library(
 ray_cc_library(
     name = "memory_monitor",
     srcs = [
-        "file_system_monitor.cc",
         "memory_monitor.cc",
     ],
     hdrs = [
-        "file_system_monitor.h",
         "memory_monitor.h",
     ],
     deps = [
@@ -66,6 +64,21 @@ ray_cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_prod",
         "@nlohmann_json",
+    ],
+)
+
+ray_cc_library(
+    name = "file_system_monitor",
+    srcs = [
+        "file_system_monitor.cc",
+    ],
+    hdrs = [
+        "file_system_monitor.h",
+    ],
+    deps = [
+        ":asio",
+        "//src/ray/util",
+        "@com_google_googletest//:gtest_prod",
     ],
 )
 

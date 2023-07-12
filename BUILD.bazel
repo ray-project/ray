@@ -478,6 +478,7 @@ cc_library(
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor",
+        "//src/ray/common:file_system_monitor",
         "//src/ray/common:network",
         "//src/ray/common:ray_config",
         "//src/ray/common:ray_syncer",
