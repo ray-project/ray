@@ -538,7 +538,6 @@ cdef class RawSerializedObject(SerializedObject):
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
 
 
-
 cdef class ArrowSerializedObject(SerializedObject):
     cdef:
         object value
@@ -546,7 +545,6 @@ cdef class ArrowSerializedObject(SerializedObject):
 
     def __init__(self, value):
         import pyarrow
-
         super(ArrowSerializedObject,
               self).__init__(ray_constants.OBJECT_METADATA_TYPE_ARROW)
         self.value = value
