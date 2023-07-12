@@ -320,6 +320,12 @@ class ApplicationState:
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
             for params in deployment_params
         }
+
+        # Check route prefix
+        err = self._check_deployment_routes(deployment_infos)
+        if err:
+            raise RayServeException(err)
+
         self._set_target_state(
             deployment_infos=deployment_infos,
             code_version=code_version,
@@ -476,7 +482,7 @@ class ApplicationState:
     def _check_deployment_routes(
         self, deployment_infos: Dict[str, DeploymentInfo]
     ) -> Optional[str]:
-        """Check route prefixes of deployments in application.
+        """Check route prefixes and docs paths of deployments in app.
 
         There should only be one non-null route prefix. If there is one,
         set it as the application route prefix. This function must be
@@ -486,18 +492,31 @@ class ApplicationState:
         Returns: error if there is any.
         """
         num_route_prefixes = 0
+        num_docs_paths = 0
         for info in deployment_infos.values():
             # Update route prefix of application, which may be updated
             # through a redeployed config.
             if info.route_prefix is not None:
                 self._route_prefix = info.route_prefix
                 num_route_prefixes += 1
+            if info.docs_path is not None:
+                self._docs_path = info.docs_path
+                num_docs_paths += 1
 
         if num_route_prefixes > 1:
             return (
                 f'Found multiple route prefixes from application "{self._name}",'
                 " Please specify only one route prefix for the application "
                 "to avoid this issue."
+            )
+        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
+        # if user sets the docs path to None in their FastAPI app.
+        if num_docs_paths > 1:
+            return (
+                f'Found multiple deployments in application "{self._name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
             )
 
     def _reconcile_target_deployments(self) -> Optional[str]:
@@ -850,17 +869,6 @@ def build_serve_application(
                     f'There is no deployment named "{deployment_name}" in the '
                     f'application "{name}".'
                 )
-
-        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
-        # if user sets the docs path to None in their FastAPI app.
-        num_docs_paths = sum(d._docs_path is not None for d in app.deployments.values())
-        if num_docs_paths > 1:
-            raise RayServeException(
-                f'Found multiple deployments in application "{name}" that have '
-                "a docs path. This may be due to using multiple FastAPI deployments "
-                "in your application. Please only include one deployment with a docs "
-                "path in your application to avoid this issue."
-            )
 
         # Set code version and runtime env for each deployment
         for deployment_name in app.deployments:
