@@ -236,7 +236,9 @@ def test_get_serve_status(shutdown_ray_and_serve):
     assert status_info_1.deployment_statuses[0].status in {"UPDATING", "HEALTHY"}
 
 
-def test_controller_deserialization_deployment_def(start_and_shutdown_ray_cli_function, shutdown_ray_and_serve):
+def test_controller_deserialization_deployment_def(
+    start_and_shutdown_ray_cli_function, shutdown_ray_and_serve
+):
     """Ensure controller doesn't deserialize deployment_def or init_args/kwargs."""
 
     @ray.remote
