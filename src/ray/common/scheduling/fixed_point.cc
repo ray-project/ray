@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/raylet/scheduling/fixed_point.h"
+#include "ray/common/scheduling/fixed_point.h"
 
 #include <sstream>
 
