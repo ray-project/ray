@@ -1749,7 +1749,7 @@ class Dataset:
             in a machine learning dataset:
 
             >>> import ray
-            >>> ds = ray.data.read_csv("example://iris.csv")
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
             >>> ds.unique("variety")
             ['Setosa', 'Versicolor', 'Virginica']
 
@@ -4433,9 +4433,9 @@ class Dataset:
             >>> import ray
             >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
             False
-            >>> ray.data.read_csv("example://iris.csv").has_serializable_lineage()
+            >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
-        """
+        """  # noqa: E501
         return self._plan.has_lazy_input()
 
     @DeveloperAPI
@@ -4461,7 +4461,7 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.read_csv("example://iris.csv")
+                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
                 serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
@@ -4544,7 +4544,7 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.read_csv("example://iris.csv")
+                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
                 serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)

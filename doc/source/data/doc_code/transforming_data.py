@@ -46,7 +46,7 @@ import ray
 import numpy as np
 from typing import Dict
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def numpy_transform(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
@@ -65,7 +65,7 @@ ds.map_batches(numpy_transform, batch_format="numpy").show(2)
 import ray
 import pandas as pd
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
     df.loc[:, "normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
@@ -84,7 +84,7 @@ import ray
 import pyarrow as pa
 import pyarrow.compute as pac
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def pyarrow_transform(batch: pa.Table) -> pa.Table:
     batch = batch.append_column(
@@ -125,7 +125,7 @@ class IrisInferModel:
     def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
         return self._model(batch)
 
-ds = ray.data.read_csv("example://iris.csv").repartition(10)
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").repartition(10)
 
 # Batch inference processing with Ray tasks (the default compute strategy).
 predicted = ds.map_batches(predict_iris, batch_format="pandas")
@@ -140,7 +140,7 @@ import ray
 from typing import Iterator
 
 # Load iris data.
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 # UDF to repeat the dataframe 100 times, in chunks of 20.
 def repeat_dataframe(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
@@ -176,7 +176,7 @@ import numpy as np
 from typing import Dict
 
 # Load iris data.
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 # The user function signature for `map_groups` is the same as that of `map_batches`.
 # It takes in a batch representing the grouped data, and must return a batch of

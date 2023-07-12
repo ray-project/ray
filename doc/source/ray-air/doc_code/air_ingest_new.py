@@ -11,7 +11,7 @@ import numpy as np
 from typing import Dict
 
 # Load the data.
-train_ds = ray.data.read_parquet("example://iris.parquet")
+train_ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
 ## Uncomment to randomize the block order each epoch.
 # train_ds = train_ds.randomize_block_order()
 
@@ -52,8 +52,10 @@ my_trainer.fit()
 # __basic_end__
 
 # __custom_split__
-dataset_a = ray.data.read_text("example://sms_spam_collection_subset.txt")
-dataset_b = ray.data.read_csv("example://dow_jones.csv")
+dataset_a = ray.data.read_text(
+    "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
+)
+dataset_b = ray.data.read_csv("s3://anonymous@ray-example-data/dow_jones.csv")
 
 my_trainer = TorchTrainer(
     train_loop_per_worker,
@@ -72,7 +74,7 @@ def augment_data(batch):
 
 # __materialized__
 # Load the data.
-train_ds = ray.data.read_parquet("example://iris.parquet")
+train_ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
 
 # Preprocess the data. Transformations that are made to the materialize call below
 # will only be run once.

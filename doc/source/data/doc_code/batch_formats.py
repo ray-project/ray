@@ -5,7 +5,7 @@
 # __simple_map_function_start__
 import ray
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def map_function(data):
     return data[data["sepal.length"] < 5]
@@ -20,7 +20,7 @@ transformed = ds.map_batches(map_function, batch_format="pandas", batch_size=10)
 import ray
 import pandas as pd
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 ds.show(1)
 # -> {'sepal.length': 5.1, ..., 'petal.width': 0.2, 'variety': 'Setosa'}
 
@@ -62,7 +62,7 @@ import ray
 import pyarrow as pa
 import pyarrow.compute as pac
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 
 def transform_pyarrow(batch: pa.Table) -> pa.Table:

@@ -32,7 +32,7 @@ directory with the `local://` scheme.
 
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
     ds.write_parquet("local:///tmp/iris/")
 
@@ -119,7 +119,7 @@ mounted directory.
 
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
     ds.write_parquet("/mnt/cluster_storage/iris")
 
@@ -137,7 +137,7 @@ To change the number of blocks, call :meth:`~ray.data.Dataset.repartition`.
     import os
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
     ds.repartition(2).write_csv("/tmp/two_files/")
 
     print(os.listdir("/tmp/two_files/"))
@@ -162,7 +162,7 @@ on the head node.
 
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
     df = ds.to_pandas()
     print(df)
@@ -198,7 +198,7 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             df = ds.to_dask()
 
@@ -213,7 +213,7 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             df = ds.to_spark()
 
@@ -227,7 +227,7 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             mdf = ds.to_modin()
 
@@ -241,6 +241,6 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             mdf = ds.to_mars()
