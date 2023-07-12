@@ -364,6 +364,10 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
             const c_vector[unordered_map[c_string, double]] &bundles)
+        CRayStatus GetClusterStatus(
+            int64_t timeout_ms,
+            c_string &serialized_reply)
+
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
