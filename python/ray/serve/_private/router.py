@@ -290,7 +290,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     # received within this deadline, the replica will not be considered.
     queue_len_response_deadline_s = 0.1
 
-    # TODO:
+    # For requests with a `multiplexed_model_id`, the first N attempts dictated by this
+    # constant will be limited to replicas containing those model IDs. Subsequent
+    # attempts will consider all replicas.
     max_num_attempts_matching_model_id = 2
 
     def __init__(
@@ -394,7 +396,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         *,
         limit_to_matching_model_id: bool,
     ) -> Set[str]:
-        """Get candidates from the current replica set excluding the blacklist.
+        """Get candidates for a request from the current replica set.
 
         If limit_to_matching_model_id is `True` and any replicas have it, the set is
         limited to those replicas.
