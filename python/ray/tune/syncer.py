@@ -99,7 +99,8 @@ _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
     "- Or, to re-enable the head node syncing behavior, set the "
     f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
-    "  - **Note that this functionality will be fully removed in Ray 2.8.**"
+    "  - **Note that this functionality will tentatively be hard-deprecated in "
+    "Ray 2.7.** See the linked issue for the latest information."
 )
 
 

@@ -1025,7 +1025,7 @@ def test_no_sync_down():
     )
 
 
-# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.8
+# TODO(ml-team): [Deprecation - head node syncing]
 def test_head_node_syncing_disabled_error():
     """Tests that head node syncing is disabled properly in a multi-node setting.
     Runs a 4 trial Tune run, where each trial uses 2 CPUs.
@@ -1076,7 +1076,7 @@ def test_head_node_syncing_disabled_error():
     print("Success: a multi-node experiment without checkpoint still runs")
 
 
-# TODO(ml-team): [Deprecation - head node syncing] Remove in 2.8
+# TODO(ml-team): [Deprecation - head node syncing]
 def test_ssh_sync():
     """
     SSH syncing, so:
