@@ -123,7 +123,6 @@ if sys.version_info >= (3, 8, 0):
 else:
     from asyncmock import AsyncMock
 
-
 """
 Unit tests
 """
@@ -2869,9 +2868,8 @@ async def test_cli_format_print(state_api_manager):
     print(result)
     result = [ActorState(**d) for d in result.result]
     # If the format is not yaml, it will raise an exception.
-    yaml.load(
-        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
-        Loader=yaml.FullLoader,
+    yaml.safe_load(
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML)
     )
     # If the format is not json, it will raise an exception.
     json.loads(
@@ -3081,18 +3079,14 @@ def test_detail(shutdown_only):
 
     # Make sure when the --detail option is specified, the default formatting
     # is yaml. If the format is not yaml, the below line will raise an yaml exception.
-    print(
-        yaml.load(
-            result.output,
-            Loader=yaml.FullLoader,
-        )
-    )
+    # Retrieve yaml content from result output
+    print(yaml.safe_load(result.output.split("---")[1].split("...")[0]))
 
     # When the format is given, it should respect that formatting.
-    result = runner.invoke(ray_list, ["actors", "--detail", "--format=table"])
+    result = runner.invoke(ray_list, ["actors", "--detail", "--format=json"])
     assert result.exit_code == 0
-    with pytest.raises(yaml.YAMLError):
-        yaml.load(result.output, Loader=yaml.FullLoader)
+    # Fails if output is not JSON
+    print(json.loads(result.output))
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):

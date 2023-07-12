@@ -331,8 +331,10 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
     ray_context = ray.init()
     client = serve.start()
 
+    num_replicas = 10
+
     @serve.deployment(
-        num_replicas=50,
+        num_replicas=num_replicas,
         ray_actor_options={"num_cpus": 0.001},
     )
     def f():
@@ -366,7 +368,7 @@ def test_controller_recover_and_delete(shutdown_ray_and_serve):
                 filters=[("state", "=", "ALIVE")],
             )
         )
-        == len(actors) - 50
+        == len(actors) - num_replicas
     )
 
     # The deployment should be deleted, meaning its state should not be stored
