@@ -8,10 +8,7 @@ from collections import defaultdict
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
-from ray._private.utils import (
-    import_attr,
-    run_background_task,
-)
+from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._raylet import GcsClient
@@ -34,14 +31,10 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
     MULTI_APP_MIGRATION_MESSAGE,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
 )
-from ray.serve._private.deploy_utils import (
-    deploy_args_to_deployment_info,
-    get_app_code_version,
-)
+from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
 from ray.serve._private.http_state import HTTPState
@@ -61,10 +54,9 @@ from ray.serve.schema import (
 )
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.utils import (
-    DEFAULT,
-    override_runtime_envs_except_env_vars,
     call_function_from_import_path,
     get_head_node_id,
+    record_serve_tag,
 )
 from ray.serve._private.application_state import ApplicationStateManager
 
@@ -616,6 +608,7 @@ class ServeController:
             deployment_time: set deployment_timestamp. If not provided, time.time() is
                 used to indicate the deployment time.
         """
+        record_serve_tag("SERVE_API_VERSION", "v2")
         # TODO (zcin): We should still support single-app mode, i.e.
         # ServeApplicationSchema. Eventually, after migration is complete, we should
         # deprecate such usage.
@@ -662,30 +655,12 @@ class ServeController:
         new_config_checkpoint = {}
 
         for app_config in applications:
-            code_version = get_app_code_version(app_config)
-
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
 
-            logger.info(
-                "Starting deploy_serve_application "
-                f"task for application {app_config.name}."
-            )
-            deploy_obj_ref = deploy_serve_application.options(
-                runtime_env=app_config.runtime_env
-            ).remote(
-                app_config.import_path,
-                app_config.runtime_env,
-                app_config_dict.get("deployments", []),
-                code_version,
-                app_config_dict.get("route_prefix", DEFAULT.VALUE),
+            self.application_state_manager.deploy_config(
                 app_config.name,
-                app_config.args,
-            )
-
-            self.application_state_manager.create_application_state(
-                app_config.name,
-                deploy_obj_ref=deploy_obj_ref,
+                app_config,
                 deployment_time=deployment_time,
             )
 
@@ -926,92 +901,6 @@ class ServeController:
             return
 
         await self._shutdown.wait()
-
-
-@ray.remote(num_cpus=0, max_calls=1)
-def deploy_serve_application(
-    import_path: str,
-    runtime_env: Dict,
-    deployment_override_options: List[Dict],
-    code_version: str,
-    route_prefix: str,
-    name: str,
-    args: Dict,
-) -> Optional[str]:
-    """Deploy Serve application from a user-provided config.
-
-    Args:
-        import_path: import path to top-level bound deployment.
-        runtime_env: runtime_env for the application.
-        deployment_override_options: Dictionary of options that overrides
-            deployment options set in the graph's code itself.
-        deployment_versions: Versions of each deployment, each of which is
-            the same as the last deployment if it is a config update or
-            a new randomly generated version if it is a code update
-        name: application name. If specified, application will be deployed
-            without removing existing applications.
-        route_prefix: route_prefix. Define the route path for the application.
-    Returns:
-        Returns None if no error is raised. Otherwise, returns error message.
-    """
-    try:
-        from ray import serve
-        from ray.serve.api import build
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary
-
-        # Import and build the application.
-        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        app = build(app, name)
-
-        # Override options for each deployment listed in the config.
-        for options in deployment_override_options:
-            deployment_name = options["name"]
-            unique_deployment_name = (
-                (name + DEPLOYMENT_NAME_PREFIX_SEPARATOR) if len(name) else ""
-            ) + deployment_name
-
-            if unique_deployment_name not in app.deployments:
-                raise KeyError(
-                    f'There is no deployment named "{deployment_name}" in the '
-                    f'application "{name}".'
-                )
-
-            # Merge app-level and deployment-level runtime_envs.
-            if "ray_actor_options" in options:
-                # If specified, get ray_actor_options from config
-                ray_actor_options = options["ray_actor_options"] or {}
-            else:
-                # Otherwise, get options from application code (and default to {}
-                # if the code sets options to None).
-                ray_actor_options = (
-                    app.deployments[unique_deployment_name].ray_actor_options or {}
-                )
-            deployment_env = ray_actor_options.get("runtime_env", {})
-            merged_env = override_runtime_envs_except_env_vars(
-                runtime_env, deployment_env
-            )
-            ray_actor_options.update({"runtime_env": merged_env})
-            options["ray_actor_options"] = ray_actor_options
-            options["name"] = unique_deployment_name
-            # Update the deployment's options
-            app.deployments[unique_deployment_name].set_options(
-                **options, _internal=True
-            )
-
-        # Set code version for each deployment
-        for deployment_name in app.deployments:
-            app.deployments[deployment_name].set_options(
-                version=code_version, _internal=True
-            )
-
-        # Run the application locally on the cluster.
-        serve.run(app, name=name, route_prefix=route_prefix, _blocking=False)
-    except KeyboardInterrupt:
-        # Error is raised when this task is canceled with ray.cancel(), which
-        # happens when deploy_apps() is called.
-        logger.debug("Existing config deployment request terminated.")
-    except Exception as e:
-        return repr(e)
 
 
 @ray.remote(num_cpus=0)
