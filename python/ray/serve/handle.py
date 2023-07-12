@@ -62,12 +62,14 @@ class HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
+    serve_grpc_request: bool = False
 
     def copy_and_update(
         self,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "HandleOptions":
         return HandleOptions(
             method_name=(
@@ -79,6 +81,9 @@ class HandleOptions:
                 else multiplexed_model_id
             ),
             stream=self.stream if stream == DEFAULT.VALUE else stream,
+            serve_grpc_request=self.serve_grpc_request
+            if serve_grpc_request == DEFAULT.VALUE
+            else serve_grpc_request,
         )
 
 
@@ -175,11 +180,13 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ):
         new_handle_options = self.handle_options.copy_and_update(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            serve_grpc_request=serve_grpc_request,
         )
         return self.__class__(
             self.deployment_name,
@@ -194,6 +201,7 @@ class RayServeHandle:
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -211,6 +219,7 @@ class RayServeHandle:
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            serve_grpc_request=serve_grpc_request,
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
@@ -225,6 +234,7 @@ class RayServeHandle:
             app_name=_request_context.app_name,
             multiplexed_model_id=handle_options.multiplexed_model_id,
             is_streaming=handle_options.stream,
+            serve_grpc_request=handle_options.serve_grpc_request,
         )
         self.request_counter.inc(
             tags={
@@ -326,6 +336,7 @@ class RayServeSyncHandle(RayServeHandle):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
+        serve_grpc_request: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "RayServeSyncHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -343,6 +354,7 @@ class RayServeSyncHandle(RayServeHandle):
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
+            serve_grpc_request=serve_grpc_request,
         )
 
     def remote(self, *args, **kwargs) -> ray.ObjectRef:

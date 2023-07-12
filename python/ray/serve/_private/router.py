@@ -74,6 +74,8 @@ class RequestMetadata:
     # If this request expects a streaming response.
     is_streaming: bool = False
 
+    serve_grpc_request: bool = False
+
 
 @dataclass
 class Query:

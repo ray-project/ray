@@ -199,9 +199,7 @@ class LongestPrefixRouter:
 
 
 class GRPCRouter(LongestPrefixRouter):
-    def get_route_from_target(
-        self, target: str
-    ) -> Optional[str]:
+    def get_route_from_target(self, target: str) -> Optional[str]:
         """Return the target endpoint to match for the route.
 
         Args:
@@ -539,10 +537,8 @@ class GenericProxy:
                     request_context_info["multiplexed_model_id"] = multiplexed_model_id
                 if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
                     request_context_info["request_id"] = value.decode()
-                # if key.decode() == SERVE_GRPC_REQUEST:
-                #     serve_grpc_request = value.decode()
-                #     handle = handle.options(serve_grpc_request=serve_grpc_request)
-                #     request_context_info[SERVE_GRPC_REQUEST] = serve_grpc_request
+                if key.decode() == SERVE_GRPC_REQUEST:
+                    handle = handle.options(serve_grpc_request=True)
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
             )
@@ -921,6 +917,7 @@ class GRPCProxy(GenericProxy):
         headers = [
             (SERVE_MULTIPLEXED_MODEL_ID.encode("utf-8"), b"11"),
             (RAY_SERVE_REQUEST_ID_HEADER.encode("utf-8"), request_id.encode("utf-8")),
+            (SERVE_GRPC_REQUEST.encode("utf-8"), b""),
         ]
         print("path", path)
         print("request_id", request_id)

@@ -759,22 +759,23 @@ class RayServeReplica:
                 ):
                     request_args, request_kwargs = tuple(), {}
 
-                # TODO: make a new code branch to serialize the request object
                 print("before call_user_method!!!", request_args, request_kwargs)
                 print(
                     f"the method to call is {runner_method.__name__} {method_to_call}"
                 )
-                result = await self.call_user_method_with_grpc_serialization(
-                    request_args, method_to_call
-                )
-
-                # result = await method_to_call(*request_args, **request_kwargs)
-                # if inspect.isgenerator(result) or inspect.isasyncgen(result):
-                #     raise TypeError(
-                #         f"Method '{runner_method.__name__}' returned a generator. You"
-                #         " must use `handle.options(stream=True)` to call "
-                #         "generators on a deployment."
-                #     )
+                print("request_metadata", request_metadata)
+                if request_metadata.serve_grpc_request:
+                    result = await self.call_user_method_with_grpc_serialization(
+                        request_args, method_to_call
+                    )
+                else:
+                    result = await method_to_call(*request_args, **request_kwargs)
+                    if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                        raise TypeError(
+                            f"Method '{runner_method.__name__}' returned a generator. You"
+                            " must use `handle.options(stream=True)` to call "
+                            "generators on a deployment."
+                        )
 
             except Exception as e:
                 function_name = "unknown"
