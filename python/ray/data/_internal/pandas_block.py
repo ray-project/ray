@@ -465,7 +465,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         else:
             ret = pd.concat(blocks, ignore_index=True)
             ret = ret.sort_values(
-                by=[k[0][0] for k in key] if isinstance(key, list) else key[0][0],
+                by=[k[0] for k in key] if isinstance(key, list) else key[0][0],
                 ascending=not _descending,
             )
         return ret, PandasBlockAccessor(ret).get_metadata(

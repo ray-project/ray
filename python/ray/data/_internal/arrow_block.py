@@ -652,7 +652,10 @@ def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
 
 
 def _to_pylist(table: "pyarrow.Table") -> "pyarrow.Table":
-    """Convert the Table to a list of rows / dictionaries. Required for compatibility with Arrow 6."""
+    """Convert the Table to a list of rows / dictionaries.
+
+    Required for compatibility with Arrow 6.
+    """
     pydict = table.to_pydict()
     names = table.schema.names
     pylist = [
