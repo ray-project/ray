@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
@@ -40,7 +41,7 @@ class NodeInfo:
     node_status: Optional[str] = None
     # ray node id. None if still pending.
     node_id: Optional[str] = None
-    # Resource usage breakdown if node alive.
+    # Resource usage breakdown if node is running.
     resource_usage: Optional[NodeUsage] = None
     # Failure detail if the node failed.
     failure_detail: Optional[str] = None
@@ -87,14 +88,21 @@ class PlacementGroupResourceDemand(ResourceDemand):
     state: Optional[str] = None
 
     def __post_init__(self):
-        if self.details:
-            # details in the format of <pg_id>:<strategy>|<state>, parse
-            # it into the above fields.
-            pg_id, details = self.details.split(":")
-            strategy, state = details.split("|")
-            self.pg_id = pg_id
-            self.strategy = strategy
-            self.state = state
+        if not self.details:
+            return
+
+        # Details in the format of <pg_id>:<strategy>|<state>, parse
+        # it into the above fields.
+        pattern = r"^.*:.*\|.*$"
+        match = re.match(pattern, self.details)
+        if not match:
+            return
+
+        pg_id, details = self.details.split(":")
+        strategy, state = details.split("|")
+        self.pg_id = pg_id
+        self.strategy = strategy
+        self.state = state
 
 
 @dataclass

@@ -27,11 +27,6 @@ from ray.core.generated.experimental.autoscaler_pb2 import (
 )
 
 
-def binary_id_to_hex(binary_id: bytes) -> str:
-    """A util routine to parse binary repr of id (e.g. node id) to hex repr.)"""
-    return binary_to_hex(binary_id)
-
-
 class ClusterStatusParser:
     @classmethod
     def from_get_cluster_status_reply(
@@ -195,7 +190,7 @@ class ClusterStatusParser:
         dead_nodes = []
         for node_state in state.node_states:
             # Basic node info.
-            node_id = binary_id_to_hex(node_state.node_id)
+            node_id = binary_to_hex(node_state.node_id)
             if len(node_state.ray_node_type_name) == 0:
                 # We don't have a node type name, but this is needed for showing
                 # healthy nodes. This happens when we don't use cluster launcher.
@@ -208,6 +203,9 @@ class ClusterStatusParser:
             node_resource_usage = None
             failure_detail = None
             if node_state.status == NodeStatus.DEAD:
+                # TODO(rickyx): Technically we could get a more verbose
+                # failure detail from GCS, but existing ray status treats
+                # all ray failures as raylet death.
                 failure_detail = NODE_DEATH_CAUSE_RAYLET_DIED
             else:
                 usage = defaultdict(ResourceUsage)
@@ -222,7 +220,7 @@ class ClusterStatusParser:
             node_info = NodeInfo(
                 instance_type_name=node_state.instance_type_name,
                 node_status=NodeStatus.Name(node_state.status),
-                node_id=binary_id_to_hex(node_state.node_id),
+                node_id=binary_to_hex(node_state.node_id),
                 ip_address=node_state.node_ip_address,
                 ray_node_type_name=ray_node_type_name,
                 instance_id=node_state.instance_id,
@@ -244,7 +242,8 @@ class ClusterStatusParser:
         """
         Parse the pending requests/nodes from the autoscaling state.
         Args:
-            state: the autoscaling state
+            state: the autoscaling state, empty if there's no autoscaling state
+                being reported.
         Returns:
             pending_launches: the list of pending launches
             pending_nodes: the list of pending nodes
