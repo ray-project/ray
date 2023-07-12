@@ -1052,6 +1052,12 @@ def test_head_node_syncing_disabled_error():
             print("checkpoint dir exists = ", os.path.exists(checkpoint.dir_or_data))
             print("==============================\n")
 
+        def on_trial_start(self, iteration, trials, trial, **info):
+            print("\n==============================")
+            print(f"trial {trial.trial_id} running on ip:", trial.get_runner_ip())
+            print("available resources (CPU):", ray.available_resources()["CPU"])
+            print("==============================\n")
+
     # Raise an error for checkpointing + no storage path
     def train_fn(config):
         session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
