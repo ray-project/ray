@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import ray.train as train
 from ray.train.torch import TorchTrainer, TorchCheckpoint
-from ray.air.config import ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 
 
 class LinearDataset(torch.utils.data.Dataset):
@@ -85,12 +85,13 @@ def train_func(config):
     return results
 
 
-def train_linear(num_workers=2, use_gpu=False, epochs=3):
+def train_linear(num_workers=2, use_gpu=False, epochs=3, storage_path=None):
     config = {"lr": 1e-2, "hidden_size": 1, "batch_size": 4, "epochs": epochs}
     trainer = TorchTrainer(
         train_loop_per_worker=train_func,
         train_loop_config=config,
         scaling_config=ScalingConfig(num_workers=num_workers, use_gpu=use_gpu),
+        run_config=RunConfig(storage_path=storage_path),
     )
     result = trainer.fit()
 

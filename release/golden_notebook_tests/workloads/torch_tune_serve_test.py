@@ -127,6 +127,7 @@ def train_mnist(test_mode=False, num_workers=1, use_gpu=False):
         ),
         run_config=RunConfig(
             verbose=1,
+            storage_path="/mnt/cluster_storage",
         ),
     )
 
