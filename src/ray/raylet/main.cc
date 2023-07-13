@@ -207,9 +207,8 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.DebugString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_workers_soft_limit =
-            soft_limit_config >= 0 ? soft_limit_config : num_cpus;
+            RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
@@ -295,8 +294,15 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
+        ray::NodeID raylet_node_id{
+            (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty())
+                ? ray::NodeID::FromHex(
+                      RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
+                : ray::NodeID::FromRandom()};
+        node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,
+                                                       raylet_node_id,
                                                        raylet_socket_name,
                                                        node_ip_address,
                                                        node_name,

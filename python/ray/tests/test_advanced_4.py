@@ -5,7 +5,7 @@ import sys
 import pytest
 
 import ray
-from ray._private.gcs_utils import check_health
+from ray._raylet import check_health
 from ray._private.test_utils import (
     Semaphore,
     client_test_enabled,

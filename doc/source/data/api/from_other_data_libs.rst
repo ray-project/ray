@@ -86,3 +86,9 @@ For PyArrow Users
      - :meth:`ds.groupby() <ray.data.Dataset.groupby>`
    * - pa.Table.sort_by()
      - :meth:`ds.sort() <ray.data.Dataset.sort>`
+
+
+For PyTorch Dataset & DataLoader Users
+--------------------------------------
+
+For more details, see the :ref:`Migrating from PyTorch to Ray Data <migrate_pytorch>`.

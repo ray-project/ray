@@ -7,7 +7,7 @@ import ray
 from ray.air import session
 from ray.air.config import ScalingConfig
 from ray.data import DataIterator
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
@@ -32,7 +32,8 @@ class TestBasic(DataParallelTrainer):
                 else:
                     count = 0
                     for batch in shard.iter_batches():
-                        count += len(batch)
+                        for arr in batch.values():
+                            count += arr.size
                     assert count == v, shard
 
         kwargs.pop("scaling_config", None)

@@ -52,6 +52,7 @@ class ConvergenceTest(unittest.TestCase):
 
         return analysis
 
+    @unittest.skip("ax warm start tests currently failing (need to upgrade ax)")
     def testConvergenceAx(self):
         from ray.tune.search.ax import AxSearch
 

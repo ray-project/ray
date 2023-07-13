@@ -4,6 +4,7 @@
 * [A3C](./a3c)
 * [MAML](./maml)
 * [Alpha Star](./alpha_star)
+* [DDPG](./ddpg)
 
 
 

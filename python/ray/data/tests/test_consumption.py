@@ -21,7 +21,7 @@ from ray.data.dataset import Dataset, MaterializedDataset, _sliding_window
 from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import *  # noqa
-from ray.data.tests.util import STRICT_MODE, column_udf, extract_values
+from ray.data.tests.util import column_udf, extract_values
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
@@ -157,7 +157,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
+        == "MaterializedDataset(num_blocks=2, num_rows=0, schema=Unknown schema)"
     )
 
     # Test map on empty dataset.
@@ -239,6 +239,22 @@ def test_schema_lazy(ray_start_regular_shared):
     assert ds._plan._in_blocks._num_computed() == 0
     # Fetching the schema should not trigger execution of extra read tasks.
     assert ds._plan.execute()._num_computed() == 0
+
+
+def test_schema_cached(ray_start_regular_shared):
+    def check_schema_cached(ds):
+        schema = ds.schema()
+        assert schema.names == ["a"]
+        cached_schema = ds.schema(fetch_if_missing=False)
+        assert cached_schema is not None
+        assert schema == cached_schema
+
+    ds = ray.data.from_items([{"a": i} for i in range(100)], parallelism=10)
+    check_schema_cached(ds)
+
+    # Add a map_batches stage so that we are forced to compute the schema.
+    ds = ds.map_batches(lambda x: x)
+    check_schema_cached(ds)
 
 
 def test_columns(ray_start_regular_shared):
@@ -478,9 +494,6 @@ def test_convert_types(ray_start_regular_shared):
 def test_from_items(ray_start_regular_shared):
     ds = ray.data.from_items(["hello", "world"])
     assert extract_values("item", ds.take()) == ["hello", "world"]
-
-    ds = ray.data.from_items([{"hello": "world"}], output_arrow_format=True)
-    assert ds.take() == [{"hello": "world"}]
     assert isinstance(next(ds.iter_batches(batch_format=None)), pa.Table)
 
 
@@ -1324,21 +1337,6 @@ def test_len(ray_start_regular_shared):
         len(ds)
 
 
-@pytest.mark.skipif(STRICT_MODE, reason="Deprecated in strict mode")
-def test_simple_block_select():
-    xs = list(range(100))
-    block_accessor = BlockAccessor.for_block(xs)
-
-    block = block_accessor.select([lambda x: x % 3])
-    assert block == [x % 3 for x in xs]
-
-    with pytest.raises(ValueError):
-        block = block_accessor.select(["foo"])
-
-    with pytest.raises(ValueError):
-        block = block_accessor.select([])
-
-
 def test_pandas_block_select():
     df = pd.DataFrame({"one": [10, 11, 12], "two": [11, 12, 13], "three": [14, 15, 16]})
     block_accessor = BlockAccessor.for_block(df)
@@ -1483,7 +1481,6 @@ def test_read_write_local_node(ray_start_cluster):
 
     def check_dataset_is_local(ds):
         blocks = ds.get_internal_block_refs()
-        assert len(blocks) == num_files
         ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
         location_data = ray.experimental.get_object_locations(blocks)
         locations = []
@@ -1503,7 +1500,7 @@ def test_read_write_local_node(ray_start_cluster):
     check_dataset_is_local(ds)
 
     # With fusion.
-    ds = ray.data.read_parquet(local_path).map(lambda x: x).materialize()
+    ds = ray.data.read_parquet(local_path, parallelism=1).map(lambda x: x).materialize()
     check_dataset_is_local(ds)
 
     # Write back to local scheme.
@@ -1681,7 +1678,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
     ds = ray.data.read_parquet("example://iris.parquet")
     assert ds._plan.get_plan_as_string("Dataset") == (
         "Dataset(\n"
-        "   num_blocks=1,\n"
+        "   num_blocks=8,\n"
         "   num_rows=150,\n"
         "   schema={\n"
         "      sepal.length: double,\n"
@@ -1701,7 +1698,7 @@ def test_dataset_plan_as_string(ray_start_cluster):
         "      +- MapBatches(<lambda>)\n"
         "         +- MapBatches(<lambda>)\n"
         "            +- Dataset(\n"
-        "                  num_blocks=1,\n"
+        "                  num_blocks=8,\n"
         "                  num_rows=150,\n"
         "                  schema={\n"
         "                     sepal.length: double,\n"
