@@ -16,7 +16,7 @@ from ray.serve.context import get_global_client
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
-def test_deploy(serve_instance, use_handle):
+def test_deploy_basic(serve_instance, use_handle):
     @serve.deployment(version="1")
     def d(*args):
         return f"1|{os.getpid()}"

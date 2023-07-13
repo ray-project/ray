@@ -195,6 +195,7 @@ class DeploymentInfo:
         is_driver_deployment: Optional[bool] = False,
         app_name: Optional[str] = None,
         route_prefix: str = None,
+        docs_path: str = None,
     ):
         self.deployment_config = deployment_config
         self.replica_config = replica_config
@@ -213,6 +214,7 @@ class DeploymentInfo:
 
         self.app_name = app_name
         self.route_prefix = route_prefix
+        self.docs_path = docs_path
         if deployment_config.autoscaling_config is not None:
             self.autoscaling_policy = BasicAutoscalingPolicy(
                 deployment_config.autoscaling_config
