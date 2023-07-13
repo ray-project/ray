@@ -7,6 +7,7 @@ import time
 import ray
 from ray import tune
 from ray.air import Checkpoint, session
+from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO
 
@@ -99,6 +100,10 @@ def run_tune(
         }
     else:
         raise RuntimeError(f"Unknown trainable: {trainable}")
+
+    if not no_syncer and storage_path is None:
+        # syncer="auto" + storage_path=None -> legacy head node syncing path
+        os.environ[REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE] = "1"
 
     tune.run(
         train,

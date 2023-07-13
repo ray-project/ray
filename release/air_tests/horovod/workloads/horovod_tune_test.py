@@ -183,6 +183,7 @@ if __name__ == "__main__":
             failure_config=FailureConfig(fail_fast=False),
             checkpoint_config=CheckpointConfig(num_to_keep=1),
             callbacks=[ProgressCallback()],
+            storage_path="/mnt/cluster_storage",
         ),
     )
 

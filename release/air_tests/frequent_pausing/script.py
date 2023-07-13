@@ -16,7 +16,7 @@ cost: A few dollars.
 
 import numpy as np
 
-from ray.air import session
+from ray.air import session, RunConfig
 from ray.air.checkpoint import Checkpoint
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.tune.tune_config import TuneConfig
@@ -49,6 +49,7 @@ class FrequentPausesScheduler(FIFOScheduler):
 tuner = Tuner(
     func,
     tune_config=TuneConfig(num_samples=2, scheduler=FrequentPausesScheduler()),
+    run_config=RunConfig(storage_path="/mnt/cluster_storage", name="frequent_pausing"),
 )
 
 tuner.fit()
