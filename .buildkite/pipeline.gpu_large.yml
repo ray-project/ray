@@ -84,6 +84,6 @@
     - PYTHON=3.8 DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ./ci/env/install-dependencies.sh
     - pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
     - pip uninstall -y pytorch-lightning
-    - pip install lightning==2.0.0
+    - pip install lightning==2.0.4 pytorch-lightning==2.0.4  # todo move to requirements-test.txt
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./scripts/bazel_export_options) --test_tag_filters=ptl_v2 python/ray/train/...
