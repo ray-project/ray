@@ -112,7 +112,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples = builder.build()
         columns = [k[0] for k in key] if isinstance(key, list) else None
         sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
-        indices = np.lexsort(list(reversed((sample_dict.values()))))
+        indices = np.lexsort(list(reversed(list(sample_dict.values()))))
         sample_dict = {
             k: [
                 np.quantile(v[indices], q, interpolation="nearest")
