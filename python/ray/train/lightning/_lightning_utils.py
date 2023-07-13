@@ -102,9 +102,7 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
 
     def setup_distributed(self):
-        # Device ranks have already been specified in RayEnvironment
-        # Clear parallel_devices to skip deepspeed local rank checks
-        self.parallel_devices = []
+        self.parallel_devices = list(range(torch.cuda.device_count()))
         super().setup_distributed()
 
     @property
