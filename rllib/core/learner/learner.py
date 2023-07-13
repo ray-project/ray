@@ -35,7 +35,6 @@ from ray.rllib.core.rl_module.rl_module import (
     SingleAgentRLModuleSpec,
 )
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -1351,9 +1350,6 @@ class Learner:
 
         for pid, policy_batch in batch.policy_batches.items():
             if self.module[pid].is_stateful():
-                assert (
-                    policy_batch.get(SampleBatch.SEQ_LENS, None) is not None
-                ), "Recurrent modules require a `seq_lens` tensor in the policy batch."
                 # We assume that arriving batches for recurrent modules are already
                 # padded to the max sequence length and have tensors of shape
                 # [B, T, ...]. Therefore, we slice sequence lengths in B. See

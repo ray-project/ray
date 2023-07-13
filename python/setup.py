@@ -43,8 +43,15 @@ BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
 THIRDPARTY_SUBDIR = os.path.join("ray", "thirdparty_files")
+RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR = os.path.join(
+    "ray", "_private", "runtime_env", "agent", "thirdparty_files"
+)
 
-CLEANABLE_SUBDIRS = [PICKLE5_SUBDIR, THIRDPARTY_SUBDIR]
+CLEANABLE_SUBDIRS = [
+    PICKLE5_SUBDIR,
+    THIRDPARTY_SUBDIR,
+    RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR,
+]
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
@@ -256,9 +263,7 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "client": [
-            # The Ray client needs a specific range of gRPC to work:
-            # Tracking issue: https://github.com/grpc/grpc/issues/31885
-            "grpcio >= 1.42.0, <= 1.50.0",
+            "grpcio",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
@@ -557,6 +562,20 @@ def build(build_python, build_java, build_cpp):
             + pip_packages,
             env=dict(os.environ, CC="gcc"),
         )
+
+    # runtime env agent dependenceis
+    runtime_env_agent_pip_packages = ["aiohttp"]
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            "-q",
+            "--target=" + os.path.join(ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR),
+        ]
+        + runtime_env_agent_pip_packages
+    )
 
     bazel_flags = ["--verbose_failures"]
     if BAZEL_ARGS:

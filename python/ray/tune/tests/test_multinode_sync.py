@@ -8,6 +8,7 @@ from typing import List
 import ray
 from ray import tune
 from ray.air.config import CheckpointConfig
+from ray.air.constants import REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE
 from ray.air.util.node import _force_on_node
 from ray.autoscaler._private.fake_multi_node.node_provider import FAKE_HEAD_NODE_ID
 from ray.autoscaler._private.fake_multi_node.test_utils import DockerCluster
@@ -206,7 +207,11 @@ class MultiNodeSyncTest(unittest.TestCase):
         )
         # Connect via Ray client and wait until all nodes are there
         self.cluster.start()
-        self.cluster.connect(client=True, timeout=120)
+        self.cluster.connect(
+            client=True,
+            timeout=120,
+            runtime_env={"env_vars": {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE: "1"}},
+        )
         self.cluster.wait_for_resources({"CPU": 12})
 
         # This train function trains for 10 iterations per run

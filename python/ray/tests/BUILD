@@ -201,6 +201,7 @@ py_test_module_list(
     "test_mini.py",
     "test_minimal_install.py",
     "test_numba.py",
+    "test_runtime_env_agent.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
@@ -220,7 +221,7 @@ py_test_module_list(
     "test_gcs_ha_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "ray_ha", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
