@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Optional, Type, Tuple, Union
 from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air.config import RunConfig, ScalingConfig
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.torch import TorchConfig
 from ray.train.trainer import GenDataset
 

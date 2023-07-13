@@ -6,7 +6,7 @@ from ray.air.checkpoint import Checkpoint
 from ray.air.config import CheckpointConfig
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.trainer import TrainingIterator
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 
 import ray
 from ray.air import session

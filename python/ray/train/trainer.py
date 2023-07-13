@@ -8,7 +8,7 @@ from ray.air import session
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.util import StartTraceback
 from ray.data import Dataset
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train._internal.backend_executor import (
     BackendExecutor,
     InactiveWorkerGroupError,

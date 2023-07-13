@@ -18,7 +18,7 @@ from ray.train._internal.backend_executor import (
     TrainingWorkerError,
 )
 
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train._internal.worker_group import WorkerGroup, WorkerMetadata
 from ray.train.backend import Backend, BackendConfig
 from ray.train.constants import (

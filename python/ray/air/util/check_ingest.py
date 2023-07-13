@@ -13,7 +13,7 @@ from ray.data import Dataset, DataIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.util.annotations import DeveloperAPI
 
 
