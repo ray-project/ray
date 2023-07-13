@@ -19,7 +19,7 @@ pip --no-cache-dir install -U pip pip-tools
 # Install requirements
 pip --no-cache-dir install -U -r requirements.txt
 
-# Install other requirements. Keep pinned requirements bounds as constraints.
+# Install other requirements. Keep pinned requirements bounds as constraints
 pip --no-cache-dir install -U \
            -c requirements.txt \
            -c requirements_compiled.txt \
