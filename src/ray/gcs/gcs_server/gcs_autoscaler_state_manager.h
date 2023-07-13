@@ -56,6 +56,11 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
 
  private:
+  /// \brief Internal method for populating the rpc::ClusterResourceState
+  /// protobuf.
+  /// \param state The state to be filled.
+  void MakeClusterResourceStateInternal(rpc::autoscaler::ClusterResourceState *state);
+
   /// \brief Increment and get the next cluster resource state version.
   /// \return The incremented cluster resource state version.
   int64_t IncrementAndGetNextClusterResourceStateVersion() {
