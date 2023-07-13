@@ -20,8 +20,8 @@
 #include <vector>
 
 #include "ray/common/id.h"
+#include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/raylet/format/node_manager_generated.h"
-#include "ray/raylet/scheduling/cluster_resource_data.h"
 
 namespace ray {
 
