@@ -362,14 +362,6 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone_4",
-    size = "large",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_cluster",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -694,6 +686,22 @@ py_test(
 py_test(
     name = "test_endpoint_state",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_app_1",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_app_2",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
