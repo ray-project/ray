@@ -309,35 +309,10 @@ class ApplicationState:
             RayServeException: If there is more than one deployment with
                 a non-null route prefix or docs path.
         """
-        # Makes sure that at most one deployment has a non-null route
-        # prefix and docs path.
-        num_route_prefixes = 0
-        num_docs_paths = 0
-        for deploy_param in deployment_params:
-            if deploy_param.get("route_prefix") is not None:
-                self._route_prefix = deploy_param["route_prefix"]
-                num_route_prefixes += 1
-
-            if deploy_param.get("docs_path") is not None:
-                self._docs_path = deploy_param["docs_path"]
-                num_docs_paths += 1
-        if num_route_prefixes > 1:
-            raise RayServeException(
-                f'Found multiple route prefixes from application "{self._name}",'
-                " Please specify only one route prefix for the application "
-                "to avoid this issue."
-            )
-        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
-        # if user sets the docs path to None in their FastAPI app.
-        if num_docs_paths > 1:
-            raise RayServeException(
-                f'Found multiple deployments in application "{self._name}" that have '
-                "a docs path. This may be due to using multiple FastAPI deployments "
-                "in your application. Please only include one deployment with a docs "
-                "path in your application to avoid this issue."
-            )
 
         for params in deployment_params:
+            if params["docs_path"] is not None:
+                self._docs_path = params["docs_path"]
             params["deployment_name"] = params.pop("name")
             params["app_name"] = self._name
 
@@ -345,6 +320,12 @@ class ApplicationState:
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
             for params in deployment_params
         }
+
+        # Check route prefix
+        self._route_prefix, self._docs_path = self._check_deployment_routes(
+            deployment_infos
+        )
+
         self._set_target_state(
             deployment_infos=deployment_infos,
             code_version=code_version,
@@ -498,11 +479,59 @@ class ApplicationState:
 
         return None, BuildAppStatus.IN_PROGRESS, ""
 
-    def _reconcile_target_deployments(self) -> None:
+    def _check_deployment_routes(
+        self, deployment_infos: Dict[str, DeploymentInfo]
+    ) -> Tuple[str, str]:
+        """Check route prefixes and docs paths of deployments in app.
+
+        There should only be one non-null route prefix. If there is one,
+        set it as the application route prefix. This function must be
+        run every control loop iteration because the target config could
+        be updated without kicking off a new task.
+
+        Returns: tuple of route prefix, docs path.
+        Raises: RayServeException if more than one route prefix or docs
+            path is found among deployments.
+        """
+        num_route_prefixes = 0
+        num_docs_paths = 0
+        route_prefix = None
+        docs_path = None
+        for info in deployment_infos.values():
+            # Update route prefix of application, which may be updated
+            # through a redeployed config.
+            if info.route_prefix is not None:
+                route_prefix = info.route_prefix
+                num_route_prefixes += 1
+            if info.docs_path is not None:
+                docs_path = info.docs_path
+                num_docs_paths += 1
+
+        if num_route_prefixes > 1:
+            raise RayServeException(
+                f'Found multiple route prefixes from application "{self._name}",'
+                " Please specify only one route prefix for the application "
+                "to avoid this issue."
+            )
+        # NOTE(zcin) This will not catch multiple FastAPI deployments in the application
+        # if user sets the docs path to None in their FastAPI app.
+        if num_docs_paths > 1:
+            raise RayServeException(
+                f'Found multiple deployments in application "{self._name}" that have '
+                "a docs path. This may be due to using multiple FastAPI deployments "
+                "in your application. Please only include one deployment with a docs "
+                "path in your application to avoid this issue."
+            )
+
+        return route_prefix, docs_path
+
+    def _reconcile_target_deployments(self) -> Optional[str]:
         """Reconcile target deployments in application target state.
 
         Ensure each deployment is running on up-to-date info, and
         remove outdated deployments from the application.
+
+        Returns: error is there is any
         """
 
         # Apply override options from target config to each deployment
@@ -511,6 +540,13 @@ class ApplicationState:
             self._target_state.deployment_infos,
             self._target_state.config,
         )
+        try:
+            self._route_prefix, self._docs_path = self._check_deployment_routes(
+                overrided_infos
+            )
+        except RayServeException as e:
+            return repr(e)
+
         # Set target state for each deployment
         for deployment_name, info in overrided_infos.items():
             self.apply_deployment_info(deployment_name, info)
@@ -541,10 +577,13 @@ class ApplicationState:
         # have info on what the target list of deployments is, so don't
         # perform reconciliation or check on deployment statuses
         if self._target_state.deployment_infos is not None:
-            self._reconcile_target_deployments()
-
-            status, status_msg = self._determine_app_status()
-            self._update_status(status, status_msg)
+            err = self._reconcile_target_deployments()
+            if err:
+                logger.info(f"Failed to deploy application {self._name}: {err}")
+                self._update_status(ApplicationStatus.DEPLOY_FAILED, err)
+            else:
+                status, status_msg = self._determine_app_status()
+                self._update_status(status, status_msg)
 
         # Check if app is ready to be deleted
         if self._target_state.deleting:

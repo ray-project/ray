@@ -84,6 +84,7 @@ def deploy_args_to_deployment_info(
     replica_config_proto_bytes: bytes,
     deployer_job_id: Union[str, bytes],
     route_prefix: Optional[str],
+    docs_path: Optional[str],
     is_driver_deployment: Optional[bool] = False,
     app_name: Optional[str] = None,
     **kwargs,
@@ -114,6 +115,7 @@ def deploy_args_to_deployment_info(
         is_driver_deployment=is_driver_deployment,
         app_name=app_name,
         route_prefix=route_prefix,
+        docs_path=docs_path,
     )
 
 
