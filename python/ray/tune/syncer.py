@@ -79,6 +79,30 @@ _EXCLUDE_FROM_SYNC = [
     f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
+_SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
+    "Ray AIR no longer supports the synchronization of checkpoints and other "
+    "artifacts from worker nodes to the head node. This means that the "
+    "checkpoints and artifacts saved by trials scheduled on worker nodes will not be "
+    "accessible during the run (e.g., resuming from a checkpoint "
+    "after a failure) or after the run "
+    "(e.g., loading the checkpoint of a trial that ran on an already "
+    "terminated worker node).\n\n"
+    "To fix this issue, configure AIR to use either:\n"
+    "(1) Cloud storage: `RunConfig(storage_path='s3://your/bucket')`\n"
+    "(2) A network filesystem mounted on all nodes: "
+    "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
+    "See this Github issue for more details on transitioning to cloud storage/NFS "
+    "as well as an explanation on why this functionality is "
+    "being removed: https://github.com/ray-project/ray/issues/37177\n\n"
+    "Other temporary workarounds:\n"
+    "- If you want to avoid errors/warnings and continue running with "
+    "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
+    "- Or, to re-enable the head node syncing behavior, set the "
+    f"environment variable {REENABLE_DEPRECATED_SYNC_TO_HEAD_NODE}=1\n"
+    "  - **Note that this functionality will tentatively be hard-deprecated in "
+    "Ray 2.7.** See the linked issue for the latest information."
+)
+
 
 class _HeadNodeSyncDeprecationWarning(DeprecationWarning):
     """Error raised when trying to rely on deprecated head node syncing when
@@ -944,7 +968,7 @@ class SyncerCallback(Callback):
             # that means that it lives on some other node and would be synced to head
             # prior to Ray 2.6.
             if not os.path.exists(checkpoint.dir_or_data):
-                raise _HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+                raise DeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             # else:
             #   No need to raise an error about syncing, since the driver can find
             #   the checkpoint, because either:
