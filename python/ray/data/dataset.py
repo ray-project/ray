@@ -3621,6 +3621,7 @@ class Dataset:
             Tuple[Any],
             None,
         ] = None,
+        verify_meta: bool = True,
     ) -> "dask.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a
         `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
@@ -3642,6 +3643,8 @@ class Dataset:
                 tuple of ``(name, dtype)`` can be used.
                 By default, this is inferred from the underlying Dataset schema,
                 with this argument supplying an optional override.
+            verify_meta: If True, Dask will check that the partitions have consistent
+                metadata. Defaults to True.
 
         Returns:
             A `Dask DataFrame`_ created from this dataset.
@@ -3714,6 +3717,7 @@ class Dataset:
         ddf = dd.from_delayed(
             [block_to_df(block) for block in self.get_internal_block_refs()],
             meta=meta,
+            verify_meta=verify_meta,
         )
         return ddf
 
