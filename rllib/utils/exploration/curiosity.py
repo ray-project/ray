@@ -30,7 +30,6 @@ if nn is not None:
     F = nn.functional
 
 
-@Deprecated(error=False)
 class Curiosity(Exploration):
     """Implementation of:
     [1] Curiosity-driven Exploration by Self-supervised Prediction

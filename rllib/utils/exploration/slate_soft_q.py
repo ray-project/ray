@@ -11,7 +11,6 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
 class SlateSoftQ(SoftQ):
     @override(SoftQ)
     def get_exploration_action(

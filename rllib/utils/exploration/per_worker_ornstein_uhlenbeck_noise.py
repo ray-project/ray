@@ -6,7 +6,6 @@ from ray.rllib.utils.exploration.ornstein_uhlenbeck_noise import OrnsteinUhlenbe
 from ray.rllib.utils.schedules import ConstantSchedule
 
 
-@Deprecated(error=False)
 class PerWorkerOrnsteinUhlenbeckNoise(OrnsteinUhlenbeckNoise):
     """A per-worker Ornstein Uhlenbeck noise class for distributed algorithms.
 

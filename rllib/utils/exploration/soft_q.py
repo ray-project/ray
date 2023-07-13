@@ -10,7 +10,6 @@ from ray.rllib.utils.exploration.stochastic_sampling import StochasticSampling
 from ray.rllib.utils.framework import TensorType
 
 
-@Deprecated(error=False)
 class SoftQ(StochasticSampling):
     """Special case of StochasticSampling w/ Categorical and temperature param.
 

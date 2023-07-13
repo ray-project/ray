@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 _, nn = try_import_torch()
 
 
-@Deprecated(error=False)
 class Exploration:
     """Implements an exploration strategy for Policies.
 

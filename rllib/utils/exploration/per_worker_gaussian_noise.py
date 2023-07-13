@@ -6,7 +6,6 @@ from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise
 from ray.rllib.utils.schedules import ConstantSchedule
 
 
-@Deprecated(error=False)
 class PerWorkerGaussianNoise(GaussianNoise):
     """A per-worker Gaussian noise class for distributed algorithms.
 

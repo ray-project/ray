@@ -79,7 +79,6 @@ class _MovingMeanStd:
         return np.sqrt(self.var)
 
 
-@Deprecated(error=False)
 def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float:
     """Update beta based on schedule and training step.
 
@@ -97,7 +96,6 @@ def update_beta(beta_schedule: str, beta: float, rho: float, step: int) -> float
     return beta
 
 
-@Deprecated(error=False)
 def compute_states_entropy(
     obs_embeds: np.ndarray, embed_dim: int, k_nn: int
 ) -> np.ndarray:
@@ -117,7 +115,6 @@ def compute_states_entropy(
     return dist.argsort(axis=-1)[:, :k_nn][:, -1].astype(np.float32)
 
 
-@Deprecated(error=False)
 class RE3(Exploration):
     """Random Encoder for Efficient Exploration.
 

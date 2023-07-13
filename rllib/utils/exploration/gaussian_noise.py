@@ -23,7 +23,6 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
 class GaussianNoise(Exploration):
     """An exploration that adds white noise to continuous actions.
 

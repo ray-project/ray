@@ -6,7 +6,6 @@ from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.schedules import ConstantSchedule
 
 
-@Deprecated(error=False)
 class PerWorkerEpsilonGreedy(EpsilonGreedy):
     """A per-worker epsilon-greedy class for distributed algorithms.
 

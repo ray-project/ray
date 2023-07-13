@@ -18,7 +18,6 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
 class Random(Exploration):
     """A random action selector (deterministic/greedy for explore=False).
 

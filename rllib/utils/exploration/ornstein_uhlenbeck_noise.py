@@ -19,7 +19,6 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
 class OrnsteinUhlenbeckNoise(GaussianNoise):
     """An exploration that adds Ornstein-Uhlenbeck noise to continuous actions.
 
