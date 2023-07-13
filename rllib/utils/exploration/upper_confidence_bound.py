@@ -1,6 +1,5 @@
 from typing import Union
 
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.exploration import Exploration

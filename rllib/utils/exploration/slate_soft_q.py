@@ -2,7 +2,6 @@ from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.exploration import TensorType
 from ray.rllib.utils.exploration.soft_q import SoftQ
 from ray.rllib.utils.framework import try_import_tf, try_import_torch

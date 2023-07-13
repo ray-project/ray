@@ -1,7 +1,6 @@
 from gymnasium.spaces import Space
 from typing import Optional
 
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.exploration.ornstein_uhlenbeck_noise import OrnsteinUhlenbeckNoise
 from ray.rllib.utils.schedules import ConstantSchedule
 

@@ -1,7 +1,6 @@
 import numpy as np
 from typing import Optional, Union
 
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.exploration.gaussian_noise import GaussianNoise

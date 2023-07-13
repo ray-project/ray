@@ -6,7 +6,6 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
 
@@ -214,8 +213,4 @@ class Exploration:
             state: The state to set this Exploration to.
             sess: An optional tf Session object to use.
         """
-        pass
-
-    @Deprecated(new="get_state", error=True)
-    def get_info(self, sess: Optional["tf.Session"] = None):
         pass
