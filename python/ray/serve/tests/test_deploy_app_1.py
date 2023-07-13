@@ -18,19 +18,10 @@ from ray._private.test_utils import (
     wait_for_condition,
     SignalActor,
 )
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
-from ray.serve._private.constants import (
-    SERVE_NAMESPACE,
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
-from ray.serve.schema import (
-    ServeApplicationSchema,
-    ServeDeploySchema,
-    ServeInstanceDetails,
-)
+from ray.serve._private.common import ApplicationStatus, ReplicaState
+from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 
 
 @pytest.fixture

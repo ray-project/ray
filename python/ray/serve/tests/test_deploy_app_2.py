@@ -11,13 +11,10 @@ import requests
 import ray
 import ray.actor
 import ray._private.state
-from ray.util.state import list_actors, list_tasks
+from ray.util.state import list_actors
 
 from ray import serve
-from ray._private.test_utils import (
-    wait_for_condition,
-    SignalActor,
-)
+from ray._private.test_utils import wait_for_condition
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
