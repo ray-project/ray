@@ -549,6 +549,7 @@ class ServeController:
             replica_config_proto_bytes=replica_config_proto_bytes,
             deployer_job_id=deployer_job_id,
             route_prefix=route_prefix,
+            docs_path=docs_path,
             is_driver_deployment=is_driver_deployment,
             app_name=app_name,
         )
