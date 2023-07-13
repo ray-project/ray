@@ -30,6 +30,16 @@ def add_common_job_options(func):
     """Decorator for adding CLI flags shared by all `ray job` commands."""
 
     @click.option(
+        "--header",
+        default=None,
+        multiple=True,
+        type=str,
+        help=(
+            "HTTP header(s) to pass to the job submission client, in the same "
+            'format as `curl -H "<header>: <value>"`.'
+        ),
+    )
+    @click.option(
         "--verify",
         default=True,
         show_default=True,
