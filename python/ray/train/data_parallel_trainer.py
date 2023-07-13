@@ -16,7 +16,7 @@ from ray.train import BackendConfig, TrainingIterator
 from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset

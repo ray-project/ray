@@ -7,7 +7,7 @@ import ray
 from ray.air import session
 from ray.air.config import ScalingConfig
 from ray.data import DataIterator
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.data_parallel_trainer import DataParallelTrainer
 
 

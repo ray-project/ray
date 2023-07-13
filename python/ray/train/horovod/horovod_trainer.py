@@ -1,7 +1,7 @@
 from typing import Dict, Callable, Optional, Union, TYPE_CHECKING
 
 from ray.air.config import ScalingConfig, RunConfig
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.air.checkpoint import Checkpoint
 
