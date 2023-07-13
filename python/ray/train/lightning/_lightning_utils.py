@@ -101,6 +101,12 @@ class RayFSDPStrategy(FSDPStrategy):
 class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
 
+    def setup_distributed(self):
+        # Device ranks have already been specified in RayEnvironment
+        # Clear parallel_devices to skip deepspeed local rank checks
+        self.parallel_devices = []
+        super().setup_distributed()
+
     @property
     def root_device(self) -> torch.device:
         return get_worker_root_device()
