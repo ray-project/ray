@@ -42,6 +42,11 @@ class TFModelV2(ModelV2):
                 self.base_model = tf.keras.Model(
                     input_layer, [output_layer, value_layer])
         """
+        if log_once("deprecated_tfmodelv2"):
+            deprecation_warning(
+                old="ray.rllib.models.tf.tf_modelv2.TFModelV2",
+                new="ray.rllib.core.rl_module.RLModule",
+            )
         super().__init__(
             obs_space, action_space, num_outputs, model_config, name, framework="tf"
         )

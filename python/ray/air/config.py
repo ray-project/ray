@@ -296,12 +296,13 @@ class ScalingConfig:
 @dataclass
 @Deprecated(
     message="Use `ray.train.DataConfig` instead of DatasetConfig to "
-    "configure data ingest for training."
+    "configure data ingest for training. "
+    "See https://docs.ray.io/en/master/ray-air/check-ingest.html#migrating-from-the-legacy-datasetconfig-api for more details."  # noqa: E501
 )
 class DatasetConfig:
     """Configuration for ingest of a single Dataset.
 
-    See :ref:`the AIR Dataset configuration guide <air-configure-ingest>` for
+    See :ref:`the AIR Dataset configuration guide <air-ingest>` for
     usage examples.
 
     This config defines how the Dataset should be read into the DataParallelTrainer.

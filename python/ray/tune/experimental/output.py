@@ -185,6 +185,10 @@ def _get_trials_by_state(trials: List[Trial]) -> Dict[str, List[Trial]]:
     return trials_by_state
 
 
+def _get_trials_with_error(trials: List[Trial]) -> List[Trial]:
+    return [t for t in trials if t.error_file]
+
+
 def _infer_user_metrics(trials: List[Trial], limit: int = 4) -> List[str]:
     """Try to infer the metrics to print out.
 
@@ -449,6 +453,11 @@ def _render_table_item(
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
         yield key, f"{item:.5f}".rstrip("0")
+    elif isinstance(item, dict):
+        flattened = flatten_dict(item)
+        for k, v in sorted(flattened.items()):
+            yield key + "/" + str(k), _max_len(v)
+
     else:
         yield key, _max_len(item, 20)
 
@@ -459,6 +468,19 @@ def _get_dict_as_table_data(
     exclude: Optional[Collection] = None,
     upper_keys: Optional[Collection] = None,
 ):
+    """Get ``data`` dict as table rows.
+
+    If specified, excluded keys are removed. Excluded keys can either be
+    fully specified (e.g. ``foo/bar/baz``) or specify a top-level dictionary
+    (e.g. ``foo``), but no intermediate levels (e.g. ``foo/bar``). If this is
+    needed, we can revisit the logic at a later point.
+
+    The same is true for included keys. If a top-level key is included (e.g. ``foo``)
+    then all sub keys will be included, too, except if they are excluded.
+
+    If keys are both excluded and included, exclusion takes precedence. Thus, if
+    ``foo`` is excluded but ``foo/bar`` is included, it won't show up in the output.
+    """
     include = include or set()
     exclude = exclude or set()
     upper_keys = upper_keys or set()
@@ -466,15 +488,23 @@ def _get_dict_as_table_data(
     upper = []
     lower = []
 
-    flattened = flatten_dict(data)
-
-    for key, value in sorted(flattened.items()):
-        if include and key not in include:
-            continue
+    for key, value in sorted(data.items()):
+        # Exclude top-level keys
         if key in exclude:
             continue
 
         for k, v in _render_table_item(str(key), value):
+            # k is now the full subkey, e.g. config/nested/key
+
+            # We can exclude the full key
+            if k in exclude:
+                continue
+
+            # If we specify includes, top-level includes should take precedence
+            # (e.g. if `config` is in include, include config always).
+            if include and key not in include and k not in include:
+                continue
+
             if key in upper_keys:
                 upper.append([k, v])
             else:
@@ -754,7 +784,7 @@ class TuneTerminalReporter(TuneReporterBase):
         # now print the table using Tabulate
         more_infos = []
         all_data = []
-        header = table_data.header
+        fail_header = table_data.header
         for sub_table in table_data.data:
             all_data.extend(sub_table.trial_infos)
             if sub_table.more_info:
@@ -763,13 +793,40 @@ class TuneTerminalReporter(TuneReporterBase):
         print(
             tabulate(
                 all_data,
-                headers=header,
+                headers=fail_header,
                 tablefmt=AIR_TABULATE_TABLEFMT,
                 showindex=False,
             )
         )
         if more_infos:
             print(", ".join(more_infos))
+        print()
+
+        trials_with_error = _get_trials_with_error(trials)
+        if not trials_with_error:
+            return
+
+        print(f"Number of errored trials: {len(trials_with_error)}")
+        fail_header = ["Trial name", "# failures", "error file"]
+        fail_table_data = [
+            [
+                str(trial),
+                str(trial.num_failures) + ("" if trial.status == Trial.ERROR else "*"),
+                trial.error_file,
+            ]
+            for trial in trials_with_error
+        ]
+        print(
+            tabulate(
+                fail_table_data,
+                headers=fail_header,
+                tablefmt=AIR_TABULATE_TABLEFMT,
+                showindex=False,
+                colalign=("left", "right", "left"),
+            )
+        )
+        if any(trial.status == Trial.TERMINATED for trial in trials_with_error):
+            print("* The trial terminated successfully after retrying.")
         print()
 
 
@@ -782,8 +839,15 @@ class TuneRichReporter(TuneReporterBase):
         num_samples: int,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
+        config: Optional[Dict] = None,
     ):
-        super().__init__(verbosity, num_samples, metric, mode)
+        super().__init__(
+            verbosity=verbosity,
+            num_samples=num_samples,
+            metric=metric,
+            mode=mode,
+            config=config,
+        )
         self._live = None
 
     # since sticky table, we can afford to do that more often.
@@ -978,6 +1042,7 @@ class AirResultProgressCallback(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
+        print("")
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
@@ -990,10 +1055,11 @@ class AirResultProgressCallback(Callback):
             finished_iter = trial.last_result[TRAINING_ITERATION]
         print(
             f"{self._addressing_tmpl.format(trial)} "
-            f"completed training after {finished_iter} iterations "
+            f"completed after {finished_iter} iterations "
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
+        print("")
 
     def on_checkpoint(
         self,
@@ -1014,6 +1080,7 @@ class AirResultProgressCallback(Callback):
             f"saved a checkpoint for iteration {saved_iter} "
             f"at: {checkpoint.dir_or_data}"
         )
+        print("")
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self._verbosity < self._start_end_verbosity:
@@ -1030,6 +1097,7 @@ class AirResultProgressCallback(Callback):
                 f"{self._addressing_tmpl.format(trial)} "
                 f"started without custom configuration."
             )
+        print("")
 
 
 class TuneResultProgressCallback(AirResultProgressCallback):

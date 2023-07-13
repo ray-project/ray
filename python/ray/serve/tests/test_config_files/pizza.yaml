@@ -1,12 +1,19 @@
 import_path: ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag
 
 deployments:
+  - name: DAGDriver
+    graceful_shutdown_timeout_s: 0.0001
+
+  - name: Router
+    graceful_shutdown_timeout_s: 0.0001
 
   - name: Multiplier
+    graceful_shutdown_timeout_s: 0.0001
     user_config:
       factor: 1
 
   - name: Adder
+    graceful_shutdown_timeout_s: 0.0001
     ray_actor_options:
       runtime_env:
         env_vars:

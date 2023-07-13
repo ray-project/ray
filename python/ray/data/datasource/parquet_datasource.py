@@ -288,6 +288,25 @@ class _ParquetDatasourceReader(Reader):
 
             if meta.size_bytes is not None:
                 meta.size_bytes = int(meta.size_bytes * self._encoding_ratio)
+
+            if meta.num_rows and meta.size_bytes:
+                # Make sure the batches read are small enough to enable yielding of
+                # output blocks incrementally during the read.
+                row_size = meta.size_bytes / meta.num_rows
+                # Make sure the row batch size is small enough that block splitting
+                # is still effective.
+                max_parquet_reader_row_batch_size = (
+                    DataContext.get_current().target_max_block_size // 10
+                )
+                default_read_batch_size = max(
+                    1,
+                    min(
+                        PARQUET_READER_ROW_BATCH_SIZE,
+                        max_parquet_reader_row_batch_size // row_size,
+                    ),
+                )
+            else:
+                default_read_batch_size = PARQUET_READER_ROW_BATCH_SIZE
             block_udf, reader_args, columns, schema = (
                 self._block_udf,
                 self._reader_args,
@@ -299,6 +318,7 @@ class _ParquetDatasourceReader(Reader):
                     lambda p=serialized_pieces: _read_pieces(
                         block_udf,
                         reader_args,
+                        default_read_batch_size,
                         columns,
                         schema,
                         p,
@@ -363,7 +383,12 @@ class _ParquetDatasourceReader(Reader):
 
 
 def _read_pieces(
-    block_udf, reader_args, columns, schema, serialized_pieces: List[_SerializedPiece]
+    block_udf,
+    reader_args,
+    default_read_batch_size,
+    columns,
+    schema,
+    serialized_pieces: List[_SerializedPiece],
 ) -> Iterator["pyarrow.Table"]:
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
@@ -387,7 +412,7 @@ def _read_pieces(
 
     logger.debug(f"Reading {len(pieces)} parquet pieces")
     use_threads = reader_args.pop("use_threads", False)
-    batch_size = reader_args.pop("batch_size", PARQUET_READER_ROW_BATCH_SIZE)
+    batch_size = reader_args.pop("batch_size", default_read_batch_size)
     for piece in pieces:
         part = _get_partition_keys(piece.partition_expression)
         batches = piece.to_batches(

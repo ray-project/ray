@@ -96,6 +96,16 @@ class GcsServer {
   /// Check if gcs server is stopped.
   bool IsStopped() const { return is_stopped_; }
 
+  // TODO(vitsai): string <=> enum generator macro
+  enum class StorageType {
+    UNKNOWN = 0,
+    IN_MEMORY = 1,
+    REDIS_PERSIST = 2,
+  };
+
+  static constexpr char kInMemoryStorage[] = "memory";
+  static constexpr char kRedisStorage[] = "redis";
+
  protected:
   /// Generate the redis client options
   RedisClientOptions GetRedisClientOptions() const;
@@ -144,6 +154,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Initialize KV service.
+  void InitKVService();
+
   /// Initialize function manager.
   void InitFunctionManager();
 
@@ -161,7 +174,7 @@ class GcsServer {
 
  private:
   /// Gets the type of KV storage to use from config.
-  std::string StorageType() const;
+  StorageType GetStorageType() const;
 
   /// Print debug info periodically.
   std::string GetDebugState() const;
@@ -171,6 +184,11 @@ class GcsServer {
 
   /// Collect stats from each module.
   void RecordMetrics() const;
+
+  /// Get cluster id if persisted, otherwise generate
+  /// a new one and persist as necessary.
+  /// Expected to be idempotent while server is up.
+  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();
@@ -183,7 +201,7 @@ class GcsServer {
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
-  const std::string storage_type_;
+  const StorageType storage_type_;
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
   /// The io service used by Pubsub, for isolation from other workload.
@@ -203,7 +221,7 @@ class GcsServer {
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// The gcs node manager.
-  std::shared_ptr<GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
