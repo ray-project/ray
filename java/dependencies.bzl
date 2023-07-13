@@ -9,7 +9,7 @@ def gen_java_deps():
             "com.google.code.gson:gson:2.9.1",
             "com.google.guava:guava:30.0-jre",
             "com.google.protobuf:protobuf-java:3.19.6",
-            "com.google.protobuf:protobuf-java-util:3.19.4",
+            "com.google.protobuf:protobuf-java-util:3.19.6",
             "com.puppycrawl.tools:checkstyle:8.15",
             "com.sun.xml.bind:jaxb-core:2.3.0",
             "com.sun.xml.bind:jaxb-impl:2.3.0",
