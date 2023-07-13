@@ -225,7 +225,7 @@ class RayModelCheckpoint(ModelCheckpoint):
             if isinstance(v, torch.Tensor):
                 metrics[k] = v.item()
 
-        # Ensures all workers already finish writing their checkpoints.
+        # Ensures all workers already finish writing their checkpoints
         trainer.strategy.barrier()
 
         # Create and report the latest checkpoint
