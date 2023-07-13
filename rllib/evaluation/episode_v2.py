@@ -370,7 +370,9 @@ class EpisodeV2:
     def set_last_info(self, agent_id: AgentID, info: Dict):
         self._last_infos[agent_id] = info
 
-    def last_info_for(self, agent_id: AgentID = _DUMMY_AGENT_ID) -> Optional[EnvInfoDict]:
+    def last_info_for(
+        self, agent_id: AgentID = _DUMMY_AGENT_ID
+    ) -> Optional[EnvInfoDict]:
         return self._last_infos.get(agent_id)
 
     @property
