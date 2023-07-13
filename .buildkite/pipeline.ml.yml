@@ -564,6 +564,15 @@
     - ./ci/env/env_info.sh
     - pytest rllib_contrib/maml/tests/test_maml.py
 
+- label: ":exploding_death_star: RLlib Contrib: A2C Tests"
+  conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (cd rllib_contrib/a2c && pip install -r requirements.txt && pip install -e .)
+    - ./ci/env/env_info.sh
+    - pytest rllib_contrib/a2c/tests/
+    - python rllib_contrib/a2c/examples/a2c_cartpole_v1.py --run-as-test
+
 - label: ":exploding_death_star: RLlib Contrib: R2D2 Tests"
   conditions: ["NO_WHEELS_REQUIRED", "RAY_CI_RLLIB_CONTRIB_AFFECTED"]
   commands:
