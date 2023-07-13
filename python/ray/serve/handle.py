@@ -82,6 +82,20 @@ class HandleOptions:
         )
 
 
+class DeploymentHandleFuture(asyncio.Task):
+    def __init__(self, assign_request_task: Coroutine):
+        self._task = assign_request_task
+
+    def __await__(self):
+        return self._fut.__await__()
+
+    async def obj_ref(self):
+
+    async def result(self):
+        obj_ref = await self._assign_request_coro
+        return await obj_ref
+
+
 @PublicAPI(stability="beta")
 class RayServeHandle:
     """A handle used to make requests from one deployment to another.
@@ -236,7 +250,7 @@ class RayServeHandle:
         )
 
     @_wrap_into_async_task
-    async def remote(self, *args, **kwargs) -> asyncio.Task:
+    async def remote(self, *args, **kwargs) -> DeploymentHandleFuture:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -252,8 +266,10 @@ class RayServeHandle:
             result = await obj_ref
 
         """
-        return await self._remote(
-            self.deployment_name, self.handle_options, args, kwargs
+        return DeploymentHandleFuture(
+            self._remote(
+                self.deployment_name, self.handle_options, args, kwargs
+            )
         )
 
     def __repr__(self):
