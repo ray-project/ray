@@ -320,6 +320,12 @@ class ApplicationState:
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
             for params in deployment_params
         }
+
+        # Check route prefix
+        self._route_prefix, self._docs_path = self._check_deployment_routes(
+            deployment_infos
+        )
+
         self._set_target_state(
             deployment_infos=deployment_infos,
             code_version=code_version,
@@ -534,6 +540,13 @@ class ApplicationState:
             self._target_state.deployment_infos,
             self._target_state.config,
         )
+        try:
+            self._route_prefix, self._docs_path = self._check_deployment_routes(
+                overrided_infos
+            )
+        except RayServeException as e:
+            return repr(e)
+
         # Set target state for each deployment
         for deployment_name, info in overrided_infos.items():
             self.apply_deployment_info(deployment_name, info)

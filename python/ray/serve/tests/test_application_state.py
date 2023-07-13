@@ -1,7 +1,7 @@
 import pytest
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import patch, PropertyMock, Mock, MagicMock
+from unittest.mock import patch, PropertyMock, Mock
 
 from ray.exceptions import RayTaskError
 
@@ -408,16 +408,8 @@ def test_app_unhealthy(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
-@patch(
-    "ray.serve._private.application_state.override_deployment_info",
-    MagicMock(side_effect=lambda _a, deployment_infos, _b: deployment_infos),
-)
-@patch(
-    "ray.serve._private.application_state.get_app_code_version",
-    Mock(return_value="123"),
-)
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a")], None)))
+@patch("ray.get", Mock(return_value=([deployment_params("a", "/old", "/docs")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
@@ -430,7 +422,8 @@ def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     )
 
     # Deploy config
-    app_state_manager.deploy_config(name="test_app", app_config=Mock())
+    app_config = ServeApplicationSchema(import_path="fa.ke", route_prefix="/new")
+    app_state_manager.deploy_config(name="test_app", app_config=app_config)
     app_state = app_state_manager._application_states["test_app"]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
