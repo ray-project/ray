@@ -10,6 +10,7 @@ def run_with_tuner_n_rollout_worker_2_gpu(config):
         "PPO",
         param_space=config,
         run_config=air.RunConfig(
+            storage_path="/mnt/cluster_storage",
             stop={"timesteps_total": 128},
             failure_config=air.FailureConfig(fail_fast=True),
         ),
@@ -24,6 +25,7 @@ def run_with_tuner_0_rollout_worker_2_gpu(config):
         "PPO",
         param_space=config,
         run_config=air.RunConfig(
+            storage_path="/mnt/cluster_storage",
             stop={"timesteps_total": 128},
             failure_config=air.FailureConfig(fail_fast=True),
         ),
@@ -43,6 +45,7 @@ def run_tuner_n_rollout_workers_0_gpu(config):
         "PPO",
         param_space=config,
         run_config=air.RunConfig(
+            storage_path="/mnt/cluster_storage",
             stop={"timesteps_total": 128},
             failure_config=air.FailureConfig(fail_fast=True),
         ),
@@ -62,6 +65,7 @@ def run_tuner_n_rollout_workers_1_gpu_local(config):
         "PPO",
         param_space=config,
         run_config=air.RunConfig(
+            storage_path="/mnt/cluster_storage",
             stop={"timesteps_total": 128},
             failure_config=air.FailureConfig(fail_fast=True),
         ),
