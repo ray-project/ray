@@ -54,7 +54,6 @@ requests
 pandas
 tensorboardX<=2.6.0,>=1.9  # >=2.6.1 uses protobuf>=4, and conflicts with other packages.
 gymnasium==0.26.3
-grpcio<=1.50.0,>=1.42.0  # ray client
 aiohttp>=3.7
 starlette
 typer
