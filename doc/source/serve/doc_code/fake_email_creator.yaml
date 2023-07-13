@@ -13,7 +13,6 @@ spec:
         route_prefix: /
   rayClusterConfig:
     rayVersion: '2.5.0' # Should match Ray version in the containers
-    ######################headGroupSpecs#################################
     headGroupSpec:
       rayStartParams:
         dashboard-host: '0.0.0.0'
