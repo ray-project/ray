@@ -20,7 +20,7 @@ cloudpickle==2.2.0
 cryptography==38.0.1
 cython==0.29.32
 dataclasses; python_version < '3.7'
-fastapi==0.99.1
+fastapi[all]==0.99.1
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3
