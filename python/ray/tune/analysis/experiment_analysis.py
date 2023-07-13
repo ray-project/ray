@@ -14,13 +14,13 @@ from ray.air._internal.remote_storage import (
     list_at_uri,
 )
 from ray.air._internal.uri_utils import _join_path_or_uri, URI
+from ray.air.checkpoint import Checkpoint
 from ray.air.constants import (
     EXPR_PROGRESS_FILE,
     EXPR_RESULT_FILE,
     EXPR_PARAM_FILE,
     TRAINING_ITERATION,
 )
-from ray.train import Checkpoint
 from ray.tune.syncer import SyncConfig
 from ray.tune.utils import flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder
