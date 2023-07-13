@@ -22,7 +22,7 @@ from typing import (
     TYPE_CHECKING,
 )
 
-from ray.train import CheckpointConfig
+from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
 from ray.tune.error import TuneError
