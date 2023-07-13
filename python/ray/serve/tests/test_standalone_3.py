@@ -81,12 +81,12 @@ def test_long_poll_timeout_with_max_concurrent_queries(ray_instance):
     # Clear all the internal longpoll client objects within handle
     # long poll client will receive new updates from long poll host,
     # this is to simulate the longpoll timeout
-    object_snapshots1 = handle.router.long_poll_client.object_snapshots
-    handle.router.long_poll_client._reset()
+    object_snapshots1 = handle._router.long_poll_client.object_snapshots
+    handle._router.long_poll_client._reset()
     wait_for_condition(
-        lambda: len(handle.router.long_poll_client.object_snapshots) > 0, timeout=10
+        lambda: len(handle._router.long_poll_client.object_snapshots) > 0, timeout=10
     )
-    object_snapshots2 = handle.router.long_poll_client.object_snapshots
+    object_snapshots2 = handle._router.long_poll_client.object_snapshots
 
     # Check object snapshots between timeout interval
     assert object_snapshots1.keys() == object_snapshots2.keys()
