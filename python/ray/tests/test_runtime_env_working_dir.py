@@ -575,9 +575,9 @@ def test_override_failure(shutdown_only):
 def test_id_named_working_dir(tmp_working_dir, disable_working_dir_gc, shutdown_only):
     """Tests the case where we pass an empty directory as the working_dir."""
     if disable_working_dir_gc:
-        os.environ["RAY_DISABLE_WORKING_DIR_GC"] = "true"
+        os.environ["RAY_RUNTIME_ENV_DISABLE_WORKING_DIR_GC"] = "true"
     else:
-        os.environ["RAY_DISABLE_WORKING_DIR_GC"] = "false"
+        os.environ["RAY_RUNTIME_ENV_DISABLE_WORKING_DIR_GC"] = "false"
     ray.init(runtime_env={"working_dir": tmp_working_dir})
 
     @ray.remote

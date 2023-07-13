@@ -276,7 +276,8 @@ class RuntimeEnvAgent(
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}, worker id: {request.worker_id}."
+            f"{request.serialized_runtime_env} to be used by worker : "
+            f"{request.worker_id}."
         )
 
         async def _setup_runtime_env(
@@ -528,7 +529,7 @@ class RuntimeEnvAgent(
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
-            f"{request.serialized_runtime_env}, worker id: {request.worker_id}."
+            f"{request.serialized_runtime_env} used by worker: {request.worker_id}."
         )
 
         try:
