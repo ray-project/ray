@@ -32,7 +32,7 @@ directory with the `local://` scheme.
 
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
     ds.write_parquet("local:///tmp/iris/")
 
@@ -119,7 +119,7 @@ mounted directory.
 
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
     ds.write_parquet("/mnt/cluster_storage/iris")
 
@@ -137,7 +137,7 @@ To change the number of blocks, call :meth:`~ray.data.Dataset.repartition`.
     import os
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
     ds.repartition(2).write_csv("/tmp/two_files/")
 
     print(os.listdir("/tmp/two_files/"))
@@ -162,7 +162,7 @@ on the head node.
 
     import ray
 
-    ds = ray.data.read_csv("example://iris.csv")
+    ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
     df = ds.to_pandas()
     print(df)
@@ -170,11 +170,18 @@ on the head node.
 .. testoutput::
     :options: +NORMALIZE_WHITESPACE
 
-         sepal.length  sepal.width  petal.length  petal.width    variety
-    0             5.1          3.5           1.4          0.2     Setosa
-    1             4.9          3.0           1.4          0.2     Setosa
-    ...
-    149           5.9          3.0           5.1          1.8  Virginica
+         sepal length (cm)  sepal width (cm)  ...  petal width (cm)  target
+    0                  5.1               3.5  ...               0.2       0
+    1                  4.9               3.0  ...               0.2       0
+    2                  4.7               3.2  ...               0.2       0
+    3                  4.6               3.1  ...               0.2       0
+    4                  5.0               3.6  ...               0.2       0
+    ..                 ...               ...  ...               ...     ...
+    145                6.7               3.0  ...               2.3       2
+    146                6.3               2.5  ...               1.9       2
+    147                6.5               3.0  ...               2.0       2
+    148                6.2               3.4  ...               2.3       2
+    149                5.9               3.0  ...               1.8       2
     <BLANKLINE>
     [150 rows x 5 columns]
 
@@ -198,7 +205,7 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             df = ds.to_dask()
 
@@ -213,7 +220,7 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             df = ds.to_spark()
 
@@ -227,7 +234,7 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             mdf = ds.to_modin()
 
@@ -241,6 +248,6 @@ Ray Data interoperates with distributed data processing frameworks like
 
             import ray
 
-            ds = ray.data.read_csv("example://iris.csv")
+            ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
             mdf = ds.to_mars()

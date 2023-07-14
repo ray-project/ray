@@ -52,14 +52,14 @@ ray.data.from_numpy(np.zeros((1000, 128, 128, 3), dtype=np.int64))
 #               schema={data: numpy.ndarray(shape=(128, 128, 3), dtype=int64)})
 
 # From saved numpy files.
-ray.data.read_numpy("example://mnist_subset.npy")
+ray.data.read_numpy("s3://anonymous@ray-example-data/mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
 #               schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 # __create_numpy_end__
 
 # __create_parquet_1_begin__
 # Reading previously saved Tensor data works out of the box.
-ds = ray.data.read_parquet("example://parquet_images_mini")
+ds = ray.data.read_parquet("s3://anonymous@ray-example-data/parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
 #               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                       label: string})
@@ -156,7 +156,7 @@ print(ds.schema())
 ds.materialize()
 
 # __create_images_begin__
-ds = ray.data.read_images("example://image-datasets/simple")
+ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 # -> Dataset(num_blocks=3, num_rows=3, 
 #               schema={data: numpy.ndarray(shape=(32, 32, 3), dtype=uint8)})
 
@@ -171,7 +171,7 @@ ds.take(1)
 # __create_images_end__
 
 # __consume_pandas_2_begin__
-ds = ray.data.read_parquet("example://parquet_images_mini")
+ds = ray.data.read_parquet("s3://anonymous@ray-example-data/parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
 #               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                       label: string})
@@ -194,7 +194,7 @@ next(ds.iter_batches(batch_format="pandas"))
 # __consume_pyarrow_2_begin__
 from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-ds = ray.data.read_parquet("example://parquet_images_mini")
+ds = ray.data.read_parquet("s3://anonymous@ray-example-data/parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
 #               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                       label: object})
@@ -233,7 +233,7 @@ next(ds.iter_batches(batch_format="pyarrow"))
 # __consume_pyarrow_2_end__
 
 # __consume_numpy_2_begin__
-ds = ray.data.read_parquet("example://parquet_images_mini")
+ds = ray.data.read_parquet("s3://anonymous@ray-example-data/parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
 #               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                       label: object})
@@ -270,7 +270,7 @@ shutil.rmtree("/tmp/some_path")
 
 # __write_1_begin__
 # Read a multi-column example dataset.
-ds = ray.data.read_parquet("example://parquet_images_mini")
+ds = ray.data.read_parquet("s3://anonymous@ray-example-data/parquet_images_mini")
 # -> Dataset(num_blocks=3, num_rows=3,
 #               schema={image: numpy.ndarray(shape=(128, 128, 3), dtype=uint8),
 #                       label: object})
@@ -290,7 +290,7 @@ shutil.rmtree("/tmp/some_path")
 
 # __write_2_begin__
 # Read a single-column example dataset.
-ds = ray.data.read_numpy("example://mnist_subset.npy")
+ds = ray.data.read_numpy("s3://anonymous@ray-example-data/mnist_subset.npy")
 # -> Dataset(num_blocks=1, num_rows=3,
 #               schema={data: numpy.ndarray(shape=(28, 28), dtype=uint8)})
 

@@ -46,7 +46,7 @@ Current Dataset will read all Parquet columns into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
 avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("example://iris.parquet", columns=["sepal.length", "variety"])`` to read
+For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", columns=["sepal.length", "variety"])`` to read
 just two of the five columns of Iris dataset.
 
 .. _parquet_row_pruning:
@@ -57,7 +57,7 @@ Parquet row pruning
 Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
 which will be applied at the file scan so only rows that match the filter predicate
 will be returned.
-For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
+For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
 (where ``pyarrow`` has to be imported)
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
