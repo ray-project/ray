@@ -265,7 +265,7 @@ if setup_spec.type == SetupType.RAY:
         "client": [
             "grpcio",
         ],
-        "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
+        "serve": ["uvicorn", "requests", "starlette", "fastapi==0.99.1", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "observability": [
             "opentelemetry-api",
