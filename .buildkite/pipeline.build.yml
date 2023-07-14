@@ -77,7 +77,7 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
-- label: ":serverless: Serve Tests (Pydantic 1.10.11)"
+- label: ":serverless: Serve Tests (Pydantic 2.0.2)"
   parallelism: 3
   conditions:
     [
@@ -101,7 +101,9 @@
       python/ray/serve/...
       > test_shard.txt
     - cat test_shard.txt
-    - pip install -U "pydantic==1.10.11"
+    - pip install -U "typing-extensions==4.7.1"
+    - pip install -U "fastapi==0.100.0"
+    - pip install -U "pydantic==2.0.2"
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-post_wheel_build,-gpu
       --test_env=DOCKER_HOST=tcp://docker:2376
