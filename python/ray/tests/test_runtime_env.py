@@ -59,7 +59,7 @@ def test_get_wheel_filename():
 def test_get_master_wheel_url():
     """Test the code that generates the filenames of `master` commit wheels."""
     # NOTE: These should not be changed for releases.
-    ray_version = "2.6.0"
+    ray_version = "3.0.0.dev0"
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
