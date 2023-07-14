@@ -448,11 +448,11 @@ class TestRequestContextMetrics:
         metrics_summary_route = DefaultDict(set)
         metrics_summary_app = DefaultDict(str)
 
-        for request_metrcis in metrics:
-            metrics_summary_route[request_metrcis["deployment"]].add(
-                request_metrcis["route"]
+        for request_metrics in metrics:
+            metrics_summary_route[request_metrics["deployment"]].add(
+                request_metrics["route"]
             )
-            metrics_summary_app[request_metrcis["deployment"]] = request_metrcis[
+            metrics_summary_app[request_metrics["deployment"]] = request_metrics[
                 "application"
             ]
         return metrics_summary_route, metrics_summary_app
@@ -464,15 +464,15 @@ class TestRequestContextMetrics:
     def test_request_context_pass_for_http_proxy(self, serve_start_shutdown):
         """Test HTTP proxy passing request context"""
 
-        @serve.deployment
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
         def f():
             return "hello"
 
-        @serve.deployment
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
         def g():
             return "world"
 
-        @serve.deployment
+        @serve.deployment(graceful_shutdown_timeout_s=0.001)
         def h():
             return 1 / 0
 
@@ -497,20 +497,37 @@ class TestRequestContextMetrics:
             timeout=20,
         )
 
+        def wait_for_route_and_name(
+            metric_name: str,
+            deployment_name: str,
+            app_name: str,
+            route: str,
+            timeout: float = 5,
+        ):
+            """Waits for app name and route to appear in deployment's metric."""
+
+            def check():
+                # Check replica qps & latency
+                (
+                    qps_metrics_route,
+                    qps_metrics_app_name,
+                ) = self._generate_metrics_summary(get_metric_dictionaries(metric_name))
+                assert qps_metrics_app_name[deployment_name] == app_name
+                assert qps_metrics_route[deployment_name] == {route}
+                return True
+
+            wait_for_condition(check, timeout=timeout)
+
         # Check replica qps & latency
-        qps_metrics_route, qps_metrics_app_name = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_deployment_request_counter")
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", "app1_f", "app1", "/app1"
         )
-        print(qps_metrics_route)
-        assert qps_metrics_route["app1_f"] == {"/app1"}
-        assert qps_metrics_route["app2_g"] == {"/app2"}
-        assert qps_metrics_app_name["app1_f"] == "app1"
-        assert qps_metrics_app_name["app2_g"] == "app2"
-        qps_metrics_route, qps_metrics_app_name = self._generate_metrics_summary(
-            get_metric_dictionaries("serve_deployment_error_counter")
+        wait_for_route_and_name(
+            "serve_deployment_request_counter", "app2_g", "app2", "/app2"
         )
-        assert qps_metrics_route["app3_h"] == {"/app3"}
-        assert qps_metrics_app_name["app3_h"] == "app3"
+        wait_for_route_and_name(
+            "serve_deployment_error_counter", "app3_h", "app3", "/app3"
+        )
 
         # Check http proxy qps & latency
         for metric_name in [
