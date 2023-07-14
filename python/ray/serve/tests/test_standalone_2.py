@@ -413,7 +413,7 @@ class TestDeployApp:
     def client(self, start_and_shutdown_ray_cli_class, shutdown_ray_and_serve):
         wait_for_condition(
             lambda: requests.get("http://localhost:52365/api/ray/version").status_code
-                    == 200,
+            == 200,
             timeout=15,
         )
         ray.init(address="auto", namespace=SERVE_NAMESPACE)
@@ -448,11 +448,11 @@ class TestDeployApp:
         """Checks the application deployed through the config from get_test_config()"""
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-                    == "9 pizzas please!"
+            == "9 pizzas please!"
         )
 
     def get_test_deploy_config(self) -> Dict:
@@ -493,20 +493,20 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["MUL", 3]).json()
-                    == "9 pizzas please!"
+            == "9 pizzas please!"
         )
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-                    == "5 pizzas please!"
+            == "5 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["MUL", 3]).json()
-                    == "12 pizzas please!"
+            == "12 pizzas please!"
         )
 
     def test_deploy_app_basic(self, client: ServeControllerClient):
@@ -540,11 +540,11 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
-                    == "5 pizzas please!"
+            == "5 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-                    == "8 pizzas please!"
+            == "8 pizzas please!"
         )
 
     def test_deploy_app_update_config(self, client: ServeControllerClient):
@@ -566,7 +566,7 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-                    == "1 pizzas please!"
+            == "1 pizzas please!"
         )
 
     def test_deploy_multi_app_update_config(self, client: ServeControllerClient):
@@ -595,11 +595,11 @@ class TestDeployApp:
         client.deploy_apps(ServeDeploySchema.parse_obj(config))
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "1 pizzas please!"
+            == "1 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-                    == "12 pizzas please!"
+            == "12 pizzas please!"
         )
 
     def test_deploy_app_update_num_replicas(self, client: ServeControllerClient):
@@ -633,16 +633,16 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-                    == "2 pizzas please!"
+            == "2 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["MUL", 3]).json()
-                    == "0 pizzas please!"
+            == "0 pizzas please!"
         )
 
         wait_for_condition(
             lambda: client.get_serve_status().app_status.status
-                    == ApplicationStatus.RUNNING,
+            == ApplicationStatus.RUNNING,
             timeout=15,
         )
 
@@ -699,21 +699,21 @@ class TestDeployApp:
         client.deploy_apps(ServeDeploySchema.parse_obj(config))
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "2 pizzas please!"
+            == "2 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-                    == "102 pizzas please!"
+            == "102 pizzas please!"
         )
 
         wait_for_condition(
             lambda: client.get_serve_status("app1").app_status.status
-                    == ApplicationStatus.RUNNING,
+            == ApplicationStatus.RUNNING,
             timeout=15,
         )
         wait_for_condition(
             lambda: client.get_serve_status("app2").app_status.status
-                    == ApplicationStatus.RUNNING,
+            == ApplicationStatus.RUNNING,
             timeout=15,
         )
 
@@ -790,15 +790,15 @@ class TestDeployApp:
             > first_deploy_time_app2
         )
         assert {
-                   client.get_serve_status("app1").app_status.status,
-                   client.get_serve_status("app2").app_status.status,
-               } <= {
-                   ApplicationStatus.DEPLOYING,
-                   ApplicationStatus.RUNNING,
-               }
+            client.get_serve_status("app1").app_status.status,
+            client.get_serve_status("app2").app_status.status,
+        } <= {
+            ApplicationStatus.DEPLOYING,
+            ApplicationStatus.RUNNING,
+        }
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
 
     def test_deploy_app_overwrite_apps(self, client: ServeControllerClient):
@@ -827,7 +827,7 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
 
     def test_deploy_multi_app_overwrite_apps(self, client: ServeControllerClient):
@@ -858,7 +858,7 @@ class TestDeployApp:
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
 
         # Switch the two application import paths
@@ -868,7 +868,7 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
         wait_for_condition(
             lambda: requests.get("http://localhost:8000/app2").text == "wonderful world"
@@ -903,7 +903,7 @@ class TestDeployApp:
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
 
         # Deploy app3
@@ -955,7 +955,7 @@ class TestDeployApp:
         # App3 should be up and running
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app3", json=["ADD", 2]).json()
-                    == "5 pizzas please!"
+            == "5 pizzas please!"
         )
 
     def test_deploy_app_runtime_env(self, client: ServeControllerClient):
@@ -974,7 +974,7 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-                    == "0 pizzas please!"
+            == "0 pizzas please!"
         )
 
         # Override the configuration
@@ -991,7 +991,7 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-                    == "3 pizzas please!"
+            == "3 pizzas please!"
         )
 
     def test_deploy_multi_app_deployments_removed(self, client: ServeControllerClient):
@@ -1032,8 +1032,8 @@ class TestDeployApp:
                 ray.get(client._controller._all_running_replicas.remote()).keys()
             )
             assert {
-                       f"app1_{deployment}" for deployment in pizza_deployments
-                   } == deployment_replicas
+                f"app1_{deployment}" for deployment in pizza_deployments
+            } == deployment_replicas
             assert {"HTTPProxyActor", "ServeController"}.union(
                 {f"ServeReplica:app1_{deployment}" for deployment in pizza_deployments}
             ) == actor_class_names
@@ -1042,7 +1042,7 @@ class TestDeployApp:
         wait_for_condition(check_pizza)
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
 
         # Redeploy with world graph
@@ -1060,8 +1060,8 @@ class TestDeployApp:
                 ray.get(client._controller._all_running_replicas.remote()).keys()
             )
             assert {
-                       f"app1_{deployment}" for deployment in world_deployments
-                   } == deployment_replicas
+                f"app1_{deployment}" for deployment in world_deployments
+            } == deployment_replicas
             assert {"HTTPProxyActor", "ServeController"}.union(
                 {f"ServeReplica:app1_{deployment}" for deployment in world_deployments}
             ) == actor_class_names
@@ -1095,7 +1095,7 @@ class TestDeployApp:
                     filters=[("func_or_class_name", "=", "build_serve_application")],
                 )
             )
-                    > 0
+            > 0
         )
         ray.kill(client._controller, no_restart=False)
 
@@ -1152,7 +1152,6 @@ class TestDeployApp:
         for _ in range(4):
             pids.append(requests.get("http://localhost:8000/f").json()[0])
         assert pid1 not in pids
-
 
     def test_update_config_user_config(self, client: ServeControllerClient):
         """Check that replicas stay alive when user config is updated."""
@@ -1338,7 +1337,7 @@ class TestDeployApp:
         ray.get(handle.send.remote(clear=True, health_check=True))
         wait_for_condition(
             lambda: client.get_serve_status().get_deployment_status(name).status
-                    == DeploymentStatus.UNHEALTHY
+            == DeploymentStatus.UNHEALTHY
         )
 
     def test_deploy_separate_runtime_envs(self, client: ServeControllerClient):
@@ -1375,7 +1374,7 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1", json=["ADD", 2]).json()
-                    == "0 pizzas please!"
+            == "0 pizzas please!"
         )
 
         wait_for_condition(
@@ -1406,14 +1405,14 @@ class TestDeployApp:
 
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app1").text
-                    == "wonderful world"
+            == "wonderful world"
         )
 
         wait_for_condition(
             lambda: client.get_serve_status("app1").app_status.status
-                    == ApplicationStatus.RUNNING
-                    and client.get_serve_status("app2").app_status.status
-                    == ApplicationStatus.DEPLOY_FAILED
+            == ApplicationStatus.RUNNING
+            and client.get_serve_status("app2").app_status.status
+            == ApplicationStatus.DEPLOY_FAILED
         )
 
     def test_deploy_with_route_prefix_conflict(self, client: ServeControllerClient):
@@ -1441,7 +1440,7 @@ class TestDeployApp:
         )
         wait_for_condition(
             lambda: requests.post("http://localhost:8000/app2", json=["ADD", 2]).json()
-                    == "4 pizzas please!"
+            == "4 pizzas please!"
         )
 
         # Buffer time
@@ -1617,6 +1616,7 @@ class TestDeployApp:
         for _ in range(4):
             pids.append(requests.get("http://localhost:8000/f").json()[0])
         assert all(pid == pid1 for pid in pids)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
