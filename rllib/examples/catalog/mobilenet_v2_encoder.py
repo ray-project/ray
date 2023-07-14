@@ -21,8 +21,8 @@ from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.random_env import RandomEnv
 
 MOBILENET_INPUT_SHAPE = (3, 224, 224)
-
-
+import ray
+ray.init(local_mode=True)
 class MobileNetV2EncoderConfig(ModelConfig):
     # MobileNet v2 has a flat output of (1000,).
     output_dims = (1000,)
@@ -38,6 +38,8 @@ class MobileNetV2Encoder(TorchModel, Encoder):
         self.net = torch.hub.load(
             "pytorch/vision:v0.6.0", "mobilenet_v2", pretrained=True
         )
+        for p in self.net.parameters():
+            p.requires_grad = False
 
     def _forward(self, input_dict, **kwargs):
         return {ENCODER_OUT: (self.net(input_dict["obs"]))}
@@ -80,9 +82,15 @@ ppo_config = (
         )
     )
     .rollouts(num_rollout_workers=0)
+    .training(train_batch_size=128)  # Speed this up a little!
 )
 
-# Train with our MobileNetEncoder on a fitting RandomEnv
+# Train without our MobileNetEncoder on CartPole-v1
+ppo_config.environment("CartPole-v1")
+results = ppo_config.build().train()
+print(results)
+
+# Train with our MobileNetEncoder on a RandomEnv with the same Catalog
 ppo_config.environment(
     RandomEnv,
     env_config={
@@ -98,10 +106,4 @@ ppo_config.environment(
 )
 results = ppo_config.build().train()
 print(results)
-
-# Train without our MobileNetEncoder on another Env
-ppo_config.environment("CartPole-v1")
-results = ppo_config.build().train()
-print(results)
-
 # __sphinx_doc_end__
