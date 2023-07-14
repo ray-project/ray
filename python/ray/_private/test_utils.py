@@ -1764,7 +1764,12 @@ def external_ray_cluster_activity_hook1():
     global ray_cluster_activity_hook_counter
     ray_cluster_activity_hook_counter += 1
 
-    from pydantic import BaseModel, Extra
+    try:
+        # For Pydantic version >=2.0
+        from pydantic.v1 import BaseModel, Extra
+    except ImportError:
+        # For Pydantic version < 2.0
+        from pydantic import BaseModel, Extra
 
     class TestRayActivityResponse(BaseModel, extra=Extra.allow):
         """

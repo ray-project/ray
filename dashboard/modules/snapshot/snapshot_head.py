@@ -9,7 +9,13 @@ import os
 from typing import Any, Dict, List, Optional
 
 import aiohttp.web
-from pydantic import BaseModel, Extra, Field, validator
+
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import BaseModel, Extra, Field, validator
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import BaseModel, Extra, Field, validator
 
 import ray
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK

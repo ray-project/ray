@@ -1,7 +1,12 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import BaseModel, Field
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import BaseModel, Field
 from ray.dashboard.modules.job.common import JobStatus
 from ray.util.annotations import PublicAPI
 

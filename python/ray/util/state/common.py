@@ -24,17 +24,20 @@ from ray.util.state.custom_types import (
 from ray.util.state.exception import RayStateApiException
 
 try:
-    from pydantic.dataclasses import dataclass
-
+    # For Pydantic version >=2.0
+    from pydantic.v1.dataclasses import dataclass
     from ray.dashboard.modules.job.pydantic_models import JobDetails
-
 except ImportError:
-    # pydantic is not available in the dashboard.
-    # We will use the dataclass from the standard library.
-    from dataclasses import dataclass
+    # For Pydantic version < 2.0
+    try:
+        from pydantic.dataclasses import dataclass
+        from ray.dashboard.modules.job.pydantic_models import JobDetails
+    except ImportError:
+        # pydantic is not available in the dashboard.
+        # We will use the dataclass from the standard library.
+        from dataclasses import dataclass
 
-    JobDetails = object
-
+        JobDetails = object
 
 logger = logging.getLogger(__name__)
 
