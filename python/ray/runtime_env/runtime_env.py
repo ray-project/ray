@@ -236,10 +236,10 @@ class RuntimeEnv(dict):
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
         worker_process_setup_hook: (Experimental) The setup hook that's
-            called after workers start and before tasks and actors are scheduled.
-            The value has to be a callable when passed to the job/task/actor.
+            called after workers start and before Tasks and Actors are scheduled.
+            The value has to be a callable when passed to the Job, Task, or Actor.
             The callable is then exported and this value is converted to
-            the setup hook's function name for the observability purpose.
+            the setup hook's function name for observability.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.

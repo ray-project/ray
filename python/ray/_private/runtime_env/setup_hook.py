@@ -37,7 +37,7 @@ def upload_worker_process_setup_hook_if_needed(
 
     runtime_env["worker_process_setup_hook"] is converted to a decoded key
     that can load the worker setup hook function from GCS.
-    I.e., you can use internalKV.Get(runtime_env["worker_process_setup_hook])
+    i.e., you can use internalKV.Get(runtime_env["worker_process_setup_hook])
     to access the worker setup hook from GCS.
 
     Args:
