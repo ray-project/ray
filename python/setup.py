@@ -184,6 +184,7 @@ if setup_spec.type == SetupType.RAY_CPP:
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
+    "ray/core/generated/experimental",
     "ray/serve/generated",
 ]
 
