@@ -1,4 +1,9 @@
-from pydantic.v1 import BaseModel
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import BaseModel
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import BaseModel
 
 from ray import serve
 

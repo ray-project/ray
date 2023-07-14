@@ -4,7 +4,13 @@ from typing import Dict, Optional
 
 from fastapi import FastAPI
 import requests
-from pydantic.v1 import BaseModel, ValidationError
+
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import BaseModel, ValidationError
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import BaseModel, ValidationError
 import pytest
 import starlette.responses
 from starlette.requests import Request

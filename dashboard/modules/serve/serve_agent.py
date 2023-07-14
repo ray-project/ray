@@ -164,7 +164,14 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def put_all_deployments(self, req: Request) -> Response:
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeApplicationSchema
-        from pydantic.v1 import ValidationError
+
+        try:
+            # For Pydantic version >=2.0
+            from pydantic.v1 import ValidationError
+        except ImportError:
+            # For Pydantic version < 2.0
+            from pydantic import ValidationError
+
         from ray.serve._private.constants import MULTI_APP_MIGRATION_MESSAGE
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
@@ -247,7 +254,13 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
     async def put_all_applications(self, req: Request) -> Response:
         from ray.serve._private.api import serve_start_async
         from ray.serve.schema import ServeDeploySchema
-        from pydantic.v1 import ValidationError
+
+        try:
+            # For Pydantic version >=2.0
+            from pydantic.v1 import ValidationError
+        except ImportError:
+            # For Pydantic version < 2.0
+            from pydantic import ValidationError
         from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 
         try:

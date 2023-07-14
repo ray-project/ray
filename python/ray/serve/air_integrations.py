@@ -2,7 +2,13 @@ from collections import defaultdict
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-from pydantic.v1 import BaseModel
+
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import BaseModel
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import BaseModel
 import numpy as np
 from abc import abstractmethod
 import starlette

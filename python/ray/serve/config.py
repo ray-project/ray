@@ -3,17 +3,36 @@ import json
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 
-import pydantic.v1 as pydantic
+try:
+    # For Pydantic version >=2.0
+    import pydantic.v1 as pydantic
+except ImportError:
+    # For Pydantic version < 2.0
+    import pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic.v1 import (
-    BaseModel,
-    NonNegativeFloat,
-    PositiveFloat,
-    NonNegativeInt,
-    PositiveInt,
-    validator,
-    Field,
-)
+
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import (
+        BaseModel,
+        NonNegativeFloat,
+        PositiveFloat,
+        NonNegativeInt,
+        PositiveInt,
+        validator,
+        Field,
+    )
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import (
+        BaseModel,
+        NonNegativeFloat,
+        PositiveFloat,
+        NonNegativeInt,
+        PositiveInt,
+        validator,
+        Field,
+    )
 
 from ray import cloudpickle
 from ray.serve._private.constants import (

@@ -8,7 +8,12 @@ import socket
 import sys
 import time
 
-import pydantic.v1
+try:
+    # For Pydantic version >=2.0
+    import pydantic.v1 as pydantic
+except ImportError:
+    # For Pydantic version < 2.0
+    import pydantic
 import pytest
 import requests
 

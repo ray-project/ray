@@ -3,7 +3,12 @@ import os
 import sys
 import time
 
-from pydantic.v1.error_wrappers import ValidationError
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1.error_wrappers import ValidationError
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic.error_wrappers import ValidationError
 import pytest
 import requests
 

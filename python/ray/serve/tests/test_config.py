@@ -1,5 +1,11 @@
 import pytest
-from pydantic.v1 import ValidationError
+
+try:
+    # For Pydantic version >=2.0
+    from pydantic.v1 import ValidationError
+except ImportError:
+    # For Pydantic version < 2.0
+    from pydantic import ValidationError
 
 from ray import cloudpickle
 
