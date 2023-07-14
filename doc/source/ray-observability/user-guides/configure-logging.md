@@ -387,7 +387,7 @@ ray.get(f.remote("A log message for a task."))
 This is an experimental feature. The semantic of the API is subject to change.
 It doesn't support [Ray Client](ray-client-ref) yet.
 
-When you use `ray.init(runtime_env={})` with a [Ray Job Submission](jobs-quickstart) API, `ray job subimt --working-dir` or `ray job submit --runtime-env`, runtime_env passed to `ray.init` is ignored.
+When you use `ray.init(runtime_env={...})` with a [Ray Job Submission](jobs-quickstart) API (`ray job subimt --working-dir` or `ray job submit --runtime-env ...`), runtime_env passed to `ray.init` is ignored.
 ```
 
 Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
