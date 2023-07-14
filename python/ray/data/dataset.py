@@ -3806,7 +3806,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
+    def to_pandas(self, limit: int = -1) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
 
         This method errors if the number of rows exceeds the
@@ -3826,7 +3826,8 @@ class Dataset:
 
         Args:
             limit: The maximum number of records to return. An error is
-                raised if the dataset has more rows than this limit.
+                raised if the dataset has more rows than this limit. Defaults to -1,
+                which means no limit.
 
         Returns:
             A pandas DataFrame created from this dataset, containing a limited
@@ -3837,12 +3838,12 @@ class Dataset:
             ``limit``.
         """
         count = self.count()
-        if count > limit:
+        if limit != -1 and count > limit:
             raise ValueError(
                 f"the dataset has more than the given limit of {limit} "
                 f"records: {count}. If you are sure that a DataFrame with "
                 f"{count} rows will fit in local memory, use "
-                f"ds.to_pandas(limit={count})."
+                f"ds.to_pandas(limit={count}) or ds.to_pandas(limit=-1) to disable limits."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
