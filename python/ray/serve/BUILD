@@ -690,19 +690,3 @@ py_test(
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
 )
-
-py_test(
-    name = "test_deploy_app_1",
-    size = "large",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
-    name = "test_deploy_app_2",
-    size = "large",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
