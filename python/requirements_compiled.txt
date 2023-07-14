@@ -170,7 +170,7 @@ grapheme==0.6.0
 graphql-core==3.2.3
 graphviz==0.20.1
 greenlet==2.0.2
-grpcio==1.50.0 ; python_version < "3.10"
+grpcio==1.54.2
 gsutil==5.25
 gunicorn==20.1.0
 gym==0.26.2
