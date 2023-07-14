@@ -161,7 +161,7 @@ or remote filesystems.
 
     transformed_ds.write_parquet("/tmp/iris")
 
-    print(os.listdir("/tmp/iris"))
+    print(sorted(os.listdir("/tmp/iris")))
 
 .. testoutput::
 

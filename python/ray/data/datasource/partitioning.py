@@ -43,7 +43,7 @@ class Partitioning:
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
         >>> ds = ray.data.read_csv(
-        ...     "example://iris.csv",
+        ...     "s3://anonymous@ray-example-data/iris.csv",
         ...     partitioning=Partitioning("hive"),
         ... )
 

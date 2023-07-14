@@ -46,37 +46,37 @@ import ray
 import numpy as np
 from typing import Dict
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def numpy_transform(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    new_col = batch["sepal.length"] / np.max(batch["sepal.length"])
-    batch["normalized.sepal.length"] = new_col
-    del batch["sepal.length"]
+    new_col = batch["sepal length (cm)"] / np.max(batch["sepal length (cm)"])
+    batch["normalized.sepal length (cm)"] = new_col
+    del batch["sepal length (cm)"]
     return batch
 
 ds.map_batches(numpy_transform, batch_format="numpy").show(2)
-# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
-# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
+# -> {'sepal width (cm)': 3.2, 'petal length (cm)': 4.7, 'petal width (cm)': 1.4,
+#     'target': 0, 'normalized.sepal length (cm)': 1.0}
+# -> {'sepal width (cm)': 3.2, 'petal length (cm)': 4.5, 'petal width (cm)': 1.5,
+#     'target': 0, 'normalized.sepal length (cm)': 0.9142857142857144}
 # __writing_numpy_udfs_end__
 
 # __writing_pandas_udfs_begin__
 import ray
 import pandas as pd
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def pandas_transform(df: pd.DataFrame) -> pd.DataFrame:
-    df.loc[:, "normalized.sepal.length"] = df["sepal.length"] / df["sepal.length"].max()
-    df = df.drop(columns=["sepal.length"])
+    df.loc[:, "normalized.sepal length (cm)"] = df["sepal length (cm)"] / df["sepal length (cm)"].max()
+    df = df.drop(columns=["sepal length (cm)"])
     return df
 
 ds.map_batches(pandas_transform, batch_format="pandas").show(2)
-# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
-# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
+# -> {'sepal width (cm)': 3.2, 'petal length (cm)': 4.7, 'petal width (cm)': 1.4,
+#     'target': 0, 'normalized.sepal length (cm)': 1.0}
+# -> {'sepal width (cm)': 3.2, 'petal length (cm)': 4.5, 'petal width (cm)': 1.5,
+#     'target': 0, 'normalized.sepal length (cm)': 0.9142857142857144}
 # __writing_pandas_udfs_end__
 
 # __writing_arrow_udfs_begin__
@@ -84,20 +84,20 @@ import ray
 import pyarrow as pa
 import pyarrow.compute as pac
 
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 def pyarrow_transform(batch: pa.Table) -> pa.Table:
     batch = batch.append_column(
-        "normalized.sepal.length",
-        pac.divide(batch["sepal.length"], pac.max(batch["sepal.length"])),
+        "normalized.sepal length (cm)",
+        pac.divide(batch["sepal length (cm)"], pac.max(batch["sepal length (cm)"])),
     )
-    return batch.drop(["sepal.length"])
+    return batch.drop(["sepal length (cm)"])
 
 ds.map_batches(pyarrow_transform, batch_format="pyarrow").show(2)
-# -> {'sepal.width': 3.2, 'petal.length': 4.7, 'petal.width': 1.4,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 1.0}
-# -> {'sepal.width': 3.2, 'petal.length': 4.5, 'petal.width': 1.5,
-#     'variety': 'Versicolor', 'normalized.sepal.length': 0.9142857142857144}
+# -> {'sepal width (cm)': 3.2, 'petal length (cm)': 4.7, 'petal width (cm)': 1.4,
+#     'target': 0, 'normalized.sepal length (cm)': 1.0}
+# -> {'sepal width (cm)': 3.2, 'petal length (cm)': 4.5, 'petal width (cm)': 1.5,
+#     'target': 0, 'normalized.sepal length (cm)': 0.9142857142857144}
 # __writing_arrow_udfs_end__
 
 # __dataset_compute_strategy_begin__
@@ -106,14 +106,14 @@ import pandas as pd
 import numpy as np
 from ray.data import ActorPoolStrategy
 
-# Dummy model to predict Iris variety.
+# Dummy model to predict Iris target.
 def predict_iris(df: pd.DataFrame) -> pd.DataFrame:
     conditions = [
-        (df["sepal.length"] < 5.0),
-        (df["sepal.length"] >= 5.0) & (df["sepal.length"] < 6.0),
-        (df["sepal.length"] >= 6.0)
+        (df["sepal length (cm)"] < 5.0),
+        (df["sepal length (cm)"] >= 5.0) & (df["sepal length (cm)"] < 6.0),
+        (df["sepal length (cm)"] >= 6.0)
     ]
-    values = ["Setosa", "Versicolor", "Virginica"]
+    values = ["Setosa", "0", "Virginica"]
     return pd.DataFrame({"predicted_variety": np.select(conditions, values)})
 
 class IrisInferModel:
@@ -125,7 +125,7 @@ class IrisInferModel:
     def __call__(self, batch: pd.DataFrame) -> pd.DataFrame:
         return self._model(batch)
 
-ds = ray.data.read_csv("example://iris.csv").repartition(10)
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").repartition(10)
 
 # Batch inference processing with Ray tasks (the default compute strategy).
 predicted = ds.map_batches(predict_iris, batch_format="pandas")
@@ -140,7 +140,7 @@ import ray
 from typing import Iterator
 
 # Load iris data.
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 # UDF to repeat the dataframe 100 times, in chunks of 20.
 def repeat_dataframe(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
@@ -148,8 +148,8 @@ def repeat_dataframe(df: pd.DataFrame) -> Iterator[pd.DataFrame]:
         yield pd.concat([df]*20)
 
 ds.map_batches(repeat_dataframe, batch_format="pandas").show(2)
-# -> {'sepal.length': 5.1, 'sepal.width': 3.5, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
-# -> {'sepal.length': 4.9, 'sepal.width': 3.0, 'petal.length': 1.4, 'petal.width': 0.2, 'variety': 'Setosa'}
+# -> {'sepal length (cm)': 5.1, 'sepal width (cm)': 3.5, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
+# -> {'sepal length (cm)': 4.9, 'sepal width (cm)': 3.0, 'petal length (cm)': 1.4, 'petal width (cm)': 0.2, 'target': 0}
 # __writing_generator_udfs_end__
 
 # __shuffle_begin__
@@ -176,26 +176,26 @@ import numpy as np
 from typing import Dict
 
 # Load iris data.
-ds = ray.data.read_csv("example://iris.csv")
+ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
 
 # The user function signature for `map_groups` is the same as that of `map_batches`.
 # It takes in a batch representing the grouped data, and must return a batch of
 # zero or more records as the result.
 def custom_count(group: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-    # Since we are grouping by variety, all elements in this batch are equal.
-    variety = group["variety"][0]
-    count = len(group["variety"])
+    # Since we are grouping by target, all elements in this batch are equal.
+    target = group["target"][0]
+    count = len(group["target"])
     # Here we return a batch of a single record for the group (array of len 1).
     return {
-        "variety": np.array([variety]),
+        "target": np.array([target]),
         "count": np.array([count]),
     }
 
-ds = ds.groupby("variety").map_groups(custom_count)
+ds = ds.groupby("target").map_groups(custom_count)
 ds.show()
-# -> {'variety': 'Setosa', 'count': 50}
-#    {'variety': 'Versicolor', 'count': 50}
-#    {'variety': 'Virginica', 'count': 50}
+# -> {'target': 0, 'count': 50}
+#    {'target': 1, 'count': 50}
+#    {'target': 2, 'count': 50}
 # __map_groups_end__
 
 # fmt: on

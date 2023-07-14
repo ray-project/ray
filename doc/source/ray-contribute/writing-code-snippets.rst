@@ -223,7 +223,7 @@ Ignoring *doctest-style* outputs
 To ignore parts of a *doctest-style* output, replace problematic sections with ellipses. ::
 
     >>> import ray
-    >>> ray.data.read_images("example://image-datasets/simple")
+    >>> ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
     Dataset(
        num_blocks=...,
        num_rows=...,
@@ -241,7 +241,7 @@ with ellipses. ::
     .. testcode::
 
         import ray
-        ds = ray.data.read_images("example://image-datasets/simple")
+        ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
         print(ds)
 
     .. testoutput::
