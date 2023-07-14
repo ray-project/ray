@@ -102,7 +102,6 @@
       > test_shard.txt
     - cat test_shard.txt
     - pip install -U "typing-extensions==4.7.1"
-    - pip install -U "fastapi==0.100.0"
     - pip install -U "pydantic==2.0.2"
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=-post_wheel_build,-gpu
