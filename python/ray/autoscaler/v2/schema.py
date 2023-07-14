@@ -64,7 +64,7 @@ class LaunchRequest:
     request_ts_s: int
     # When the launch request failed unix timestamp in secs if failed.
     failed_ts_s: Optional[int] = None
-    # Request details.
+    # Request details, e.g. error reason if the launch request failed.
     details: Optional[str] = None
 
 
@@ -151,7 +151,7 @@ class Stats:
     # The last seen cluster state resource version.
     cluster_resource_state_version: Optional[str] = None
     # Request made time unix timestamp: when the data was pulled from GCS.
-    request_timestamp_s: Optional[int] = None
+    request_ts_s: Optional[int] = None
 
 
 @dataclass

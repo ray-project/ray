@@ -464,7 +464,7 @@ def test_cluster_status_formatter():
             autoscaler_iteration_time_s=0.3,
             autoscaler_version="10",
             cluster_resource_state_version="20",
-            request_timestamp_s=775303535,
+            request_ts_s=775303535,
         ),
     )
     actual = ClusterStatusFormatter.format(state, verbose=True)

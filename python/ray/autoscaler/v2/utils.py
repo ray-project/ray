@@ -71,7 +71,7 @@ class ClusterStatusFormatter:
         return format_info_string(
             lm_summary,
             autoscaler_summary,
-            time=datetime.fromtimestamp(data.stats.request_timestamp_s),
+            time=datetime.fromtimestamp(data.stats.request_ts_s),
             gcs_request_time=data.stats.gcs_request_time_s,
             non_terminated_nodes_time=data.stats.none_terminated_node_request_time_s,
             autoscaler_update_time=data.stats.autoscaler_iteration_time_s,
@@ -94,7 +94,7 @@ class ClusterStatusFormatter:
         failed_nodes = []
         for node in data.failed_nodes:
             # TODO(rickyx): we should probably use instance id/node id rather
-            # than node type here since node type is not unique among failed nodes.
+            # than node ip here since node ip is not unique among failed nodes.
             failed_nodes.append((node.ip_address, node.ray_node_type_name))
 
         # From IP to node type name.
@@ -146,7 +146,7 @@ class ClusterStatusFormatter:
         pg_demand_str_to_demand = {}
         for pg_demand in data.resource_demands.placement_group_demand:
             s = pg_demand.strategy + "|" + pg_demand.state
-            pg_demand_strs += [s]
+            pg_demand_strs.append(s)
             pg_demand_str_to_demand[s] = pg_demand
 
         pg_freqs = Counter(pg_demand_strs)
