@@ -11,14 +11,19 @@ from ray.util.annotations import DeveloperAPI
 @DeveloperAPI
 def register_pydantic_serializer(serialization_context):
     try:
-        import pydantic.fields
+        # For Pydantic version >=2.0
+        import pydantic.v1.fields as pydantic_fields
     except ImportError:
-        return
+        try:
+            # For Pydantic version < 2.0
+            import pydantic.fields as pydantic_fields
+        except ImportError:
+            return
 
     # Pydantic's Cython validators are not serializable.
     # https://github.com/cloudpipe/cloudpickle/issues/408
     serialization_context._register_cloudpickle_serializer(
-        pydantic.fields.ModelField,
+        pydantic_fields.ModelField,
         custom_serializer=lambda o: {
             "name": o.name,
             # outer_type_ is the original type for ModelFields,
@@ -33,7 +38,7 @@ def register_pydantic_serializer(serialization_context):
             "alias": o.alias,
             "field_info": o.field_info,
         },
-        custom_deserializer=lambda kwargs: pydantic.fields.ModelField(**kwargs),
+        custom_deserializer=lambda kwargs: pydantic_fields.ModelField(**kwargs),
     )
 
 
