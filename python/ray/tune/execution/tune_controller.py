@@ -9,8 +9,8 @@ import logging
 import os
 
 import ray
-from ray.air import ResourceRequest
-from ray.train import Checkpoint, CheckpointConfig
+from ray.air import Checkpoint, ResourceRequest
+from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
