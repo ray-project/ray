@@ -9,7 +9,7 @@ import click
 import yaml
 import traceback
 import re
-from pydantic import ValidationError
+from pydantic.v1 import ValidationError
 
 import ray
 from ray import serve

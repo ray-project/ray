@@ -1,7 +1,7 @@
 import inspect
 from fastapi import Body
 from typing import Any, Callable, Optional, Type, Union
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 from ray._private.utils import import_attr
 from ray.util.annotations import DeveloperAPI
 

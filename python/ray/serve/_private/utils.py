@@ -24,8 +24,8 @@ import threading
 
 import fastapi.encoders
 import numpy as np
-import pydantic
-import pydantic.json
+import pydantic.v1 as pydantic
+import pydantic.v1.json
 import requests
 
 import ray

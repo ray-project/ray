@@ -17,7 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import inspect
 import numpy as np
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 import pytest
 import requests
 from starlette.applications import Starlette

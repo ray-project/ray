@@ -4,7 +4,7 @@ import os
 from types import FunctionType
 from typing import Any, Dict, Optional, Tuple, Union
 
-from pydantic.main import ModelMetaclass
+from pydantic.v1.main import ModelMetaclass
 
 import ray
 from ray._private.usage import usage_lib

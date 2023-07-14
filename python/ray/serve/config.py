@@ -3,9 +3,9 @@ import json
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union, Set
 
-import pydantic
+import pydantic.v1 as pydantic
 from google.protobuf.json_format import MessageToDict
-from pydantic import (
+from pydantic.v1 import (
     BaseModel,
     NonNegativeFloat,
     PositiveFloat,

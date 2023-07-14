@@ -8,7 +8,7 @@ import socket
 import sys
 import time
 
-import pydantic
+import pydantic.v1
 import pytest
 import requests
 

@@ -2,7 +2,7 @@ from collections import defaultdict
 import inspect
 import logging
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 import numpy as np
 from abc import abstractmethod
 import starlette

@@ -2,7 +2,7 @@ from io import BytesIO
 from typing import Any, Dict, List, Optional, Union
 
 from fastapi import File, Request
-from pydantic import BaseModel, Field
+from pydantic.v1 import BaseModel, Field
 import numpy as np
 import starlette.requests
 

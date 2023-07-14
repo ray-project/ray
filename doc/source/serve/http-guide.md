@@ -272,7 +272,7 @@ you can directly pass in a pydantic model class to effectively tell Ray Serve to
 Once validated, the model instance will passed to the predictor.
 
 ```python
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 class User(BaseModel):
     user_id: int

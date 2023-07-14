@@ -11,7 +11,7 @@ import requests
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from pydantic import ValidationError
+from pydantic.v1 import ValidationError
 from ray.serve.drivers import DAGDriver
 from ray.serve._private.common import ApplicationStatus
 

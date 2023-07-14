@@ -1,5 +1,5 @@
 import json
-from pydantic import BaseModel, Field, Extra, root_validator, validator
+from pydantic.v1 import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict, Set, Optional
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (

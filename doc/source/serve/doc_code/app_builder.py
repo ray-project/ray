@@ -30,7 +30,7 @@ resp = requests.get("http://localhost:8000")
 assert resp.text == "Hello bar"
 
 # __begin_typed_builder__
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 from ray import serve
 from ray.serve import Application
@@ -61,7 +61,7 @@ resp = requests.get("http://localhost:8000")
 assert resp.text == "Hello baz"
 
 # __begin_composed_builder__
-from pydantic import BaseModel
+from pydantic.v1 import BaseModel
 
 from ray.serve import Application
 

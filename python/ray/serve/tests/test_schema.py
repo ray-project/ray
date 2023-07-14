@@ -3,7 +3,7 @@ import time
 import json
 import pytest
 import requests
-from pydantic import ValidationError
+from pydantic.v1 import ValidationError
 from typing import List, Dict
 
 import ray

@@ -4,7 +4,7 @@ from typing import Dict, Optional
 
 from fastapi import FastAPI
 import requests
-from pydantic import BaseModel, ValidationError
+from pydantic.v1 import BaseModel, ValidationError
 import pytest
 import starlette.responses
 from starlette.requests import Request
