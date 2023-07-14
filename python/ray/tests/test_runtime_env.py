@@ -43,7 +43,7 @@ import ray._private.ray_constants as ray_constants
 def test_get_wheel_filename():
     """Test the code that generates the filenames of the `latest` wheels."""
     # NOTE: These should not be changed for releases.
-    ray_version = "2.6.0"
+    ray_version = "3.0.0.dev0"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             # TODO(https://github.com/ray-project/ray/issues/31362)
