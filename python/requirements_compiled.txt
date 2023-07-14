@@ -256,10 +256,7 @@ matplotlib==3.7.2
 matplotlib-inline==0.1.6
 mccabe==0.6.1
 mdit-py-plugins==0.2.8
-# Manual fix for https://github.com/bloomberg/memray/issues/426
-# Remove arm64-specific git pin when > 1.8.1 is released
-memray==1.8.1 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
-memray @ git+https://github.com/bloomberg/memray.git ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine == 'aarch64'
+memray==1.8.1 ; platform_system != "Windows" and sys_platform != "darwin"
 minigrid==2.1.1
 mistune==0.8.4
 ml-dtypes==0.2.0
@@ -433,7 +430,7 @@ restrictedpython==6.0
 retry-decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
-rich==12.6.0
+rich==12.0.1
 rsa==4.7.2
 s3fs==2023.5.0 ; python_version >= "3.8"
 s3transfer==0.6.1
@@ -547,7 +544,6 @@ xxhash==3.2.0
 y-py==0.5.9
 yarl==1.9.2
 ypy-websocket==0.8.2
-yq==3.2.2
 zict==3.0.0
 zipp==3.15.0
 zoopt==0.4.1
