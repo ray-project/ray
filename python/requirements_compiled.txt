@@ -513,7 +513,7 @@ torchvision==0.15.2 ; python_version > "3.7"
 tornado==6.1
 tqdm==4.64.1
 traitlets==5.9.0
-transformers==4.19.1
+transformers==4.30.0
 trustme==0.9.0
 typeguard==2.13.3
 typer==0.9.0
