@@ -1700,7 +1700,7 @@ class Dataset:
             logical_plan,
         )
 
-    def groupby(self, key: Optional[str]) -> "GroupedData":
+    def groupby(self, key: Union[str, List[str], None]) -> "GroupedData":
         """Group the dataset by the key function or column name.
 
         Examples:

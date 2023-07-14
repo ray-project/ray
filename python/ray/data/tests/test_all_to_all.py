@@ -328,6 +328,39 @@ def test_groupby_tabular_count(
 
 @pytest.mark.parametrize("num_parts", [1, 30])
 @pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
+def test_groupby_multiple_keys_tabular_count(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test built-in count aggregation
+    seed = int(time.time())
+    print(f"Seeding RNG for test_groupby_arrow_count with: {seed}")
+    random.seed(seed)
+    xs = list(range(100))
+    random.shuffle(xs)
+
+    def _to_pandas(ds):
+        return ds.map_batches(lambda x: x, batch_size=None, batch_format="pandas")
+
+    ds = ray.data.from_items([{"A": (x % 2), "B": (x % 3)} for x in xs]).repartition(
+        num_parts
+    )
+    if ds_format == "pandas":
+        ds = _to_pandas(ds)
+
+    agg_ds = ds.groupby(["A", "B"]).count()
+    assert agg_ds.count() == 6
+    assert list(agg_ds.sort(["A", "B"]).iter_rows()) == [
+        {"A": 0, "B": 0, "count()": 17},
+        {"A": 0, "B": 1, "count()": 17},
+        {"A": 0, "B": 2, "count()": 17},
+        {"A": 1, "B": 0, "count()": 17},
+        {"A": 1, "B": 1, "count()": 16},
+        {"A": 1, "B": 2, "count()": 16},
+    ]
+
+
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["arrow", "pandas"])
 def test_groupby_tabular_sum(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
