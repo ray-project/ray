@@ -64,7 +64,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(batch_size=2, batch_format="numpy"):
                 print(batch)
@@ -106,7 +106,7 @@ formats by calling one of the following methods:
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_torch_batches(batch_size=2):
                 print(batch)
@@ -172,7 +172,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             for batch in ds.iter_batches(
                 batch_size=2,
@@ -223,7 +223,7 @@ movement.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             for batch in ds.iter_torch_batches(
                 batch_size=2,
                 local_shuffle_buffer_size=250,
