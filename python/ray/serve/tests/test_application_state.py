@@ -1,7 +1,7 @@
 import pytest
 import sys
 from typing import Dict, List, Tuple
-from unittest.mock import patch, PropertyMock, Mock, MagicMock
+from unittest.mock import patch, PropertyMock, Mock
 
 from ray.exceptions import RayTaskError
 
@@ -153,7 +153,7 @@ def mocked_application_state_manager() -> Tuple[
     yield application_state_manager, deployment_state_manager, kv_store
 
 
-def deployment_params(name: str, route_prefix: str = None):
+def deployment_params(name: str, route_prefix: str = None, docs_path: str = None):
     return {
         "name": name,
         "deployment_config_proto_bytes": DeploymentConfig(
@@ -164,7 +164,7 @@ def deployment_params(name: str, route_prefix: str = None):
         ).to_proto_bytes(),
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
-        "docs_path": None,
+        "docs_path": docs_path,
         "is_driver_deployment": False,
     }
 
@@ -251,7 +251,11 @@ def test_deploy_and_delete_app(mocked_application_state):
     app_state, deployment_state_manager = mocked_application_state
 
     # DEPLOY application with deployments {d1, d2}
-    app_state.apply_deployment_args([deployment_params("d1"), deployment_params("d2")])
+    app_state.apply_deployment_args(
+        [deployment_params("d1", "/hi", "/documentation"), deployment_params("d2")]
+    )
+    assert app_state.route_prefix == "/hi"
+    assert app_state.docs_path == "/documentation"
 
     app_status = app_state.get_application_status_info()
     assert app_status.status == ApplicationStatus.DEPLOYING
@@ -404,16 +408,8 @@ def test_app_unhealthy(mocked_application_state):
     assert app_state.status == ApplicationStatus.RUNNING
 
 
-@patch(
-    "ray.serve._private.application_state.override_deployment_info",
-    MagicMock(side_effect=lambda _a, deployment_infos, _b: deployment_infos),
-)
-@patch(
-    "ray.serve._private.application_state.get_app_code_version",
-    Mock(return_value="123"),
-)
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
-@patch("ray.get", Mock(return_value=([deployment_params("a")], None)))
+@patch("ray.get", Mock(return_value=([deployment_params("a", "/old", "/docs")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     """Test deploying through config successfully.
@@ -426,7 +422,8 @@ def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     )
 
     # Deploy config
-    app_state_manager.deploy_config(name="test_app", app_config=Mock())
+    app_config = ServeApplicationSchema(import_path="fa.ke", route_prefix="/new")
+    app_state_manager.deploy_config(name="test_app", app_config=app_config)
     app_state = app_state_manager._application_states["test_app"]
     assert app_state.status == ApplicationStatus.DEPLOYING
 
@@ -443,6 +440,8 @@ def test_deploy_through_config_succeed(check_obj_ref_ready_nowait):
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOYING
     assert app_state.target_deployments == ["a"]
+    assert app_state.route_prefix == "/new"
+    assert app_state.docs_path == "/docs"
 
     # Set healthy
     deployment_state_manager.set_deployment_healthy("a")
