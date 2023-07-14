@@ -479,7 +479,7 @@ tensorboard==2.11.2
 tensorboard-data-server==0.6.1
 tensorboard-plugin-wit==1.8.1
 tensorboardx==2.6
-tensorflow==2.11.0 ; sys_platform != "darwin" or platform_machine != "arm64"
+tensorflow==2.11.1 ; sys_platform != "darwin" or platform_machine != "arm64"
 tensorflow-datasets==4.9.0
 tensorflow-estimator==2.11.0
 tensorflow-io-gcs-filesystem==0.32.0
