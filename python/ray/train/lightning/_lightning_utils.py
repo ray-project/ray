@@ -102,7 +102,13 @@ class RayDeepSpeedStrategy(DeepSpeedStrategy):
     """Subclass of DeepSpeedStrategy to ensure compatibility with Ray orchestration."""
 
     def setup_distributed(self):
-        self.parallel_devices = list(range(torch.cuda.device_count()))
+        # We have to set the device ids for each node
+        # e.g. CUDA_VISIBLE_DEVICES = 2,3
+        # worker 0: LOCAL_RANK=0, parallel devices = [cuda:0, cuda:1]
+        # worker 1: LOCAL_RANK=1, parallel devices = [cuda:0, cuda:1]
+        self.parallel_devices = [
+            torch.device(f"cuda:{i}") for i in range(torch.cuda.device_count())
+        ]
         super().setup_distributed()
 
     @property
