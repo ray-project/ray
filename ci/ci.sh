@@ -131,6 +131,10 @@ compile_pip_dependencies() {
       "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
   fi
 
+  # Remove some pins from upstream dependencies:
+  # ray, xgboost-ray, lightgbm-ray, tune-sklearn
+  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
   cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
@@ -140,7 +144,7 @@ compile_pip_dependencies() {
 
 test_core() {
   local args=(
-    "//:*"
+    "//:*" "//src/..."
   )
   case "${OSTYPE}" in
     msys)
@@ -148,7 +152,7 @@ test_core() {
         -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
-        -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
+        -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_health_check_manager_test
         -//:gcs_client_reconnection_test
       )
@@ -198,7 +202,7 @@ test_python() {
       -python/ray/serve:conda_env # pip field in runtime_env not supported
       -python/ray/serve:test_cross_language # Ray java not built on Windows yet.
       -python/ray/serve:test_gcs_failure # Fork not supported in windows
-      -python/ray/serve:test_standalone2 # Multinode not supported on Windows
+      -python/ray/serve:test_standalone_2 # Multinode not supported on Windows
       -python/ray/serve:test_gradio
       -python/ray/serve:test_gradio_visualization
       -python/ray/serve:test_air_integrations_gpu
