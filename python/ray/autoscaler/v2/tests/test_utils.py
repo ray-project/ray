@@ -143,6 +143,9 @@ def test_cluster_status_parser_cluster_resource_state():
     assert len(cluster_status.healthy_nodes) == 2
     assert cluster_status.healthy_nodes[0].instance_id == "instance1"
     assert cluster_status.healthy_nodes[0].ray_node_type_name == "head_node"
+    cluster_status.healthy_nodes[0].resource_usage.usage.sort(
+        key=lambda x: x.resource_name
+    )
     assert cluster_status.healthy_nodes[0].resource_usage == NodeUsage(
         usage=[
             ResourceUsage(resource_name="CPU", total=1.0, used=0.5),
@@ -153,6 +156,9 @@ def test_cluster_status_parser_cluster_resource_state():
 
     assert cluster_status.healthy_nodes[1].instance_id == "instance3"
     assert cluster_status.healthy_nodes[1].ray_node_type_name == "worker_node"
+    cluster_status.healthy_nodes[1].resource_usage.usage.sort(
+        key=lambda x: x.resource_name
+    )
     assert cluster_status.healthy_nodes[1].resource_usage == NodeUsage(
         usage=[
             ResourceUsage(resource_name="CPU", total=1.0, used=0.0),
@@ -180,7 +186,9 @@ def test_cluster_status_parser_cluster_resource_state():
 
     # Assert on resource demands from placement groups
     assert len(cluster_status.resource_demands.placement_group_demand) == 2
-    assert cluster_status.resource_demands.placement_group_demand == [
+    assert sorted(
+        cluster_status.resource_demands.placement_group_demand, key=lambda x: x.pg_id
+    ) == [
         PlacementGroupResourceDemand(
             bundles_by_count=[
                 ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=1)
@@ -208,7 +216,9 @@ def test_cluster_status_parser_cluster_resource_state():
     ]
 
     # Assert on the cluster_resource_usage
-    assert cluster_status.cluster_resource_usage == [
+    assert sorted(
+        cluster_status.cluster_resource_usage, key=lambda x: x.resource_name
+    ) == [
         ResourceUsage(resource_name="CPU", total=2.0, used=0.5),
         ResourceUsage(resource_name="GPU", total=4.0, used=0.0),
     ]
