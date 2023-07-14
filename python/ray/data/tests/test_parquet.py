@@ -7,6 +7,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from packaging import version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -516,6 +517,9 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     assert ds.count() == 2
 
 
+# FIXME: This test is failing with Arrow nightly (13.0.0.dev497). See 
+# https://github.com/ray-project/ray/issues/37429.
+@pytest.skipif(version.parse(pa.__version__).major >= 13)
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame(
         {"one": [1, 1, 1, 3, 3, 3], "two": ["a", "b", "c", "e", "f", "g"]}
