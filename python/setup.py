@@ -263,7 +263,9 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "client": [
-            "grpcio",
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issue: https://github.com/grpc/grpc/issues/31885
+            "grpcio >= 1.42.0, <= 1.50.0",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
