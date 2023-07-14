@@ -530,7 +530,7 @@ def read_parquet(
         ...           ("petal.length", pa.float64()),
         ...           ("petal.width", pa.float64()),
         ...           ("variety", pa.string())]
-        >>> ray.data.read_parquet("example://iris.parquet",
+        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet",
         ...     schema=pa.schema(fields))
         Dataset(
            num_blocks=...,
@@ -554,7 +554,7 @@ def read_parquet(
             # Create a Dataset by reading a Parquet file, pushing column selection and
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
-                "example://iris.parquet",
+                "s3://anonymous@ray-example-data/iris.parquet",
                 columns=["sepal.length", "variety"],
                 filter=pa.dataset.field("sepal.length") > 5.0,
             )
@@ -658,7 +658,7 @@ def read_images(
 
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
-        >>> root = "example://tiny-imagenet-200/train"
+        >>> root = "s3://anonymous@ray-example-data/image-datasets/dir-partitioned"
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)  # doctest: +SKIP
         >>> ds  # doctest: +SKIP
@@ -850,9 +850,9 @@ def read_json(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")  # doctest: +SKIP
-        >>> ds.take(1)  # doctest: +SKIP
-        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/year=2022/month=09/sales.json")
+        >>> ds.take(1)
+        [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
     Args:
         paths: A single file/directory path or a list of file/directory paths.
@@ -877,7 +877,7 @@ def read_json(
             found. Defaults to False.
 
     Returns:
-        Dataset producing Arrow records read from the specified paths.
+        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
     return read_datasource(
         JSONDatasource(),
@@ -925,9 +925,9 @@ def read_csv(
         >>> # Read files that use a different delimiter. For more uses of ParseOptions see
         >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
         >>> from pyarrow import csv
-        >>> parse_options = csv.ParseOptions(delimiter="\t")
-        >>> ray.data.read_csv( # doctest: +SKIP
-        ...     "example://iris.tsv",
+        >>> parse_options = csv.ParseOptions(delimiter="\\t")
+        >>> ds = ray.data.read_csv(
+        ...     "s3://anonymous@ray-example-data/iris.tsv",
         ...     parse_options=parse_options)
 
         >>> # Convert a date column with a custom format from a CSV file.
@@ -936,8 +936,8 @@ def read_csv(
         >>> from pyarrow import csv
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
-        >>> ray.data.read_csv( # doctest: +SKIP
-        ...     "example://dow_jones_index.csv",
+        >>> ds = ray.data.read_csv(
+        ...     "s3://anonymous@ray-example-data/dow_jones.csv",
         ...     convert_options=convert_options)
 
         By default, ``read_csv`` parses
@@ -945,8 +945,8 @@ def read_csv(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")  # doctest: +SKIP
-        >>> ds.take(1)  # doctest: +SKIP
+        >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/year=2022/month=09/sales.csv")
+        >>> ds.take(1)
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
         By default, ``read_csv`` reads all files from file paths. If you want to filter
@@ -954,8 +954,7 @@ def read_csv(
 
         >>> # Read only *.csv files from multiple directories.
         >>> from ray.data.datasource import FileExtensionFilter
-        >>> ray.data.read_csv( # doctest: +SKIP
-        ...     ["s3://bucket/path1", "s3://bucket/path2"],
+        >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     partition_filter=FileExtensionFilter("csv"))
 
     Args:
@@ -1175,21 +1174,18 @@ def read_tfrecords(
         :class:`~ray.data.Dataset`.
 
         >>> import ray
-        >>> ds = ray.data.read_tfrecords(path)
-        >>> ds.to_pandas()  # doctest: +SKIP
-           length  width    species
-        0     5.1    3.5  b'setosa'
+        >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
+        Dataset(
+           num_blocks=...,
+           num_rows=150,
+           schema={...}
+        )
 
         We can also read compressed TFRecord files which uses one of the
         `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
 
-        >>> compressed_path = os.path.join(tempfile.gettempdir(), "data_compressed.tfrecords")
-        >>> options = tf.io.TFRecordOptions(compression_type="GZIP") # "ZLIB" also supported by TensorFlow
-        >>> with tf.io.TFRecordWriter(path=compressed_path, options=options) as writer:
-        ...     writer.write(example.SerializeToString())
-
-        >>> ds = ray.data.read_tfrecords(
-        ...     [compressed_path],
+        >>> ray.data.read_tfrecords(
+        ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
         >>> ds.to_pandas()  # doctest: +SKIP
