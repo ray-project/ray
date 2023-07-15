@@ -78,12 +78,8 @@ def _shared_serve_instance():
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
-    # Clear all applications to avoid naming & route_prefix collisions.
-    _shared_serve_instance.delete_all_apps()
-    # Clear all state between tests to avoid naming collisions.
-    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
-    # Clear the ServeHandle cache between tests to avoid them piling up.
-    _shared_serve_instance.handle_cache.clear()
+    # Clean up all services and backends between tests
+    _shared_serve_instance.shutdown()
 
 
 def check_ray_stop():
