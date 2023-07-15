@@ -118,21 +118,18 @@ pipeline.show()
 # __air_deploy_start__
 from ray import serve
 from fastapi import Request
-from ray.serve import PredictorDeployment
-from ray.serve.http_adapters import json_request
 
+@serve.deployment
+class XGBoostService:
+    def __init__(self, checkpoint):
+        self.predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
-async def adapter(request: Request):
-    content = await request.json()
-    print(content)
-    return pd.DataFrame.from_dict(content)
+    async def __call__(self, request: Request):
+        input = await request.json()
+        data = pd.DataFrame.from_dict(content)
+        return self.predictor.predict(data)
 
-
-serve.run(
-    PredictorDeployment.options(name="XGBoostService").bind(
-        XGBoostPredictor, result.checkpoint, batching_params=False, http_adapter=adapter
-    )
-)
+serve.run(XGBoostService.bind(checkpoint))
 # __air_deploy_end__
 
 # __air_inference_start__
