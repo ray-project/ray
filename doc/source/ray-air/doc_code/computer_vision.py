@@ -357,17 +357,20 @@ def batch_predict_tensorflow(dataset, checkpoint):
 def online_predict_torch(checkpoint):
     # __torch_serve_start__
     from ray import serve
-    from ray.serve import PredictorDeployment
+    from ray.serve.drivers import DAGDriver
     from ray.serve.http_adapters import json_to_ndarray
     from ray.train.torch import TorchPredictor
 
-    serve.run(
-        PredictorDeployment.bind(
-            TorchPredictor,
-            checkpoint,
-            http_adapter=json_to_ndarray,
-        )
-    )
+    @serve.deployment
+    class TorchService:
+        def __init__(self, checkpoint):
+            self.predictor = TorchPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, data):
+            return self.predictor.predict(data)
+
+    serve.run(DAGDriver.bind(
+        TorchService.bind(checkpoint), http_adapter=json_to_ndarray))
     # __torch_serve_stop__
 
     # __torch_online_predict_start__
