@@ -126,12 +126,12 @@ class PPOTorchPolicy(
         curr_entropy = curr_action_dist.entropy()
         mean_entropy = reduce_mean_valid(curr_entropy)
 
-        surrogate_loss = torch.min(
-            train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
-            train_batch[Postprocessing.ADVANTAGES]
-            * torch.clamp(
-                logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
-            ),
+        absolute_advantages = torch.abs(train_batch[Postprocessing.ADVANTAGES])
+        clamped_logp_ratio = torch.clamp(
+            logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
+        )
+        surrogate_loss = torch.sign(train_batch[Postprocessing.ADVANTAGES]) * torch.min(
+            absolute_advantages * logp_ratio, absolute_advantages * clamped_logp_ratio
         )
 
         # Compute a value function loss.

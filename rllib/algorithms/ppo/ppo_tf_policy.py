@@ -154,14 +154,15 @@ def get_ppo_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             curr_entropy = curr_action_dist.entropy()
             mean_entropy = reduce_mean_valid(curr_entropy)
 
-            surrogate_loss = tf.minimum(
-                train_batch[Postprocessing.ADVANTAGES] * logp_ratio,
+            absolute_advantages = tf.math.abs(train_batch[Postprocessing.ADVANTAGES])
+            clamped_logp_ratio = tf.clip_by_value(
+                logp_ratio, 1 - self.config["clip_param"], 1 + self.config["clip_param"]
+            )
+            surrogate_loss = tf.math.sign(
                 train_batch[Postprocessing.ADVANTAGES]
-                * tf.clip_by_value(
-                    logp_ratio,
-                    1 - self.config["clip_param"],
-                    1 + self.config["clip_param"],
-                ),
+            ) * tf.minimum(
+                absolute_advantages * logp_ratio,
+                absolute_advantages * clamped_logp_ratio,
             )
 
             # Compute a value function loss.
