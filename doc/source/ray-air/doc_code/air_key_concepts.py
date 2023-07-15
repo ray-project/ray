@@ -125,8 +125,7 @@ class XGBoostService:
         self.predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
     async def __call__(self, request: Request):
-        input = await request.json()
-        data = pd.DataFrame.from_dict(content)
+        data = pd.DataFrame.from_dict(await request.json())
         return self.predictor.predict(data)
 
 serve.run(XGBoostService.bind(checkpoint))
