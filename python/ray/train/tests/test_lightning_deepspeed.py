@@ -2,7 +2,7 @@ import os
 import pytest
 
 import ray
-from ray.air.config import CheckpointConfig, RunConfig
+from ray.train import CheckpointConfig, RunConfig
 from ray.air.constants import MODEL_KEY
 from ray.train.lightning import LightningConfigBuilder, LightningTrainer
 from ray.train.tests.lightning_test_utils import (

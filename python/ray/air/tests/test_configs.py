@@ -1,6 +1,6 @@
 import pytest
 
-from ray.air.config import (
+from ray.train import (
     ScalingConfig,
     DatasetConfig,
     FailureConfig,

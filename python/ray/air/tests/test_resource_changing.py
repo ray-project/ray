@@ -1,6 +1,5 @@
 from ray import train
-from ray.air.checkpoint import Checkpoint
-from ray.air.config import FailureConfig, RunConfig, ScalingConfig
+from ray.train import Checkpoint, FailureConfig, RunConfig, ScalingConfig
 from ray.air.constants import TRAIN_DATASET_KEY
 from ray.tune.tune_config import TuneConfig
 from ray.tune.tuner import Tuner
