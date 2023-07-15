@@ -157,7 +157,7 @@ def test_tune_checkpoint(ray_start_4_cpus):
 def test_reuse_checkpoint(ray_start_4_cpus):
     def train_func(config):
         itr = 0
-        ckpt = train.get_checkpoint()
+        ckpt = train.get_context().get_checkpoint()
         if ckpt is not None:
             ckpt = ckpt.to_dict()
             itr = ckpt["iter"] + 1
