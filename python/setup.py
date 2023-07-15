@@ -184,6 +184,7 @@ if setup_spec.type == SetupType.RAY_CPP:
 # bindings are created.
 generated_python_directories = [
     "ray/core/generated",
+    "ray/core/generated/experimental",
     "ray/serve/generated",
 ]
 
@@ -263,7 +264,9 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
         ],
         "client": [
-            "grpcio",
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issue: https://github.com/grpc/grpc/issues/31885
+            "grpcio >= 1.42.0, <= 1.50.0",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
