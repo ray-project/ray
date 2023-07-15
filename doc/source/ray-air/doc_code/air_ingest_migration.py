@@ -5,8 +5,8 @@
 import random
 import ray
 
-from ray.air.config import ScalingConfig, DatasetConfig
 from ray.data.preprocessors.batch_mapper import BatchMapper
+from ray.train import ScalingConfig, DatasetConfig
 from ray.train.torch import TorchTrainer
 
 train_ds = ray.data.range_tensor(1000)

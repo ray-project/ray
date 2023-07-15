@@ -111,7 +111,7 @@ metric = "loss"
 
 # __air_tune_generic_start__
 from ray.tune.tuner import Tuner, TuneConfig
-from ray.air.config import RunConfig
+from ray.train import RunConfig
 
 tuner = Tuner(
     trainer,
