@@ -86,9 +86,8 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory, the
-  # dashboard directory and jars directory, as well as the compiled
-  # dependency constraints.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt
+  # dashboard directory and jars directory.
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
 
   (
     cd python
@@ -128,7 +127,7 @@ for path in .whl/*.whl; do
 done
 
 # Clean the build output so later operations is on a clean directory.
-git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
 
 echo "--- Build JAR"
 if [ "${BUILD_JAR-}" == "1" ]; then

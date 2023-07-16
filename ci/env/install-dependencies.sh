@@ -457,16 +457,6 @@ install_pip_packages() {
 
   # Generate the pip command with collected requirements files
   pip_cmd="pip install -U -c ${WORKSPACE_DIR}/python/requirements.txt"
-
-  if [[ -f "${WORKSPACE_DIR}/python/requirements_compiled.txt"  &&  "${PYTHON-}" != "3.7" && "${OSTYPE}" != msys ]]; then
-    # On Python 3.7, we don't, as the dependencies are compiled for 3.8+
-    # and we don't build ray-ml images. This means we don't have to keep
-    # consistency between CI and docker images.
-    # On Windows, some pinned dependencies are not built for win, so we
-    # skip this until we have a good wy to resolve cross-platform dependencies.
-    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
-  fi
-
   for file in "${requirements_files[@]}"; do
      pip_cmd+=" -r ${file}"
   done
