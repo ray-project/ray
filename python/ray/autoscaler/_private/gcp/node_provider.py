@@ -195,6 +195,7 @@ class GCPNodeProvider(NodeProvider):
                     f"Tried to delete the node with id {node_id} "
                     "but it was already gone."
                 )
+                result = None
             else:
                 raise http_error from None
         return result
