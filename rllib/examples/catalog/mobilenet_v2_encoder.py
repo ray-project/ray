@@ -10,39 +10,15 @@ to new observation- or action spaces while retaining their original functionalit
 import functools
 import gymnasium as gym
 import numpy as np
-import torch
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.models.base import Encoder, ENCODER_OUT
-from ray.rllib.core.models.configs import ModelConfig
-from ray.rllib.core.models.torch.base import TorchModel
+from ray.rllib.examples.models.mobilenet_v2_encoder import (
+    MobileNetV2EncoderConfig,
+    MOBILENET_INPUT_SHAPE,
+)
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.random_env import RandomEnv
-
-MOBILENET_INPUT_SHAPE = (3, 224, 224)
-import ray
-ray.init(local_mode=True)
-class MobileNetV2EncoderConfig(ModelConfig):
-    # MobileNet v2 has a flat output of (1000,).
-    output_dims = (1000,)
-
-    def build(self, framework):
-        assert framework == "torch", "Unsupported framework `{}`!".format(framework)
-        return MobileNetV2Encoder(self)
-
-
-class MobileNetV2Encoder(TorchModel, Encoder):
-    def __init__(self, config):
-        super().__init__(config)
-        self.net = torch.hub.load(
-            "pytorch/vision:v0.6.0", "mobilenet_v2", pretrained=True
-        )
-        for p in self.net.parameters():
-            p.requires_grad = False
-
-    def _forward(self, input_dict, **kwargs):
-        return {ENCODER_OUT: (self.net(input_dict["obs"]))}
 
 
 # Define a PPO Catalog that we can use to inject our MobileNetV2 Encoder into RLlib's
@@ -82,7 +58,10 @@ ppo_config = (
         )
     )
     .rollouts(num_rollout_workers=0)
-    .training(train_batch_size=128)  # Speed this up a little!
+    # The following training settings make it so that a training iteration is very
+    # quick. This is just for the sake of this example. PPO will not learn properly
+    # with these settings!
+    .training(train_batch_size=32, sgd_minibatch_size=16, num_sgd_iter=1)
 )
 
 # Train without our MobileNetEncoder on CartPole-v1

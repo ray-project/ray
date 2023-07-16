@@ -9,28 +9,15 @@ import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.models.base import Encoder, ENCODER_OUT
 from ray.rllib.core.models.configs import MLPHeadConfig
-from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
 from ray.rllib.examples.env.random_env import RandomEnv
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
-from ray.rllib.utils.framework import try_import_torch
-
-MOBILENET_INPUT_SHAPE = (3, 224, 224)
-
-torch, nn = try_import_torch()
-
-
-class MobileNetV2Encoder(TorchModel, Encoder):
-    def __init__(self, config):
-        super().__init__(config)
-        self.net = torch.hub.load(
-            "pytorch/vision:v0.6.0", "mobilenet_v2", pretrained=True
-        )
-
-    def _forward(self, input_dict, **kwargs):
-        return {ENCODER_OUT: (self.net(input_dict["obs"]))}
+from ray.rllib.examples.models.mobilenet_v2_encoder import (
+    MobileNetV2EncoderConfig,
+    MOBILENET_INPUT_SHAPE,
+)
+from ray.rllib.core.models.configs import ActorCriticEncoderConfig
 
 
 class MobileNetTorchPPORLModule(PPOTorchRLModule):
@@ -42,14 +29,24 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
     """
 
     def setup(self):
-        self.encoder = MobileNetV2Encoder(config=None)
+        mobilenet_v2_config = MobileNetV2EncoderConfig()
+        # Since we want to use PPO, which is an actor-critic algorithm, we need to
+        # use an ActorCriticEncoderConfig to wrap the base encoder config.
+        actor_critic_encoder_config = ActorCriticEncoderConfig(
+            base_encoder_config=mobilenet_v2_config
+        )
+
+        self.encoder = actor_critic_encoder_config.build(framework="torch")
+        mobilenet_v2_output_dims = mobilenet_v2_config.output_dims
 
         pi_config = MLPHeadConfig(
-            input_dims=[1000],
+            input_dims=mobilenet_v2_output_dims,
             output_layer_dim=2,
         )
 
-        vf_config = MLPHeadConfig(input_dims=[1000], output_layer_dim=1)
+        vf_config = MLPHeadConfig(
+            input_dims=mobilenet_v2_output_dims, output_layer_dim=1
+        )
 
         self.pi = pi_config.build(framework="torch")
         self.vf = vf_config.build(framework="torch")
@@ -75,6 +72,10 @@ config = (
             ),
         },
     )
+    # The following training settings make it so that a training iteration is very
+    # quick. This is just for the sake of this example. PPO will not learn properly
+    # with these settings!
+    .training(train_batch_size=32, sgd_minibatch_size=16, num_sgd_iter=1)
 )
 
 config.build().train()
