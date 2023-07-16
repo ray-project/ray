@@ -27,7 +27,7 @@ pytorch-lightning==1.6.5
 scikit-optimize
 redis
 starlette
-uvicorn==0.22.0
+uvicorn==0.16.0
 werkzeug
 wandb
 tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
