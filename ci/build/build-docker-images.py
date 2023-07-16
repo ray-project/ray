@@ -424,7 +424,6 @@ def prep_ray_ml():
 
     requirements_files = [
         "python/requirements.txt",
-        "python/requirements_compiled.txt",
     ]
     ml_requirements_files = [
         "python/requirements/docker/ray-docker-requirements.txt",
