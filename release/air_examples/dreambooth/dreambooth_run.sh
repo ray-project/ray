@@ -67,7 +67,8 @@ python train.py \
   --class_images_dir=$IMAGES_REG_DIR \
   --class_prompt="photo of a $CLASS_NAME" \
   --train_batch_size=2 \
-  --lr=5e-6
+  --lr=5e-6 \
+  --max_train_steps=800
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg

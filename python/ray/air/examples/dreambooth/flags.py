@@ -61,6 +61,12 @@ def train_arguments():
         "--num_epochs", type=int, default=4, help="Number of epochs to train."
     )
     parser.add_argument(
+        "--max_train_steps",
+        type=int,
+        default=800,
+        help="Maximum number of fine-tuning update steps to take.",
+    )
+    parser.add_argument(
         "--prior_loss_weight",
         type=float,
         default=1.0,
