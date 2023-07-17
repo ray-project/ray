@@ -132,5 +132,13 @@ def run_model_flags():
         default=1,
         help="Number of images to generate for each prompt.",
     )
+    parser.add_argument(
+        "--use_ray_data",
+        default=False,
+        action="store_true",
+        help=(
+            "Enable using Ray Data to use multiple GPU workers to perform inference."
+        ),
+    )
 
     return parser

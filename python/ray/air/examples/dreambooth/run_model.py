@@ -3,29 +3,76 @@ from os import path
 
 from diffusers import DiffusionPipeline
 import torch
+import ray
 
 from flags import run_model_flags
 
 
 def run(args):
-    print(f"Loading model from {args.model_dir}")
-    pipeline = DiffusionPipeline.from_pretrained(
-        args.model_dir, torch_dtype=torch.float16
-    )
-    pipeline.set_progress_bar_config(disable=True)
-    if torch.cuda.is_available():
-        pipeline.to("cuda")
+    class StableDiffusionCallable:
+        def __init__(self, model_dir, output_dir):
+            print(f"Loading model from {model_dir}")
+
+            self.pipeline = DiffusionPipeline.from_pretrained(
+                model_dir, torch_dtype=torch.float16
+            )
+            self.pipeline.set_progress_bar_config(disable=True)
+            if torch.cuda.is_available():
+                self.pipeline.to("cuda")
+            self.output_dir = output_dir
+
+        def __call__(self, batch):
+            filenames = []
+            for i, prompt in zip(batch["idx"], batch["prompt"]):
+                # Generate 1 image at a time to reduce memory consumption.
+                for image in self.pipeline(prompt).images:
+                    hash_image = hashlib.sha1(image.tobytes()).hexdigest()
+                    image_filename = path.join(self.output_dir, f"{i}-{hash_image}.jpg")
+                    image.save(image_filename)
+                    print(f"Saved {image_filename}")
+                    filenames.append(image_filename)
+            return {"filename": filenames}
 
     prompts = args.prompts.split(",")
 
-    # Generate 1 image to reduce memory consumption.
-    for prompt in prompts:
-        for i in range(args.num_samples_per_prompt):
-            for image in pipeline(prompt).images:
-                hash_image = hashlib.sha1(image.tobytes()).hexdigest()
-                image_filename = path.join(args.output_dir, f"{i}-{hash_image}.jpg")
-                image.save(image_filename)
-                print(f"Saved {image_filename}")
+    if args.use_ray_data:
+        # Use Ray Data to perform batch inference to generate many images in parallel
+        prompts_with_idxs = []
+        for prompt in prompts:
+            prompts_with_idxs.extend(
+                [
+                    {"idx": i, "prompt": prompt}
+                    for i in range(args.num_samples_per_prompt)
+                ]
+            )
+
+        prompt_ds = ray.data.from_items(prompts_with_idxs)
+
+        num_samples = len(prompts_with_idxs)
+        num_workers = 4
+
+        filenames = prompt_ds.map_batches(
+            StableDiffusionCallable,
+            compute=ray.data.ActorPoolStrategy(size=num_workers),
+            fn_constructor_args=(args.model_dir, args.output_dir),
+            num_gpus=1,
+            batch_size=num_samples // num_workers,
+        ).take_batch(5)
+
+        print(
+            f"Generated and saved {num_samples} images to {args.output_dir}. "
+            "Here are the first few:"
+        )
+        for filename in filenames["filename"]:
+            print(filename)
+    else:
+        # Generate images one by one
+        stable_diffusion_predictor = StableDiffusionCallable(
+            args.model_dir, args.output_dir
+        )
+        for prompt in prompts:
+            for i in range(args.num_samples_per_prompt):
+                stable_diffusion_predictor({"idx": [i], "prompt": [prompt]})
 
 
 if __name__ == "__main__":
