@@ -94,9 +94,7 @@ def check_deployments_dead(deployment_names):
             filters=[("state", "=", "ALIVE")],
         )
     ]
-    return all(
-        f"ServeReplica:{name}" not in actor_names for name in deployment_names
-    )
+    return all(f"ServeReplica:{name}" not in actor_names for name in deployment_names)
 
 
 def get_num_replicas(_client: ServeControllerClient, deployment_name: str):
@@ -417,10 +415,7 @@ def test_deploy_app_update_timestamp(client: ServeControllerClient):
     ]
     client.deploy_apps(ServeApplicationSchema.parse_obj(config))
 
-    assert (
-        client.get_serve_status().app_status.deployment_timestamp
-        > first_deploy_time
-    )
+    assert client.get_serve_status().app_status.deployment_timestamp > first_deploy_time
     assert client.get_serve_status().app_status.status in {
         ApplicationStatus.DEPLOYING,
         ApplicationStatus.RUNNING,
@@ -618,8 +613,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
         )
         for actor in actors:
             assert (
-                "app1" not in actor["class_name"]
-                and "app2" not in actor["class_name"]
+                "app1" not in actor["class_name"] and "app2" not in actor["class_name"]
             )
         return True
 
@@ -629,8 +623,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
     # App1 and App2 should be gone
     assert requests.get("http://localhost:8000/app1").status_code != 200
     assert (
-        requests.post("http://localhost:8000/app2", json=["ADD", 2]).status_code
-        != 200
+        requests.post("http://localhost:8000/app2", json=["ADD", 2]).status_code != 200
     )
 
     # App3 should be up and running
@@ -872,9 +865,7 @@ def test_update_config_user_config(client: ServeControllerClient):
     wait_for_condition(check)
 
 
-def test_update_config_graceful_shutdown_timeout(
-    client: ServeControllerClient
-):
+def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
     name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
     config_template = {
@@ -926,9 +917,7 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
 
     all_replicas = ray.get(client._controller._all_running_replicas.remote())
     assert len(all_replicas) == 1
-    assert (
-        all_replicas[list(all_replicas.keys())[0]][0].max_concurrent_queries == 1000
-    )
+    assert all_replicas[list(all_replicas.keys())[0]][0].max_concurrent_queries == 1000
 
     handle = client.get_handle(name)
 
@@ -967,9 +956,7 @@ def test_update_config_health_check_period(client: ServeControllerClient):
     # done as part of the replica startup sequence.
     initial_counter = ray.get(handle.get_counter.remote(health_check=True))
     time.sleep(5)
-    assert (
-        ray.get(handle.get_counter.remote(health_check=True)) <= initial_counter + 1
-    )
+    assert ray.get(handle.get_counter.remote(health_check=True)) <= initial_counter + 1
 
     # Update the deployment's health check period to 0.1 seconds.
     config_template["deployments"][0]["health_check_period_s"] = 0.1
@@ -1096,8 +1083,7 @@ def test_deploy_one_app_failed(client: ServeControllerClient):
     client.deploy_apps(ServeDeploySchema(**config_template))
 
     wait_for_condition(
-        lambda: requests.post("http://localhost:8000/app1").text
-        == "wonderful world"
+        lambda: requests.post("http://localhost:8000/app1").text == "wonderful world"
     )
 
     wait_for_condition(
@@ -1234,13 +1220,10 @@ def test_deploy_multi_app_deleting(client: ServeControllerClient):
         global info_valid
         try:
             # Fetch details, should always parse correctly
-            details = ray.get(
-                client._controller.get_serve_instance_details.remote()
-            )
+            details = ray.get(client._controller.get_serve_instance_details.remote())
             ServeInstanceDetails(**details)
             return (
-                details["applications"]["app1"]["status"]
-                == ApplicationStatus.RUNNING
+                details["applications"]["app1"]["status"] == ApplicationStatus.RUNNING
                 and "app2" not in details["applications"]
             )
         except Exception:
