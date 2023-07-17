@@ -415,6 +415,38 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
 
+    def _get_node_labels(self):
+        def merge_labels(env_dict, params_dict):
+            """Merges two dictionaries, picking from the
+            first in the event of a conflict. Also emit a warning on every
+            conflict.
+            """
+
+            result = params_dict.copy()
+            result.update(env_dict)
+
+            for key in set(env_dict.keys()).intersection(set(params_dict.keys())):
+                if params_dict[key] != env_dict[key]:
+                    logger.warning(
+                        "Autoscaler is overriding your label:"
+                        f"{key}: {params_dict[key]} with {env_dict[key]}."
+                    )
+            return result
+
+        env_labels = {}
+        env_string = os.getenv(ray_constants.LABELS_ENVIRONMENT_VARIABLE)
+        if env_string:
+            try:
+                env_labels = json.loads(env_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_string}")
+                raise
+            logger.debug(f"Autoscaler overriding labels: {env_labels}.")
+
+        return merge_labels(
+            env_labels, self._ray_params.labels if self._ray_params.labels else {}
+        )
+
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
 
@@ -1048,7 +1080,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self._ray_params.labels,
+            labels=self._get_node_labels(),
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

@@ -12,7 +12,7 @@ from typing import Any, Dict, Optional
 import yaml
 
 import ray
-from ray._private.ray_constants import DEFAULT_PORT
+import ray._private.ray_constants as ray_constants
 from ray.autoscaler._private.fake_multi_node.command_runner import (
     FakeDockerCommandRunner,
 )
@@ -194,7 +194,7 @@ def create_node_spec(
         node_spec["command"] = DOCKER_HEAD_CMD.format(**cmd_kwargs)
         # Expose ports so we can connect to the cluster from outside
         node_spec["ports"] = [
-            f"{host_gcs_port}:{DEFAULT_PORT}",
+            f"{host_gcs_port}:{ray_constants.DEFAULT_PORT}",
             f"{host_object_manager_port}:8076",
             f"{host_client_port}:10001",
         ]
@@ -323,7 +323,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 ),
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
-                    "RAY_OVERRIDE_RESOURCES": json.dumps(resources),
+                    ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
                 },
             )
             node = ray._private.node.Node(
@@ -473,7 +473,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
             resources=resources,
             env_vars={
                 "RAY_OVERRIDE_NODE_ID_FOR_TESTING": node_id,
-                "RAY_OVERRIDE_RESOURCES": resource_str,
+                ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: resource_str,
                 **self.provider_config.get("env_vars", {}),
             },
             volume_dir=self._volume_dir,
