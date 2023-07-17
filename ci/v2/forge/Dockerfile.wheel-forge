@@ -20,7 +20,7 @@ NODE_VERSION="14"
 YUM_PKGS=(unzip zip sudo openssl xz)
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
-  YMB_PKGS+=(
+  YUM_PKGS+=(
     "libasan-4.8.5-44.el7.x86_64"
     "libubsan-7.3.1-5.10.el7.x86_64"
     "devtoolset-8-libasan-devel.x86_64"

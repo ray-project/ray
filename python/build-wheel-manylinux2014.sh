@@ -59,7 +59,7 @@ JAVA_BIN="$(readlink -f "$(command -v java)")"
 echo "java_bin path ${JAVA_BIN}"
 export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
 
-if [[ -n "${RAY_INSTALL_JAVA:-}" ]]; then
+if [[ "${RAY_INSTALL_JAVA:-0}" == "1" ]]; then
   bazel build //java:ray_java_pkg
   unset RAY_INSTALL_JAVA
 fi
