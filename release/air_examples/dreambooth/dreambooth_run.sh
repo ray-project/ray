@@ -20,12 +20,29 @@ export IMAGES_REG_DIR="$DATA_PREFIX/images-reg"
 export IMAGES_OWN_DIR="$DATA_PREFIX/images-own"
 export IMAGES_NEW_DIR="$DATA_PREFIX/images-new"
 
-export CLASS_NAME="lego car"
-
 mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGES_NEW_DIR
 
+# For the finetuning dataset, we provide 2 examples (dog, lego car), or you can
+# pass in a directory of custom images. Only uncomment one of the 3:
+
+# Option 1: Use the dog dataset ---------
+export CLASS_NAME="dog"
+python download_example_dataset.py ./images/dog
+export INSTANCE_DIR=./images/dog
+# ---------------------------------------
+
+# Option 2: Use the lego car dataset ----
+# export CLASS_NAME="car"
+# export INSTANCE_DIR=./images/lego-car
+# ---------------------------------------
+
+# Option 3: Use your own images ---------
+# export CLASS_NAME="<class-of-your-subject>"
+# export INSTANCE_DIR="/path/to/images/of/subject"
+# ---------------------------------------
+
 # Copy own images into IMAGES_OWN_DIR
-cp -rf ./images/unqtkn/*.jpg "$IMAGES_OWN_DIR/"
+cp -rf $INSTANCE_DIR/* "$IMAGES_OWN_DIR/"
 
 # Step 1
 python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME --revision=$ORIG_MODEL_HASH
@@ -34,21 +51,23 @@ python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME 
 rm -rf "$IMAGES_REG_DIR"/*.jpg
 
 # Step 2
-# ATTN: Reduced the number of samples per prompt for faster testing
 python run_model.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$IMAGES_REG_DIR \
   --prompts="photo of a $CLASS_NAME" \
-  --num_samples_per_prompt=20
+  --num_samples_per_prompt=200 \
+  --use_ray_data
 
 # Step 3
 python train.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$TUNED_MODEL_DIR \
   --instance_images_dir=$IMAGES_OWN_DIR \
-  --instance_prompt="a photo of unqtkn $CLASS_NAME" \
+  --instance_prompt="photo of unqtkn $CLASS_NAME" \
   --class_images_dir=$IMAGES_REG_DIR \
-  --class_prompt="a photo of a $CLASS_NAME"
+  --class_prompt="photo of a $CLASS_NAME" \
+  --train_batch_size=2 \
+  --lr=5e-6
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
