@@ -165,7 +165,7 @@ delay_after(instrumented_io_context &ioc) {
   };
 }
 
-TEST(RuntimeEnvAgentClientTest, TestGetOrCreateRuntimeEnvOK) {
+TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
   int port = GetFreePort();
   HttpServerThread http_server_thread(
       [](const http::request<http::string_body> &request,
@@ -225,7 +225,7 @@ TEST(RuntimeEnvAgentClientTest, TestGetOrCreateRuntimeEnvOK) {
   ASSERT_EQ(called_times, 1);
 }
 
-TEST(RuntimeEnvAgentClientTest, TestGetOrCreateRuntimeEnvApplicationError) {
+TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
   int port = GetFreePort();
   HttpServerThread http_server_thread(
       [](const http::request<http::string_body> &request,
@@ -288,7 +288,7 @@ TEST(RuntimeEnvAgentClientTest, TestGetOrCreateRuntimeEnvApplicationError) {
 // Client sends a request on `ioc`. request got NotFound
 // We intercept in delay_scheduler to start the http_server_thread
 // Next time, client retries and got OK, callback called
-TEST(RuntimeEnvAgentClientTest, TestGetOrCreateRuntimeEnvRetriesOnServerNotStarted) {
+TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) {
   int port = GetFreePort();
   HttpServerThread http_server_thread(
       [](const http::request<http::string_body> &request,
@@ -345,6 +345,139 @@ TEST(RuntimeEnvAgentClientTest, TestGetOrCreateRuntimeEnvRetriesOnServerNotStart
                                 runtime_env_config,
                                 serialized_allocated_resource_instances,
                                 callback);
+
+  ioc.run();
+  ASSERT_EQ(called_times, 1);
+}
+
+TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(
+      [](const http::request<http::string_body> &request,
+         http::response<http::string_body> &response) {
+        rpc::DeleteRuntimeEnvIfPossibleRequest req;
+        ASSERT_TRUE(req.ParseFromString(request.body()));
+        ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(req.source_process(), "raylet");
+
+        rpc::DeleteRuntimeEnvIfPossibleReply reply;
+        reply.set_status(rpc::AGENT_RPC_STATUS_OK);
+        response.body() = reply.SerializeAsString();
+        response.content_length(response.body().size());
+        response.result(http::status::ok);
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            /*agent_manager_retry_interval_ms=*/1,
+                                            /*agent_register_timeout_ms=*/1);
+
+  size_t called_times = 0;
+  auto callback = [&](bool successful) {
+    ASSERT_TRUE(successful);
+    called_times += 1;
+  };
+
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+
+  ioc.run();
+  ASSERT_EQ(called_times, 1);
+}
+
+TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(
+      [](const http::request<http::string_body> &request,
+         http::response<http::string_body> &response) {
+        rpc::DeleteRuntimeEnvIfPossibleRequest req;
+        ASSERT_TRUE(req.ParseFromString(request.body()));
+        ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(req.source_process(), "raylet");
+
+        rpc::DeleteRuntimeEnvIfPossibleReply reply;
+        reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+        reply.set_error_message("server is not feeling well");
+        response.body() = reply.SerializeAsString();
+        response.content_length(response.body().size());
+        response.result(http::status::ok);
+      },
+      "127.0.0.1",
+      port);
+  http_server_thread.start();
+
+  instrumented_io_context ioc;
+
+  auto client =
+      raylet::RuntimeEnvAgentClient::Create(ioc,
+                                            "127.0.0.1",
+                                            port,
+                                            delay_after(ioc),
+                                            /*agent_manager_retry_interval_ms=*/1,
+                                            /*agent_register_timeout_ms=*/1);
+
+  size_t called_times = 0;
+  auto callback = [&](bool successful) {
+    ASSERT_FALSE(successful);
+    called_times += 1;
+  };
+
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
+
+  ioc.run();
+  ASSERT_EQ(called_times, 1);
+}
+
+// Client sends a request on `ioc`. request got NotFound
+// We intercept in delay_scheduler to start the http_server_thread
+// Next time, client retries and got OK, callback called
+TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStarted) {
+  int port = GetFreePort();
+  HttpServerThread http_server_thread(
+      [](const http::request<http::string_body> &request,
+         http::response<http::string_body> &response) {
+        rpc::DeleteRuntimeEnvIfPossibleRequest req;
+        ASSERT_TRUE(req.ParseFromString(request.body()));
+        ASSERT_EQ(req.serialized_runtime_env(), "serialized_runtime_env");
+        ASSERT_EQ(req.source_process(), "raylet");
+
+        rpc::DeleteRuntimeEnvIfPossibleReply reply;
+        reply.set_status(rpc::AGENT_RPC_STATUS_FAILED);
+        reply.set_error_message("server is not feeling well");
+        response.body() = reply.SerializeAsString();
+        response.content_length(response.body().size());
+        response.result(http::status::ok);
+      },
+      "127.0.0.1",
+      port);
+
+  instrumented_io_context ioc;
+
+  auto client = raylet::RuntimeEnvAgentClient::Create(
+      ioc,
+      "127.0.0.1",
+      port,
+      [&](std::function<void()> task, uint32_t delay_ms) {
+        http_server_thread.start();
+        return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
+      },
+      /*agent_manager_retry_interval_ms=*/1,
+      /*agent_register_timeout_ms=*/1);
+
+  size_t called_times = 0;
+  auto callback = [&](bool successful) {
+    ASSERT_FALSE(successful);
+    called_times += 1;
+  };
+
+  client->DeleteRuntimeEnvIfPossible("serialized_runtime_env", callback);
 
   ioc.run();
   ASSERT_EQ(called_times, 1);

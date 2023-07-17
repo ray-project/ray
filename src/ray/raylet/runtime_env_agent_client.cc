@@ -381,7 +381,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
             // HTTP request & protobuf parsing succeeded, but we got a non-OK from the
             // remote server.
             // TODO(sang): Find a better way to delivering error messages in this
-            RAY_LOG(WARNING) << "Failed to delete runtime env "
+            RAY_LOG(WARNING) << "Failed to delete runtime env"
                              << ", error message: " << reply.error_message();
             RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
             callback(false);
