@@ -1148,7 +1148,12 @@ class ActorHandle(Generic[_ActorT]):
         return self  # type: ignore
 
     @overload
-    def remote(self, __method: Callable[[_ActorT], _R]) -> ray.ObjectRef[_R]:
+    def remote(
+        self,
+        __method: Callable[[_ActorT], _R],
+        *,
+        actor_options: dict[str, Any] | None = None,
+    ) -> ray.ObjectRef[_R]:
         ...
 
     @overload
@@ -1156,6 +1161,8 @@ class ActorHandle(Generic[_ActorT]):
         self,
         __method: Callable[[_ActorT, _T0], _R],
         __arg0: _ActorArg[_T0],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1165,6 +1172,8 @@ class ActorHandle(Generic[_ActorT]):
         __method: Callable[[_ActorT, _T0, _T1], _R],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1178,6 +1187,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
         __arg2: _ActorArg[_T2],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1192,6 +1203,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         __arg2: _ActorArg[_T2],
         __arg3: _ActorArg[_T3],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1207,6 +1220,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         __arg3: _ActorArg[_T3],
         __arg4: _ActorArg[_T4],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1223,6 +1238,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         __arg4: _ActorArg[_T4],
         __arg5: _ActorArg[_T5],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1240,6 +1257,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         __arg5: _ActorArg[_T5],
         __arg6: _ActorArg[_T6],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1258,6 +1277,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         __arg6: _ActorArg[_T6],
         __arg7: _ActorArg[_T7],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1277,6 +1298,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         __arg7: _ActorArg[_T7],
         __arg8: _ActorArg[_T8],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1297,16 +1320,19 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         __arg8: _ActorArg[_T8],
         __arg9: _ActorArg[_T9],
+        *,
+        actor_options: dict[str, Any] | None = None,
     ) -> ray.ObjectRef[_R]:
         ...
 
-    def remote(self, __method: ActorMethod, *args):  # type: ignore
+    def remote(self, __method: ActorMethod, *args, actor_options: dict[str, Any] | None = None):  # type: ignore
         if not isinstance(__method, ActorMethod):
             if is_function_or_method(__method):
                 __method = getattr(self, __method.__name__)
             else:
                 raise ValueError(f"invalid method {__method}")
-        return __method.remote(*args)
+        actor_options = actor_options or {}
+        return __method.options(**actor_options).remote(*args)
 
     def __del__(self):
         try:
