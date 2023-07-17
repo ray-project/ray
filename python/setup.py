@@ -332,9 +332,8 @@ if setup_spec.type == SetupType.RAY:
         "aiosignal",
         "frozenlist",
         "requests",
-        # Light weight requirement, can be replaced with "typing" once
-        # we deprecate Python 3.7 (this will take a while).
-        "typing_extensions; python_version < '3.8'",
+        # we need typing_extensions to backport `TypeVarTuple` and `Unpack`.
+        "typing_extensions >= 4.1.0; python_version < '3.11'",
     ]
 
 
