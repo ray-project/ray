@@ -731,5 +731,32 @@ def test_get_task_traceback():
     wait_for_condition(verify, timeout=10)
 
 
+def test_get_cpu_profile():
+    """
+    Verify we throw an error for non-running task.
+
+    """
+    context = ray.init()
+    dashboard_url = f"http://{context['webui_url']}"
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get([f.remote() for _ in range(5)])
+
+    # Make sure the API works.
+    def verify():
+        with pytest.raises(requests.exceptions.HTTPError) as exc_info:
+            resp = requests.get(
+                f"{dashboard_url}/task/cpu_profile?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}"
+            )
+            resp.raise_for_status()
+        assert isinstance(exc_info.value, requests.exceptions.HTTPError)
+        return True
+
+    wait_for_condition(verify, timeout=10)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

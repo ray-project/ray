@@ -36,6 +36,16 @@ from ray.util.state.state_manager import (
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
+WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "This task is running in a worker that is running multiple tasks. Please notice the info you see here is for the all the tasks in this worker.The task_id running on this task is: \n"
+
+
+def get_warning_text(reply, task_ids):
+    return (
+        reply.output
+        if len(task_ids) == 1
+        else WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids) + "\n" + reply.output
+    )
+
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
@@ -144,7 +154,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             attempt_number (int): The attempt number of the task.
 
         Returns:
-            tuple: A tuple containing the worker's PID (process ID), IP address and state.
+            tuple: A tuple containing the worker's PID (process ID), IP address and state and the task's IDs for this task
         """
         option = ListApiOptions(
             filters=[
@@ -157,6 +167,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         result = await self._state_api.list_tasks(option=option)
         tasks = result.result
+        if not tasks:
+            return None, None, None, None
 
         pid = tasks[0]["worker_pid"]
 
@@ -165,7 +177,33 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         state = tasks[0].get("state")
 
-        return pid, ip, state
+        worker_id = tasks[0]["worker_id"]
+        worker_option = ListApiOptions(
+            filters=[
+                ("worker_id", "=", worker_id),
+            ],
+            detail=True,
+            timeout=10,
+        )
+        ## Call the state API to get all tasks in a worker
+        tasks_in_a_worker_result = await self._state_api.list_tasks(
+            option=worker_option
+        )
+        tasks_in_a_worker = tasks_in_a_worker_result.result
+
+        ## Get task_id from each task in a worker
+        task_ids_in_a_worker = []
+        if tasks_in_a_worker is not None:
+            task_ids_in_a_worker = [
+                task.get("task_id")
+                for task in tasks_in_a_worker
+                if task and "task_id" in task
+            ]
+        logger.info(
+            f"task_ids_in_a_worker {type(task_ids_in_a_worker)}: {task_ids_in_a_worker}"
+        )
+
+        return pid, ip, state, task_ids_in_a_worker
 
     def validate_work_details(self, pid: int, ip: str, state: str):
         """
@@ -192,9 +230,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
         """
         Retrieves the traceback information for a specific task.
-        We don't use pid and ip to get task cpu profile since ip and pid is bounded to a worker
-        and a worker may run different tasks at different time.
-        Therefore, we may provide wrong profile info since we don't know which task is running on the worker
+        To notice, we have one worker to work on one task at a time or one worker to work on multiple async tasks.
 
         Args:
             req (aiohttp.web.Request): The HTTP request object.
@@ -216,7 +252,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-        pid, ip, state = await self.get_worker_details_for_task(task_id, attempt_number)
+        pid, ip, state, _ = await self.get_worker_details_for_task(
+            task_id, attempt_number
+        )
 
         try:
             self.validate_work_details(pid, ip, state)
@@ -238,33 +276,28 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
-        new_pid, new_ip, new_state = await self.get_worker_details_for_task(
-            task_id, attempt_number
-        )
+        (
+            new_pid,
+            new_ip,
+            new_state,
+            task_ids_in_a_worker,
+        ) = await self.get_worker_details_for_task(task_id, attempt_number)
 
         try:
             self.validate_work_details(new_pid, new_ip, new_state)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
-
-        if pid != new_pid or ip != new_ip:
-            raise ValueError(
-                f"The worker begin to work on other task, you could not get the correct CPU profile info"
-            )
-
         if not reply.success:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
         logger.info("Returning stack trace, size {}".format(len(reply.output)))
-        return aiohttp.web.Response(text=reply.output)
+        return aiohttp.web.Response(text=get_warning_text(reply, task_ids_in_a_worker))
 
     @routes.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
         """
         Retrieves the CPU profile for a specific task.
-        We don't use pid and ip to get task cpu profile since ip and pid is bounded to a worker
-        and a worker may run different tasks at different time.
-        Therefore, we may provide wrong profile info since we don't know which task is running on the worker
+        To notice, we have one worker to work on one task at a time or one worker to work on multiple async tasks.
 
         Args:
             req (aiohttp.web.Request): The HTTP request object.
@@ -288,8 +321,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-        pid, ip, state = await self.get_worker_details_for_task(task_id, attempt_number)
-        logger.info(f"pid {type(pid)}: {pid}")
+        pid, ip, state, _ = await self.get_worker_details_for_task(
+            task_id, attempt_number
+        )
 
         try:
             self.validate_work_details(pid, ip, state)
@@ -319,19 +353,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
-        new_pid, new_ip, new_state = await self.get_worker_details_for_task(
-            task_id, attempt_number
-        )
+        (
+            new_pid,
+            new_ip,
+            new_state,
+            _,
+        ) = await self.get_worker_details_for_task(task_id, attempt_number)
 
         try:
             self.validate_work_details(new_pid, new_ip, new_state)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
-
-        if pid != new_pid or ip != new_ip:
-            raise ValueError(
-                f"The worker begin to work on other task, you could not get the correct CPU profile info"
-            )
 
         if not reply.success:
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
