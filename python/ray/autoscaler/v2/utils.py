@@ -195,6 +195,163 @@ class ClusterStatusFormatter:
         )
 
 
+def _count_by(data: Any, key: str) -> Dict[str, int]:
+    """
+    Count the number of items by the given keys.
+    Args:
+        data: the data to be counted
+        keys: the keys to count by
+    Returns:
+        counts: the counts
+    """
+    counts = defaultdict(int)
+    for item in data:
+        key_name = getattr(item, key)
+        counts[key_name] += 1
+    return counts
+
+
+class ClusterStatusFormatter:
+    """
+    A formatter to format the ClusterStatus into a string.
+
+    TODO(rickyx): We right now parse the ClusterStatus to the legacy format
+    by using the `format_info_string`.
+    In the future, we should refactor the `format_info_string` to directly format
+    the ClusterStatus into a string as we migrate eventually away from v1.
+
+    """
+
+    @classmethod
+    def format(cls, data: ClusterStatus, verbose: bool = False) -> str:
+        lm_summary = cls._parse_lm_summary(data)
+        autoscaler_summary = cls._parse_autoscaler_summary(data)
+
+        return format_info_string(
+            lm_summary,
+            autoscaler_summary,
+            time=datetime.fromtimestamp(data.stats.request_ts_s),
+            gcs_request_time=data.stats.gcs_request_time_s,
+            non_terminated_nodes_time=data.stats.none_terminated_node_request_time_s,
+            autoscaler_update_time=data.stats.autoscaler_iteration_time_s,
+            verbose=verbose,
+        )
+
+    @classmethod
+    def _parse_autoscaler_summary(cls, data: ClusterStatus) -> AutoscalerSummary:
+        active_nodes = _count_by(data.healthy_nodes, "ray_node_type_name")
+        pending_launches = _count_by(data.pending_launches, "ray_node_type_name")
+        pending_nodes = []
+        for node in data.pending_nodes:
+            # We are using details for the pending node's status.
+            # TODO(rickyx): we should probably use instance id rather than ip address
+            # here.
+            pending_nodes.append(
+                (node.ip_address, node.ray_node_type_name, node.details)
+            )
+
+        failed_nodes = []
+        for node in data.failed_nodes:
+            # TODO(rickyx): we should probably use instance id/node id rather
+            # than node ip here since node ip is not unique among failed nodes.
+            failed_nodes.append((node.ip_address, node.ray_node_type_name))
+
+        # From IP to node type name.
+        node_type_mapping = {}
+        for node in data.healthy_nodes:
+            node_type_mapping[node.ip_address] = node.ray_node_type_name
+
+        # Transform failed launches to node_availability_summary
+        node_availabilities = {}
+        for failed_launch in data.failed_launches:
+            # TODO(rickyx): we could also add failed timestamp, count info.
+            node_availabilities[
+                failed_launch.ray_node_type_name
+            ] = NodeAvailabilityRecord(
+                node_type=failed_launch.ray_node_type_name,
+                is_available=False,
+                last_checked_timestamp=failed_launch.request_ts_s,
+                unavailable_node_information=UnavailableNodeInformation(
+                    category="LaunchFailed",
+                    description=failed_launch.details,
+                ),
+            )
+        node_availabilities = NodeAvailabilitySummary(
+            node_availabilities=node_availabilities
+        )
+
+        return AutoscalerSummary(
+            active_nodes=active_nodes,
+            pending_launches=pending_launches,
+            pending_nodes=pending_nodes,
+            failed_nodes=failed_nodes,
+            pending_resources={},  # NOTE: This is not used in ray status.
+            node_type_mapping=node_type_mapping,
+            node_availability_summary=node_availabilities,
+        )
+
+    @classmethod
+    def _parse_lm_summary(cls, data: ClusterStatus) -> LoadMetricsSummary:
+        usage = {
+            u.resource_name: (u.used, u.total) for u in data.cluster_resource_usage
+        }
+        resource_demands = []
+        for demand in data.resource_demands.ray_task_actor_demand:
+            for bundle_by_count in demand.bundles_by_count:
+                resource_demands.append((bundle_by_count.bundle, bundle_by_count.count))
+
+        pg_demand = []
+        pg_demand_strs = []
+        pg_demand_str_to_demand = {}
+        for pg_demand in data.resource_demands.placement_group_demand:
+            s = pg_demand.strategy + "|" + pg_demand.state
+            pg_demand_strs.append(s)
+            pg_demand_str_to_demand[s] = pg_demand
+
+        pg_freqs = Counter(pg_demand_strs)
+        pg_demand = [
+            (
+                {
+                    "strategy": pg_demand_str_to_demand[pg_str].strategy,
+                    "bundles": [
+                        (bundle_count.bundle, bundle_count.count)
+                        for bundle_count in pg_demand_str_to_demand[
+                            pg_str
+                        ].bundles_by_count
+                    ],
+                },
+                freq,
+            )
+            for pg_str, freq in pg_freqs.items()
+        ]
+
+        request_demand = [
+            (bc.bundle, bc.count)
+            for constraint_demand in data.resource_demands.cluster_constraint_demand
+            for bc in constraint_demand.bundles_by_count
+        ]
+
+        usage_by_node = {}
+        node_type_mapping = {}
+        for node in data.healthy_nodes:
+            # TODO(rickyx): we should actually add node type info here.
+            # TODO(rickyx): we could also show node idle time.
+            usage_by_node[node.node_id] = {
+                u.resource_name: (u.used, u.total) for u in node.resource_usage.usage
+            }
+            node_type_mapping[node.node_id] = node.ray_node_type_name
+
+        return LoadMetricsSummary(
+            usage=usage,
+            resource_demand=resource_demands,
+            pg_demand=pg_demand,
+            request_demand=request_demand,
+            node_types=None,  # NOTE: This is not needed in ray status.
+            usage_by_node=usage_by_node,
+            node_type_mapping=node_type_mapping,
+        )
+
+
 class ClusterStatusParser:
     @classmethod
     def from_get_cluster_status_reply(

@@ -537,6 +537,221 @@ Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
     assert actual == expected
 
 
+def test_cluster_status_formatter():
+    state = ClusterStatus(
+        healthy_nodes=[
+            NodeInfo(
+                instance_id="instance1",
+                instance_type_name="m5.large",
+                ray_node_type_name="head_node",
+                ip_address="127.0.0.1",
+                node_status="RUNNING",
+                node_id="fffffffffffffffffffffffffffffffffffffffffffffffffff00001",
+                resource_usage=NodeUsage(
+                    usage=[
+                        ResourceUsage(resource_name="CPU", total=1.0, used=0.5),
+                        ResourceUsage(resource_name="GPU", total=2.0, used=0.0),
+                        ResourceUsage(
+                            resource_name="object_store_memory",
+                            total=10282.0,
+                            used=5555.0,
+                        ),
+                    ],
+                    idle_time_ms=0,
+                ),
+            ),
+            NodeInfo(
+                instance_id="instance2",
+                instance_type_name="m5.large",
+                ray_node_type_name="worker_node",
+                ip_address="127.0.0.2",
+                node_status="RUNNING",
+                node_id="fffffffffffffffffffffffffffffffffffffffffffffffffff00002",
+                resource_usage=NodeUsage(
+                    usage=[
+                        ResourceUsage(resource_name="CPU", total=1.0, used=0),
+                        ResourceUsage(resource_name="GPU", total=2.0, used=0),
+                    ],
+                    idle_time_ms=0,
+                ),
+            ),
+            NodeInfo(
+                instance_id="instance3",
+                instance_type_name="m5.large",
+                ray_node_type_name="worker_node",
+                ip_address="127.0.0.2",
+                node_status="RUNNING",
+                node_id="fffffffffffffffffffffffffffffffffffffffffffffffffff00003",
+                resource_usage=NodeUsage(
+                    usage=[
+                        ResourceUsage(resource_name="CPU", total=1.0, used=0.0),
+                    ],
+                    idle_time_ms=0,
+                ),
+            ),
+        ],
+        pending_launches=[
+            LaunchRequest(
+                instance_type_name="m5.large",
+                count=2,
+                ray_node_type_name="worker_node",
+                state=LaunchRequest.Status.PENDING,
+                request_ts_s=10000,
+            ),
+            LaunchRequest(
+                instance_type_name="g5n.large",
+                count=1,
+                ray_node_type_name="worker_node_gpu",
+                state=LaunchRequest.Status.PENDING,
+                request_ts_s=20000,
+            ),
+        ],
+        failed_launches=[
+            LaunchRequest(
+                instance_type_name="m5.large",
+                count=2,
+                ray_node_type_name="worker_node",
+                state=LaunchRequest.Status.FAILED,
+                details="Insufficient capacity",
+                request_ts_s=10000,
+                failed_ts_s=20000,
+            ),
+        ],
+        pending_nodes=[
+            NodeInfo(
+                instance_id="instance4",
+                instance_type_name="m5.large",
+                ray_node_type_name="worker_node",
+                ip_address="127.0.0.3",
+                details="Starting Ray",
+            ),
+        ],
+        failed_nodes=[
+            NodeInfo(
+                instance_id="instance5",
+                instance_type_name="m5.large",
+                ray_node_type_name="worker_node",
+                ip_address="127.0.0.5",
+                node_status="DEAD",
+            ),
+        ],
+        cluster_resource_usage=[
+            ResourceUsage(resource_name="CPU", total=3.0, used=0.5),
+            ResourceUsage(resource_name="GPU", total=4.0, used=0.0),
+            ResourceUsage(
+                resource_name="object_store_memory", total=10282.0, used=5555.0
+            ),
+        ],
+        resource_demands=ResourceDemandSummary(
+            placement_group_demand=[
+                PlacementGroupResourceDemand(
+                    pg_id="1x1x",
+                    strategy="STRICT_SPREAD",
+                    state="PENDING",
+                    details="1x1x:STRICT_SPREAD|PENDING",
+                    bundles_by_count=[
+                        ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=1)
+                    ],
+                ),
+                PlacementGroupResourceDemand(
+                    pg_id="2x2x",
+                    strategy="STRICT_PACK",
+                    state="PENDING",
+                    details="2x2x:STRICT_PACK|PENDING",
+                    bundles_by_count=[
+                        ResourceRequestByCount(bundle={"GPU": 2}, count=1)
+                    ],
+                ),
+                PlacementGroupResourceDemand(
+                    pg_id="3x3x",
+                    strategy="STRICT_PACK",
+                    state="PENDING",
+                    details="3x3x:STRICT_PACK|PENDING",
+                    bundles_by_count=[
+                        ResourceRequestByCount(bundle={"GPU": 2}, count=1)
+                    ],
+                ),
+            ],
+            ray_task_actor_demand=[
+                RayTaskActorDemand(
+                    bundles_by_count=[
+                        ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=1)
+                    ]
+                ),
+                RayTaskActorDemand(
+                    bundles_by_count=[
+                        ResourceRequestByCount(bundle={"CPU": 1, "GPU": 1}, count=10)
+                    ]
+                ),
+            ],
+            cluster_constraint_demand=[
+                ClusterConstraintDemand(
+                    bundles_by_count=[
+                        ResourceRequestByCount(bundle={"GPU": 2, "CPU": 100}, count=2)
+                    ]
+                ),
+            ],
+        ),
+        stats=Stats(
+            gcs_request_time_s=0.1,
+            none_terminated_node_request_time_s=0.2,
+            autoscaler_iteration_time_s=0.3,
+            autoscaler_version="10",
+            cluster_resource_state_version="20",
+            request_ts_s=775303535,
+        ),
+    )
+    actual = ClusterStatusFormatter.format(state, verbose=True)
+
+    expected = """======== Autoscaler status: 1994-07-27 10:05:35 ========
+GCS request time: 0.100000s
+Node Provider non_terminated_nodes time: 0.200000s
+Autoscaler iteration time: 0.300000s
+
+Node status
+--------------------------------------------------------
+Healthy:
+ 1 head_node
+ 2 worker_node
+Pending:
+ worker_node, 1 launching
+ worker_node_gpu, 1 launching
+ 127.0.0.3: worker_node, starting ray
+Recent failures:
+ worker_node: LaunchFailed (latest_attempt: 02:46:40) - Insufficient capacity
+ worker_node: RayletUnexpectedlyDied (ip: 127.0.0.5)
+
+Resources
+--------------------------------------------------------
+Total Usage:
+ 0.5/3.0 CPU
+ 0.0/4.0 GPU
+ 5.42KiB/10.04KiB object_store_memory
+
+Total Demands:
+ {'CPU': 1, 'GPU': 1}: 11+ pending tasks/actors
+ {'CPU': 1, 'GPU': 1} * 1 (STRICT_SPREAD): 1+ pending placement groups
+ {'GPU': 2} * 1 (STRICT_PACK): 2+ pending placement groups
+ {'GPU': 2, 'CPU': 100}: 2+ from request_resources()
+
+Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00001
+ Usage:
+  0.5/1.0 CPU
+  0.0/2.0 GPU
+  5.42KiB/10.04KiB object_store_memory
+
+Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00002
+ Usage:
+  0/1.0 CPU
+  0/2.0 GPU
+
+Node: fffffffffffffffffffffffffffffffffffffffffffffffffff00003
+ Usage:
+  0.0/1.0 CPU"""
+
+    assert actual == expected
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
