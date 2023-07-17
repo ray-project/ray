@@ -3,7 +3,7 @@ from collections import OrderedDict
 import inspect
 import logging
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Set
 
 from ray._private.async_compat import sync_to_async
 from ray.serve._private.constants import (
@@ -52,6 +52,7 @@ class _ModelMultiplexWrapper:
                 per replica.
         """
         self.models = OrderedDict()
+        self.model_load_tasks: Set[str] = set()
         self._func: Callable = model_load_func
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
@@ -131,11 +132,13 @@ class _ModelMultiplexWrapper:
             logger.info(f"Loading model '{model_id}'.")
             self.models_load_counter.inc()
             load_start_time = time.time()
+            self.model_load_tasks.add(model_id)
+            self._push_multiplexed_replica_info = True
             if self.self_arg is None:
                 self.models[model_id] = await self._func(model_id)
             else:
                 self.models[model_id] = await self._func(self.self_arg, model_id)
-            self._push_multiplexed_replica_info = True
+            self.model_load_tasks.remove(model_id)
             self.model_load_latency_s.set(time.time() - load_start_time)
         return self.models[model_id]
 
@@ -159,9 +162,11 @@ class _ModelMultiplexWrapper:
         while True:
             try:
                 if self._push_multiplexed_replica_info:
+                    model_ids = self.model_load_tasks.copy()
+                    model_ids.update(self.models.keys())
                     get_global_client().record_multiplexed_replica_info(
                         MultiplexedReplicaInfo(
-                            self._deployment_name, self._replica_tag, self.models.keys()
+                            self._deployment_name, self._replica_tag, list(model_ids)
                         )
                     )
                     self._push_multiplexed_replica_info = False
