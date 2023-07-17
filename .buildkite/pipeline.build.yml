@@ -191,6 +191,7 @@
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=client_tests,small_size_python_tests
+      --runs_per_test 10
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
@@ -198,8 +199,10 @@
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
+      --runs_per_test 10
       -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --runs_per_test 10
       -- python/ray/autoscaler/v2/...
 
 - label: ":python: (Large)"
