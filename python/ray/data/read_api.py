@@ -925,8 +925,8 @@ def read_csv(
         >>> # Read files that use a different delimiter. For more uses of ParseOptions see
         >>> # https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html  # noqa: #501
         >>> from pyarrow import csv
-        >>> parse_options = csv.ParseOptions(delimiter="\\t")
-        >>> ds = ray.data.read_csv(
+        >>> parse_options = csv.ParseOptions(delimiter="\\t")  # doctest: +SKIP
+        >>> ds = ray.data.read_csv(  # doctest: +SKIP
         ...     "s3://anonymous@ray-example-data/iris.tsv",
         ...     parse_options=parse_options)
 
@@ -954,7 +954,7 @@ def read_csv(
 
         >>> # Read only *.csv files from multiple directories.
         >>> from ray.data.datasource import FileExtensionFilter
-        >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
+        >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",  # doctest: +SKIP
         ...     partition_filter=FileExtensionFilter("csv"))
 
     Args:
