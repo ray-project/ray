@@ -31,7 +31,7 @@ def test_automatic_enable_gpu(serve_instance):
     @serve.deployment
     class DummyGPUDeployment:
         def __init__(self, checkpoint):
-            self.predictor = DummyPredictor.from_checkpoint(checkpoint)
+            self.predictor = DummyGPUPredictor.from_checkpoint(checkpoint)
 
         async def __call__(self, data):
             return self.predictor.predict(data)
