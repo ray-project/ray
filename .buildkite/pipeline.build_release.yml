@@ -9,6 +9,7 @@
   instance_size: medium
   commands:
     # Build the wheels and jars
+    - export RAY_INSTALL_JAVA=1
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
