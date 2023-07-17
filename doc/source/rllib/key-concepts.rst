@@ -117,7 +117,7 @@ Check out our `scaling guide <rllib-training.html#scaling-guide>`__ for more det
 
 
 RL Modules
---------
+----------
 
 `RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
 In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
