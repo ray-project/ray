@@ -261,8 +261,9 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                        << ", Suiciding...";
         Suicide();
       } else {
-        RAY_LOG(INFO) << "Scheduling a retry in " << agent_manager_retry_interval_ms_
-                      << "ms...";
+        RAY_LOG(INFO) << "Runtime Env Agent network error: " << status
+                      << ", maybe still starting? Scheduling a retry in "
+                      << agent_manager_retry_interval_ms_ << "ms...";
         this->delay_executor_(
             [=]() {
               RetryInvokeOnNotFoundWithDeadline(
