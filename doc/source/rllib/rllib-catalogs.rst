@@ -51,29 +51,6 @@ This user guide covers the following topics:
 - Design philosophy
 - Write a Catalog from scratch
 
-Catalog and AlgorithmConfig
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Since Catalogs effectively control what ``models`` and ``distributions`` RLlib uses under the hood,
-they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
-:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` is the place where you can configure the
-Catalogs of the RLModules that are created.
-You set the ``catalog class`` by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec`
-or :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` of an AlgorithmConfig.
-For example, in heterogeneous multi-agent cases, you modify the MultiAgentRLModuleSpec.
-
-.. image:: images/catalog/catalog_rlmspecs_diagram.svg
-    :align: center
-
-The following example shows how to configure the Catalog of an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
-created by PPO.
-
-.. literalinclude:: doc_code/catalog_guide.py
-    :language: python
-    :start-after: __sphinx_doc_algo_configs_begin__
-    :end-before: __sphinx_doc_algo_configs_end__
-
-
 What are Catalogs
 ~~~~~~~~~~~~~~~~~
 
@@ -109,7 +86,7 @@ The following diagram shows a concrete case in more detail.
 Catalog design
 ~~~~~~~~~~~~~~
 
-In order to facilitate better development on this component, we explain the design and ideas behind Catalogs in this section.
+Since the main use cases for this component involve deep modifications of it, we explain the design and ideas behind Catalogs in this section.
 
 What problems do Catalogs solve?
 --------------------------------
@@ -130,7 +107,9 @@ Since we mostly build RL Modules out of :py:class:`~ray.rllib.core.models.base.E
 For example, the PPOCatalog will output Encoders that output a latent vector and two Heads that take this latent vector as input.
 (That's why Catalogs have a ``latent_dims`` attribute). Heads and distributions behave accordingly.
 Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
-Whenever you build a model, the config is compiled into a model.
+By default this happens in :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_encoder_config` and :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
+Whenever you build a model, the config is turned into a model.
+Distributions are instantiated per forward pass of an RL Module and are therefore not built.
 
 API philosophy
 --------------
@@ -143,16 +122,41 @@ This is because many algorithms require custom heads and distributions but most 
 The Catalog API is designed such that interaction usually happens in two stages:
 
 - Instantiate a Catalog. This executes the decision tree.
-- Access decided components through methods
+- Generate arbitrary number of decided components through Catalog methods.
 
-The two main methods to access components on the base class are...
+The two default methods to access components on the base class are...
 
 - :py:meth:`~ray.rllib.core.models.catalog.Catalog.build_encoder`
 - :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_action_dist_cls`
-- :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`
 
 You can override these to quickly hack what models RL Modules build.
-Other methods are private and should only be overridden to make deep changes to the decision tree to ehnance the capabilities of Catalogs.
+Other methods are private and should only be overridden to make deep changes to the decision tree to enhance the capabilities of Catalogs.
+Additionally, :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config` is a method that can be used when tokenization
+is required. By default, this happens only for recurrent Encoders (e.g. :py:class:`~ray.rllib.core.models.torch.encoder.TorchLSTMEncoder`),
+where the tokenizer is an Encoder itself that is used to tokenize inputs inside of a recurrent Encoder.
+
+Catalog and AlgorithmConfig
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Since Catalogs effectively control what ``models`` and ``distributions`` RLlib uses under the hood,
+they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` is the place where you can configure the
+Catalogs of the RLModules that are created.
+You set the ``catalog class`` by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec`
+or :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` of an AlgorithmConfig.
+For example, in heterogeneous multi-agent cases, you modify the MultiAgentRLModuleSpec.
+
+.. image:: images/catalog/catalog_rlmspecs_diagram.svg
+    :align: center
+
+The following example shows how to configure the Catalog of an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+created by PPO.
+
+.. literalinclude:: doc_code/catalog_guide.py
+    :language: python
+    :start-after: __sphinx_doc_algo_configs_begin__
+    :end-before: __sphinx_doc_algo_configs_end__
+
 
 Basic usage
 ~~~~~~~~~~~
@@ -174,10 +178,7 @@ Creating models and distributions
 
 The second example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
 to create an ``model`` and an ``action distribution``.
-Besides these, we create a ``head network`` that fits these two by hand to show how you can combine RLlib's
-:py:class:`~ray.rllib.core.models.base.ModelConfig` API and Catalog.
-Extending Catalog to also build this ``head network`` is how Catalog is meant to be
-extended, which we cover later in this guide.
+Besides these, we create a ``head network`` by hand that fits these two by hand.
 
 .. dropdown:: **Customize a policy head**
     :animate: fade-in-slide-down
@@ -202,7 +203,6 @@ This is more similar to what RLlib does internally.
        :start-after: __sphinx_doc_ppo_models_begin__
        :end-before: __sphinx_doc_ppo_models_end__
 
-
 Inject your custom model or action distributions into Catalogs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -213,6 +213,8 @@ Have a look at these lines from the constructor of the :py:class:`~ray.rllib.alg
     :language: python
     :start-after: __sphinx_doc_begin__
     :end-before: __sphinx_doc_end__
+
+Note that what happens inside the constructor of PPOTorchRLModule is similar to how we used when `Creating models and distributions for PPO <rllib-catalogs.html#creating-models-and-distributions-for-ppo>`__.
 
 Consequently, in order to build a custom :py:class:`~ray.rllib.core.models.Model` compatible with a PPORLModule,
 you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
@@ -250,9 +252,10 @@ The following examples showcase such modifications:
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
 
-    These examples target PPO but the workflows apply to all RLlib algorithms.
-    Note that PPO adds the :py:class:`from ray.rllib.core.models.base.ActorCriticEncoder` and two heads (policy- and value-head) to the base class.
-    Other algorithms may add different sub-components or override default ones.
+These examples target PPO but the workflows apply to all RLlib algorithms.
+Note that PPO adds the :py:class:`from ray.rllib.core.models.base.ActorCriticEncoder` and two heads (policy- and value-head) to the base class.
+You can override these similarly to the above.
+Other algorithms may add different sub-components or override default ones.
 
 Write a Catalog from scratch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -262,12 +265,13 @@ Note that writing an Algorithm does not strictly require writing a new Catalog b
 the fitting default sub-components, such as models or distributions.
 The following are typical requirements and steps for writing a new Catalog:
 
-- Does the Algorithm need more that RLlib's standard Encoders? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_encoder_config`.
+- Does the Algorithm need a special Encoder? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_encoder_config`.
 - Does the Algorithm need an additional network? Write a method to build it. You can use RLlib's model configurations to build models from dimensions.
 - Does the Algorithm need a custom distribution? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
-- Does the Algorithm not need an Encoder? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.__post_init__`.
+- Does the Algorithm need a special tokenizer? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`.
+- Does the Algorithm not need an Encoder at all? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.__post_init__`.
 
-The following example shows our implementation of a Catalog for PPO:
+The following example shows our implementation of a Catalog for PPO that follows the above steps:
 
 .. dropdown:: **Catalog for PPORLModules**
 
