@@ -1,5 +1,10 @@
 # If you make changes below this line, please also make the corresponding changes to `dl-cpu-requirements.txt`!
 
+tensorflow==2.11.0; sys_platform != 'darwin' or platform_machine != 'arm64'
+tensorflow-macos==2.11.0; sys_platform == 'darwin' and platform_machine == 'arm64'
+tensorflow-probability==0.19.0
+tensorflow-datasets
+
 --extra-index-url https://download.pytorch.org/whl/cu118  # for GPU versions of torch, torchvision
 --find-links https://data.pyg.org/whl/torch-2.0.1+cu118.html  # for GPU versions of torch-scatter, torch-sparse, torch-cluster, torch-spline-conv
 # specifying explicit plus-notation below so pip overwrites the existing cpu verisons

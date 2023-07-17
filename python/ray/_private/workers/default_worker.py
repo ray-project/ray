@@ -252,9 +252,11 @@ if __name__ == "__main__":
         ray._private.utils.try_import_each_module(module_names_to_import)
 
     # If the worker setup function is configured, run it.
-    worker_setup_hook_key = os.getenv(ray_constants.WORKER_SETUP_HOOK_ENV_VAR)
-    if worker_setup_hook_key:
-        error = load_and_execute_setup_hook(worker_setup_hook_key)
+    worker_process_setup_hook_key = os.getenv(
+        ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR
+    )
+    if worker_process_setup_hook_key:
+        error = load_and_execute_setup_hook(worker_process_setup_hook_key)
         if error is not None:
             worker.core_worker.exit_worker("system", error)
 
