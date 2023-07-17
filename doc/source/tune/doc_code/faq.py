@@ -363,13 +363,7 @@ if not MOCK:
 
     tuner = tune.Tuner(
         train_fn,
-        run_config=air.RunConfig(
-            storage_path="/path/to/shared/storage",
-        ),
-        sync_config=tune.SyncConfig(
-            # Do not sync because we are on shared storage
-            syncer=None
-        ),
+        run_config=air.RunConfig(storage_path="/path/to/shared/storage"),
     )
     tuner.fit()
     # __sync_config_end__

@@ -269,9 +269,11 @@ should be configured to log to the Trainable's *working directory.* By default,
 the current working directory of both functional and class trainables is set to the
 corresponding trial directory once it's been launched as a remote Ray actor.
 
-When running with multiple nodes using the :ref:`default syncing method <tune-default-syncing>`,
-trial artifacts are synchronized to the driver node under the specified path.
-This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
+.. warning::
+
+    When running in a multi-node cluster using the *deprecated* :ref:`head node storage option <tune-default-syncing>`,
+    trial artifacts are synchronized to the driver node under the specified path.
+    This will allow you to visualize and analyze logs of all distributed training workers on a single machine.
 
 When :ref:`specifying a cloud upload directory <tune-cloud-checkpointing>`, trial artifacts are uploaded to that cloud bucket
 for later analysis. Note that the driver node does not necessarily contain
