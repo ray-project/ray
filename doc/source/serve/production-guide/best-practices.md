@@ -18,7 +18,7 @@ This section summarizes the best practices for deploying to production using the
     * For production, put your Serve application's code in a custom Docker image instead of a `runtime_env`. See [this tutorial](serve-custom-docker-images) to learn how to create custom Docker images and deploy them on KubeRay.
 * Use `serve status` to track your Serve application's health and deployment progress.
 * Use `serve config` to check the latest config that your Serve application received. This is its goal state.
-* Make lightweight configuration updates (e.g. `num_replicas` or `user_config` changes) by modifying your Serve config file and redeploying it with `serve deploy`.
+* Make lightweight configuration updates (e.g., `num_replicas` or `user_config` changes) by modifying your Serve config file and redeploying it with `serve deploy`.
 
 (serve-in-production-inspecting)=
 
