@@ -621,7 +621,7 @@ def test_placement_group_status_no_bundle_demand(ray_start_cluster, enable_v2):
 
 @pytest.mark.parametrize("enable_v2", [True, False])
 def test_placement_group_status(ray_start_cluster, enable_v2):
-    cluster = ray_start_cluster 
+    cluster = ray_start_cluster
     cluster.add_node(num_cpus=4, _system_config={"enable_autoscaler_v2": enable_v2})
     ray.init(cluster.address)
 

@@ -60,5 +60,6 @@ def get_cluster_status(
 
     # TODO(rickyx): To be more accurate, we could add a timestamp field from the reply.
     return ClusterStatusParser.from_get_cluster_status_reply(
-        reply, stats=Stats(gcs_request_time_s=reply_time - req_time, request_ts_s=req_time)
+        reply,
+        stats=Stats(gcs_request_time_s=reply_time - req_time, request_ts_s=req_time),
     )
