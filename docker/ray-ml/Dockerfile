@@ -3,6 +3,7 @@ FROM rayproject/ray:nightly"$BASE_IMAGE"
 
 # We have to uninstall wrapt this way for Tensorflow compatibility
 COPY requirements.txt ./
+COPY requirements_compiled.txt ./
 COPY dl-cpu-requirements.txt ./
 COPY dl-gpu-requirements.txt ./
 COPY ray-docker-requirements.txt ./
