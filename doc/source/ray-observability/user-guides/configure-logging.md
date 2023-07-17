@@ -384,10 +384,14 @@ ray.get(f.remote("A log message for a task."))
 
 ```{admonition} Caution
 :class: caution
-This is an experimental feature. It doesn't support [Ray Client](ray-client-ref) yet.
+This is an experimental feature. The semantic of the API is subject to change.
+It doesn't support [Ray Client](ray-client-ref) yet.
+
+Currently, all the runtime environment passed to a driver (`ray.init(runtime_env={...})`) will be ignored if you specify any runtime environment via [Ray Job Submission](jobs-quickstart) API (`ray job submit --working-dir` or `ray job submit --runtime-env`).
 ```
 
 Use `worker_process_setup_hook` to apply the new logging configuration to all worker processes within a job.
+
 ```python
 # driver.py
 def logging_setup_func():
