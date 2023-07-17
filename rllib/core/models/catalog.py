@@ -193,7 +193,7 @@ class Catalog:
         """Get the action distribution class.
 
         The default behavior is to get the action distribution from the
-        `Catalog.action_dist_class_fn`.
+        `Catalog._action_dist_class_fn`.
 
         You should override this to have RLlib build your custom action
         distribution instead of the default one. For example, if you don't want to
@@ -352,9 +352,9 @@ class Catalog:
 
         You should override this method if you want to change the custom tokenizer
         inside current encoders that Catalog returns without providing the recurrent
-        as a whole. For example, if you want to define some custom CNN layers as a
-        tokenizer for a recurrent encoder that already includes the recurrent layers
-        and manages the state.
+        network as a whole. For example, if you want to define some custom CNN layers
+        as a tokenizer for a recurrent encoder that already includes the recurrent
+        layers and handles the state.
 
         Args:
             observation_space: The observation space to use.

@@ -13,8 +13,8 @@ Each :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has its own defaul
 :py:class:`~ray.rllib.core.models.catalog.Catalog`. For example,
 :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` has the
 :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`.
-Catalogs make it easier to extend currently existing built-in RLModules (e.g. PPORLModule)
-Catalogs make it easier to build models for new RLModules (new algorithms) that are extendable.
+Catalogs can be extended to offer more or different models or distributions to RLModules (e.g. to PPOTorchRLModule).
+Catalogs can we written to build models for new RLModules (for new algorithms).
 
 .. note::
     Modifying Catalogs signifies advanced use cases so you should only consider this if modifying an RLModule or writing one does not cover your use case.
@@ -43,12 +43,12 @@ Therefore, this doc also includes examples around PPO from which you can extrapo
 Prerequisites for this user guide is a rough understanding of `RLModules <rllib-rlmodule.html>`__.
 This user guide covers the following topics:
 
+- What are Catalogs
+- Catalog design and ideas
 - Catalog and AlgorithmConfig
 - Basic usage
-- What are Catalogs
 - Inject your custom models into RLModules
 - Inject your custom action distributions into RLModules
-- Design philosophy
 - Write a Catalog from scratch
 
 What are Catalogs
@@ -83,8 +83,8 @@ The following diagram shows a concrete case in more detail.
         :align: center
 
 
-Catalog design
-~~~~~~~~~~~~~~
+Catalog design and ideas
+~~~~~~~~~~~~~~~~~~~~~~~~
 
 Since the main use cases for this component involve deep modifications of it, we explain the design and ideas behind Catalogs in this section.
 
@@ -136,7 +136,7 @@ is required. By default, this happens only for recurrent Encoders (e.g. :py:clas
 where the tokenizer is an Encoder itself that is used to tokenize inputs inside of a recurrent Encoder.
 
 Catalog and AlgorithmConfig
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Since Catalogs effectively control what ``models`` and ``distributions`` RLlib uses under the hood,
 they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
