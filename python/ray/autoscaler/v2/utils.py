@@ -27,7 +27,7 @@ from ray.autoscaler.v2.schema import (
     ResourceUsage,
     Stats,
 )
-from ray.core.generated.experimental.autoscaler_pb2 import (
+from ray.core.generated.autoscaler_pb2 import (
     AutoscalingState,
     ClusterResourceState,
     GetClusterStatusReply,

@@ -21,7 +21,7 @@ from ray.autoscaler.v2.schema import (
     Stats,
 )
 from ray.autoscaler.v2.utils import ClusterStatusFormatter, ClusterStatusParser
-from ray.core.generated.experimental.autoscaler_pb2 import GetClusterStatusReply
+from ray.core.generated.autoscaler_pb2 import GetClusterStatusReply
 
 
 def _gen_cluster_status_reply(data: Dict):
