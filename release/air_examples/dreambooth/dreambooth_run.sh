@@ -22,6 +22,9 @@ export IMAGES_NEW_DIR="$DATA_PREFIX/images-new"
 
 mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGES_NEW_DIR
 
+# Unique token to identify our subject (e.g., a regular dog vs. our unqtkn dog)
+export UNIQUE_TOKEN="unqtkn"
+
 # For the finetuning dataset, we provide 2 examples (dog, lego car), or you can
 # pass in a directory of custom images. Only uncomment one of the 3:
 
@@ -63,7 +66,7 @@ python train.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$TUNED_MODEL_DIR \
   --instance_images_dir=$IMAGES_OWN_DIR \
-  --instance_prompt="photo of unqtkn $CLASS_NAME" \
+  --instance_prompt="photo of $UNIQUE_TOKEN $CLASS_NAME" \
   --class_images_dir=$IMAGES_REG_DIR \
   --class_prompt="photo of a $CLASS_NAME" \
   --train_batch_size=2 \
@@ -78,7 +81,7 @@ rm -rf "$IMAGES_NEW_DIR"/*.jpg
 python run_model.py \
   --model_dir=$TUNED_MODEL_DIR \
   --output_dir=$IMAGES_NEW_DIR \
-  --prompts="photo of a unqtkn $CLASS_NAME" \
+  --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" \
   --num_samples_per_prompt=5
 
 # Save artifact
