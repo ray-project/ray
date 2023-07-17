@@ -24,21 +24,25 @@ from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import ViewRequirementsDict
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import (
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 
 class Catalog:
-    """Describes the sub-modules architectures to be used in RLModules.
+    """Describes the sub-module-architectures to be used in RLModules.
 
     RLlib's native RLModules get their Models from a Catalog object.
     By default, that Catalog builds the configs it has as attributes.
-    You can modify a Catalog so that it builds different Models by subclassing and
-    overriding the build_* methods. Alternatively, you can customize the configs
-    inside RLlib's Catalogs to customize what is being built for RL Modules.
+    This component was build to be hackable and extensible. You can inject custom
+    components into RL Modules by overriding the `build_xxx` methods of this class.
     Note that it is recommended to write a custom RL Module for a single use-case.
     Modifications to Catalogs mostly make sense if you want to reuse the same
     Catalog for different RL Modules. For example if you have written a custom
     encoder and want to inject it into different RL Modules (e.g. for PPO, DQN, etc.).
+    You can influence the decision tree that determines the sub-components by modifying
+    `Catalog._determine_components_hook`.
 
     Usage example:
 
@@ -102,21 +106,44 @@ class Catalog:
         # TODO (Artur): Make model defaults a dataclass
         self._model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
         self._view_requirements = view_requirements
-
         self._latent_dims = None
 
-    def __init_subclass__(cls, **kwargs):
-        # Automatically add a __post_init__ method to all subclasses of RLModule.
-        # This method is called after the __init__ method of the subclass.
-        def init_decorator(previous_init):
-            def new_init(self, *args, **kwargs):
-                previous_init(self, *args, **kwargs)
-                if type(self) == cls:
-                    self.__post_init__()
+        self._determine_components_hook()
 
-            return new_init
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def _determine_components_hook(self):
+        """Hook for subclasses to override.
 
-        cls.__init__ = init_decorator(cls.__init__)
+        By default, this method executes the decision tree that determines the
+        components that a Catalog builds. You can extend the components by overriding
+        this or by adding to the constructor of your subclass.
+
+        Override this method if you don't want to use the default components
+        determined here. If you want to use them but add additional components, you
+        should call `super()._determine_components()` at the beginning of your
+        implementation.
+
+        This makes it so that subclasses are not forced to create an encoder config
+        if the rest of their catalog is not dependent on it or if it breaks.
+        At the end of this method, an attribute `Catalog.latent_dims`
+        should be set so that heads can be built using that information.
+        """
+        self._encoder_config = self._get_encoder_config(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            model_config_dict=self._model_config_dict,
+            view_requirements=self._view_requirements,
+        )
+
+        # Create a function that can be called when framework is known to retrieve the
+        # class type for action distributions
+        self._action_dist_class_fn = functools.partial(
+            self._get_dist_cls_from_action_space, action_space=self.action_space
+        )
+
+        # The dimensions of the latent vector that is output by the encoder and fed
+        # to the heads.
+        self.latent_dims = self._encoder_config.output_dims
 
     @property
     def latent_dims(self):
@@ -137,36 +164,11 @@ class Catalog:
     def latent_dims(self, value):
         self._latent_dims = value
 
-    def __post_init__(self):
-        """Post-init hook for subclasses to override.
-
-        This makes it so that subclasses are not forced to create an encoder config
-        if the rest of their catalog is not dependent on it or if it breaks.
-        At the end of Catalog initialization, an attribute `Catalog.latent_dims`
-        should be set so that heads can be built using that information.
-        """
-        self.encoder_config = self._get_encoder_config(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            model_config_dict=self._model_config_dict,
-            view_requirements=self._view_requirements,
-        )
-
-        # Create a function that can be called when framework is known to retrieve the
-        # class type for action distributions
-        self._action_dist_class_fn = functools.partial(
-            self._get_dist_cls_from_action_space, action_space=self.action_space
-        )
-
-        # The dimensions of the latent vector that is output by the encoder and fed
-        # to the heads.
-        self.latent_dims = self.encoder_config.output_dims
-
     @OverrideToImplementCustomLogic
     def build_encoder(self, framework: str) -> Encoder:
         """Builds the encoder.
 
-        By default, this method builds an encoder instance from Catalog.encoder_config.
+        By default, this method builds an encoder instance from Catalog._encoder_config.
 
         You should override this if you want to use RLlib's default RL Modules but
         only want to change the encoder. For example, if you want to use a custom
@@ -182,11 +184,11 @@ class Catalog:
             The encoder.
         """
         assert hasattr(self, "encoder_config"), (
-            "You must define a `Catalog.encoder_config` attribute in your Catalog "
+            "You must define a `Catalog._encoder_config` attribute in your Catalog "
             "subclass or override the `Catalog.build_encoder` method. By default, "
             "an encoder_config is created in the __post_init__ method."
         )
-        return self.encoder_config.build(framework=framework)
+        return self._encoder_config.build(framework=framework)
 
     @OverrideToImplementCustomLogic
     def get_action_dist_cls(self, framework: str):

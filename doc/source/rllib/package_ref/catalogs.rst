@@ -30,11 +30,12 @@ Advanced usage
 --------------
 
 The following methods and attributes are used internally by the Catalog to build the default models.
+You can override these to enhance Catalogs.
 
 .. autosummary::
     :toctree: doc/
 
     Catalog.latent_dims
-    Catalog.__post_init__
+    Catalog._determine_components_hook
     Catalog._get_encoder_config
     Catalog._get_dist_cls_from_action_space

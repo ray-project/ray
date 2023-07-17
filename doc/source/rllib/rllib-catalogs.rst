@@ -269,7 +269,7 @@ The following are typical requirements and steps for writing a new Catalog:
 - Does the Algorithm need an additional network? Write a method to build it. You can use RLlib's model configurations to build models from dimensions.
 - Does the Algorithm need a custom distribution? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
 - Does the Algorithm need a special tokenizer? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`.
-- Does the Algorithm not need an Encoder at all? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.__post_init__`.
+- Does the Algorithm not need an Encoder at all? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._determine_components_hook`.
 
 The following example shows our implementation of a Catalog for PPO that follows the above steps:
 

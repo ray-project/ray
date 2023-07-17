@@ -74,7 +74,7 @@ class PPOCatalog(Catalog):
 
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
-            base_encoder_config=self.encoder_config,
+            base_encoder_config=self._encoder_config,
             shared=self._model_config_dict["vf_share_layers"],
         )
 
