@@ -5,8 +5,8 @@
 .. include:: /_includes/rllib/rlmodules_rollout.rst
 
 
-Catalog (Beta)
-==============
+Catalog (Alpha)
+===============
 
 Catalogs are where `RLModules <rllib-rlmodule.html>`__ primarily get their models and action distributions from.
 Each :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has its own default
@@ -164,7 +164,7 @@ Basic usage
 In the following three examples, we play with Catalogs to illustrate their API.
 
 High-level API
------------
+--------------
 
 The first example showcases the general API for interacting with Catalogs.
 

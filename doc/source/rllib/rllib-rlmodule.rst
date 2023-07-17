@@ -11,7 +11,7 @@
     :width: 16
 
 
-RL Modules (Beta)
+RL Modules (Alpha)
 ==================
 
 .. note::
