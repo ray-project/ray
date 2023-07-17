@@ -36,6 +36,36 @@ class Partitioning:
 
     Path-based partition formats embed all partition keys and values directly in
     their dataset file paths.
+
+    For example, to read a dataset with
+    `Hive-style partitions <https://athena.guide/articles/hive-style-partitioning/>`_:
+
+        >>> import ray
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> ds = ray.data.read_csv(
+        ...     "s3://anonymous@ray-example-data/iris.csv",
+        ...     partitioning=Partitioning("hive"),
+        ... )
+
+    Instead, if your files are arranged in a directory structure such as:
+
+    .. code::
+
+        root/dog/dog_0.jpeg
+        root/dog/dog_1.jpeg
+        ...
+
+        root/cat/cat_0.jpeg
+        root/cat/cat_1.jpeg
+        ...
+
+    Then you can use directory-based partitioning:
+
+        >>> import ray
+        >>> from ray.data.datasource.partitioning import Partitioning
+        >>> root = "s3://anonymous@air-example-data/cifar-10/images"
+        >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
+        >>> ds = ray.data.read_images(root, partitioning=partitioning)
     """
 
     #: The partition style - may be either HIVE or DIRECTORY.
