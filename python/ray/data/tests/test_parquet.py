@@ -127,7 +127,7 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     path2 = os.path.join(setup_data_path, "test2.parquet")
     pq.write_table(table, path2, filesystem=fs)
 
-    ds = ray.data.read_parquet(data_path, filesystem=fs)
+    ds = ray.data.read_parquet(data_path, filesystem=lambda: fs)
 
     # Test metadata-only parquet ops.
     check_num_computed(ds, 0, 0)
