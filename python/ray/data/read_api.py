@@ -532,17 +532,6 @@ def read_parquet(
         ...           ("variety", pa.string())]
         >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet",
         ...     schema=pa.schema(fields))
-        Dataset(
-           num_blocks=...,
-           num_rows=150,
-           schema={
-              sepal.length: double,
-              sepal.width: double,
-              petal.length: double,
-              petal.width: double,
-              variety: string
-           }
-        )
 
         The Parquet reader also supports projection and filter pushdown, allowing column
         selection and row filtering to be pushed down to the file scan.
@@ -1184,7 +1173,7 @@ def read_tfrecords(
         We can also read compressed TFRecord files which uses one of the
         `compression type supported by Arrow <https://arrow.apache.org/docs/python/generated/pyarrow.CompressedInputStream.html>`_:
 
-        >>> ray.data.read_tfrecords(
+        >>> ds = ray.data.read_tfrecords(
         ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
