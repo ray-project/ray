@@ -107,12 +107,15 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
       exit 1
     fi
 
+    # When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
+    # have already built the Java code above.
+
     # build ray wheel
-    PATH="/opt/python/${PYTHON}/bin:$PATH" \
+    PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
     "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:$PATH" \
+    PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
     RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # In the future, run auditwheel here.
