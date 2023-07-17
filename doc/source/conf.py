@@ -387,10 +387,7 @@ def setup(app):
         defer="defer",
     )
     app.add_js_file("js/docsearch.js", defer="defer")
-
-    # https://github.com/medmunds/rate-the-docs for allowing users
-    # to give thumbs up / down and feedback on existing docs pages.
-    app.add_js_file("js/rate-the-docs.es.min.js")
+    app.add_js_file("js/csat.js", defer="defer")
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")
