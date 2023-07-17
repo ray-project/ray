@@ -1,3 +1,4 @@
+# __sphinx_doc_begin__
 import gymnasium as gym
 
 from ray.rllib.core.models.catalog import Catalog
@@ -174,3 +175,6 @@ class PPOCatalog(Catalog):
             The value function head.
         """
         return self.vf_head_config.build(framework=framework)
+
+
+# __sphinx_doc_end__

@@ -437,7 +437,7 @@ module_to_load_spec = SingleAgentRLModuleSpec(
 )
 
 # Train with the checkpointed RL Module
-config = config.rl_module(
+config.rl_module(
     rl_module_spec=module_to_load_spec,
     _enable_rl_module_api=True,
 )
