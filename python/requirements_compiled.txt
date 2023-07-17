@@ -90,7 +90,7 @@ contextlib2==21.6.0
 contourpy==1.1.0
 crc32c==2.3
 crcmod==1.7
-cryptography==38.0.1
+cryptography==41.0.2
 cycler==0.11.0
 cython==0.29.32
 dask==2022.10.1 ; python_version >= "3.8"
