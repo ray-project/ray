@@ -11,7 +11,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
-from ray.autoscaler.v2.sdk import request_cluster_resources
+from ray.autoscaler.v2.sdk import _get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import get_cluster_resource_state
 from ray.core.generated.experimental import autoscaler_pb2_grpc
 from ray.core.generated.experimental.autoscaler_pb2 import (
@@ -317,6 +317,23 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
         return True
 
     wait_for_condition(verify_cluster_no_node)
+
+
+def test_get_cluster_status(shutdown_only):
+    # This test is to make sure the grpc stub is working.
+    # TODO(rickyx): Add e2e tests for the autoscaler state service in a separate PR
+    # to validate the data content.
+
+    ray.init(num_cpus=1)
+
+    def verify():
+        reply = _get_cluster_status()
+        assert reply.autoscaling_state is not None
+        assert reply.cluster_resource_state is not None
+        assert len(reply.cluster_resource_state.node_states) == 1
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 from typing import Callable, Optional, Dict, Union, TYPE_CHECKING
 
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.train.tensorflow.config import TensorflowConfig
 from ray.train.trainer import GenDataset
 from ray.train.data_parallel_trainer import DataParallelTrainer
