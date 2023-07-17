@@ -1,7 +1,23 @@
+from __future__ import annotations
+
 import inspect
 import logging
+import sys
 import weakref
-from typing import Any, Dict, List, Optional
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+    overload,
+)
+
+from typing_extensions import TypeVarTuple, Unpack
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -45,6 +61,23 @@ logger = logging.getLogger(__name__)
 
 # Hook to call with (actor, resources, strategy) on each local actor creation.
 _actor_launch_hook = None
+
+_ActorT = TypeVar("_ActorT")
+_T = TypeVar("_T")
+_R = TypeVar("_R")
+_T0 = TypeVar("_T0")
+_T1 = TypeVar("_T1")
+_T2 = TypeVar("_T2")
+_T3 = TypeVar("_T3")
+_T4 = TypeVar("_T4")
+_T5 = TypeVar("_T5")
+_T6 = TypeVar("_T6")
+_T7 = TypeVar("_T7")
+_T8 = TypeVar("_T8")
+_T9 = TypeVar("_T9")
+_ActorInitArgs = TypeVarTuple("_ActorInitArgs")
+if TYPE_CHECKING:
+    _ActorArg = Union[_T, ray.ObjectRef[_T]]
 
 
 @PublicAPI
@@ -379,8 +412,16 @@ def _process_option_dict(actor_options):
     return _filled_options
 
 
+class ActorOptionWrapper(Generic[_ActorT, Unpack[_ActorInitArgs]]):
+    def remote(self, *args: Unpack[_ActorInitArgs], **kwargs) -> ActorHandle[_ActorT]:
+        ...
+
+    def bind(self, *args, **kwargs):
+        ...
+
+
 @PublicAPI
-class ActorClass:
+class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
     """An actor class.
 
     This is a decorated class. It can be used to create actors.
@@ -447,6 +488,7 @@ class ActorClass:
     ):
         for attribute in [
             "remote",
+            "methods",
             "_remote",
             "_ray_from_modified_class",
             "_ray_from_function_descriptor",
@@ -520,7 +562,7 @@ class ActorClass:
             self._default_options["runtime_env"] = self.__ray_metadata__.runtime_env
         return self
 
-    def remote(self, *args, **kwargs):
+    def remote(self, *args: Unpack[_ActorInitArgs], **kwargs) -> "ActorHandle[_ActorT]":
         """Create an actor.
 
         Args:
@@ -534,7 +576,9 @@ class ActorClass:
         """
         return self._remote(args=args, kwargs=kwargs, **self._default_options)
 
-    def options(self, **actor_options):
+    def options(
+        self, **actor_options
+    ) -> ActorOptionWrapper[_ActorT, Unpack[_ActorInitArgs]]:
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -640,7 +684,7 @@ class ActorClass:
                 updated_options["runtime_env"]
             )
 
-        class ActorOptionWrapper:
+        class _ActorOptionWrapper(ActorOptionWrapper):
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
@@ -659,10 +703,12 @@ class ActorClass:
                     updated_options,
                 )
 
-        return ActorOptionWrapper()
+        return _ActorOptionWrapper()
 
     @_tracing_actor_creation
-    def _remote(self, args=None, kwargs=None, **actor_options):
+    def _remote(
+        self, args=None, kwargs=None, **actor_options
+    ) -> "ActorHandle[_ActorT]":
         """Create an actor.
 
         This method allows more flexibility than the remote method because
@@ -1021,7 +1067,7 @@ class ActorClass:
 
 
 @PublicAPI
-class ActorHandle:
+class ActorHandle(Generic[_ActorT]):
     """A handle to an actor.
 
     The fields in this class are prefixed with _ray_ to hide them from the user
@@ -1095,6 +1141,172 @@ class ActorHandle:
                     decorator=self._ray_method_decorators.get(method_name),
                 )
                 setattr(self, method_name, method)
+
+    @property
+    def methods(self) -> type[_ActorT]:
+        # Pretend self as type ``_ActorT``
+        return self  # type: ignore
+
+    @overload
+    def remote(self, __method: Callable[[_ActorT], _R]) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], _R],
+        __arg0: _ActorArg[_T0],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T5],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6, _T7],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6, _T7, _T8],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6, _T7, _T8, _T9],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    def remote(self, __method: ActorMethod, *args):  # type: ignore
+        if not isinstance(__method, ActorMethod):
+            if is_function_or_method(__method):
+                __method = getattr(self, __method.__name__)
+            else:
+                raise ValueError(f"invalid method {__method}")
+        return __method.remote(*args)
 
     def __del__(self):
         try:
@@ -1357,7 +1569,89 @@ def _modify_class(cls):
     return Class
 
 
-def _make_actor(cls, actor_options):
+@overload
+def _make_actor(
+    cls: Callable[[], _ActorT], actor_options: dict[str, Any]
+) -> ActorClass[_ActorT]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0], _ActorT], actor_options: dict[str, Any]
+) -> ActorClass[_ActorT, _T0]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1], _ActorT], actor_options: dict[str, Any]
+) -> ActorClass[_ActorT, _T0, _T1]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2], _ActorT], actor_options: dict[str, Any]
+) -> ActorClass[_ActorT, _T0, _T1, _T2]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3], _ActorT], actor_options: dict[str, Any]
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3, _T4], _ActorT], actor_options: dict[str, Any]
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3, _T4]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3, _T4, _T5], _ActorT],
+    actor_options: dict[str, Any],
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3, _T4, _T5, _T6], _ActorT],
+    actor_options: dict[str, Any],
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _ActorT],
+    actor_options: dict[str, Any],
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _ActorT],
+    actor_options: dict[str, Any],
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8]:
+    ...
+
+
+@overload
+def _make_actor(
+    cls: Callable[[_T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _ActorT],
+    actor_options: dict[str, Any],
+) -> ActorClass[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9]:
+    ...
+
+
+def _make_actor(cls, actor_options):  # type: ignore
     Class = _modify_class(cls)
     _inject_tracing_into_class(Class)
 
