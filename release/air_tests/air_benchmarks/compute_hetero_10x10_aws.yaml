@@ -18,4 +18,4 @@ worker_node_types:
       instance_type: m5.16xlarge
       max_workers: 10
       min_workers: 10
-      use_spit: false
+      use_spot: false

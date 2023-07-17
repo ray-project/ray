@@ -131,7 +131,7 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
             "perf_metric_type": "LATENCY",
         },
         {
-            "perf_metric_name": "throughout_images_s_w/o_metadata_fetc",
+            "perf_metric_name": "throughout_images_s_w/o_metadata_fetch",
             "perf_metric_value": throughput_without_metadata_fetch,
             "perf_metric_type": "THROUGHPUT",
         },
