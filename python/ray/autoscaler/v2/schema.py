@@ -1,10 +1,7 @@
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from enum import Enum
 from typing import Dict, List, Optional
-
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeAvailabilitySummary,
-)
 
 NODE_DEATH_CAUSE_RAYLET_DIED = "RayletUnexpectedlyDied"
 
@@ -39,7 +36,7 @@ class NodeInfo:
     ip_address: str
     # The status of the node. Optional for pending nodes.
     node_status: Optional[str] = None
-    # ray node id. None if still pending.
+    # ray node id in hex. None if still pending.
     node_id: Optional[str] = None
     # Resource usage breakdown if node is running.
     resource_usage: Optional[NodeUsage] = None
@@ -50,13 +47,25 @@ class NodeInfo:
 
 
 @dataclass
-class PendingLaunchRequest:
+class LaunchRequest:
+    class Status(Enum):
+        FAILED = "FAILED"
+        PENDING = "PENDING"
+
     # The instance type name, e.g. p3.2xlarge
     instance_type_name: str
     # ray node type name.
     ray_node_type_name: str
     # count.
     count: int
+    # State: (e.g. PENDING, FAILED)
+    state: Status
+    # When the launch request was made in unix timestamp in secs.
+    request_ts_s: int
+    # When the launch request failed unix timestamp in secs if failed.
+    failed_ts_s: Optional[int] = None
+    # Request details, e.g. error reason if the launch request failed.
+    details: Optional[str] = None
 
 
 @dataclass
@@ -118,11 +127,15 @@ class ClusterConstraintDemand(ResourceDemand):
 @dataclass
 class ResourceDemandSummary:
     # Placement group demand.
-    placement_group_demand: List[PlacementGroupResourceDemand]
+    placement_group_demand: List[PlacementGroupResourceDemand] = field(
+        default_factory=list
+    )
     # Ray task actor demand.
-    ray_task_actor_demand: List[RayTaskActorDemand]
+    ray_task_actor_demand: List[RayTaskActorDemand] = field(default_factory=list)
     # Cluster constraint demand.
-    cluster_constraint_demand: List[ClusterConstraintDemand]
+    cluster_constraint_demand: List[ClusterConstraintDemand] = field(
+        default_factory=list
+    )
 
 
 @dataclass
@@ -137,29 +150,30 @@ class Stats:
     autoscaler_version: Optional[str] = None
     # The last seen cluster state resource version.
     cluster_resource_state_version: Optional[str] = None
+    # Request made time unix timestamp: when the data was pulled from GCS.
+    request_ts_s: Optional[int] = None
 
 
 @dataclass
 class ClusterStatus:
     # Healthy nodes information (alive)
-    healthy_nodes: List[NodeInfo]
+    healthy_nodes: List[NodeInfo] = field(default_factory=list)
     # Pending launches.
-    pending_launches: List[PendingLaunchRequest]
+    pending_launches: List[LaunchRequest] = field(default_factory=list)
+    # Failed launches.
+    failed_launches: List[LaunchRequest] = field(default_factory=list)
     # Pending nodes.
-    pending_nodes: List[NodeInfo]
+    pending_nodes: List[NodeInfo] = field(default_factory=list)
     # Failures
-    failed_nodes: List[NodeInfo]
+    failed_nodes: List[NodeInfo] = field(default_factory=list)
     # Resource usage summary for entire cluster.
-    cluster_resource_usage: List[ResourceUsage]
+    cluster_resource_usage: List[ResourceUsage] = field(default_factory=list)
     # Demand summary.
-    resource_demands: ResourceDemandSummary
+    resource_demands: ResourceDemandSummary = field(
+        default_factory=ResourceDemandSummary
+    )
     # Query metics
-    stats: Stats
-    # TODO(rickyx): Not sure if this is actually used.
-    # We don't have any tests that cover this is actually
-    # being produced. And I have not seen this either.
-    # Node availability info.
-    node_availability: Optional[NodeAvailabilitySummary]
+    stats: Stats = field(default_factory=Stats)
 
     # TODO(rickyx): we don't show infeasible requests as of now.
     # (They will just be pending forever as part of the demands)
