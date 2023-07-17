@@ -51,7 +51,7 @@ FROM rayproject/ray:2.5.0
 RUN pip install Faker==18.13.0
 ```
 
-In general, the `rayproject/ray` images contain only the dependencies needed to import Ray and the Ray libraries. The `rayproject/ray-ml` images contain additional dependencies (e.g. PyTorch, HuggingFace, etc.) that are useful for machine learning. You can extend images from either of these repos to build your custom images.
+In general, the `rayproject/ray` images contain only the dependencies needed to import Ray and the Ray libraries. The `rayproject/ray-ml` images contain additional dependencies (e.g., PyTorch, HuggingFace, etc.) that are useful for machine learning. You can extend images from either of these repos to build your custom images.
 
 Then, you can build this image and push it to your Dockerhub account, so it can be pulled in the future:
 
