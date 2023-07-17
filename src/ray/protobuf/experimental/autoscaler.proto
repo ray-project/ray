@@ -189,7 +189,7 @@ message PendingInstanceRequest {
   string ray_node_type_name = 2;
   // The number of such instance requested to be started.
   int32 count = 3;
-  // The unix timestamp when the request is made.
+  // The unix timestamp in seconds when the request is made.
   int64 request_ts = 4;
 }
 
@@ -203,9 +203,9 @@ message FailedInstanceRequest {
   int32 count = 3;
   // Descriptive reasons for the failure.
   string reason = 4;
-  // The unix timestamp when the request is made.
+  // The unix timestamp in seconds when the request is made.
   int64 start_ts = 5;
-  // The unix timestamp when the request is failed.
+  // The unix timestamp in seconds when the request is failed.
   int64 failed_ts = 6;
 }
 
