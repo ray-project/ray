@@ -91,7 +91,7 @@ In RLlib, you can now set the configuration so that the compiled module is used 
     config = PPOConfig().framework(
         "torch",
         torch_compile_worker=True,
-        torch_compile_worker_dynamo_backend="ipex"
+        torch_compile_worker_dynamo_backend="ipex",
         torch_compile_worker_dynamo_mode="default",
     )
 
