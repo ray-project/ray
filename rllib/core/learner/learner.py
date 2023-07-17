@@ -266,69 +266,85 @@ class Learner:
 
     Usage pattern:
 
-        .. code-block:: python
+        .. doctest::
 
-        # create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
-            module_class=MyModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict = {"hidden": [128, 128]}
-        )
+            We use PPO and torch as an example here because many of the showcased
+            components need implementations to come together. However, the same
+            pattern is generally applicable.
 
-        # create a learner instance that will train the module
-        learner = MyLearner(module_spec=module_spec)
+            >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            ...     PPOTorchRLModule
+            ... )
+            >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+            >>> from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+            >>> import gymnasium as gym
 
-        # Note: the learner should be built before it can be used.
-        learner.build()
+            >>> env = gym.make("CartPole-v1")
 
-        # take one gradient update on the module and report the results
-        results = learner.update(batch)
+            Create a single agent RL module spec.
+            >>> module_spec = SingleAgentRLModuleSpec(
+            ...     module_class=PPOTorchRLModule,
+            ...     observation_space=env.observation_space,
+            ...     action_space=env.action_space,
+            ...     model_config_dict = {"hidden": [128, 128]},
+            ...     catalog_class = PPOCatalog,
+            ... )
 
-        # add a new module, perhaps for league based training
-        learner.add_module(
-            module_id="new_player",
-            module_spec=SingleAgentRLModuleSpec(
-                module_class=NewPlayerModule,
-                observation_space=env.observation_space,
-                action_space=env.action_space,
-                model_config_dict = {"hidden": [128, 128]}
-            )
-        )
+            Create a learner instance that will train the module
+            >>> learner = TorchLearner(module_spec=module_spec)
 
-        # Take another gradient update with both previous and new modules.
-        results = learner.update(batch)
+            Note: the learner should be built before it can be used.
+            >>> learner.build()
 
-        # remove a module
-        learner.remove_module("new_player")
+            Take one gradient update on the module and report the results
+            >>> results = learner.update(batch) # doctest: +SKIP
 
-        # will train previous modules only.
-        results = learner.update(batch)
+            Add a new module, perhaps for league based training
+            >>> learner.add_module(
+            ...     module_id="new_player",
+            ...     module_spec=SingleAgentRLModuleSpec(
+            ...         module_class=PPOTorchRLModule,
+            ...         observation_space=env.observation_space,
+            ...         action_space=env.action_space,
+            ...         model_config_dict = {"hidden": [128, 128]},
+            ...         catalog_class = PPOCatalog,
+            ...     )
+            ... )
 
-        # get the state of the learner
-        state = learner.get_state()
+            Take another gradient update with both previous and new modules.
+            >>> results = learner.update(...) # doctest: +SKIP
 
-        # set the state of the learner
-        learner.set_state(state)
+            Remove a module
+            >>> learner.remove_module("new_player")
 
-        # get the weights of the underly multi-agent RLModule
-        weights = learner.get_module_state()
+            Will train previous modules only.
+            >>> results = learner.update(...) # doctest: +SKIP
 
-        # set the weights of the underly multi-agent RLModule
-        learner.set_module_state(weights)
+            Get the state of the learner
+            >>> state = learner.get_state()
+
+            Set the state of the learner
+            >>> learner.set_state(state)
+
+            Get the weights of the underly multi-agent RLModule
+            >>> weights = learner.get_module_state()
+
+            Set the weights of the underly multi-agent RLModule
+            >>> learner.set_module_state(weights)
 
 
     Extension pattern:
 
-        .. code-block:: python
+        .. doctest::
 
-        class MyLearner(TorchLearner):
+            >>> from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 
-            def compute_loss(self, fwd_out, batch):
-                # compute the loss based on batch and output of the forward pass
-                # to access the learner hyper-parameters use `self._hps`
-
-                return {ALL_MODULES: loss}
+            >>> class MyLearner(TorchLearner):
+            ...
+            ...    def compute_loss(self, fwd_out, batch):
+            ...        # compute the loss based on batch and output of the forward pass
+            ...        # to access the learner hyper-parameters use `self._hps`
+            ...        return {ALL_MODULES: loss}
     """
 
     framework: str = None
