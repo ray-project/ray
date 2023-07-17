@@ -202,7 +202,7 @@ Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, an
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
 * Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
-For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
+For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 
 If all the environment variables are set properly, you should see time-series metrics in {ref}`Ray Dashboard <observability-getting-started>`.
 
