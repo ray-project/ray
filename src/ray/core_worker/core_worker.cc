@@ -3155,6 +3155,8 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
 void CoreWorker::HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest request,
                                              rpc::ExportObjectOwnershipReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
+  reference_counter_->DumpOwnerInfo();
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
