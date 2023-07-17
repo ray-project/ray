@@ -259,3 +259,18 @@ message UserResponse {
   bytes response = 1;
 }
 
+message RayServeRequest {
+  google.protobuf.Any user_request = 1;
+  string application = 2;
+  string request_id = 3;
+  string multiplexed_model_id = 4;
+}
+
+message RayServeResponse {
+  google.protobuf.Any user_response = 1;
+  string request_id = 2;
+}
+
+service RayServeService {
+  rpc Predict(RayServeRequest) returns (RayServeResponse);
+}

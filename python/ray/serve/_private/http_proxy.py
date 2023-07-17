@@ -906,7 +906,9 @@ class GenericProxy:
 
 
 class GRPCProxy(GenericProxy):
-    async def Predict(self, request: serve_pb2.PredictRequest, context):
+
+
+    async def Predict(self, request: serve_pb2.RayServeRequest, context):
         print("in generic proxy, Predict called!!")
         print("request", request)
         print("context.invocation_metadata()", context.invocation_metadata())
@@ -934,14 +936,14 @@ class GRPCProxy(GenericProxy):
             scope=scope,
             receive=receive,
             send=send,
-        )
+        )  # Calling self to use http code path
         response_body = ProtoAny()
         for message in send.messages:
             if message.get("type") == "http.response.body":
                 response_body.ParseFromString(message["body"])
         print("send.messages", send.messages)
         print("response_body", response_body)
-        return serve_pb2.PredictResponse(output=response_body)
+        return serve_pb2.RayServeResponse(output=response_body)
 
 
 class HTTPProxy(GenericProxy):
@@ -1129,7 +1131,7 @@ class HTTPProxyActor:
     async def run_grpc_server(self):
         grpc_server = grpc.aio.server()
         grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
-        serve_pb2_grpc.add_PredictAPIsServiceServicer_to_server(
+        serve_pb2_grpc.add_RayServeServiceServicer_to_server(
             self.grpc_proxy, grpc_server
         )
         await grpc_server.start()
