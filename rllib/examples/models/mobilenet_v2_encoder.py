@@ -1,8 +1,6 @@
 """
-This file implements a MobileNet v2 encoder for use in RLlib.
-The MobileNet v2 encoder is a convolutional neural network that is trained on the
-ImageNet dataset. It is a very lightweight network that can be used to encode
-images into a latent space of 1000 dimensions.
+This file implements a MobileNet v2 Encoder.
+It uses MobileNet v2 to encode images into a latent space of 1000 dimensions.
 
 Depending on the experiment, the MobileNet v2 encoder layers can be frozen or
 unfrozen. This is controlled by the `freeze` parameter in the config.
@@ -23,7 +21,7 @@ MOBILENET_INPUT_SHAPE = (3, 224, 224)
 
 
 class MobileNetV2EncoderConfig(ModelConfig):
-    # MobileNet v2 has a flat output of (1000,).
+    # MobileNet v2 has a flat output with a length of 1000.
     output_dims = (1000,)
     freeze = True
 
