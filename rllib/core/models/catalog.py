@@ -183,7 +183,7 @@ class Catalog:
         Returns:
             The encoder.
         """
-        assert hasattr(self, "encoder_config"), (
+        assert hasattr(self, "_encoder_config"), (
             "You must define a `Catalog._encoder_config` attribute in your Catalog "
             "subclass or override the `Catalog.build_encoder` method. By default, "
             "an encoder_config is created in the __post_init__ method."
