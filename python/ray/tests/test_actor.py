@@ -1222,6 +1222,61 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
     wait_for_condition(actor_removed)
 
 
+def test_actor_class_decorator(ray_start_regular_shared):
+    @ray.actor_class
+    class Test:
+        def __init__(self, x):
+            self.x = x
+
+        def f(self, y):
+            return self.x + y
+
+    t = Test.remote(2)
+    assert ray.get(t.remote(t.methods.f, 1)) == 3
+    assert ray.get(t.f.remote(1)) == 3
+
+    # Make sure that calling an actor method directly raises an exception.
+    with pytest.raises(Exception):
+        t.f(1)
+
+
+def test_actor_class_namespace(ray_start_regular_shared):
+    @ray.actor_class
+    class Actor:
+        def f(self):
+            return "ok"
+
+    a = Actor.options(name="foo", namespace="f1").remote()
+
+    with pytest.raises(ValueError):
+        ray.get_actor(name="foo", namespace="f2")
+
+    a1 = ray.get_actor(name="foo", namespace="f1")
+
+    assert ray.get(a1.f.remote()) == "ok"
+    assert ray.get(a1.remote(a1.methods.f)) == "ok"
+    del a
+
+
+def test_actor_class_options_num_returns(ray_start_regular_shared):
+    @ray.actor_class
+    class Foo:
+        def method(self):
+            return 1, 2
+
+    f = Foo.remote()
+
+    obj = f.method.remote()
+    assert ray.get(obj) == (1, 2)
+    obj1, obj2 = f.method.options(num_returns=2).remote()
+    assert ray.get([obj1, obj2]) == [1, 2]
+
+    obj = f.remote(f.methods.method)
+    assert ray.get(obj) == (1, 2)
+    obj1, obj2 = f.remote(f.methods.method, actor_options={"num_returns": 2})
+    assert ray.get([obj1, obj2]) == [1, 2]
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
