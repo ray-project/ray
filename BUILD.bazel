@@ -1430,6 +1430,21 @@ cc_test(
 )
 
 cc_test(
+    name = "runtime_env_agent_client_test",
+    size = "small",
+    srcs = ["src/ray/raylet/runtime_env_agent_client_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "gcs_test_util_lib",
+        "ray_common",
+        "raylet_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "dependency_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/dependency_manager_test.cc"],

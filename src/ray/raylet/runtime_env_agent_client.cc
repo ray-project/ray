@@ -24,7 +24,6 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
@@ -179,7 +178,7 @@ class Session : public std::enable_shared_from_this<Session> {
     stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != beast::errc::not_connected) {
-      RAY_LOG(INFO) << "on_read error after response body reseived: " << ec.message();
+      RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
     }
   }
 };
@@ -195,11 +194,15 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                             const std::string &address,
                             int port,
                             std::function<std::shared_ptr<boost::asio::deadline_timer>(
-                                std::function<void()>, uint32_t delay_ms)> delay_executor)
+                                std::function<void()>, uint32_t delay_ms)> delay_executor,
+                            uint32_t agent_manager_retry_interval_ms,
+                            uint32_t agent_register_timeout_ms)
       : io_context_(io_context),
         address_(address),
         port_str_(std::to_string(port)),
-        delay_executor_(delay_executor) {}
+        delay_executor_(delay_executor),
+        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms),
+        agent_register_timeout_ms_(agent_register_timeout_ms) {}
   ~HttpRuntimeEnvAgentClient() = default;
 
   template <typename T>
@@ -229,9 +232,13 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   /// retries every after `agent_manager_retry_interval_ms` up until `deadline` passed.
   /// After which, fail_callback is called with the NotFound error from `try_invoke_once`.
   ///
-  /// Note that the time out check happens after `try_invoke_once` returns. This means if
-  /// you have a successful but very long connection (e.g. runtime env agent is busy
-  /// downloading from s3), you are safe.
+  /// Note that retry only happens on network errors. Application errors returned by the
+  /// server are not retried.
+  ///
+  /// If the retries took so long and exceeded deadline, Raylet suicides. Note the check
+  /// happens after `try_invoke_once` returns. This means if you have a successful but
+  /// very long connection (e.g. runtime env agent is busy downloading from s3), you are
+  /// safe.
   ///
   /// @tparam T the return type on success.
   /// @param try_invoke_once
@@ -242,31 +249,26 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void RetryInvokeOnNotFoundWithDeadline(TryInvokeOnce<T> try_invoke_once,
                                          SuccCallback<T> succ_callback,
                                          FailCallback fail_callback,
-                                         int64_t deadline) {
+                                         int64_t deadline_ms) {
     try_invoke_once(succ_callback, [=](ray::Status status) {
       if (!status.IsNotFound()) {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
-      } else if (current_time_ms() > deadline) {
+      } else if (current_time_ms() > deadline_ms) {
         RAY_LOG(ERROR) << "Runtime Env Agent timed out as NotFound in "
-                       << RayConfig::instance().agent_register_timeout_ms()
-                       << "ms. Status: " << status << ", address: " << this->address_
-                       << ", port: " << this->port_str_ << ", Suiciding...";
+                       << agent_register_timeout_ms_ << "ms. Status: " << status
+                       << ", address: " << this->address_ << ", port: " << this->port_str_
+                       << ", Suiciding...";
         Suicide();
       } else {
-        RAY_LOG(INFO) << "Scheduling a retry in "
-                      << RayConfig::instance().agent_manager_retry_interval_ms()
+        RAY_LOG(INFO) << "Scheduling a retry in " << agent_manager_retry_interval_ms_
                       << "ms...";
         this->delay_executor_(
             [=]() {
               RetryInvokeOnNotFoundWithDeadline(
-                  try_invoke_once, succ_callback, fail_callback, deadline);
+                  try_invoke_once, succ_callback, fail_callback, deadline_ms);
             },
-            RayConfig::instance().agent_manager_retry_interval_ms());
-      }
-      else {
-        // Non retryable errors, invoke fail_callback
-        fail_callback(std::move(status));
+            agent_manager_retry_interval_ms_);
       }
     });
   }
@@ -278,7 +280,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              const std::string &serialized_allocated_resource_instances,
-                             GetOrCreateRuntimeEnvCallback &callback) override {
+                             GetOrCreateRuntimeEnvCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {
@@ -321,11 +323,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                          << serialized_runtime_env;
           callback(false, "", error_message);
         },
-        current_time_ms() + RayConfig::instance().agent_register_timeout_ms());
+        current_time_ms() + agent_register_timeout_ms_);
   }
 
   // Does the real work of calling HTTP.
-  // Returns {error, empty} or {ok, reply}.
+  // Invokes `succ_callback` with server reply (which may be OK or application errors),
+  // or invokes `fail_callback` on network error or protobuf deserialization error.
   void TryGetOrCreateRuntimeEnv(
       const JobID &job_id,
       const std::string &serialized_runtime_env,
@@ -364,7 +367,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   // POST /delete_runtime_env_if_possible
   // Body = proto rpc::DeleteRuntimeEnvIfPossibleRequest
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env,
-                                  DeleteRuntimeEnvIfPossibleCallback &callback) override {
+                                  DeleteRuntimeEnvIfPossibleCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::DeleteRuntimeEnvIfPossibleReply>(
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
@@ -393,9 +396,11 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
           callback(false);
         },
-        current_time_ms() + RayConfig::instance().agent_register_timeout_ms());
+        current_time_ms() + agent_register_timeout_ms_);
   }
 
+  // Invokes `succ_callback` with server reply (which may be OK or application errors),
+  // or invokes `fail_callback` on network error or protobuf deserialization error.
   void TryDeleteRuntimeEnvIfPossible(
       const std::string &serialized_runtime_env,
       std::function<void(rpc::DeleteRuntimeEnvIfPossibleReply)> succ_callback,
@@ -432,6 +437,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
+  const uint32_t agent_manager_retry_interval_ms_;
+  const uint32_t agent_register_timeout_ms_;
 };
 }  // namespace
 
@@ -440,9 +447,17 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     const std::string &address,
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
-        std::function<void()>, uint32_t delay_ms)> delay_executor) {
-  return std::make_shared<HttpRuntimeEnvAgentClient>(
-      io_context, address, port, delay_executor);
+        std::function<void()>, uint32_t delay_ms)> delay_executor,
+    uint32_t agent_manager_retry_interval_ms,
+    uint32_t agent_register_timeout_ms
+
+) {
+  return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,
+                                                     address,
+                                                     port,
+                                                     delay_executor,
+                                                     agent_manager_retry_interval_ms,
+                                                     agent_register_timeout_ms);
 }
 
 }  // namespace raylet
