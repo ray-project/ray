@@ -573,6 +573,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::GetSystemConfigReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
+                              rpc::DrainObjectStoreReply *reply,
+                              rpc::SendReplyCallback send_reply_callback) override;
   /// Handle a `GetTasksInfo` request.
   void HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
                           rpc::GetTasksInfoReply *reply,

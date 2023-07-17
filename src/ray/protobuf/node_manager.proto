@@ -350,6 +350,11 @@ message GetTaskFailureCauseReply {
   bool fail_task_immediately = 2;
 }
 
+message DrainObjectStoreRequest {
+}
+message DrainObjectStoreReply {
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Update the node's view of the cluster resource usage.
@@ -416,4 +421,5 @@ service NodeManagerService {
   // Gets the task execution result. May contain a result if
   // the task completed in error.
   rpc GetTaskFailureCause(GetTaskFailureCauseRequest) returns (GetTaskFailureCauseReply);
+  rpc DrainObjectStore(DrainObjectStoreRequest) returns (DrainObjectStoreReply);
 }

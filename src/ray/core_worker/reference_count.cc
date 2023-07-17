@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/core_worker/reference_count.h"
+
 #include <fstream>
 
 #define PRINT_REF_COUNT(it)                                                        \
@@ -38,7 +39,7 @@ bool ReferenceCounter::OwnObjects() const {
   return !object_id_refs_.empty();
 }
 
-bool ReferenceCounter::OwnedByUs(const ObjectID& object_id) const {
+bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
@@ -51,11 +52,10 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {
     shutdown();
-  }
-  else {
+  } else {
     RAY_LOG(WARNING)
-      << "This worker is still managing " << object_id_refs_.size()
-      << " objects, waiting for them to go out of scope before shutting down.";
+        << "This worker is still managing " << object_id_refs_.size()
+        << " objects, waiting for them to go out of scope before shutting down.";
     shutdown_hook_ = shutdown;
   }
 }
@@ -63,42 +63,42 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
 void ReferenceCounter::ShutdownIfNeeded() {
   if (shutdown_hook_ && object_id_refs_.empty()) {
     RAY_LOG(WARNING)
-      << "All object references have gone out of scope, shutting down worker.";
+        << "All object references have gone out of scope, shutting down worker.";
     shutdown_hook_();
   }
 }
 
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
-    const ReferenceTableProto& proto) {
+    const ReferenceTableProto &proto) {
   ReferenceTable refs;
-  for (const auto& ref : proto) {
+  for (const auto &ref : proto) {
     refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
   }
   return refs;
 }
 
-void ReferenceCounter::ReferenceTableToProto(ReferenceProtoTable& table,
-                                             ReferenceTableProto* proto) {
-  for (auto& [id, ref] : table) {
-    auto* proto_ref = proto->Add();
+void ReferenceCounter::ReferenceTableToProto(ReferenceProtoTable &table,
+                                             ReferenceTableProto *proto) {
+  for (auto &[id, ref] : table) {
+    auto *proto_ref = proto->Add();
     *proto_ref = std::move(ref);
     proto_ref->mutable_reference()->set_object_id(id.Binary());
   }
 }
 
-bool ReferenceCounter::AddBorrowedObject(const ObjectID& object_id,
-                                         const ObjectID& outer_id,
-                                         const rpc::Address& owner_address,
+bool ReferenceCounter::AddBorrowedObject(const ObjectID &object_id,
+                                         const ObjectID &outer_id,
+                                         const rpc::Address &owner_address,
                                          bool foreign_owner_already_monitoring) {
   absl::MutexLock lock(&mutex_);
   return AddBorrowedObjectInternal(
       object_id, outer_id, owner_address, foreign_owner_already_monitoring);
 }
 
-bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID& object_id,
-                                                 const ObjectID& outer_id,
-                                                 const rpc::Address& owner_address,
+bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID &object_id,
+                                                 const ObjectID &outer_id,
+                                                 const rpc::Address &owner_address,
                                                  bool foreign_owner_already_monitoring) {
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
@@ -113,7 +113,7 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID& object_id,
     auto outer_it = object_id_refs_.find(outer_id);
     if (outer_it != object_id_refs_.end() && !outer_it->second.owned_by_us) {
       RAY_LOG(DEBUG) << "Setting borrowed inner ID " << object_id
-        << " contained_in_borrowed: " << outer_id;
+                     << " contained_in_borrowed: " << outer_id;
       RAY_CHECK_NE(object_id, outer_id);
       it->second.mutable_nested()->contained_in_borrowed_ids.insert(outer_id);
       outer_it->second.mutable_nested()->contains.insert(object_id);
@@ -133,13 +133,13 @@ bool ReferenceCounter::AddBorrowedObjectInternal(const ObjectID& object_id,
 
 void ReferenceCounter::AddObjectRefStats(
     const absl::flat_hash_map<ObjectID, std::pair<int64_t, std::string>> pinned_objects,
-    rpc::CoreWorkerStats* stats,
+    rpc::CoreWorkerStats *stats,
     const int64_t limit) const {
   absl::MutexLock lock(&mutex_);
   auto total = object_id_refs_.size();
   auto count = 0;
 
-  for (const auto& ref : object_id_refs_) {
+  for (const auto &ref : object_id_refs_) {
     if (limit != -1 && count >= limit) {
       break;
     }
@@ -162,7 +162,7 @@ void ReferenceCounter::AddObjectRefStats(
         ref_proto->set_call_site(it->second.second);
       }
     }
-    for (const auto& obj_id : ref.second.nested().contained_in_owned) {
+    for (const auto &obj_id : ref.second.nested().contained_in_owned) {
       ref_proto->add_contained_in_owned(obj_id.Binary());
     }
 
@@ -173,7 +173,7 @@ void ReferenceCounter::AddObjectRefStats(
     }
   }
   // Also include any unreferenced objects that are pinned in memory.
-  for (const auto& entry : pinned_objects) {
+  for (const auto &entry : pinned_objects) {
     if (object_id_refs_.find(entry.first) == object_id_refs_.end()) {
       if (limit != -1 && count >= limit) {
         break;
@@ -192,28 +192,28 @@ void ReferenceCounter::AddObjectRefStats(
   stats->set_objects_total(total);
 }
 
-void ReferenceCounter::AddOwnedObject(const ObjectID& object_id,
-                                      const std::vector<ObjectID>& inner_ids,
-                                      const rpc::Address& owner_address,
-                                      const std::string& call_site,
+void ReferenceCounter::AddOwnedObject(const ObjectID &object_id,
+                                      const std::vector<ObjectID> &inner_ids,
+                                      const rpc::Address &owner_address,
+                                      const std::string &call_site,
                                       const int64_t object_size,
                                       bool is_reconstructable,
                                       bool add_local_ref,
-                                      const absl::optional<NodeID>& pinned_at_raylet_id) {
+                                      const absl::optional<NodeID> &pinned_at_raylet_id) {
   absl::MutexLock lock(&mutex_);
   RAY_CHECK(AddOwnedObjectInternal(object_id,
-    inner_ids,
-    owner_address,
-    call_site,
-    object_size,
-    is_reconstructable,
-    add_local_ref,
-    pinned_at_raylet_id))
-    << "Tried to create an owned object that already exists: " << object_id;
+                                   inner_ids,
+                                   owner_address,
+                                   call_site,
+                                   object_size,
+                                   is_reconstructable,
+                                   add_local_ref,
+                                   pinned_at_raylet_id))
+      << "Tried to create an owned object that already exists: " << object_id;
 }
 
-void ReferenceCounter::AddDynamicReturn(const ObjectID& object_id,
-                                        const ObjectID& generator_id) {
+void ReferenceCounter::AddDynamicReturn(const ObjectID &object_id,
+                                        const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
   auto outer_it = object_id_refs_.find(generator_id);
   if (outer_it == object_id_refs_.end()) {
@@ -226,23 +226,23 @@ void ReferenceCounter::AddDynamicReturn(const ObjectID& object_id,
     return;
   }
   RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
-    << " contained in generator object " << generator_id;
+                 << " contained in generator object " << generator_id;
   RAY_CHECK(outer_it->second.owned_by_us);
   RAY_CHECK(outer_it->second.owner_address.has_value());
   rpc::Address owner_address(outer_it->second.owner_address.value());
   RAY_UNUSED(AddOwnedObjectInternal(object_id,
-    {},
-    owner_address,
-    outer_it->second.call_site,
-    /*object_size=*/-1,
-    outer_it->second.is_reconstructable,
-    /*add_local_ref=*/false,
-    absl::optional<NodeID>()));
-  AddNestedObjectIdsInternal(generator_id, { object_id }, owner_address);
+                                    {},
+                                    owner_address,
+                                    outer_it->second.call_site,
+                                    /*object_size=*/-1,
+                                    outer_it->second.is_reconstructable,
+                                    /*add_local_ref=*/false,
+                                    absl::optional<NodeID>()));
+  AddNestedObjectIdsInternal(generator_id, {object_id}, owner_address);
 }
 
-void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID& object_id,
-                                                        const ObjectID& generator_id) {
+void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
+                                                        const ObjectID &generator_id) {
   absl::MutexLock lock(&mutex_);
   // NOTE: The upper layer (the layer that manges the object ref stream)
   // should make sure the generator ref is not GC'ed until the
@@ -253,44 +253,43 @@ void ReferenceCounter::OwnDynamicStreamingTaskReturnRef(const ObjectID& object_i
     // It means the generator is already GC'ed. No need to
     // update the reference.
     RAY_LOG(DEBUG)
-      << "Ignore OwnDynamicStreamingTaskReturnRef. The dynamic return reference "
-      << object_id << " is registered after the generator id " << generator_id
-      << " went out of scope.";
+        << "Ignore OwnDynamicStreamingTaskReturnRef. The dynamic return reference "
+        << object_id << " is registered after the generator id " << generator_id
+        << " went out of scope.";
     return;
   }
   RAY_LOG(DEBUG) << "Adding dynamic return " << object_id
-    << " contained in generator object " << generator_id;
+                 << " contained in generator object " << generator_id;
   RAY_CHECK(outer_it->second.owned_by_us);
   RAY_CHECK(outer_it->second.owner_address.has_value());
   rpc::Address owner_address(outer_it->second.owner_address.value());
   // We add a local reference here. The ref removal will be handled
   // by the ObjectRefStream.
   RAY_UNUSED(AddOwnedObjectInternal(object_id,
-    {},
-    owner_address,
-    outer_it->second.call_site,
-    /*object_size=*/-1,
-    outer_it->second.is_reconstructable,
-    /*add_local_ref=*/true,
-    absl::optional<NodeID>()));
+                                    {},
+                                    owner_address,
+                                    outer_it->second.call_site,
+                                    /*object_size=*/-1,
+                                    outer_it->second.is_reconstructable,
+                                    /*add_local_ref=*/true,
+                                    absl::optional<NodeID>()));
 }
 
 bool ReferenceCounter::AddOwnedObjectInternal(
-    const ObjectID& object_id,
-    const std::vector<ObjectID>& inner_ids,
-    const rpc::Address& owner_address,
-    const std::string& call_site,
+    const ObjectID &object_id,
+    const std::vector<ObjectID> &inner_ids,
+    const rpc::Address &owner_address,
+    const std::string &call_site,
     const int64_t object_size,
     bool is_reconstructable,
     bool add_local_ref,
-    const absl::optional<NodeID>& pinned_at_raylet_id) {
+    const absl::optional<NodeID> &pinned_at_raylet_id) {
   if (object_id_refs_.count(object_id) != 0) {
     return false;
   }
   if (ObjectID::IsActorID(object_id)) {
     num_actors_owned_by_us_++;
-  }
-  else {
+  } else {
     num_objects_owned_by_us_++;
   }
   RAY_LOG(DEBUG) << "Adding owned object " << object_id;
@@ -300,13 +299,13 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   // TODO(swang): Objects that are not reconstructable should not increment
   // their arguments' lineage ref counts.
   auto it = object_id_refs_
-    .emplace(object_id,
-             Reference(owner_address,
-               call_site,
-               object_size,
-               is_reconstructable,
-               pinned_at_raylet_id))
-    .first;
+                .emplace(object_id,
+                         Reference(owner_address,
+                                   call_site,
+                                   object_size,
+                                   is_reconstructable,
+                                   pinned_at_raylet_id))
+                .first;
   if (!inner_ids.empty()) {
     // Mark that this object ID contains other inner IDs. Then, we will not GC
     // the inner objects until the outer object ID goes out of scope.
@@ -328,7 +327,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   return true;
 }
 
-void ReferenceCounter::UpdateObjectSize(const ObjectID& object_id, int64_t object_size) {
+void ReferenceCounter::UpdateObjectSize(const ObjectID &object_id, int64_t object_size) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
   if (it != object_id_refs_.end()) {
@@ -337,8 +336,8 @@ void ReferenceCounter::UpdateObjectSize(const ObjectID& object_id, int64_t objec
   }
 }
 
-void ReferenceCounter::AddLocalReference(const ObjectID& object_id,
-                                         const std::string& call_site) {
+void ReferenceCounter::AddLocalReference(const ObjectID &object_id,
+                                         const std::string &call_site) {
   if (object_id.IsNil()) {
     return;
   }
@@ -358,7 +357,7 @@ void ReferenceCounter::AddLocalReference(const ObjectID& object_id,
 }
 
 void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner_ref_it) {
-  for (const auto& contained_in_borrowed_id :
+  for (const auto &contained_in_borrowed_id :
        inner_ref_it->second.nested().contained_in_borrowed_ids) {
     auto contained_in_it = object_id_refs_.find(contained_in_borrowed_id);
     RAY_CHECK(contained_in_it != object_id_refs_.end());
@@ -372,18 +371,18 @@ void ReferenceCounter::SetNestedRefInUseRecursive(ReferenceTable::iterator inner
 void ReferenceCounter::ReleaseAllLocalReferences() {
   absl::MutexLock lock(&mutex_);
   std::vector<ObjectID> refs_to_remove;
-  for (auto& ref : object_id_refs_) {
+  for (auto &ref : object_id_refs_) {
     for (int i = ref.second.local_ref_count; i > 0; --i) {
       refs_to_remove.push_back(ref.first);
     }
   }
-  for (const auto& object_id_to_remove : refs_to_remove) {
+  for (const auto &object_id_to_remove : refs_to_remove) {
     RemoveLocalReferenceInternal(object_id_to_remove, nullptr);
   }
 }
 
-void ReferenceCounter::RemoveLocalReference(const ObjectID& object_id,
-                                            std::vector<ObjectID>* deleted) {
+void ReferenceCounter::RemoveLocalReference(const ObjectID &object_id,
+                                            std::vector<ObjectID> *deleted) {
   if (object_id.IsNil()) {
     return;
   }
@@ -391,19 +390,19 @@ void ReferenceCounter::RemoveLocalReference(const ObjectID& object_id,
   RemoveLocalReferenceInternal(object_id, deleted);
 }
 
-void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID& object_id,
-                                                    std::vector<ObjectID>* deleted) {
+void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID &object_id,
+                                                    std::vector<ObjectID> *deleted) {
   RAY_CHECK(!object_id.IsNil());
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
-      << object_id;
+                     << object_id;
     return;
   }
   if (it->second.local_ref_count == 0) {
     RAY_LOG(WARNING)
-      << "Tried to decrease ref count for object ID that has count 0 " << object_id
-      << ". This should only happen if ray.internal.free was called earlier.";
+        << "Tried to decrease ref count for object ID that has count 0 " << object_id
+        << ". This should only happen if ray.internal.free was called earlier.";
     return;
   }
   it->second.local_ref_count--;
@@ -411,22 +410,21 @@ void ReferenceCounter::RemoveLocalReferenceInternal(const ObjectID& object_id,
   PRINT_REF_COUNT(it);
   if (it->second.RefCount() == 0) {
     DeleteReferenceInternal(it, deleted);
-  }
-  else {
+  } else {
     PRINT_REF_COUNT(it);
   }
 }
 
 void ReferenceCounter::UpdateSubmittedTaskReferences(
     const std::vector<ObjectID> return_ids,
-    const std::vector<ObjectID>& argument_ids_to_add,
-    const std::vector<ObjectID>& argument_ids_to_remove,
-    std::vector<ObjectID>* deleted) {
+    const std::vector<ObjectID> &argument_ids_to_add,
+    const std::vector<ObjectID> &argument_ids_to_remove,
+    std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  for (const auto& return_id : return_ids) {
+  for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, true);
   }
-  for (const ObjectID& argument_id : argument_ids_to_add) {
+  for (const ObjectID &argument_id : argument_ids_to_add) {
     RAY_LOG(DEBUG) << "Increment ref count for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
@@ -450,12 +448,12 @@ void ReferenceCounter::UpdateSubmittedTaskReferences(
 }
 
 void ReferenceCounter::UpdateResubmittedTaskReferences(
-    const std::vector<ObjectID> return_ids, const std::vector<ObjectID>& argument_ids) {
+    const std::vector<ObjectID> return_ids, const std::vector<ObjectID> &argument_ids) {
   absl::MutexLock lock(&mutex_);
-  for (const auto& return_id : return_ids) {
+  for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, true);
   }
-  for (const ObjectID& argument_id : argument_ids) {
+  for (const ObjectID &argument_id : argument_ids) {
     auto it = object_id_refs_.find(argument_id);
     RAY_CHECK(it != object_id_refs_.end());
     bool was_in_use = it->second.RefCount() > 0;
@@ -468,13 +466,13 @@ void ReferenceCounter::UpdateResubmittedTaskReferences(
 
 void ReferenceCounter::UpdateFinishedTaskReferences(
     const std::vector<ObjectID> return_ids,
-    const std::vector<ObjectID>& argument_ids,
+    const std::vector<ObjectID> &argument_ids,
     bool release_lineage,
-    const rpc::Address& worker_addr,
-    const ReferenceTableProto& borrowed_refs,
-    std::vector<ObjectID>* deleted) {
+    const rpc::Address &worker_addr,
+    const ReferenceTableProto &borrowed_refs,
+    std::vector<ObjectID> *deleted) {
   absl::MutexLock lock(&mutex_);
-  for (const auto& return_id : return_ids) {
+  for (const auto &return_id : return_ids) {
     UpdateObjectPendingCreationInternal(return_id, false);
   }
   // Must merge the borrower refs before decrementing any ref counts. This is
@@ -485,7 +483,7 @@ void ReferenceCounter::UpdateFinishedTaskReferences(
   if (!refs.empty()) {
     RAY_CHECK(!WorkerID::FromBinary(worker_addr.worker_id()).IsNil());
   }
-  for (const ObjectID& argument_id : argument_ids) {
+  for (const ObjectID &argument_id : argument_ids) {
     MergeRemoteBorrowers(argument_id, worker_addr, refs);
   }
 
@@ -508,7 +506,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     }
   }
 
-  for (const ObjectID& argument_id : argument_ids) {
+  for (const ObjectID &argument_id : argument_ids) {
     auto arg_it = object_id_refs_.find(argument_id);
     if (arg_it == object_id_refs_.end()) {
       continue;
@@ -531,15 +529,15 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
 }
 
 void ReferenceCounter::RemoveSubmittedTaskReferences(
-    const std::vector<ObjectID>& argument_ids,
+    const std::vector<ObjectID> &argument_ids,
     bool release_lineage,
-    std::vector<ObjectID>* deleted) {
-  for (const ObjectID& argument_id : argument_ids) {
+    std::vector<ObjectID> *deleted) {
+  for (const ObjectID &argument_id : argument_ids) {
     RAY_LOG(DEBUG) << "Releasing ref for submitted task argument " << argument_id;
     auto it = object_id_refs_.find(argument_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING) << "Tried to decrease ref count for nonexistent object ID: "
-        << argument_id;
+                       << argument_id;
       return;
     }
     RAY_CHECK(it->second.submitted_task_ref_count > 0);
@@ -557,7 +555,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 
 void ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
   absl::MutexLock lock(&mutex_);
-  for (auto& [obj_id, meta] : object_id_refs_) {
+  for (auto &[obj_id, meta] : object_id_refs_) {
     if (meta.owned_by_us && meta.pinned_at_raylet_id) {
       std::ofstream out(prefix / obj_id.Hex());
       out << meta.pinned_at_raylet_id->Hex() << std::endl;
@@ -565,8 +563,7 @@ void ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
   }
 }
 
-bool ReferenceCounter::HasOwner(
-    const ObjectID &object_id) const {
+bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
   absl::MutexLock lock(&mutex_);
   return object_id_refs_.find(object_id) != object_id_refs_.end();
 }

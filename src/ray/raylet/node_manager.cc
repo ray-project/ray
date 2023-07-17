@@ -574,7 +574,7 @@ ray::Status NodeManager::RegisterGcs() {
               if (status.ok()) {
                 if (!alive) {
                   // GCS think this raylet is dead. Fail the node
-                  RAY_LOG(FATAL)
+                  RAY_LOG(FATAL) 
                       << "GCS consider this node to be dead. This may happen when "
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
@@ -766,10 +766,16 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
 
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
+void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
+                              rpc::DrainObjectStoreReply* reply,
+                              rpc::SendReplyCallback send_reply_callback) {
+  
+}
 
-void NodeManager::HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
-                                     rpc::GetTasksInfoReply *reply,
-                                     rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetTasksInfo(
+    rpc::GetTasksInfoRequest request,
+    rpc::GetTasksInfoReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received a HandleGetTasksInfo request";
   auto total = std::make_shared<int>(0);
   auto count = std::make_shared<int>(0);
