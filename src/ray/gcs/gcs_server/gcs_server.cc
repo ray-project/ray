@@ -655,6 +655,20 @@ void GcsServer::InitGcsWorkerManager() {
 }
 
 void GcsServer::InitGcsAutoscalerStateManager() {
+  RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
+  RAY_LOG(INFO) << "Autoscaler V2 enabled: "
+                << std::to_string(RayConfig::instance().enable_autoscaler_v2());
+  kv_manager_->GetInstance().Put(
+      kGcsAutoscalerStateNamespace,
+      kGcsAutoscalerV2EnabledKey,
+      std::to_string(RayConfig::instance().enable_autoscaler_v2()),
+      /*overwrite=*/true,
+      [](bool success) {
+        if (!success) {
+          RAY_LOG(WARNING) << "Failed to put autoscaler state to GCS.";
+        }
+      });
+
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,

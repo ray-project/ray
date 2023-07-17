@@ -3,6 +3,7 @@ from copy import deepcopy
 from datetime import datetime
 from typing import Any, Dict, List, Tuple
 
+from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
@@ -34,6 +35,7 @@ from ray.core.generated.experimental.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequest,
 )
+from ray.experimental.internal_kv import _internal_kv_get
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
@@ -507,3 +509,23 @@ class ClusterStatusParser:
             )
 
         return pending_nodes
+
+
+def is_autoscaler_v2() -> bool:
+    """
+    Check if the autoscaler is v2 from reading GCS internal KV.
+
+    Returns:
+        is_v2: True if the autoscaler is v2, False otherwise.
+
+    Raises:
+        Exception: if GCS address could not be resolved (e.g. ray.init() not called)
+    """
+
+    # See src/ray/common/constants.h for the definition of this key.
+    return (
+        _internal_kv_get(
+            AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
+        )
+        == b"1"
+    )
