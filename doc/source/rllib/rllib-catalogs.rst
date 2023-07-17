@@ -6,13 +6,15 @@
 
 
 Catalog (Beta)
-===============
+==============
 
 Catalogs are where `RLModules <rllib-rlmodule.html>`__ primarily get their models and action distributions from.
 Each :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has its own default
 :py:class:`~ray.rllib.core.models.catalog.Catalog`. For example,
 :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` has the
 :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`.
+Catalogs make it easier to extend currently existing built-in RLModules (e.g. PPORLModule)
+Catalogs make it easier to build models for new RLModules (new algorithms) that are extendable.
 
 .. note::
     Modifying Catalogs signifies advanced use cases so you should only consider this if modifying an RLModule or writing one does not cover your use case.
@@ -71,44 +73,6 @@ created by PPO.
     :start-after: __sphinx_doc_algo_configs_begin__
     :end-before: __sphinx_doc_algo_configs_end__
 
-Basic usage
-~~~~~~~~~~~
-
-The following three examples illustrate three basic usage patterns of Catalogs.
-
-The first example showcases the general API for interacting with Catalogs.
-
-.. literalinclude:: doc_code/catalog_guide.py
-   :language: python
-   :start-after: __sphinx_doc_basic_interaction_begin__
-   :end-before: __sphinx_doc_basic_interaction_end__
-
-The second example showcases how to use the :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
-to create a ``model`` and an ``action distribution``.
-This is more similar to what RLlib does internally.
-
-.. dropdown:: **Use catalog-generated models**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/catalog_guide.py
-       :language: python
-       :start-after: __sphinx_doc_ppo_models_begin__
-       :end-before: __sphinx_doc_ppo_models_end__
-
-The third example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
-to create an ``encoder`` and an ``action distribution``.
-Besides these, we create a ``head network`` that fits these two by hand to show how you can combine RLlib's
-:py:class:`~ray.rllib.core.models.base.ModelConfig` API and Catalog.
-Extending Catalog to also build this head is how Catalog is meant to be
-extended, which we cover later in this guide.
-
-.. dropdown:: **Customize a policy head**
-    :animate: fade-in-slide-down
-
-    .. literalinclude:: doc_code/catalog_guide.py
-       :language: python
-       :start-after: __sphinx_doc_modelsworkflow_begin__
-       :end-before: __sphinx_doc_modelsworkflow_end__
 
 What are Catalogs
 ~~~~~~~~~~~~~~~~~
@@ -140,6 +104,103 @@ The following diagram shows a concrete case in more detail.
 
     .. image:: images/catalog/ppo_catalog_and_rlm_diagram.svg
         :align: center
+
+
+Catalog design
+~~~~~~~~~~~~~~
+
+In order to facilitate better development on this component, we explain the design and ideas behind Catalogs in this section.
+
+What problems do Catalogs solve?
+--------------------------------
+
+RL algorithms need neural network ``models`` and ``distributions``.
+Within an algorithm, many different architectures for such sub-components are valid.
+Moreover, models and distributions vary with environments.
+However, most algorithms require models that have similarities.
+The problem is finding sensible sub-components for a wide range of use cases while sharing this functionality
+across algorithms.
+
+How do Catalogs solve this?
+----------------------------
+
+As states above, Catalogs implement decision-trees for sub-components of RL Modules.
+Models and distributions from a Catalog object are meant to fit together.
+Since we mostly build RL Modules out of :py:class:`~ray.rllib.core.models.base.Encoder` s, Heads and :py:class:`~ray.rllib.models.distributions.Distribution` s, Catalogs also generally reflect this.
+For example, the PPOCatalog will output Encoders that output a latent vector and two Heads that take this latent vector as input.
+(That's why Catalogs have a ``latent_dims`` attribute). Heads and distributions behave accordingly.
+Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
+Whenever you build a model, the config is compiled into a model.
+
+API philosophy
+--------------
+
+Catalogs attempt to encapsulate most complexity around models inside the :py:class:`~ray.rllib.core.models.base.Encoder`.
+This means that recurrency, attention and other special cases are fully handles inside the Encoder and are transparent
+to other components.
+Encoders are the only components that the Catalog base class builds.
+This is because many algorithms require custom heads and distributions but most of them can use the same encoders.
+The Catalog API is designed such that interaction usually happens in two stages:
+
+- Instantiate a Catalog. This executes the decision tree.
+- Access decided components through methods
+
+The two main methods to access components on the base class are...
+
+- :py:meth:`~ray.rllib.core.models.catalog.Catalog.build_encoder`
+- :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_action_dist_cls`
+- :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`
+
+You can override these to quickly hack what models RL Modules build.
+Other methods are private and should only be overridden to make deep changes to the decision tree to ehnance the capabilities of Catalogs.
+
+Basic usage
+~~~~~~~~~~~
+
+In the following three examples, we play with Catalogs to illustrate their API.
+
+High-level API
+-----------
+
+The first example showcases the general API for interacting with Catalogs.
+
+.. literalinclude:: doc_code/catalog_guide.py
+   :language: python
+   :start-after: __sphinx_doc_basic_interaction_begin__
+   :end-before: __sphinx_doc_basic_interaction_end__
+
+Creating models and distributions
+---------------------------------
+
+The second example showcases how to use the base :py:class:`~ray.rllib.core.models.catalog.Catalog`
+to create an ``model`` and an ``action distribution``.
+Besides these, we create a ``head network`` that fits these two by hand to show how you can combine RLlib's
+:py:class:`~ray.rllib.core.models.base.ModelConfig` API and Catalog.
+Extending Catalog to also build this ``head network`` is how Catalog is meant to be
+extended, which we cover later in this guide.
+
+.. dropdown:: **Customize a policy head**
+    :animate: fade-in-slide-down
+
+    .. literalinclude:: doc_code/catalog_guide.py
+       :language: python
+       :start-after: __sphinx_doc_modelsworkflow_begin__
+       :end-before: __sphinx_doc_modelsworkflow_end__
+
+Creating models and distributions for PPO
+-----------------------------------------
+
+The third example showcases how to use the :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
+to create a ``encoder`` and an ``action distribution``.
+This is more similar to what RLlib does internally.
+
+.. dropdown:: **Use catalog-generated models**
+    :animate: fade-in-slide-down
+
+    .. literalinclude:: doc_code/catalog_guide.py
+       :language: python
+       :start-after: __sphinx_doc_ppo_models_begin__
+       :end-before: __sphinx_doc_ppo_models_end__
 
 
 Inject your custom model or action distributions into Catalogs
@@ -189,45 +250,9 @@ The following examples showcase such modifications:
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
 
-Catalog design
-~~~~~~~~~~~~~~
-
-In order to facilitate better development on this component, we explain the design and ideas behind Catalogs in this section.
-
-What problems do Catalogs solve?
---------------------------------
-
-RL algorithms need neural network ``models`` and ``distributions``.
-Within an algorithm, many different architectures for such sub-components are valid.
-Moreover, models and distributions vary with environments.
-However, most algorithms require models that have similarities.
-The problem is finding sensible sub-components for a wide range of use cases while sharing this functionality
-across algorithms.
-
-How do Catalogs solve this?
-----------------------------
-
-As states above, Catalogs implement decision-trees for sub-components of RL Modules.
-Models and distributions from a Catalog object are meant to fit together.
-Since we mostly build RL Modules out of :py:class:`~ray.rllib.core.models.base.Encoder` s, Heads and :py:class:`~ray.rllib.models.distributions.Distribution` s, Catalogs also generally reflect this.
-For example, the PPOCatalog will output Encoders that output a latent vector and two Heads that take this latent vector as input.
-(That's why Catalogs have a ``latent_dims`` attribute). Heads and distributions behave accordingly.
-Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
-Whenever you build a model, the config is compiled into a model.
-
-API philosophy
---------------
-
-Catalogs attempt to encapsulate most complexity around models inside the :py:class:`~ray.rllib.core.models.base.Encoder`.
-This means that recurrency, attention and other special cases are fully handles inside the Encoder and are transparent
-to other components.
-Encoders are the only components that the Catalog base class builds.
-This is because many algorithms require custom heads and distributions but most of them can use the same encoders.
-The Catalog API is designed such that interaction usually happens in two stages:
-
-- Instantiate a Catalog. This executes the decision tree.
-- Access decided components through methods s.a. :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_action_dist_cls` or :py:meth:`~ray.rllib.core.models.catalog.Catalog.build_encoder`.
-
+    These examples target PPO but the workflows apply to all RLlib algorithms.
+    Note that PPO adds the :py:class:`from ray.rllib.core.models.base.ActorCriticEncoder` and two heads (policy- and value-head) to the base class.
+    Other algorithms may add different sub-components or override default ones.
 
 Write a Catalog from scratch
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

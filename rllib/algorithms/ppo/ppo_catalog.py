@@ -75,11 +75,13 @@ class PPOCatalog(Catalog):
         # Replace EncoderConfig by ActorCriticEncoderConfig
         self.actor_critic_encoder_config = ActorCriticEncoderConfig(
             base_encoder_config=self.encoder_config,
-            shared=self.model_config_dict["vf_share_layers"],
+            shared=self._model_config_dict["vf_share_layers"],
         )
 
-        self.pi_and_vf_head_hiddens = self.model_config_dict["post_fcnet_hiddens"]
-        self.pi_and_vf_head_activation = self.model_config_dict["post_fcnet_activation"]
+        self.pi_and_vf_head_hiddens = self._model_config_dict["post_fcnet_hiddens"]
+        self.pi_and_vf_head_activation = self._model_config_dict[
+            "post_fcnet_activation"
+        ]
 
         # We don't have the exact (framework specific) action dist class yet and thus
         # cannot determine the exact number of output nodes (action space) required.
@@ -136,18 +138,18 @@ class PPOCatalog(Catalog):
         """
         # Get action_distribution_cls to find out about the output dimension for pi_head
         action_distribution_cls = self.get_action_dist_cls(framework=framework)
-        if self.model_config_dict["free_log_std"]:
+        if self._model_config_dict["free_log_std"]:
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
         required_output_dim = action_distribution_cls.required_input_dim(
-            space=self.action_space, model_config=self.model_config_dict
+            space=self.action_space, model_config=self._model_config_dict
         )
         # Now that we have the action dist class and number of outputs, we can define
         # our pi-config and build the pi head.
         pi_head_config_class = (
             FreeLogStdMLPHeadConfig
-            if self.model_config_dict["free_log_std"]
+            if self._model_config_dict["free_log_std"]
             else MLPHeadConfig
         )
         self.pi_head_config = pi_head_config_class(

@@ -100,13 +100,23 @@ class Catalog:
         self.action_space = action_space
 
         # TODO (Artur): Make model defaults a dataclass
-        self.model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
-        self.view_requirements = view_requirements
+        self._model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
+        self._view_requirements = view_requirements
 
         self._latent_dims = None
 
-        # Overwrite this post-init hook in subclasses
-        self.__post_init__()
+    def __init_subclass__(cls, **kwargs):
+        # Automatically add a __post_init__ method to all subclasses of RLModule.
+        # This method is called after the __init__ method of the subclass.
+        def init_decorator(previous_init):
+            def new_init(self, *args, **kwargs):
+                previous_init(self, *args, **kwargs)
+                if type(self) == cls:
+                    self.__post_init__()
+
+            return new_init
+
+        cls.__init__ = init_decorator(cls.__init__)
 
     @property
     def latent_dims(self):
@@ -138,8 +148,8 @@ class Catalog:
         self.encoder_config = self._get_encoder_config(
             observation_space=self.observation_space,
             action_space=self.action_space,
-            model_config_dict=self.model_config_dict,
-            view_requirements=self.view_requirements,
+            model_config_dict=self._model_config_dict,
+            view_requirements=self._view_requirements,
         )
 
         # Create a function that can be called when framework is known to retrieve the

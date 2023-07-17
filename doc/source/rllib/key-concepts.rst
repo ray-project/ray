@@ -122,14 +122,14 @@ RL Modules
 `RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
 In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
 reinforcement learning: Exploration, inference and training.
-In its very basic form, an RL Module can contain a single neural network and define its exploration-, inference- and
+A minimal RL Module can contain a single neural network and define its exploration-, inference- and
 training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
-implement policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
+implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
 where their exploration and inference logic is used to sample from an environment.
 The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
 where their training logic is used in training the neural network.
 RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`
-contains multiple RL Modules. The following figure is a rough illustration of how the above can look in practice:
+contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
 
 .. image:: images/rllib-concepts-rlmodules-sketch.png
 
