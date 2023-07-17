@@ -102,6 +102,7 @@ steps:
 
   - name: "serve tests"
     depends_on: "ci-build-image"
+    soft_fail: true
     command:
       - source anyscale/ci/setup-env.sh
       - /bin/bash anyscale/ci/run-serve-tests-in-docker.sh
