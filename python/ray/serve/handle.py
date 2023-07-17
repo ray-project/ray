@@ -25,20 +25,6 @@ from ray.util.annotations import Deprecated, PublicAPI
 _global_async_loop = None
 
 
-def _wrap_into_async_task(async_func):
-    """Wrap an async function so it returns async task instead of coroutine
-
-    This makes the returned value awaitable more than once.
-    """
-    assert inspect.iscoroutinefunction(async_func)
-
-    @wraps(async_func)
-    def wrapper(*args, **kwargs):
-        return asyncio.ensure_future(async_func(*args, **kwargs))
-
-    return wrapper
-
-
 def _create_or_get_async_loop_in_thread():
     global _global_async_loop
     if _global_async_loop is None:
@@ -82,17 +68,15 @@ class HandleOptions:
         )
 
 
-class DeploymentHandleFuture(asyncio.Task):
-    def __init__(self, assign_request_task: Coroutine):
-        self._task = assign_request_task
+class DeploymentHandleRef:
+    def __init__(self, assign_request_coro: Coroutine):
+        self._task = asyncio.ensure_future(assign_request_coro)
 
-    def __await__(self):
-        return self._fut.__await__()
+    def __await__(self) -> ObjectRef:
+        return self._task.__await__()
 
-    async def obj_ref(self):
-
-    async def result(self):
-        obj_ref = await self._assign_request_coro
+    async def result(self) -> Any:
+        obj_ref = await self
         return await obj_ref
 
 
@@ -249,8 +233,7 @@ class RayServeHandle:
             request_metadata, *args, **kwargs
         )
 
-    @_wrap_into_async_task
-    async def remote(self, *args, **kwargs) -> DeploymentHandleFuture:
+    def remote(self, *args, **kwargs) -> DeploymentHandleRef:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -266,7 +249,7 @@ class RayServeHandle:
             result = await obj_ref
 
         """
-        return DeploymentHandleFuture(
+        return DeploymentHandleRef(
             self._remote(
                 self.deployment_name, self.handle_options, args, kwargs
             )

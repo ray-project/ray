@@ -81,16 +81,16 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    async def resolve_async_tasks(self):
+    async def resolve_handle_refs(self):
         """Find all unresolved asyncio.Task and gather them all at once."""
-        scanner = _PyObjScanner(source_type=asyncio.Task)
+        from ray.serve.handle import DeploymentHandleRef
+        scanner = _PyObjScanner(source_type=DeploymentHandleRef)
 
         try:
-            tasks = scanner.find_nodes((self.args, self.kwargs))
-
-            if len(tasks) > 0:
-                resolved = await asyncio.gather(*tasks)
-                replacement_table = dict(zip(tasks, resolved))
+            refs = scanner.find_nodes((self.args, self.kwargs))
+            if len(refs) > 0:
+                resolved = await asyncio.gather(*refs)
+                replacement_table = dict(zip(refs, resolved))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
@@ -989,7 +989,7 @@ class Router:
             kwargs=request_kwargs,
             metadata=request_meta,
         )
-        await query.resolve_async_tasks()
+        await query.resolve_handle_refs()
         await query.buffer_starlette_requests_and_warn()
         result = await self._replica_scheduler.assign_replica(query)
 
