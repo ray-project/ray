@@ -476,6 +476,5 @@ service CoreWorkerService {
   // Get the number of pending tasks.
   rpc NumPendingTasks(NumPendingTasksRequest) returns (NumPendingTasksReply);
   // Export the ownership of objects to external storage.
-  rpc ExportObjectOwnership(ExportObjectOwnershipRequest)
-      returns (ExportObjectOwnershipReply);
+  rpc ExportObjectOwnership(ExportObjectOwnershipRequest) returns (ExportObjectOwnershipReply);
 }

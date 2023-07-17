@@ -47,6 +47,8 @@ namespace rpc {
       CoreWorkerService, ReportGeneratorItemReturns, -1)                                 \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, KillActor, -1)          \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, CancelTask, -1)         \
+  RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(                                           \
+      CoreWorkerService, ExportObjectOwnership, -1)                                      \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, RemoteCancelTask, -1)   \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, GetCoreWorkerStats, -1) \
   RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(CoreWorkerService, LocalGC, -1)            \
@@ -82,6 +84,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteSpilledObjects)           \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PlasmaObjectReady)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(Exit)                           \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(ExportObjectOwnership)          \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(AssignObjectOwner)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(NumPendingTasks)
 

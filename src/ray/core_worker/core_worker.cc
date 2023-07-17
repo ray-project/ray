@@ -3152,6 +3152,11 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
   RemoveLocalReference(object_id);
 }
 
+void CoreWorker::HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest request,
+                                             rpc::ExportObjectOwnershipReply *reply,
+                                             rpc::SendReplyCallback send_reply_callback) {
+}
+
 void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
                                       std::shared_ptr<RayObject> obj,
                                       rpc::GetObjectStatusReply *reply) {
