@@ -28,6 +28,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
+    StreamingGRPCRequest,
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -249,6 +250,22 @@ def create_replica_wrapper(name: str):
             # Returns a small object for router to track request status.
             return b"", result
 
+        async def _handle_grpc_request_generator(
+            self,
+            request_metadata: RequestMetadata,
+            request: StreamingGRPCRequest,
+        ) -> AsyncGenerator[Message, None]:
+            """Handle an grpc request and stream grpc messages to the caller.
+
+            """
+            print("_handle_grpc_request_generator, request", request, request_metadata)
+            result = await self.replica.call_user_method_with_grpc_serialization(
+                request_metadata, request
+            )
+            yield result
+            print("_handle_grpc_request_generator, result", result)
+
+
         async def _handle_http_request_generator(
             self,
             request_metadata: RequestMetadata,
@@ -259,6 +276,7 @@ def create_replica_wrapper(name: str):
             This is a generator that yields ASGI-compliant messages sent by user code
             via an ASGI send interface.
             """
+            print("_handle_http_request_generator, request", request, request_metadata)
             receiver_task = None
             call_user_method_task = None
             wait_for_message_task = None
@@ -332,7 +350,18 @@ def create_replica_wrapper(name: str):
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
             print("handle_request_streaming, request_metadata:", request_metadata)
-            if request_metadata.is_http_request:
+            # TODO: fix this code branch to use grpc request.
+
+            if request_metadata.serve_grpc_request:
+                print("handle_request_streaming, serve_grpc_request", request_args)
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], StreamingGRPCRequest
+                )
+                generator = self._handle_grpc_request_generator(
+                    request_metadata, request_args[0]
+                )
+            elif request_metadata.is_http_request:
+                print("handle_request_streaming, is_http_request", request_args)
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
                 )
@@ -340,10 +369,12 @@ def create_replica_wrapper(name: str):
                     request_metadata, request_args[0]
                 )
             else:
+                print("handle_request_streaming, not grpc nor http request", request_args)
                 generator = self.replica.call_user_method_generator(
                     request_metadata, request_args, request_kwargs
                 )
 
+            print("handle_request_streaming, generator", generator)
             async for result in generator:
                 yield result
 
@@ -704,13 +735,29 @@ class RayServeReplica:
             raise user_exception from None
 
     async def call_user_method_with_grpc_serialization(
-        self, request_args, method_to_call
+        self, request_metadata, request
     ) -> bytes:
-        request_body = await request_args[0].body()
-        print("request_body", request_body)
-        parsed_body = ProtoAny()
-        parsed_body.ParseFromString(request_body)
-        result = await method_to_call(parsed_body)
+        print("in call_user_method_with_grpc_serialization", request_metadata, request)
+        print("request.pickled_grpc_user_request", request.pickled_grpc_user_request)
+        user_request = pickle.loads(request.pickled_grpc_user_request)
+        print("user_request", user_request)
+        # parsed_body = ProtoAny()
+        # parsed_body.ParseFromString(user_request)
+        # print("parsed_body", parsed_body)
+
+        runner_method = self.get_runner_method(request_metadata)
+        if inspect.isgeneratorfunction(
+            runner_method
+        ) or inspect.isasyncgenfunction(runner_method):
+            raise TypeError(
+                f"Method '{runner_method.__name__}' is a generator function. "
+                "You must use `handle.options(stream=True)` to call "
+                "generators on a deployment."
+            )
+
+        method_to_call = sync_to_async(runner_method)
+
+        result = await method_to_call(user_request)
         serialized_result = result.SerializeToString()
         print("call_user_method!!!", serialized_result)
         return serialized_result

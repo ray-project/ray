@@ -41,6 +41,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
     NodeId,
+    StreamingGRPCRequest,
     StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
@@ -60,6 +61,11 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
+from ray.serve._private.request_wrappers import (
+    RequestWrapper,
+    ASGIRequestWrapper,
+    GRPCRequestWrapper,
+)
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
@@ -199,7 +205,7 @@ class LongestPrefixRouter:
 
 
 class GRPCRouter(LongestPrefixRouter):
-    def get_route_from_target(self, target: str) -> Optional[str]:
+    def get_route_from_target(self, target: str) -> Optional[Tuple[str, RayServeHandle]]:
         """Return the target endpoint to match for the route.
 
         Args:
@@ -213,7 +219,7 @@ class GRPCRouter(LongestPrefixRouter):
             endpoint, app_name = endpoint_and_app_name
             print("app_name", app_name, "endpoint", endpoint)
             if target.endswith(endpoint):
-                return route
+                return route, self.handles[endpoint]
 
         return None
 
@@ -434,184 +440,6 @@ class GenericProxy:
             )
             self._prevent_node_downscale_ref = None
 
-    async def __call__(self, scope, receive, send):
-        """Implements the ASGI protocol.
-
-        See details at:
-            https://asgi.readthedocs.io/en/latest/specs/index.html.
-        """
-        print("in GenericProxy#__call__")
-        print("scope: ", scope)
-        print("receive: ", receive)
-        print("send: ", send)
-        assert scope["type"] in {"http", "websocket"}
-
-        method = scope.get("method", "websocket").upper()
-
-        # only use the non-root part of the path for routing
-        root_path = scope["root_path"]
-        route_path = scope["path"][len(root_path) :]
-
-        if route_path == "/-/routes":
-            if self._draining:
-                return await self._draining_response(scope, receive, send)
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": "",
-                    "status_code": "200",
-                }
-            )
-            return await starlette.responses.JSONResponse(self.route_info)(
-                scope, receive, send
-            )
-
-        if route_path == "/-/healthz":
-            if self._draining:
-                return await self._draining_response(scope, receive, send)
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": "",
-                    "status_code": "200",
-                }
-            )
-            return await starlette.responses.PlainTextResponse("success")(
-                scope, receive, send
-            )
-
-        try:
-            print("we are in try!!", route_path)
-            print("sorted_routes", self.prefix_router.sorted_routes)
-            print("route_info", self.prefix_router.route_info)
-            self._ongoing_requests_start()
-
-            matched_route = self.prefix_router.match_route(route_path)
-            print("matched_route: ", matched_route)
-            if matched_route is None:
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": "404",
-                        "method": method,
-                    }
-                )
-                self.request_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "method": method,
-                        "application": "",
-                        "status_code": "404",
-                    }
-                )
-                return await self._not_found(scope, receive, send)
-
-            route_prefix, handle, app_name, app_is_cross_language = matched_route
-
-            # Modify the path and root path so that reverse lookups and redirection
-            # work as expected. We do this here instead of in replicas so it can be
-            # changed without restarting the replicas.
-            if route_prefix != "/":
-                assert not route_prefix.endswith("/")
-                scope["path"] = route_path.replace(route_prefix, "", 1)
-                scope["root_path"] = root_path + route_prefix
-
-            request_id = get_random_letters(10)
-            request_context_info = {
-                "route": route_path,
-                "request_id": request_id,
-                "app_name": app_name,
-            }
-            start_time = time.time()
-            print("before setting request context")
-            for key, value in scope.get("headers", []):
-                print("key: ", key)
-                print("value: ", value)
-                if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                    multiplexed_model_id = value.decode()
-                    handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-                    request_context_info["multiplexed_model_id"] = multiplexed_model_id
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
-                    request_context_info["request_id"] = value.decode()
-                if key.decode() == SERVE_GRPC_REQUEST:
-                    handle = handle.options(serve_grpc_request=True)
-            ray.serve.context._serve_request_context.set(
-                ray.serve.context.RequestContext(**request_context_info)
-            )
-
-            print(
-                "before calling send request: ",
-                RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-                app_is_cross_language,
-            )
-            # Streaming codepath isn't supported for Java.
-            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
-                status_code = await self.send_request_to_replica_streaming(
-                    request_context_info["request_id"],
-                    handle,
-                    scope,
-                    receive,
-                    send,
-                )
-            else:
-                status_code = await self.send_request_to_replica_unary(
-                    handle,
-                    scope,
-                    receive,
-                    send,
-                )
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": app_name,
-                    "status_code": status_code,
-                }
-            )
-
-            latency_ms = (time.time() - start_time) * 1000.0
-            self.processing_latency_tracker.observe(
-                latency_ms,
-                tags={
-                    "route": route_path,
-                    "application": app_name,
-                    "status_code": status_code,
-                },
-            )
-            logger.info(
-                access_log_msg(
-                    method=method,
-                    status=str(status_code),
-                    latency_ms=latency_ms,
-                ),
-                extra={"log_to_stderr": False},
-            )
-            if status_code != "200":
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": status_code,
-                        "method": method,
-                    }
-                )
-                self.deployment_request_error_counter.inc(
-                    tags={
-                        "deployment": handle.deployment_name,
-                        "error_code": status_code,
-                        "method": method,
-                        "route": route_path,
-                        "application": app_name,
-                    }
-                )
-        finally:
-            # If anything during the request failed, we still want to ensure the ongoing
-            # request counter is decremented and possibly reset the keep alive object.
-            self._ongoing_requests_end()
 
     async def send_request_to_replica_unary(
         self,
@@ -747,8 +575,8 @@ class GenericProxy:
     async def _assign_request_with_timeout(
         self,
         handle: RayServeHandle,
-        scope: Scope,
-        disconnected_task: asyncio.Task,
+        request: RequestWrapper,
+        disconnected_task: Optional[asyncio.Task] = None,
         timeout_s: Optional[float] = None,
     ) -> Optional[StreamingObjectRefGenerator]:
         """Attempt to send a request on the handle within the timeout.
@@ -759,12 +587,29 @@ class GenericProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        # Change this to go to grpc request
-        assignment_task = handle.remote(
-            StreamingHTTPRequest(pickle.dumps(scope), self.self_actor_handle)
-        )
+        assignment_task = None
+        if isinstance(request, ASGIRequestWrapper):
+            assignment_task = handle.remote(
+                StreamingHTTPRequest(
+                    pickled_asgi_scope=pickle.dumps(request.scope),
+                    http_proxy_handle=self.self_actor_handle,
+                )
+            )
+        if isinstance(request, GRPCRequestWrapper):
+            assignment_task = handle.remote(
+                StreamingGRPCRequest(
+                    pickled_grpc_user_request=pickle.dumps(request.request.user_request),  # TODO (sugene): fixit
+                    http_proxy_handle=self.self_actor_handle
+                )
+            )
+
+        tasks = []
+        if assignment_task is not None:
+            tasks.append(assignment_task)
+        if disconnected_task is not None:
+            tasks.append(disconnected_task)
         done, _ = await asyncio.wait(
-            [assignment_task, disconnected_task],
+            tasks,
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
@@ -827,19 +672,18 @@ class GenericProxy:
         self,
         request_id: str,
         handle: RayServeHandle,
-        scope: Scope,
-        receive: Receive,
-        send: Send,
+        request: RequestWrapper,
     ) -> str:
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
         print("in GenericProxy#send_request_to_replica_streaming!!")
-        receive_queue = ASGIMessageQueue()
-        self.asgi_receive_queues[request_id] = receive_queue
-        proxy_asgi_receive_task = get_or_create_event_loop().create_task(
-            self.proxy_asgi_receive(receive, receive_queue)
-        )
+        if isinstance(request, ASGIRequestWrapper):
+            receive_queue = ASGIMessageQueue()
+            self.asgi_receive_queues[request_id] = receive_queue
+            proxy_asgi_receive_task = get_or_create_event_loop().create_task(
+                self.proxy_asgi_receive(request.receive, receive_queue)
+            )
 
         status_code = ""
         start = time.time()
@@ -887,6 +731,7 @@ class GenericProxy:
             logger.exception(e)
             status_code = "500"
         finally:
+            # TODO (sugene): only do this for asgi requests
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
@@ -906,13 +751,55 @@ class GenericProxy:
 
 
 class GRPCProxy(GenericProxy):
-
-
-    async def Predict(self, request: serve_pb2.RayServeRequest, context):
-        print("in generic proxy, Predict called!!")
-        print("request", request)
+    async def Predict(self, serve_request: serve_pb2.RayServeRequest, context):
+        print("in grpc proxy, Predict called!!")
+        print("request", serve_request)
         print("context.invocation_metadata()", context.invocation_metadata())
         print("context.details()", context.details())
+        print("context.peer()", context.peer())
+
+        request = GRPCRequestWrapper(request=serve_request)
+        app_name = serve_request.application
+        multiplexed_model_id = serve_request.multiplexed_model_id
+        request_id = serve_request.request_id
+        if not request_id:
+            request_id = get_random_letters(10)
+
+        path, handle = self.prefix_router.get_route_from_target(app_name)
+        handle = handle.options(serve_grpc_request=True)
+        if multiplexed_model_id:
+            handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+
+        request_context_info = {
+            "route": path,
+            "request_id": request_id,
+            "app_name": app_name,
+            "multiplexed_model_id": multiplexed_model_id,
+        }
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(**request_context_info)
+        )
+
+        # TODO (genesu): support routes and healthz?
+        # TODO (genesu): support draining
+
+        # TODO (genesu): catch timeout for this
+        result_generator = await self._assign_request_with_timeout(
+            handle=handle,
+            request=request,
+            timeout_s=self.request_timeout_s,
+        )
+        print("result_generator", result_generator)
+        result = await next(result_generator)
+        print("Predict, result", result)
+        user_response = ProtoAny()
+        user_response.ParseFromString(result)
+        print("Predict, deserialized_result", user_response)
+        return serve_pb2.RayServeResponse(
+            user_response=user_response,
+            request_id=request_id,
+        )
+
 
         path = self.prefix_router.get_route_from_target(request.target)
         request_id = ray.serve.context._serve_request_context.get().request_id
@@ -954,7 +841,183 @@ class HTTPProxy(GenericProxy):
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
-    pass
+    async def __call__(self, scope, receive, send):
+        """Implements the ASGI protocol.
+
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
+        print("in GenericProxy#__call__")
+        print("scope: ", scope)
+        print("receive: ", receive)
+        print("send: ", send)
+        request = ASGIRequestWrapper(scope=scope, receive=receive, send=send)
+        assert request.request_type in {"http", "websocket"}
+
+        # TODO (genesu): implement those methods onto asgi request wrapper
+        method = scope.get("method", "websocket").upper()
+
+        # only use the non-root part of the path for routing
+        root_path = scope["root_path"]
+        route_path = scope["path"][len(root_path) :]
+
+        if route_path == "/-/routes":
+            if self._draining:
+                return await self._draining_response(scope, receive, send)
+
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": method,
+                    "application": "",
+                    "status_code": "200",
+                }
+            )
+            return await starlette.responses.JSONResponse(self.route_info)(
+                scope, receive, send
+            )
+
+        if route_path == "/-/healthz":
+            if self._draining:
+                return await self._draining_response(scope, receive, send)
+
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": method,
+                    "application": "",
+                    "status_code": "200",
+                }
+            )
+            return await starlette.responses.PlainTextResponse("success")(
+                scope, receive, send
+            )
+
+        try:
+            print("we are in try!!", route_path)
+            print("sorted_routes", self.prefix_router.sorted_routes)
+            print("route_info", self.prefix_router.route_info)
+            self._ongoing_requests_start()
+
+            matched_route = self.prefix_router.match_route(route_path)
+            print("matched_route: ", matched_route)
+            if matched_route is None:
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": "404",
+                        "method": method,
+                    }
+                )
+                self.request_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "method": method,
+                        "application": "",
+                        "status_code": "404",
+                    }
+                )
+                return await self._not_found(scope, receive, send)
+
+            route_prefix, handle, app_name, app_is_cross_language = matched_route
+
+            # Modify the path and root path so that reverse lookups and redirection
+            # work as expected. We do this here instead of in replicas so it can be
+            # changed without restarting the replicas.
+            if route_prefix != "/":
+                assert not route_prefix.endswith("/")
+                scope["path"] = route_path.replace(route_prefix, "", 1)
+                scope["root_path"] = root_path + route_prefix
+
+            request_id = get_random_letters(10)
+            request_context_info = {
+                "route": route_path,
+                "request_id": request_id,
+                "app_name": app_name,
+            }
+            start_time = time.time()
+            print("before setting request context")
+            for key, value in scope.get("headers", []):
+                print("key: ", key)
+                print("value: ", value)
+                if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                    multiplexed_model_id = value.decode()
+                    handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+                    request_context_info["multiplexed_model_id"] = multiplexed_model_id
+                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                    request_context_info["request_id"] = value.decode()
+            ray.serve.context._serve_request_context.set(
+                ray.serve.context.RequestContext(**request_context_info)
+            )
+
+            print(
+                "before calling send request: ",
+                RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+                app_is_cross_language,
+            )
+            # Streaming codepath isn't supported for Java.
+            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
+                status_code = await self.send_request_to_replica_streaming(
+                    request_context_info["request_id"],
+                    handle,
+                    receive
+                )
+            else:
+                status_code = await self.send_request_to_replica_unary(
+                    handle,
+                    scope,
+                    receive,
+                    send,
+                )
+
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": method,
+                    "application": app_name,
+                    "status_code": status_code,
+                }
+            )
+
+            latency_ms = (time.time() - start_time) * 1000.0
+            self.processing_latency_tracker.observe(
+                latency_ms,
+                tags={
+                    "route": route_path,
+                    "application": app_name,
+                    "status_code": status_code,
+                },
+            )
+            logger.info(
+                access_log_msg(
+                    method=method,
+                    status=str(status_code),
+                    latency_ms=latency_ms,
+                ),
+                extra={"log_to_stderr": False},
+            )
+            if status_code != "200":
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": status_code,
+                        "method": method,
+                    }
+                )
+                self.deployment_request_error_counter.inc(
+                    tags={
+                        "deployment": handle.deployment_name,
+                        "error_code": status_code,
+                        "method": method,
+                        "route": route_path,
+                        "application": app_name,
+                    }
+                )
+        finally:
+            # If anything during the request failed, we still want to ensure the ongoing
+            # request counter is decremented and possibly reset the keep alive object.
+            self._ongoing_requests_end()
+
 
 
 class RequestIdMiddleware:
@@ -1150,7 +1213,4 @@ class HTTPProxyActor:
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
-        try:
-            return pickle.dumps(await self.app.receive_asgi_messages(request_id))
-        except KeyError:
-            return pickle.dumps(await self.grpc_proxy.receive_asgi_messages(request_id))
+        return pickle.dumps(await self.app.receive_asgi_messages(request_id))

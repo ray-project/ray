@@ -232,6 +232,7 @@ class ActorReplicaWrapper:
             _, obj_ref = self._actor_handle.handle_request.remote(
                 pickle.dumps(query.metadata), *query.args, **query.kwargs
             )
+        print("send_query_python!!!, obj_ref", obj_ref)
 
         return obj_ref
 
