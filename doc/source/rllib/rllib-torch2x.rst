@@ -73,7 +73,7 @@ Some meta-level comments
 ########################
 1. The performance improvement depends on many factors, including the neural network architecture used, the batch size during sampling, the backend, the mode, the torch version, and many other factors. To optimize performance, get the non-compiled workload learning and then do a hyper-parameter tuning on torch compile parameters on different hardware.
 
-2. For CPU inference use the recommended inference only backends: ``ipex`` and ``onnxrt``.
+2. For CPU inference use the recommended inference-only backends: ``ipex`` and ``onnxrt``.
 
 3. The speedups are more significant on more modern architectures such as A100s compared to older ones like T4.
 
