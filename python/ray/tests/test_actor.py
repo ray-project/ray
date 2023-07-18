@@ -1273,7 +1273,7 @@ def test_actor_class_options_num_returns(ray_start_regular_shared):
 
     obj = f.remote(f.methods.method)
     assert ray.get(obj) == (1, 2)
-    obj1, obj2 = f.remote(f.methods.method, actor_options={"num_returns": 2})
+    obj1, obj2 = f.remote(f.methods.method, num_returns=2)
     assert ray.get([obj1, obj2]) == [1, 2]
 
 

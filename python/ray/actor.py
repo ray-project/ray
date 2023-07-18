@@ -55,6 +55,11 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_method_invocation,
 )
 
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+
 if sys.version_info >= (3, 11):
     from typing import TypeVarTuple, Unpack
 else:
@@ -69,6 +74,11 @@ _actor_launch_hook = None
 _ActorT = TypeVar("_ActorT")
 _T = TypeVar("_T")
 _R = TypeVar("_R")
+_R0 = TypeVar("_R0")
+_R1 = TypeVar("_R1")
+_R2 = TypeVar("_R2")
+_R3 = TypeVar("_R3")
+_R4 = TypeVar("_R4")
 _T0 = TypeVar("_T0")
 _T1 = TypeVar("_T1")
 _T2 = TypeVar("_T2")
@@ -1154,9 +1164,96 @@ class ActorHandle(Generic[_ActorT]):
     @overload
     def remote(
         self,
-        __method: Callable[[_ActorT], _R],
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            _R,
+        ],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1],
+        ],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2],
+        ],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2, _R3],
+        ],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2, _R3, _R4],
+        ],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            _R,
+        ],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1166,7 +1263,75 @@ class ActorHandle(Generic[_ActorT]):
         __method: Callable[[_ActorT, _T0], _R],
         __arg0: _ActorArg[_T0],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], tuple[_R0, _R1]],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], tuple[_R0, _R1, _R2]],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], tuple[_R0, _R1, _R2, _R3]],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], tuple[_R0, _R1, _R2, _R3, _R4]],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1177,47 +1342,327 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[1],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
     @overload
     def remote(
         self,
+        __method: Callable[[_ActorT, _T0, _T1], tuple[_R0, _R1]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1], tuple[_R0, _R1, _R2]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3, _R4]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2],
+            [
+                _ActorT,
+                _T0,
+                _T1,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2], tuple[_R0, _R1]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2, _R3]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2, _R3, _R4]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+            ],
             _R,
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
         __arg2: _ActorArg[_T2],
-        *,
-        actor_options: dict[str, Any] | None = None,
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
     @overload
     def remote(
         self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1, _R2]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1, _R2, _R3]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3],
-            _R,
+            [_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1, _R2, _R3, _R4]
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
         __arg2: _ActorArg[_T2],
         __arg3: _ActorArg[_T3],
         *,
-        actor_options: dict[str, Any] | None = None,
-    ) -> ray.ObjectRef[_R]:
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
         ...
 
     @overload
     def remote(
         self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3, _T4],
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+            ],
             _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4], tuple[_R0, _R1]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4], tuple[_R0, _R1, _R2]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4], tuple[_R0, _R1, _R2, _R3]
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
@@ -1225,16 +1670,96 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         __arg4: _ActorArg[_T4],
         *,
-        actor_options: dict[str, Any] | None = None,
-    ) -> ray.ObjectRef[_R]:
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
         ...
 
     @overload
     def remote(
         self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3, _T5],
+            [_ActorT, _T0, _T1, _T2, _T3, _T4], tuple[_R0, _R1, _R2, _R3, _R4]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+                _T4,
+            ],
             _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5], tuple[_R0, _R1]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5], tuple[_R0, _R1, _R2]
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
@@ -1243,7 +1768,94 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         __arg5: _ActorArg[_T5],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5], tuple[_R0, _R1, _R2, _R3]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5], tuple[_R0, _R1, _R2, _R3, _R4]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+                _T4,
+                _T5,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1251,8 +1863,7 @@ class ActorHandle(Generic[_ActorT]):
     def remote(
         self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6],
-            _R,
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6], tuple[_R0, _R1]
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
@@ -1262,7 +1873,118 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         __arg6: _ActorArg[_T6],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6], tuple[_R0, _R1, _R2]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6], tuple[_R0, _R1, _R2, _R3]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6], tuple[_R0, _R1, _R2, _R3, _R4]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+                _T4,
+                _T5,
+                _T6,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1270,8 +1992,7 @@ class ActorHandle(Generic[_ActorT]):
     def remote(
         self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6, _T7],
-            _R,
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], tuple[_R0, _R1]
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
@@ -1282,7 +2003,125 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         __arg7: _ActorArg[_T7],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], tuple[_R0, _R1, _R2]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7], tuple[_R0, _R1, _R2, _R3]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+            tuple[_R0, _R1, _R2, _R3, _R4],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+                _T4,
+                _T5,
+                _T6,
+                _T7,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], _R],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[1],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1290,8 +2129,7 @@ class ActorHandle(Generic[_ActorT]):
     def remote(
         self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6, _T7, _T8],
-            _R,
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], tuple[_R0, _R1]
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
@@ -1303,7 +2141,112 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         __arg8: _ActorArg[_T8],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8], tuple[_R0, _R1, _R2]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3, _R4],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+                _T4,
+                _T5,
+                _T6,
+                _T7,
+                _T8,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1311,8 +2254,7 @@ class ActorHandle(Generic[_ActorT]):
     def remote(
         self,
         __method: Callable[
-            [_ActorT, _T0, _T1, _T2, _T3, _T5, _T6, _T7, _T8, _T9],
-            _R,
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], _R
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
@@ -1325,19 +2267,149 @@ class ActorHandle(Generic[_ActorT]):
         __arg8: _ActorArg[_T8],
         __arg9: _ActorArg[_T9],
         *,
-        actor_options: dict[str, Any] | None = None,
+        num_returns: Literal[1],
+        **actor_options,
     ) -> ray.ObjectRef[_R]:
         ...
 
-    def remote(  # type: ignore
-        self, __method: ActorMethod, *args, actor_options: dict[str, Any] | None = None
-    ):
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9], tuple[_R0, _R1]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[2],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[3],
+        **actor_options,
+    ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[4],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3, _R4],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[5],
+        **actor_options,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+                _T0,
+                _T1,
+                _T2,
+                _T3,
+                _T4,
+                _T5,
+                _T6,
+                _T7,
+                _T8,
+                _T9,
+            ],
+            _R,
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        **actor_options,
+    ) -> ray.ObjectRef[_R]:
+        ...
+
+    def remote(self, __method: ActorMethod, *args, **actor_options):  # type: ignore
         if not isinstance(__method, ActorMethod):
             if is_function_or_method(__method):
                 __method = getattr(self, __method.__name__)
             else:
                 raise ValueError(f"invalid method {__method}")
-        actor_options = actor_options or {}
         return __method.options(**actor_options).remote(*args)
 
     def __del__(self):
