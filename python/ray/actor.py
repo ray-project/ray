@@ -94,6 +94,9 @@ if TYPE_CHECKING:
     _ActorArg = Union[_T, ray.ObjectRef[_T]]
 
 
+Undefined: Any = object()
+
+
 @PublicAPI
 @client_mode_hook
 def method(*args, **kwargs):
@@ -1172,7 +1175,8 @@ class ActorHandle(Generic[_ActorT]):
         ],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1187,7 +1191,8 @@ class ActorHandle(Generic[_ActorT]):
         ],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1202,7 +1207,8 @@ class ActorHandle(Generic[_ActorT]):
         ],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1217,7 +1223,8 @@ class ActorHandle(Generic[_ActorT]):
         ],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1234,7 +1241,8 @@ class ActorHandle(Generic[_ActorT]):
         ],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1253,7 +1261,10 @@ class ActorHandle(Generic[_ActorT]):
             ],
             _R,
         ],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1264,7 +1275,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1275,7 +1287,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1286,7 +1299,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1297,7 +1311,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1310,7 +1325,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1331,7 +1347,10 @@ class ActorHandle(Generic[_ActorT]):
             _R,
         ],
         __arg0: _ActorArg[_T0],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1343,7 +1362,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1355,7 +1375,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1367,7 +1388,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1379,7 +1401,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1393,7 +1416,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1416,7 +1440,10 @@ class ActorHandle(Generic[_ActorT]):
         ],
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1429,7 +1456,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1442,7 +1470,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1455,7 +1484,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1468,7 +1498,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1483,7 +1514,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1508,7 +1540,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg0: _ActorArg[_T0],
         __arg1: _ActorArg[_T1],
         __arg2: _ActorArg[_T2],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1522,7 +1557,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1536,7 +1572,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1550,7 +1587,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1564,7 +1602,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1582,7 +1621,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1609,7 +1649,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg1: _ActorArg[_T1],
         __arg2: _ActorArg[_T2],
         __arg3: _ActorArg[_T3],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1624,7 +1667,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1639,7 +1683,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1654,7 +1699,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1671,7 +1717,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1690,7 +1737,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1719,7 +1767,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg2: _ActorArg[_T2],
         __arg3: _ActorArg[_T3],
         __arg4: _ActorArg[_T4],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1735,7 +1786,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1751,7 +1803,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1769,7 +1822,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1787,7 +1841,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1807,7 +1862,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1838,7 +1894,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg3: _ActorArg[_T3],
         __arg4: _ActorArg[_T4],
         __arg5: _ActorArg[_T5],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1855,7 +1914,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1874,7 +1934,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -1893,7 +1954,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -1912,7 +1974,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -1933,7 +1996,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -1966,7 +2030,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg4: _ActorArg[_T4],
         __arg5: _ActorArg[_T5],
         __arg6: _ActorArg[_T6],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -1984,7 +2051,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -2004,7 +2072,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -2024,7 +2093,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -2044,7 +2114,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -2067,7 +2138,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -2102,7 +2174,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg5: _ActorArg[_T5],
         __arg6: _ActorArg[_T6],
         __arg7: _ActorArg[_T7],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -2121,7 +2196,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg8: _ActorArg[_T8],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -2142,7 +2218,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg8: _ActorArg[_T8],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -2163,7 +2240,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg8: _ActorArg[_T8],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -2185,7 +2263,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg8: _ActorArg[_T8],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -2209,7 +2288,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg8: _ActorArg[_T8],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -2246,7 +2326,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg6: _ActorArg[_T6],
         __arg7: _ActorArg[_T7],
         __arg8: _ActorArg[_T8],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -2268,7 +2351,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg9: _ActorArg[_T9],
         *,
         num_returns: Literal[1],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
@@ -2290,7 +2374,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg9: _ActorArg[_T9],
         *,
         num_returns: Literal[2],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1]]:
         ...
 
@@ -2313,7 +2398,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg9: _ActorArg[_T9],
         *,
         num_returns: Literal[3],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2]]:
         ...
 
@@ -2336,7 +2422,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg9: _ActorArg[_T9],
         *,
         num_returns: Literal[4],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0], ray.ObjectRef[_R1], ray.ObjectRef[_R2], ray.ObjectRef[_R3]
     ]:
@@ -2361,7 +2448,8 @@ class ActorHandle(Generic[_ActorT]):
         __arg9: _ActorArg[_T9],
         *,
         num_returns: Literal[5],
-        **actor_options,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> tuple[
         ray.ObjectRef[_R0],
         ray.ObjectRef[_R1],
@@ -2400,7 +2488,10 @@ class ActorHandle(Generic[_ActorT]):
         __arg7: _ActorArg[_T7],
         __arg8: _ActorArg[_T8],
         __arg9: _ActorArg[_T9],
-        **actor_options,
+        *,
+        num_returns: int = Undefined,
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
     ) -> ray.ObjectRef[_R]:
         ...
 
