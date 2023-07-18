@@ -52,6 +52,7 @@ py_test_run_all_notebooks(
         "gptj_deepspeed_fine_tuning.ipynb",  # Requires release test
         "opt_deepspeed_batch_inference.ipynb", # Requires release test
         "dolly_lightning_fsdp_finetuning.ipynb", # Requires release test
+        "vicuna_13b_lightning_deepspeed_finetune.ipynb", # Requires release test
     ],
     data = ["//doc/source/ray-air/examples:air_examples"],
     tags = ["exclusive", "team:ml", "ray_air"],
