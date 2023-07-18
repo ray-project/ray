@@ -64,7 +64,6 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
-from google.protobuf.any_pb2 import Any as ProtoAny
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -255,16 +254,13 @@ def create_replica_wrapper(name: str):
             request_metadata: RequestMetadata,
             request: StreamingGRPCRequest,
         ) -> AsyncGenerator[Message, None]:
-            """Handle an grpc request and stream grpc messages to the caller.
-
-            """
+            """Handle an grpc request and stream grpc messages to the caller."""
             print("_handle_grpc_request_generator, request", request, request_metadata)
             result = await self.replica.call_user_method_with_grpc_serialization(
                 request_metadata, request
             )
             yield result
             print("_handle_grpc_request_generator, result", result)
-
 
         async def _handle_http_request_generator(
             self,
@@ -369,7 +365,9 @@ def create_replica_wrapper(name: str):
                     request_metadata, request_args[0]
                 )
             else:
-                print("handle_request_streaming, not grpc nor http request", request_args)
+                print(
+                    "handle_request_streaming, not grpc nor http request", request_args
+                )
                 generator = self.replica.call_user_method_generator(
                     request_metadata, request_args, request_kwargs
                 )
@@ -746,9 +744,9 @@ class RayServeReplica:
         # print("parsed_body", parsed_body)
 
         runner_method = self.get_runner_method(request_metadata)
-        if inspect.isgeneratorfunction(
+        if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
             runner_method
-        ) or inspect.isasyncgenfunction(runner_method):
+        ):
             raise TypeError(
                 f"Method '{runner_method.__name__}' is a generator function. "
                 "You must use `handle.options(stream=True)` to call "
@@ -811,18 +809,13 @@ class RayServeReplica:
                     f"the method to call is {runner_method.__name__} {method_to_call}"
                 )
                 print("request_metadata", request_metadata)
-                if request_metadata.serve_grpc_request:
-                    result = await self.call_user_method_with_grpc_serialization(
-                        request_args, method_to_call
+                result = await method_to_call(*request_args, **request_kwargs)
+                if inspect.isgenerator(result) or inspect.isasyncgen(result):
+                    raise TypeError(
+                        f"Method '{runner_method.__name__}' returned a generator. You"
+                        " must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
                     )
-                else:
-                    result = await method_to_call(*request_args, **request_kwargs)
-                    if inspect.isgenerator(result) or inspect.isasyncgen(result):
-                        raise TypeError(
-                            f"Method '{runner_method.__name__}' returned a generator. You"
-                            " must use `handle.options(stream=True)` to call "
-                            "generators on a deployment."
-                        )
 
             except Exception as e:
                 function_name = "unknown"

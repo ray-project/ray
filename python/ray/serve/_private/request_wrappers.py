@@ -1,20 +1,7 @@
-import asyncio
-import socket
-from dataclasses import dataclass
-import inspect
-import json
 import logging
-import pickle
-from typing import Any, List, Optional, Type
 
-import starlette
-from fastapi.encoders import jsonable_encoder
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
-from uvicorn.config import Config
-from uvicorn.lifespan.on import LifespanOn
+from starlette.types import Receive, Scope, Send
 
-from ray.actor import ActorHandle
-from ray.serve.exceptions import RayServeException
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.generated import serve_pb2
 
@@ -36,8 +23,11 @@ class ASGIRequestWrapper(RequestWrapper):
     def request_type(self) -> str:
         return self.scope["type"]
 
+    @property
+    def client(self) -> str:
+        return self.scope["client"]
+
 
 class GRPCRequestWrapper(RequestWrapper):
     def __init__(self, request: serve_pb2.RayServeRequest):
         self.request = request
-

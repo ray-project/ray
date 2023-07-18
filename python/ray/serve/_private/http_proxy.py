@@ -205,7 +205,9 @@ class LongestPrefixRouter:
 
 
 class GRPCRouter(LongestPrefixRouter):
-    def get_route_from_target(self, target: str) -> Optional[Tuple[str, RayServeHandle]]:
+    def get_route_from_target(
+        self, target: str
+    ) -> Optional[Tuple[str, RayServeHandle]]:
         """Return the target endpoint to match for the route.
 
         Args:
@@ -440,7 +442,6 @@ class GenericProxy:
             )
             self._prevent_node_downscale_ref = None
 
-
     async def send_request_to_replica_unary(
         self,
         handle: RayServeHandle,
@@ -598,8 +599,10 @@ class GenericProxy:
         if isinstance(request, GRPCRequestWrapper):
             assignment_task = handle.remote(
                 StreamingGRPCRequest(
-                    pickled_grpc_user_request=pickle.dumps(request.request.user_request),  # TODO (sugene): fixit
-                    http_proxy_handle=self.self_actor_handle
+                    pickled_grpc_user_request=pickle.dumps(
+                        request.request.user_request
+                    ),  # TODO (sugene): fixit
+                    http_proxy_handle=self.self_actor_handle,
                 )
             )
 
@@ -678,12 +681,11 @@ class GenericProxy:
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
         print("in GenericProxy#send_request_to_replica_streaming!!")
-        if isinstance(request, ASGIRequestWrapper):
-            receive_queue = ASGIMessageQueue()
-            self.asgi_receive_queues[request_id] = receive_queue
-            proxy_asgi_receive_task = get_or_create_event_loop().create_task(
-                self.proxy_asgi_receive(request.receive, receive_queue)
-            )
+        receive_queue = ASGIMessageQueue()
+        self.asgi_receive_queues[request_id] = receive_queue
+        proxy_asgi_receive_task = get_or_create_event_loop().create_task(
+            self.proxy_asgi_receive(request.receive, receive_queue)
+        )
 
         status_code = ""
         start = time.time()
@@ -691,13 +693,13 @@ class GenericProxy:
             try:
                 obj_ref_generator = await self._assign_request_with_timeout(
                     handle,
-                    scope,
+                    request.scope,
                     proxy_asgi_receive_task,
                     timeout_s=self.request_timeout_s,
                 )
                 if obj_ref_generator is None:
                     logger.info(
-                        f"Client from {scope['client']} disconnected, cancelling the "
+                        f"Client from {request.client} disconnected, cancelling the "
                         "request.",
                         extra={"log_to_stderr": False},
                     )
@@ -712,7 +714,7 @@ class GenericProxy:
             try:
                 status_code = await self._consume_and_send_asgi_message_generator(
                     obj_ref_generator,
-                    send,
+                    request.send,
                     timeout_s=calculate_remaining_timeout(
                         timeout_s=self.request_timeout_s,
                         start_time_s=start,
@@ -731,7 +733,6 @@ class GenericProxy:
             logger.exception(e)
             status_code = "500"
         finally:
-            # TODO (sugene): only do this for asgi requests
             if not proxy_asgi_receive_task.done():
                 proxy_asgi_receive_task.cancel()
             else:
@@ -740,7 +741,7 @@ class GenericProxy:
                 # a client message via the receive interface.
                 if (
                     status_code == ""
-                    and scope["type"] == "websocket"
+                    and request.request_type == "websocket"
                     and proxy_asgi_receive_task.exception() is None
                 ):
                     status_code = str(proxy_asgi_receive_task.result())
@@ -799,7 +800,6 @@ class GRPCProxy(GenericProxy):
             user_response=user_response,
             request_id=request_id,
         )
-
 
         path = self.prefix_router.get_route_from_target(request.target)
         request_id = ray.serve.context._serve_request_context.get().request_id
@@ -958,9 +958,7 @@ class HTTPProxy(GenericProxy):
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
                 status_code = await self.send_request_to_replica_streaming(
-                    request_context_info["request_id"],
-                    handle,
-                    receive
+                    request_context_info["request_id"], handle, receive
                 )
             else:
                 status_code = await self.send_request_to_replica_unary(
@@ -1017,7 +1015,6 @@ class HTTPProxy(GenericProxy):
             # If anything during the request failed, we still want to ensure the ongoing
             # request counter is decremented and possibly reset the keep alive object.
             self._ongoing_requests_end()
-
 
 
 class RequestIdMiddleware:
