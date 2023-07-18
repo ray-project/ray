@@ -14,7 +14,7 @@ We have integrated this feature with RLModules. You can set the backend and mode
 Benchmarks
 ==========
 
-We conducted a comprehensive benchmark with this feature. The following benchmarks consider only the potential speed-ups due to enabling torch-compile during inference and environment explorations. This is because, RL is usually bottllnecked by sampling.
+We conducted a comprehensive benchmark with this feature. The following benchmarks consider only the potential speedups due to enabling torch-compile during inference and environment explorations. This speedup method is relevant because RL is usually bottlenecked by sampling.
 
 Inference
 ---------
