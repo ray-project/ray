@@ -1,5 +1,6 @@
 from .operator import Operator
 
+
 class Plan:
     """Abstract class for logical/physical execution plans.
 

@@ -1,5 +1,6 @@
-from .plan import Plan
 from .logical_operator import LogicalOperator
+from .plan import Plan
+
 
 class LogicalPlan(Plan):
     """The plan with a DAG of logical operators."""

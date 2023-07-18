@@ -1,5 +1,6 @@
 from typing import Iterator, List
 
+
 class Operator:
     """Abstract class for operators.
 
