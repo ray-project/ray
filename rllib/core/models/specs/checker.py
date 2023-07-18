@@ -41,6 +41,8 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         - a single constraint. The constraint can be a Spec object, a type, or None.
 
 
+    .. doctest::
+
         Examples of canoncial format #1:
 
         >>> spec = {'foo': int, 'bar': {'baz': None}}
@@ -189,7 +191,6 @@ def check_input_specs(
     Examples (See more examples in ../tests/test_specs_dict.py):
 
     .. testcode::
-
         import torch
         from torch import nn
         from ray.rllib.core.models.specs.specs_base import TensorSpec
@@ -199,15 +200,13 @@ def check_input_specs(
             def input_specs(self):
                 return {"obs": TensorSpec("b, d", d=64)}
 
-            @check_input_specs("input_specs", only_check_on_retry=False)
+            @check_input_specs("input_specs")
             def forward(self, input_data, return_loss=False):
                 ...
 
         model = MyModel()
-        model.forward({"obs": torch.randn(32, 64)})
-
-        # The following would raise an Error
-        # model.forward({"obs": torch.randn(32, 32)})
+        model.forward({"obs": torch.randn(32, 64)}) # No error
+        model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
 
     Args:
         func: The instance method to decorate. It should be a callable that takes

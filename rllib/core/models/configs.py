@@ -552,7 +552,6 @@ class CNNEncoderConfig(ModelConfig):
     Example:
 
     .. testcode::
-
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
