@@ -3558,17 +3558,18 @@ def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
                 return self.x + a
 
         actor_handle = Foo.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
 
-        # the better way to get object_ref, which we can get the method annotation
         object_ref = actor_handle.remote(actor_handle.methods.method, 321)
         result = ray.get(object_ref)
         assert result == (123 + 321)
 
+        # The above operations are equivalent to
+        object_ref = actor_handle.method.remote(321)
+        result = ray.get(object_ref)
+        assert result == (123 + 321)
+
     Equivalently, use a function call to create a remote actor. (Highly recommended,
-    because decorate the class will lose this class)
+    because we will lose the original class after decorate it)
 
     .. testcode::
 
@@ -3590,6 +3591,7 @@ def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
     It can also be used with specific keyword arguments as follows:
 
     .. testcode::
+
         @ray.actor_class(num_cpus=2, resources={"CustomResource": 1})
         class Foo:
             def method(self):
