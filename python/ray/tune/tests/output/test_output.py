@@ -1,9 +1,12 @@
+from unittest import mock
+
 import pytest
 import sys
 
 from freezegun import freeze_time
 
 from ray import tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.experimental.output import (
     _get_time_str,
     _get_trials_by_state,
@@ -15,6 +18,8 @@ from ray.tune.experimental.output import (
     _get_trial_table_data,
     _get_dict_as_table_data,
     _infer_params,
+    TrainReporter,
+    AirVerbosity,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -280,6 +285,31 @@ def test_result_include():
         ["y", 20],
         ["z/m", 4],
     ]
+
+
+def test_train_heartbeat():
+    # Train heartbeats are only reporter in VERBOSE
+    reporter = TrainReporter(verbosity=AirVerbosity.VERBOSE)
+    reporter._get_heartbeat = mock.MagicMock()
+
+    with freeze_time() as frozen:
+        reporter.print_heartbeat([])
+        assert reporter._get_heartbeat.call_count == 1
+
+        # Tick until heartbeat freq. Next call to print_heartbeat should trigger
+        frozen.tick(reporter._heartbeat_freq)
+        reporter.print_heartbeat([])
+        assert reporter._get_heartbeat.call_count == 2
+
+        # Not quite there, yet. This should not trigger a heartbeat.
+        frozen.tick(reporter._heartbeat_freq // 2)
+        reporter.print_heartbeat([])
+        assert reporter._get_heartbeat.call_count == 2
+
+        # Let's report a result. This will reset the heartbeat timer
+        reporter.on_trial_result(
+            0, [], Trial("__fake", stub=True), {TRAINING_ITERATION: 1}
+        )
 
 
 if __name__ == "__main__":
