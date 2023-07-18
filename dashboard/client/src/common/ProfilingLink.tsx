@@ -29,7 +29,9 @@ export const TaskCpuProfilingLink = ({
       return;
     }
     console.info("taskId: ", taskId);
-
+    const newWindow = window.open("", "_blank") as Window;
+    newWindow.document.write(`<p>${warning}</p>${svgContent}`);
+    newWindow.document.close();
     const startTime = performance.now();
 
     const response = await fetch(
@@ -47,9 +49,7 @@ export const TaskCpuProfilingLink = ({
     setSvgContent(data.content);
     setWarning(data.warning);
 
-    const newWindow = window.open("", "_blank") as Window;
-    newWindow.document.write(`<p>${warning}</p>${svgContent}`);
-    newWindow.document.close();
+
   };
   return (
     <div onClick={() => handleClick(taskId)}>

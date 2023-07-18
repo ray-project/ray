@@ -1,8 +1,11 @@
+import io
 import json
 import logging
 import asyncio
+import pstats
 import aiohttp.web
 from typing import Tuple
+import time
 
 
 import ray
@@ -32,6 +35,7 @@ from ray.dashboard.state_aggregator import StateAPIManager
 from ray.util.state.state_manager import (
     StateDataSourceClient,
 )
+import cProfile
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -312,6 +316,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
         """
+        profiler = cProfile.Profile()
+        profiler.enable()
 
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
@@ -343,12 +349,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 ip, pid, task_id, native
             )
         )
+        start_time = time.time()
 
         reply = await reporter_stub.CpuProfiling(
             reporter_pb2.CpuProfilingRequest(
                 pid=pid, duration=duration, format=format, native=native
             )
         )
+
+        end_time = time.time()
+        execution_time = end_time - start_time
+        logger.info(f'execution_time {type(execution_time)}: {execution_time}')
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
@@ -368,7 +379,21 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
+        profiler.disable()
+        logger.info("ssssss")
+        stream = io.StringIO()
 
+        # Create a Stats object from the profiler results
+        stats = pstats.Stats(profiler, stream=stream)
+        stats.strip_dirs()
+        stats.sort_stats("cumulative")
+
+        # Print the profiling results to the stream
+        stats.print_stats()
+
+        # Get the profiling results from the stream
+        profiler_string = stream.getvalue()
+        logger.info(f"profiler_string {type(profiler_string)}: {profiler_string}")
         return aiohttp.web.Response(
             body=json.dumps(
                 {
