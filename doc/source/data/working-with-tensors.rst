@@ -122,7 +122,7 @@ formats, see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_parquet("/tmp/simple")
 
 
@@ -135,7 +135,7 @@ formats, see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_numpy("/tmp/simple", column="image")
 
     .. tab-item:: JSON
@@ -146,7 +146,7 @@ formats, see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_json("/tmp/simple")
 
 For more information on saving data, read :ref:`Saving data <loading_data>`.
