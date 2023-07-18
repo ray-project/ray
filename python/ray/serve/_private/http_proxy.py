@@ -13,7 +13,7 @@ from ray.serve.generated import serve_pb2, serve_pb2_grpc
 import uvicorn
 import starlette.responses
 import starlette.routing
-from starlette.types import Message, Receive, Scope, Send
+from starlette.types import Message, Receive, Send
 from starlette.datastructures import MutableHeaders
 from starlette.middleware import Middleware
 
@@ -27,9 +27,7 @@ from ray import serve
 from ray.serve.handle import RayServeHandle
 from ray.serve._private.http_util import (
     ASGIMessageQueue,
-    BufferedASGISender,
     HTTPRequestWrapper,
-    make_buffered_asgi_receive,
     RawASGIResponse,
     receive_http_body,
     Response,
@@ -47,7 +45,6 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
-    SERVE_GRPC_REQUEST,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
@@ -607,9 +604,7 @@ class GenericProxy:
         if isinstance(serve_request, GRPCServeRequest):
             assignment_task = handle.remote(
                 StreamingGRPCRequest(
-                    pickled_grpc_user_request=pickle.dumps(
-                        serve_request.user_request
-                    ),
+                    pickled_grpc_user_request=pickle.dumps(serve_request.user_request),
                     http_proxy_handle=self.self_actor_handle,
                 )
             )
