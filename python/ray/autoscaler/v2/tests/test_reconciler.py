@@ -4,6 +4,7 @@ import sys
 import unittest
 
 import pytest  # noqa
+
 from ray._private.test_utils import load_test_config
 from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.node_launcher import BaseNodeLauncher
