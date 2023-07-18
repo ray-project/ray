@@ -10,6 +10,7 @@ sys.path.insert(0, os.path.abspath("."))
 from custom_directives import (
     DownloadAndPreprocessEcosystemDocs,
     mock_modules,
+    mock_sphinx_typing_stringify,
     update_context,
     LinkcheckSummarizer,
     build_gallery,
@@ -18,6 +19,9 @@ from custom_directives import (
 
 # Mocking modules allows Sphinx to work without installing Ray.
 mock_modules()
+
+# Mock sphinx typing stringify to support `Unpack` annotation
+mock_sphinx_typing_stringify()
 
 assert (
     "ray" not in sys.modules

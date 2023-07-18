@@ -8,8 +8,8 @@ from pathlib import Path
 from queue import Queue
 from urllib.parse import urlparse
 import yaml
-
-
+import typing_extensions
+from typing import _GenericAlias
 import requests
 import scipy.linalg  # noqa: F401
 
@@ -144,6 +144,25 @@ def mock_modules():
         sys.modules[mod_name] = mock_module
 
     sys.modules["ray._raylet"].ObjectRef = make_typing_mock("ray", "ObjectRef")
+
+
+def mock_sphinx_typing_stringify():
+    from sphinx.util import typing as sphinx_typing
+
+    original_stringify = sphinx_typing.stringify
+
+    def stringify(value):
+        try:
+            return original_stringify(value)
+        except AttributeError:
+            if type(value) in [typing_extensions._UnpackAlias, _GenericAlias]:
+                return str(value)
+
+            breakpoint()
+            raise
+
+    sys.modules["sphinx.util.typing"] = sphinx_typing
+    sys.modules["sphinx.util.typing"].stringify = stringify
 
 
 # Add doc files from external repositories to be downloaded during build here
