@@ -127,6 +127,17 @@ In addition to the standard Python logger, Serve supports custom logging. Custom
 
 For a detailed overview of logging in Ray, see [Ray Logging](configure-logging).
 
+### JSON logging format
+You can enable JSON-formatted logging in the Serve log file by setting the environment variable `RAY_SERVE_ENABLE_JSON_LOGGING=1`. After setting this environment variable, the logs have the following format:
+```json
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,425", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "OGIVJJJPRb", "route": "/app1", "application": "default", "message": "replica.py:664 - Started executing request OGIVJJJPRb"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,425", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "OGIVJJJPRb", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.1ms"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,433", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "BULmoMIYRD", "route": "/app1", "application": "default", "message": "replica.py:664 - Started executing request BULmoMIYRD"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,433", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "BULmoMIYRD", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.2ms"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,440", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "jLTczxOqme", "route": "/app1", "application": "default", "message": "replica.py:664 - Started executing request jLTczxOqme"}
+{"levelname": "INFO", "asctime": "2023-07-17 10:34:25,441", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "jLTczxOqme", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.1ms"}
+```
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 
