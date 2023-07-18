@@ -17,6 +17,7 @@
 #include <google/protobuf/repeated_field.h>
 
 #include <functional>
+#include <filesystem>
 
 #include "ray/common/id.h"
 #include "ray/common/ray_object.h"
@@ -168,6 +169,8 @@ class LocalObjectManager {
   /// Returns true if we have objects spilled to the local
   /// filesystem.
   bool HasLocallySpilledObjects() const;
+
+  void DumpPrimaryCopies(std::filesystem::path path);
 
   std::string DebugString() const;
 

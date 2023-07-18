@@ -11,7 +11,7 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-
+#include <fstream>
 #include "ray/raylet/local_object_manager.h"
 
 #include "ray/common/asio/instrumented_io_context.h"
@@ -644,6 +644,35 @@ void LocalObjectManager::RecordMetrics() const {
 
 int64_t LocalObjectManager::GetPrimaryBytes() const {
   return pinned_objects_size_ + num_bytes_pending_spill_;
+}
+
+void LocalObjectManager::DumpPrimaryCopies(std::filesystem::path path) {
+  for(auto& [obj_id, obj_info] : local_objects_) {
+    if(auto iter = pinned_objects_.find(obj_id); iter != pinned_objects_.end()) {
+
+      std::ofstream out(path / std::filesystem::path(obj_id.Hex()), std::ios::binary);
+      auto& obj = *iter->second;
+      auto& nested_objs = obj.GetNestedRefs();
+      auto cnt = nested_objs.size();
+      out.write(reinterpret_cast<const char*>(&cnt), sizeof(cnt));
+      for(auto& obj_ref_proto : nested_objs) {
+        std::string buffer;
+        obj_ref_proto.SerializeToString(&buffer);
+        auto size = buffer.size();
+        out.write(reinterpret_cast<const char*>(&size), sizeof(size));
+        out.write(buffer.data(), buffer.size());
+      }
+      auto data = obj.GetData();
+      auto size = data->Size();
+      out.write(reinterpret_cast<const char*>(&size), sizeof(size));
+      out.write(reinterpret_cast<const char*>(data->Data()), data->Size());
+
+      auto metadata = obj.GetMetadata();
+      size = metadata->Size();
+      out.write(reinterpret_cast<const char*>(&size), sizeof(size));
+      out.write(reinterpret_cast<const char*>(metadata->Data()), metadata->Size());
+    }
+  }
 }
 
 bool LocalObjectManager::HasLocallySpilledObjects() const {
