@@ -62,7 +62,7 @@ For the benchmarking metric, we compute the inverse of the time it takes to run 
      - inductor + reduce-overhead
 
 
-For detailed tables, checkout the `Appendix <../../../../rllib/benchmarks/torch_compile/README.md#appendix>`_. Here is the benchmarking code: `run_inference_bm.py <../../../../rllib/benchmarks/torch_compile/run_inference_bm.py>`_. You can run the benchmark yourself as well:
+For detailed tables, see `Appendix <../../../../rllib/benchmarks/torch_compile/README.md#appendix>`_. For the benchmarking code, see `run_inference_bm.py <../../../../rllib/benchmarks/torch_compile/run_inference_bm.py>`_. To run the benchmark use the following command:
 
 
 .. code-block:: bash
