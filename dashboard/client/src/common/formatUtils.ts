@@ -1,3 +1,5 @@
+import dayjs from "dayjs";
+
 export const formatByteAmount = (
   amount: number,
   unit: "mebibyte" | "gibibyte",
@@ -57,3 +59,6 @@ export const formatValue = (rawFloat: number) => {
     return rawFloat.toString();
   }
 };
+
+export const formatDateFromTimeMs = (time: number) =>
+  dayjs(time).format("YYYY/MM/DD HH:mm:ss");

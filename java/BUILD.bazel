@@ -72,10 +72,10 @@ define_java_module(
     test_deps = [
         ":io_ray_ray_api",
         ":io_ray_ray_runtime",
-        "@maven//:org_apache_commons_commons_lang3",
-        "@maven//:org_testng_testng",
         "@maven//:commons_io_commons_io",
         "@maven//:javax_xml_bind_jaxb_api",
+        "@maven//:org_apache_commons_commons_lang3",
+        "@maven//:org_testng_testng",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -99,7 +99,6 @@ define_java_module(
         "@maven//:org_ow2_asm_asm",
         "@maven//:org_slf4j_slf4j_api",
         "@maven//:org_testng_testng",
-        "@maven//:org_yaml_snakeyaml",
     ],
 )
 

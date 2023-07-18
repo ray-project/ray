@@ -20,7 +20,15 @@ class TestPolicyMap(unittest.TestCase):
         ray.shutdown()
 
     def test_policy_map(self):
-        config = PPOConfig().framework("tf2", eager_tracing=True)
+        # This is testing policy map which is something that will be deprecated in
+        # favor of MultiAgentRLModules in the future. So we'll disable the RLModule API
+        # for this test for now.
+        config = (
+            PPOConfig()
+            .framework("tf2")
+            .rl_module(_enable_rl_module_api=False)
+            .training(_enable_learner_api=False)
+        )
         obs_space = gym.spaces.Box(-1.0, 1.0, (4,), dtype=np.float32)
         dummy_obs = obs_space.sample()
         act_space = gym.spaces.Discrete(10000)

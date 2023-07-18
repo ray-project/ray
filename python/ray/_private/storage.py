@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from ray._private.client_mode_hook import client_mode_hook
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
+from ray._private.auto_init_hook import wrap_auto_init
 
 if TYPE_CHECKING:
     import pyarrow.fs
@@ -25,7 +26,8 @@ _storage_prefix = None
 _filesystem = None
 
 
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     """Initialize and get the configured storage filesystem, if possible.
 
@@ -34,10 +36,10 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
     Examples:
         # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> fs, path = storage.get_filesystem()
-        >>> print(fs)
+        >>> fs, path = storage.get_filesystem()  # doctest: +SKIP
+        >>> print(fs)  # doctest: +SKIP
         <pyarrow._fs.LocalFileSystem object at 0x7fd745dd9830>
-        >>> print(path)
+        >>> print(path)  # doctest: +SKIP
         cluster_1/storage
 
     Returns:
@@ -51,7 +53,8 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
 
 
 # TODO(suquark): There is no implementation of 'get_client' in client hook.
-@client_mode_hook(auto_init=True)
+@wrap_auto_init
+@client_mode_hook
 def get_client(prefix: str) -> "KVClient":
     """Returns a KV-client (convenience wrapper around underlying filesystem).
 
@@ -61,8 +64,8 @@ def get_client(prefix: str) -> "KVClient":
 
     Examples:
         # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> client = storage.get_client("foo")
-        >>> client.put("foo", b"bar")
+        >>> client = storage.get_client("foo")  # doctest: +SKIP
+        >>> client.put("foo", b"bar")  # doctest: +SKIP
 
     Returns:
         KVClient.
@@ -105,8 +108,8 @@ class KVClient:
 
         Examples:
             # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.put("path/foo.txt", b"bar")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.put("path/foo.txt", b"bar")  # doctest: +SKIP
 
         Args:
             path: Relative directory of the blobs.
@@ -128,10 +131,10 @@ class KVClient:
 
         Examples:
             # Loads value from <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.get("path/foo.txt")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.get("path/foo.txt")  # doctest: +SKIP
             b"bar"
-            >>> client.get("invalid")
+            >>> client.get("invalid")  # doctest: +SKIP
             None
 
         Args:
@@ -156,8 +159,8 @@ class KVClient:
 
         Examples:
             # Deletes blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.delete("path/foo.txt")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.delete("path/foo.txt")  # doctest: +SKIP
             True
 
         Args:
@@ -182,8 +185,8 @@ class KVClient:
 
         Examples:
             # Deletes dir at <storage_prefix>/my_app/path/
-            >>> client = storage.get_client("my_app")
-            >>> client.delete_dir("path")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.delete_dir("path")  # doctest: +SKIP
             True
 
         Args:
@@ -208,12 +211,12 @@ class KVClient:
 
         Examples:
             # Inspect blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")
-            >>> client.get_info("path/foo.txt")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.get_info("path/foo.txt")  # doctest: +SKIP
             <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File>
 
             # Non-existent blob.
-            >>> client.get_info("path/does_not_exist.txt")
+            >>> client.get_info("path/does_not_exist.txt")  # doctest: +SKIP
             None
             <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
 
@@ -239,17 +242,17 @@ class KVClient:
 
         Examples:
             # List created blobs and dirs at <storage_prefix>/my_app/path
-            >>> client = storage.get_client("my_app")
-            >>> client.list("path")
+            >>> client = storage.get_client("my_app")  # doctest: +SKIP
+            >>> client.list("path")  # doctest: +SKIP
             [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
              <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
 
             # Non-existent path.
-            >>> client.get_info("does_not_exist")
+            >>> client.get_info("does_not_exist")  # doctest: +SKIP
             FileNotFoundError: ...
 
             # Not a directory.
-            >>> storage.get_info("path/foo.txt")
+            >>> storage.get_info("path/foo.txt")  # doctest: +SKIP
             NotADirectoryError: ...
 
         Args:
@@ -338,6 +341,12 @@ def _init_storage(storage_uri: str, is_head: bool):
             _init_filesystem(create_valid_file=True)
 
 
+def _get_storage_uri() -> Optional[str]:
+    """Get storage API, if configured."""
+    global _storage_uri
+    return _storage_uri
+
+
 def _get_filesystem_internal() -> ("pyarrow.fs.FileSystem", str):
     """Internal version of get_filesystem() that doesn't hit Ray client hooks.
 
@@ -357,7 +366,8 @@ def _init_filesystem(create_valid_file: bool = False, check_valid_file: bool = T
     if not _storage_uri:
         raise RuntimeError(
             "No storage URI has been configured for the cluster. "
-            "Specify a storage URI via `ray.init(storage=<uri>)`"
+            "Specify a storage URI via `ray.init(storage=<uri>)` or "
+            "`ray start --head --storage=<uri>`"
         )
 
     import pyarrow.fs

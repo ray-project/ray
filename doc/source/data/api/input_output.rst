@@ -12,7 +12,6 @@ Synthetic Data
    :toctree: doc/
 
    range
-   range_table
    range_tensor
 
 Python Objects
@@ -127,6 +126,14 @@ MongoDB
    read_mongo
    Dataset.write_mongo
 
+SQL Databases
+-------------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_sql
+
 Dask
 ----
 
@@ -171,8 +178,8 @@ Torch
 
    from_torch
 
-HuggingFace
------------
+Hugging Face
+------------
 
 .. autosummary::
    :toctree: doc/
@@ -186,6 +193,14 @@ TensorFlow
    :toctree: doc/
 
    from_tf
+
+WebDataset
+----------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_webdataset
 
 .. _data_source_api:
 
@@ -201,24 +216,6 @@ Datasource API
    ReadTask
    datasource.Reader
 
-
-Built-in Datasources
-####################
-
-.. autosummary::
-   :toctree: doc/
-
-   datasource.BinaryDatasource
-   datasource.CSVDatasource
-   datasource.FileBasedDatasource
-   datasource.ImageDatasource
-   datasource.JSONDatasource
-   datasource.NumpyDatasource
-   datasource.ParquetDatasource
-   datasource.RangeDatasource
-   datasource.TFRecordDatasource
-   datasource.MongoDatasource
-
 Partitioning API
 ----------------
 
@@ -227,9 +224,11 @@ Partitioning API
 
    datasource.Partitioning
    datasource.PartitionStyle
-   datasource.PathPartitionEncoder
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
+   datasource.FileExtensionFilter
+
+.. _metadata_provider:
 
 MetadataProvider API
 --------------------
@@ -243,3 +242,16 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+
+.. _block_write_path_provider:
+
+BlockWritePathProvider API
+--------------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   datasource.BlockWritePathProvider
+   datasource.DefaultBlockWritePathProvider
+   

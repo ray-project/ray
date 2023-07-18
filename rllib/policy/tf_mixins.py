@@ -11,6 +11,7 @@ from ray.rllib.policy.policy import Policy, PolicyState
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.tf_policy import TFPolicy
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import get_variable, try_import_tf
 from ray.rllib.utils.schedules import PiecewiseSchedule
 from ray.rllib.utils.tf_utils import make_tf_callable
@@ -26,14 +27,16 @@ logger = logging.getLogger(__name__)
 tf1, tf, tfv = try_import_tf()
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class LearningRateSchedule:
     """Mixin for TFPolicy that adds a learning rate schedule."""
 
     @DeveloperAPI
     def __init__(self, lr, lr_schedule):
         self._lr_schedule = None
-        if lr_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if lr_schedule is None or self.config.get("_enable_learner_api", False):
             self.cur_lr = tf1.get_variable("lr", initializer=lr, trainable=False)
         else:
             self._lr_schedule = PiecewiseSchedule(
@@ -71,14 +74,18 @@ class LearningRateSchedule:
             return tf.keras.optimizers.Adam(self.cur_lr)
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class EntropyCoeffSchedule:
     """Mixin for TFPolicy that adds entropy coeff decay."""
 
     @DeveloperAPI
     def __init__(self, entropy_coeff, entropy_coeff_schedule):
         self._entropy_coeff_schedule = None
-        if entropy_coeff_schedule is None:
+        # Disable any scheduling behavior related to learning if Learner API is active.
+        # Schedules are handled by Learner class.
+        if entropy_coeff_schedule is None or (
+            self.config.get("_enable_learner_api", False)
+        ):
             self.entropy_coeff = get_variable(
                 entropy_coeff, framework="tf", tf_name="entropy_coeff", trainable=False
             )
@@ -126,6 +133,7 @@ class EntropyCoeffSchedule:
                 self.entropy_coeff.assign(new_val, read_value=False)
 
 
+@Deprecated(error=False)
 class KLCoeffMixin:
     """Assigns the `update_kl()` and other KL-related methods to a TFPolicy.
 
@@ -200,6 +208,7 @@ class KLCoeffMixin:
         super().set_state(state)
 
 
+@Deprecated(error=False)
 class TargetNetworkMixin:
     """Assign the `update_target` method to the policy.
 
@@ -208,43 +217,49 @@ class TargetNetworkMixin:
     """
 
     def __init__(self):
+        if not self.config.get("_enable_rl_module_api", False):
+            model_vars = self.model.trainable_variables()
+            target_model_vars = self.target_model.trainable_variables()
 
-        model_vars = self.model.trainable_variables()
-        target_model_vars = self.target_model.trainable_variables()
-
-        @make_tf_callable(self.get_session())
-        def update_target_fn(tau):
-            tau = tf.convert_to_tensor(tau, dtype=tf.float32)
-            update_target_expr = []
-            assert len(model_vars) == len(target_model_vars), (
-                model_vars,
-                target_model_vars,
-            )
-            for var, var_target in zip(model_vars, target_model_vars):
-                update_target_expr.append(
-                    var_target.assign(tau * var + (1.0 - tau) * var_target)
+            @make_tf_callable(self.get_session())
+            def update_target_fn(tau):
+                tau = tf.convert_to_tensor(tau, dtype=tf.float32)
+                update_target_expr = []
+                assert len(model_vars) == len(target_model_vars), (
+                    model_vars,
+                    target_model_vars,
                 )
-                logger.debug("Update target op {}".format(var_target))
-            return tf.group(*update_target_expr)
+                for var, var_target in zip(model_vars, target_model_vars):
+                    update_target_expr.append(
+                        var_target.assign(tau * var + (1.0 - tau) * var_target)
+                    )
+                    logger.debug("Update target op {}".format(var_target))
+                return tf.group(*update_target_expr)
 
-        # Hard initial update.
-        self._do_update = update_target_fn
-        # TODO: The previous SAC implementation does an update(1.0) here.
-        # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
-        # Also the test is not very maintainable, we need to change that unittest
-        # anyway.
-        self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
+            # Hard initial update.
+            self._do_update = update_target_fn
+            # TODO: The previous SAC implementation does an update(1.0) here.
+            # If this is changed to tau != 1.0 the sac_loss_function test fails. Why?
+            # Also the test is not very maintainable, we need to change that unittest
+            # anyway.
+            self.update_target(tau=1.0)  # self.config.get("tau", 1.0))
 
     @property
     def q_func_vars(self):
         if not hasattr(self, "_q_func_vars"):
-            self._q_func_vars = self.model.variables()
+            if self.config.get("_enable_rl_module_api", False):
+                self._q_func_vars = self.model.variables
+            else:
+                self._q_func_vars = self.model.variables()
         return self._q_func_vars
 
     @property
     def target_q_func_vars(self):
         if not hasattr(self, "_target_q_func_vars"):
-            self._target_q_func_vars = self.target_model.variables()
+            if self.config.get("_enable_rl_module_api", False):
+                self._target_q_func_vars = self.target_model.variables
+            else:
+                self._target_q_func_vars = self.target_model.variables()
         return self._target_q_func_vars
 
     # Support both hard and soft sync.
@@ -253,7 +268,10 @@ class TargetNetworkMixin:
 
     @override(TFPolicy)
     def variables(self) -> List[TensorType]:
-        return self.model.variables()
+        if self.config.get("_enable_rl_module_api", False):
+            return self.model.variables
+        else:
+            return self.model.variables()
 
     def set_weights(self, weights):
         if isinstance(self, TFPolicy):
@@ -262,9 +280,11 @@ class TargetNetworkMixin:
             EagerTFPolicyV2.set_weights(self, weights)
         elif isinstance(self, EagerTFPolicy):  # Handle TF2 policies.
             EagerTFPolicy.set_weights(self, weights)
-        self.update_target(self.config.get("tau", 1.0))
+        if not self.config.get("_enable_rl_module_api", False):
+            self.update_target(self.config.get("tau", 1.0))
 
 
+@Deprecated(error=False)
 class ValueNetworkMixin:
     """Assigns the `_value()` method to a TFPolicy.
 
@@ -277,9 +297,9 @@ class ValueNetworkMixin:
     """
 
     def __init__(self, config):
-        # When doing GAE, we need the value function estimate on the
+        # When doing GAE or vtrace, we need the value function estimate on the
         # observation.
-        if config["use_gae"]:
+        if config.get("use_gae") or config.get("vtrace"):
 
             # Input dict is provided to us automatically via the Model's
             # requirements. It's a single-timestep (last one in trajectory)
@@ -346,6 +366,7 @@ class ValueNetworkMixin:
         return self._cached_extra_action_fetches
 
 
+@Deprecated(error=False)
 class GradStatsMixin:
     def __init__(self):
         pass
@@ -367,7 +388,7 @@ class GradStatsMixin:
 
 
 # TODO: find a better place for this util, since it's not technically MixIns.
-@DeveloperAPI
+@Deprecated(error=False)
 def compute_gradients(
     policy, optimizer: LocalOptimizer, loss: TensorType
 ) -> ModelGradients:

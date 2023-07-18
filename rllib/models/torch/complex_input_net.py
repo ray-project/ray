@@ -17,6 +17,8 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.torch_utils import one_hot
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -36,6 +38,10 @@ class ComplexInputNetwork(TorchModelV2, nn.Module):
     """
 
     def __init__(self, obs_space, action_space, num_outputs, model_config, name):
+        if log_once("complex_input_net_deprecation_torch"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.complex_input_net.ComplexInputNetwork",
+            )
         self.original_space = (
             obs_space.original_space
             if hasattr(obs_space, "original_space")

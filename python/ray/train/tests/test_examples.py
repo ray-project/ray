@@ -1,7 +1,7 @@
 import pytest
 
 from ray.air.config import ScalingConfig
-from ray.tune.result import TRAINING_ITERATION
+from ray.air.constants import TRAINING_ITERATION
 
 from ray.train.examples.horovod.horovod_example import (
     train_func as horovod_torch_train_func,

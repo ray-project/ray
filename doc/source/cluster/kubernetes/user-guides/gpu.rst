@@ -8,6 +8,10 @@ To use GPUs on Kubernetes, you will need to configure both your Kubernetes setup
 
 To learn about GPU usage on different clouds, see instructions for `GKE`_, for `EKS`_, and for `AKS`_.
 
+ML training with GPUs on Kubernetes
+___________________________________________
+See :ref:`GPU training example <kuberay-gpu-training-example>` for a complete example of training a PyTorch model on a GPU with Ray on Kubernetes.
+
 Dependencies for GPU-based machine learning
 ___________________________________________
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
@@ -171,7 +175,7 @@ GPU taints and tolerations
 The `Nvidia gpu plugin`_ for Kubernetes applies `taints`_ to GPU nodes; these taints prevent non-GPU pods from being scheduled on GPU nodes.
 Managed Kubernetes services like GKE, EKS, and AKS automatically apply matching `tolerations`_
 to pods requesting GPU resources. Tolerations are applied by means of Kubernetes's `ExtendedResourceToleration`_ `admission controller`_.
-If this admission controller is not enabled for your Kubernetes cluster, you may need to manually add a GPU toleration each of to your GPU pod configurations. For example,
+If this admission controller is not enabled for your Kubernetes cluster, you may need to manually add a GPU toleration to each of your GPU pod configurations. For example,
 
 .. code-block:: yaml
 

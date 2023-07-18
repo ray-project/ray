@@ -6,7 +6,6 @@ import tempfile
 import time
 import random
 from collections import defaultdict
-import warnings
 import queue
 import math
 
@@ -509,26 +508,17 @@ def test_imap(pool_4_processes, use_iter):
         result_iter.next()
 
 
-@pytest.mark.filterwarnings(
-    "default:Passing a non-iterable argument:ray.util.annotations.RayDeprecationWarning"
-)
-def test_warn_on_non_iterable_imap_or_imap_unordered(pool):
+def test_imap_fail_on_non_iterable(pool):
     def fn(_):
         pass
 
     non_iterable = 3
 
-    with warnings.catch_warnings(record=True) as w:
+    with pytest.raises(TypeError, match="object is not iterable"):
         pool.imap(fn, non_iterable)
-        assert any(
-            "Passing a non-iterable argument" in str(warning.message) for warning in w
-        )
 
-    with warnings.catch_warnings(record=True) as w:
+    with pytest.raises(TypeError, match="object is not iterable"):
         pool.imap_unordered(fn, non_iterable)
-        assert any(
-            "Passing a non-iterable argument" in str(warning.message) for warning in w
-        )
 
 
 @pytest.mark.parametrize("use_iter", [True, False])

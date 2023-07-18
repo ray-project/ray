@@ -69,6 +69,12 @@ def test_dynamic_subpackage_import():
     # Check that the package is cached.
     assert "ray.workflow" in sys.modules
 
+    # ray.data
+    assert "ray.autoscaler" not in sys.modules
+    ray.autoscaler
+    # Check that the package is cached.
+    assert "ray.autoscaler" in sys.modules
+
 
 def test_dynamic_subpackage_missing():
     # Test nonexistent subpackage dynamic attribute access and imports raise expected
@@ -85,10 +91,10 @@ def test_dynamic_subpackage_missing():
 
 def test_dynamic_subpackage_fallback_only():
     # Test that the __getattr__ dynamic
-    assert "ray.autoscaler" in sys.modules
-    assert ray.__getattribute__("autoscaler") is ray.autoscaler
+    assert "ray._raylet" in sys.modules
+    assert ray.__getattribute__("_raylet") is ray._raylet
     with pytest.raises(AttributeError):
-        ray.__getattr__("autoscaler")
+        ray.__getattr__("_raylet")
 
 
 def test_for_strings():

@@ -86,6 +86,7 @@ DECLARE_stats(push_manager_chunks);
 DECLARE_stats(scheduler_failed_worker_startup_total);
 DECLARE_stats(scheduler_tasks);
 DECLARE_stats(scheduler_unscheduleable_tasks);
+DECLARE_stats(scheduler_placement_time_s);
 
 /// Raylet Resource Manager
 DECLARE_stats(resources);
@@ -107,6 +108,7 @@ DECLARE_stats(gcs_task_manager_task_events_reported);
 
 /// Object Store
 DECLARE_stats(object_store_memory);
+DECLARE_stats(object_store_dist);
 
 /// Placement Group
 DECLARE_stats(gcs_placement_group_creation_latency_ms);
@@ -129,7 +131,7 @@ static Histogram GcsLatency("gcs_latency",
                             "The latency of a GCS (by default Redis) operation.",
                             "us",
                             {100, 200, 300, 400, 500, 600, 700, 800, 900, 1000},
-                            {CustomKey});
+                            {kCustomKey});
 
 ///
 /// Raylet Metrics
@@ -139,12 +141,12 @@ static Histogram GcsLatency("gcs_latency",
 static Gauge TestMetrics("local_available_resource",
                          "The available resources on this node.",
                          "",
-                         {ResourceNameKey});
+                         {kResourceNameKey});
 
 static Gauge LocalTotalResource("local_total_resource",
                                 "The total resources on this node.",
                                 "",
-                                {ResourceNameKey});
+                                {kResourceNameKey});
 
 /// Object Manager.
 static Gauge ObjectStoreAvailableMemory(
@@ -202,16 +204,30 @@ static Gauge ObjectDirectoryRemovedLocations(
     "have been removed from this node.",
     "removals");
 
-/// Worker Pool
-static Histogram ProcessStartupTimeMs("process_startup_time_ms",
-                                      "Time to start up a worker process.",
-                                      "ms",
-                                      {1, 10, 100, 1000, 10000});
-
 static Sum NumWorkersStarted(
     "internal_num_processes_started",
     "The total number of worker processes the worker pool has created.",
     "processes");
+
+static Sum NumCachedWorkersSkippedJobMismatch(
+    "internal_num_processes_skipped_job_mismatch",
+    "The total number of cached workers skipped due to job mismatch.",
+    "workers");
+
+static Sum NumCachedWorkersSkippedRuntimeEnvironmentMismatch(
+    "internal_num_processes_skipped_runtime_enviornment_mismatch",
+    "The total number of cached workers skipped due to runtime environment mismatch.",
+    "workers");
+
+static Sum NumCachedWorkersSkippedDynamicOptionsMismatch(
+    "internal_num_processes_skipped_job_mismatch",
+    "The total number of cached workers skipped due to dynamic options mismatch.",
+    "workers");
+
+static Sum NumWorkersStartedFromCache(
+    "internal_num_processes_started_from_cache",
+    "The total number of workers started from a cached worker process.",
+    "workers");
 
 static Gauge NumSpilledTasks("internal_num_spilled_tasks",
                              "The cumulative number of lease requeusts that this raylet "
@@ -251,7 +267,7 @@ static Histogram GcsUpdateResourceUsageTime(
     "The average RTT of a UpdateResourceUsage RPC.",
     "ms",
     {1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000},
-    {CustomKey});
+    {kCustomKey});
 
 /// Testing
 static Gauge LiveActors("live_actors", "Number of live actors.", "actors");

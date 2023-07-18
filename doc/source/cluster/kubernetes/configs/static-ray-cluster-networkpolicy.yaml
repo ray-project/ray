@@ -1,15 +1,11 @@
 # If your Kubernetes has a default deny network policy for pods, you need to manually apply this network policy 
 # to allow the bidirectional communication among the head and worker nodes in the Ray cluster.
 
-# The ports between the min-worker-port and max-worker-port are listed separately because targeting a range of
-# ports is only available after Kubernetes v1.25 
-# (https://kubernetes.io/docs/concepts/services-networking/network-policies/#targeting-a-range-of-ports).
-
-# Ingress
+# Ray Head Ingress
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: ray-cluster-ingress
+  name: ray-head-ingress
 spec:
   podSelector:
     matchLabels:
@@ -17,11 +13,6 @@ spec:
   policyTypes:
     - Ingress
   ingress:
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 6379
   - from:
     - podSelector: {}
     ports:
@@ -36,129 +27,18 @@ spec:
     - podSelector: {}
     ports:
     - protocol: TCP
-      port: 8076
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 8077
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 8078
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 52365
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
       port: 10001
   - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10002
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10003
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10004
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10005
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10006
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10007
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10008
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10009
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10010
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10011
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10012
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10013
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10014
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10015
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10016
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10017
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10018
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10019
-  - from:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10020
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-worker
 
-# Egress
 ---
+# Ray Head Egress
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: ray-cluster-egress
+  name: ray-head-egress
 spec:
   podSelector:
     matchLabels:
@@ -167,137 +47,49 @@ spec:
     - Egress
   egress:
   - to:
-    - podSelector: {}
+    - podSelector:
+        matchLabels:
+          app: redis
     ports:
     - protocol: TCP
       port: 6379
   - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 6380
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-worker
+
+---
+# Ray Worker Ingress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-worker-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-worker
+  policyTypes:
+    - Ingress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-head
+
+---
+# Ray Worker Egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ray-worker-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: ray-cluster-worker
+  policyTypes:
+    - Egress
+  egress:
   - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 8265 
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 8076
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 8077
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 8078
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 52365
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10001
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10002
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10003
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10004
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10005
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10006
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10007
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10008
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10009
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10010
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10011
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10012
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10013
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10014
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10015
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10016
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10017
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10018
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10019
-  - to:
-    - podSelector: {}
-    ports:
-    - protocol: TCP
-      port: 10020
+    - podSelector:
+        matchLabels:
+          app: ray-cluster-head

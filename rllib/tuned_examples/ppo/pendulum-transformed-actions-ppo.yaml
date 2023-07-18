@@ -3,11 +3,11 @@ pendulum-ppo:
     env: ray.rllib.examples.env.transformed_action_space_env.TransformedActionPendulum
     run: PPO
     stop:
-        episode_reward_mean: -500
+        sampler_results/episode_reward_mean: -500
         timesteps_total: 400000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
 
         # Test, whether PPO is able to learn in "distorted" action spaces.
         env_config:
@@ -26,3 +26,5 @@ pendulum-ppo:
         sgd_minibatch_size: 64
         num_sgd_iter: 6
         observation_filter: MeanStdFilter
+        model:
+            fcnet_activation: relu

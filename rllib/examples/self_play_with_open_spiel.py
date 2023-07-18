@@ -35,6 +35,11 @@ from ray.rllib.policy.policy import PolicySpec
 from ray.tune import CLIReporter, register_env
 from ray.rllib.utils.test_utils import check_learning_achieved
 
+# The new RLModule / Learner API
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+
 open_spiel = try_import_open_spiel(error=True)
 pyspiel = try_import_pyspiel(error=True)
 
@@ -48,7 +53,7 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
     parser.add_argument("--num-cpus", type=int, default=0)
@@ -177,16 +182,25 @@ class SelfPlayCallback(DefaultCallbacks):
                     )
                 )
 
-            new_policy = algorithm.add_policy(
-                policy_id=new_pol_id,
-                policy_cls=type(algorithm.get_policy("main")),
-                policy_mapping_fn=policy_mapping_fn,
-            )
+            main_policy = algorithm.get_policy("main")
+            if algorithm.config._enable_learner_api:
+                new_policy = algorithm.add_policy(
+                    policy_id=new_pol_id,
+                    policy_cls=type(main_policy),
+                    policy_mapping_fn=policy_mapping_fn,
+                    module_spec=SingleAgentRLModuleSpec.from_module(main_policy.model),
+                )
+            else:
+                new_policy = algorithm.add_policy(
+                    policy_id=new_pol_id,
+                    policy_cls=type(main_policy),
+                    policy_mapping_fn=policy_mapping_fn,
+                )
 
             # Set the weights of the new policy to the main policy.
             # We'll keep training the main policy, whereas `new_pol_id` will
             # remain fixed.
-            main_state = algorithm.get_policy("main").get_state()
+            main_state = main_policy.get_state()
             new_policy.set_state(main_state)
             # We need to sync the just copied local weights (from main policy)
             # to all the remote workers as well.
@@ -239,6 +253,14 @@ if __name__ == "__main__":
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        .rl_module(
+            rl_module_spec=MultiAgentRLModuleSpec(
+                module_specs={
+                    "main": SingleAgentRLModuleSpec(),
+                    "random": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                }
+            ),
+        )
     )
 
     stop = {
@@ -252,12 +274,14 @@ if __name__ == "__main__":
     # Train the "main" policy to play really well using self-play.
     results = None
     if not args.from_checkpoint:
+        create_checkpoints = not bool(os.environ.get("RLLIB_ENABLE_RL_MODULE", False))
         results = tune.Tuner(
             "PPO",
             param_space=config,
             run_config=air.RunConfig(
                 stop=stop,
                 verbose=2,
+                failure_config=air.FailureConfig(fail_fast="raise"),
                 progress_reporter=CLIReporter(
                     metric_columns={
                         "training_iteration": "iter",
@@ -271,13 +295,13 @@ if __name__ == "__main__":
                     sort_by_metric=True,
                 ),
                 checkpoint_config=air.CheckpointConfig(
-                    checkpoint_at_end=True,
-                    checkpoint_frequency=10,
+                    checkpoint_at_end=create_checkpoints,
+                    checkpoint_frequency=10 if create_checkpoints else 0,
                 ),
             ),
         ).fit()
 
-    # Restore trained trainer (set to non-explore behavior) and play against
+    # Restore trained Algorithm (set to non-explore behavior) and play against
     # human on command line.
     if args.num_episodes_human_play > 0:
         num_episodes = 0

@@ -99,7 +99,7 @@ class FullClusterManager(MinimalClusterManager):
                 f"{cluster_url} (cluster state: {result.result.state})"
             )
 
-    def terminate_cluster(self, wait: bool = False):
+    def terminate_cluster_ex(self, wait: bool = False):
         if self.cluster_id:
             logger.info(f"Terminating cluster with ID {self.cluster_id}")
             # Just trigger a request. No need to wait until session shutdown.

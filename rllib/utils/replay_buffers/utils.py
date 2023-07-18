@@ -1,9 +1,9 @@
 import logging
 import psutil
 from typing import Optional, Any
+
 import numpy as np
 
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deprecation_warning
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
@@ -14,7 +14,7 @@ from ray.rllib.utils.replay_buffers import (
     ReplayBuffer,
     MultiAgentReplayBuffer,
 )
-from ray.rllib.policy.sample_batch import MultiAgentBatch, concat_samples
+from ray.rllib.policy.sample_batch import concat_samples, MultiAgentBatch, SampleBatch
 from ray.rllib.utils.typing import ResultDict, SampleBatchType, AlgorithmConfigDict
 from ray.util import log_once
 
@@ -251,14 +251,6 @@ def validate_buffer_config(config: dict) -> None:
             # and old configuration style.
             if config.get("replay_buffer_config") is not None:
                 config["replay_buffer_config"][k] = config[k]
-
-    replay_mode = config.get("multiagent", {}).get("replay_mode", DEPRECATED_VALUE)
-    if replay_mode != DEPRECATED_VALUE:
-        deprecation_warning(
-            old="config['multiagent']['replay_mode']",
-            help="config['replay_buffer_config']['replay_mode']",
-            error=True,
-        )
 
     learning_starts = config.get(
         "learning_starts",

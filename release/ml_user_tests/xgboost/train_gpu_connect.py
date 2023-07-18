@@ -15,26 +15,16 @@ import ray
 if __name__ == "__main__":
     os.environ["RXGB_PLACEMENT_GROUP_TIMEOUT_S"] = "1200"
 
-    addr = os.environ.get("RAY_ADDRESS")
-    job_name = os.environ.get("RAY_JOB_NAME", "train_gpu_connect")
-
-    # Manually set NCCL_SOCKET_IFNAME to "ens3" so NCCL training works on
-    # anyscale_default_cloud.
-    # See https://github.com/pytorch/pytorch/issues/68893 for more details.
     # Passing in runtime_env to ray.init() will also set it for all the
     # workers.
     runtime_env = {
         "env_vars": {
             "RXGB_PLACEMENT_GROUP_TIMEOUT_S": "1200",
-            "NCCL_SOCKET_IFNAME": "ens3",
         },
         "working_dir": os.path.dirname(__file__),
     }
 
-    if addr.startswith("anyscale://"):
-        ray.init(address=addr, job_name=job_name, runtime_env=runtime_env)
-    else:
-        ray.init(address="auto", runtime_env=runtime_env)
+    ray.init(address="auto", runtime_env=runtime_env)
 
     from xgboost_ray import RayParams
     from release_test_util import train_ray, get_parquet_files

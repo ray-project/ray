@@ -10,7 +10,9 @@ import psutil
 
 from urllib.parse import quote
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
-    generate_grafana_dashboard,
+    generate_default_grafana_dashboard,
+    generate_serve_grafana_dashboard,
+    generate_serve_deployment_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.grafana_datasource_template import (
     GRAFANA_DATASOURCE_TEMPLATE,
@@ -44,23 +46,9 @@ DEFAULT_GRAFANA_HOST = "http://localhost:3000"
 GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
-GRAFANA_DEFAULT_DASHBOARD_UID = "RAY_GRAFANA_DEFAULT_DASHBOARD_UID"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = "api/health"
-
-PROMETHEUS_METRIC_MAP = {
-    "FINISHED": "num_finished",
-    "PENDING_ARGS_AVAIL": "num_pending_args_avail",
-    "SUBMITTED_TO_WORKER": "num_submitted_to_worker",
-    "RUNNING": "num_running",
-    "RUNNING_IN_RAY_GET": "num_running",
-    "RUNNING_IN_RAY_WAIT": "num_running",
-    "PENDING_NODE_ASSIGNMENT": "num_pending_node_assignment",
-    "PENDING_ARGS_FETCH": "num_pending_node_assignment",
-    "PENDING_OBJ_STORE_MEM_AVAIL": "num_pending_node_assignment",
-    "FAILED": "num_failed",
-}
 
 
 class PrometheusQueryError(Exception):
@@ -91,9 +79,9 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
             os.path.join(grafana_config_output_path, "dashboards"),
         )
-        self._grafana_default_dashboard_uid = os.environ.get(
-            GRAFANA_DEFAULT_DASHBOARD_UID, "rayDefaultDashboard"
-        )
+
+        # To be set later when dashboards gets generated
+        self._dashboard_uids = {}
 
         self._session = aiohttp.ClientSession()
         self._ip = dashboard_head.ip
@@ -142,7 +130,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                     message="Grafana running",
                     grafana_host=grafana_iframe_host,
                     session_name=self._session_name,
-                    grafana_default_dashboard_uid=self._grafana_default_dashboard_uid,
+                    dashboard_uids=self._dashboard_uids,
                 )
 
         except Exception as e:
@@ -256,7 +244,32 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             ),
             "w",
         ) as f:
-            f.write(generate_grafana_dashboard(self._grafana_default_dashboard_uid))
+            (
+                content,
+                self._dashboard_uids["default"],
+            ) = generate_default_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "serve_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            content, self._dashboard_uids["serve"] = generate_serve_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "serve_deployment_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["serve_deployment"],
+            ) = generate_serve_deployment_grafana_dashboard()
+            f.write(content)
 
     def _create_default_prometheus_configs(self):
         """

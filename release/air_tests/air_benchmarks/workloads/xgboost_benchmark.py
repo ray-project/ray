@@ -15,7 +15,7 @@ from ray.train.xgboost import (
     XGBoostPredictor,
 )
 from ray.train.batch_predictor import BatchPredictor
-from ray.air.config import ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 
 _XGB_MODEL_PATH = "model.json"
 _TRAINING_TIME_THRESHOLD = 1000
@@ -97,6 +97,9 @@ def run_xgboost_training(data_path: str, num_workers: int, cpus_per_worker: int)
         label_column="labels",
         params=params,
         datasets={"train": ds},
+        run_config=RunConfig(
+            storage_path="/mnt/cluster_storage", name="xgboost_benchmark"
+        ),
     )
     result = trainer.fit()
     checkpoint = XGBoostCheckpoint.from_checkpoint(result.checkpoint)
@@ -118,6 +121,10 @@ def run_xgboost_prediction(model_path: str, data_path: str):
         # batch size than default 4096
         batch_size=8192,
     )
+
+    for _ in result.iter_batches():
+        pass
+
     return result
 
 

@@ -13,7 +13,6 @@ from ray.rllib.execution.train_ops import (
 )
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_SAMPLED,
@@ -24,8 +23,12 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.replay_buffers.utils import sample_min_n_steps_from_buffer
 from ray.rllib.utils.typing import ResultDict
-from ray.rllib.utils.deprecation import DEPRECATED_VALUE
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import (
+    DEPRECATED_VALUE,
+    Deprecated,
+    deprecation_warning,
+    ALGO_DEPRECATION_WARNING,
+)
 
 
 class QMixConfig(SimpleQConfig):
@@ -78,7 +81,12 @@ class QMixConfig(SimpleQConfig):
         self.double_q = True
         self.optim_alpha = 0.99
         self.optim_eps = 0.00001
-        self.grad_clip = 10
+
+        self.grad_clip = 10.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
 
         # QMix-torch overrides the TorchPolicy's learn_on_batch w/o specifying a
         # alternative `learn_on_loaded_batch` alternative for the GPU.
@@ -229,6 +237,12 @@ class QMixConfig(SimpleQConfig):
             )
 
 
+@Deprecated(
+    old="rllib/algorithms/qmix/",
+    new="rllib_contrib/qmix/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class QMix(SimpleQ):
     @classmethod
     @override(SimpleQ)
@@ -321,20 +335,3 @@ class QMix(SimpleQ):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-# Deprecated: Use ray.rllib.algorithms.qmix.qmix.QMixConfig instead!
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(QMixConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.qmix.qmix.DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.qmix.qmix.QMixConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()

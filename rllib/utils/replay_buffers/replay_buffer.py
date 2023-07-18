@@ -1,7 +1,6 @@
 from enum import Enum
 import logging
 import numpy as np
-import platform
 import random
 from typing import Any, Dict, List, Optional, Union
 
@@ -11,12 +10,13 @@ import psutil
 
 from ray.rllib.policy.sample_batch import SampleBatch, concat_samples
 from ray.rllib.utils.actor_manager import FaultAwareApply
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.window_stat import WindowStat
+from ray.rllib.utils.replay_buffers.base import ReplayBufferInterface
 from ray.rllib.utils.typing import SampleBatchType
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
-from ray.util.iter import ParallelIteratorWorker
 
 # Constant that represents all policies in lockstep replay mode.
 _ALL_POLICIES = "__all__"
@@ -63,9 +63,8 @@ def warn_replay_capacity(*, item: SampleBatchType, num_items: int) -> None:
             logger.info(msg)
 
 
-# TODO (artur): Remove ParallelIteratorWorker once we no longer support executionplans
 @DeveloperAPI
-class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
+class ReplayBuffer(ReplayBufferInterface, FaultAwareApply):
     """The lowest-level replay buffer interface used by RLlib.
 
     This class implements a basic ring-type of buffer with random sampling.
@@ -147,8 +146,9 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
             self.storage_unit = StorageUnit.FRAGMENTS
         else:
             raise ValueError(
-                "storage_unit must be either 'timesteps', 'sequences' or 'episodes' "
-                "or 'fragments', but is {}".format(storage_unit)
+                f"storage_unit must be either '{StorageUnit.TIMESTEPS}', "
+                f"'{StorageUnit.SEQUENCES}', '{StorageUnit.EPISODES}' "
+                f"or '{StorageUnit.FRAGMENTS}', but is {storage_unit}"
             )
 
         # The actual storage (list of SampleBatches or MultiAgentBatches).
@@ -185,20 +185,20 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
 
         self.batch_size = None
 
+    @override(ReplayBufferInterface)
     def __len__(self) -> int:
-        """Returns the number of items currently stored in this buffer."""
         return len(self._storage)
 
-    @DeveloperAPI
+    @override(ReplayBufferInterface)
     def add(self, batch: SampleBatchType, **kwargs) -> None:
-        """Adds a batch of experiences to this buffer.
+        """Adds a batch of experiences or other data to this buffer.
 
         Splits batch into chunks of timesteps, sequences or episodes, depending on
         `self._storage_unit`. Calls `self._add_single_batch` to add resulting slices
         to the buffer storage.
 
         Args:
-            batch: Batch to add.
+            batch: The batch to add.
             ``**kwargs``: Forward compatibility kwargs.
         """
         if not batch.count > 0:
@@ -278,8 +278,10 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         else:
             self._next_idx += 1
 
-    @DeveloperAPI
-    def sample(self, num_items: int, **kwargs) -> Optional[SampleBatchType]:
+    @override(ReplayBufferInterface)
+    def sample(
+        self, num_items: Optional[int] = None, **kwargs
+    ) -> Optional[SampleBatchType]:
         """Samples `num_items` items from this buffer.
 
         The items depend on the buffer's storage_unit.
@@ -338,25 +340,14 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
             data.update(self._evicted_hit_stats.stats())
         return data
 
-    @DeveloperAPI
+    @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
-        """Returns all local state.
-
-        Returns:
-            The serializable local state.
-        """
         state = {"_storage": self._storage, "_next_idx": self._next_idx}
         state.update(self.stats(debug=False))
         return state
 
-    @DeveloperAPI
+    @override(ReplayBufferInterface)
     def set_state(self, state: Dict[str, Any]) -> None:
-        """Restores all local state to the provided `state`.
-
-        Args:
-            state: The new state to set this buffer. Can be
-                obtained by calling `self.get_state()`.
-        """
         # The actual storage.
         self._storage = state["_storage"]
         self._next_idx = state["_next_idx"]
@@ -383,44 +374,12 @@ class ReplayBuffer(ParallelIteratorWorker, FaultAwareApply):
         out.decompress_if_needed()
         return out
 
-    @DeveloperAPI
-    def get_host(self) -> str:
-        """Returns the computer's network name.
-
-        Returns:
-            The computer's networks name or an empty string, if the network
-            name could not be determined.
-        """
-        return platform.node()
-
-    @Deprecated(new="ReplayBuffer.add()", error=True)
-    def add_batch(self, *args, **kwargs):
-        pass
-
-    @Deprecated(
-        old="ReplayBuffer.replay(num_items)",
-        new="ReplayBuffer.sample(num_items)",
-        error=True,
-    )
-    def replay(self, num_items):
-        pass
-
     @Deprecated(
         help="ReplayBuffers could be iterated over by default before. "
-        "Making a buffer an iterator will soon "
-        "be deprecated altogether. Consider switching to the training "
-        "iteration API to resolve this.",
-        error=False,
+        "Making a buffer an iterator has been deprecated. Switch your Algorithm to "
+        "override the `training_step()` method (instead of `execution_plan()`) to "
+        "resolve this.",
+        error=True,
     )
     def make_iterator(self, num_items_to_replay: int):
-        """Make this buffer a ParallelIteratorWorker to retain compatibility.
-
-        Execution plans have made heavy use of buffers as ParallelIteratorWorkers.
-        This method provides an easy way to support this for now.
-        """
-
-        def gen_replay():
-            while True:
-                yield self.sample(num_items_to_replay)
-
-        ParallelIteratorWorker.__init__(self, gen_replay, False)
+        pass

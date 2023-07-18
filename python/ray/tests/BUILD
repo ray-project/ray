@@ -4,7 +4,9 @@ py_library(
   name = "conftest",
   srcs = glob(["**/conftest.py"]),
   visibility = [
+    "//dashboard:__pkg__",
     "//python/ray/tests:__subpackages__",
+    "//python/ray/autoscaler/v2:__pkg__",
     "//python/ray/dashboard:__pkg__",
     "//python/ray/data:__pkg__",
   ],
@@ -45,7 +47,6 @@ py_test_module_list(
     "test_dashboard_profiler.py",
     "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
-    "test_generators.py",
     "test_metrics_agent.py",
     "test_metrics_head.py",
     "test_component_failures_2.py",
@@ -102,16 +103,32 @@ py_test_module_list(
   deps = ["//:ray_lib", ":conftest"],
 )
 
+# Issue #33491
+# Once test_memory_deadlock is fixed, remove this rule and move
+# test_memory_deadlock.py to the files list in the rule below.
+# Also, edit test_memory_deadlock and uncomment the last line
+# (the pytest.main invocation in the if __name__ == "__main__":
+# block)
+py_test_module_list(
+  files = [
+    "test_memory_deadlock.py",  # Timing out right now. #33491
+  ],
+  size = "medium",
+  tags = ["exclusive", "no_main", "medium_size_python_tests_k_to_z", "team:core"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
 py_test_module_list(
   files = [
     "test_autoscaler_fake_scaledown.py",  # Temporarily owned by core.
+    "test_log_dedup.py",
     "test_logging.py",
-    "test_memory_deadlock.py",
     "test_memory_scheduling.py",
     "test_memory_pressure.py",
     "test_nested_task.py",
     "test_metrics.py",
     "test_task_events.py",
+    "test_task_events_2.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
     "test_actor_state_metrics.py",
@@ -135,6 +152,7 @@ py_test_module_list(
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
+    "test_runtime_env_setup_func.py",
     "test_runtime_env_strong_type.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
@@ -181,13 +199,17 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_minimal_install.py",
     "test_numba.py",
+    "test_runtime_env_agent.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_utils.py",
+    "test_widgets.py",
+    "test_node_labels.py",
   ],
   size = "small",
   tags = ["exclusive", "small_size_python_tests", "team:core"],
@@ -199,7 +221,7 @@ py_test_module_list(
     "test_gcs_ha_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "ray_ha", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -219,6 +241,7 @@ py_test_module_list(
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
     "test_autoscaler_e2e.py",
+    "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
@@ -272,6 +295,8 @@ py_test_module_list(
     "test_actor_advanced.py",
     "test_multi_node.py",
     "test_threaded_actor.py",
+    "test_generators.py",
+    "test_streaming_generator.py",
     "test_stress_failure.py",
     "test_state_api.py",
     "test_state_api_2.py",
@@ -307,6 +332,7 @@ py_test_module_list(
   files = [
     "test_basic_3.py",
     "test_output.py",
+    "test_tqdm.py",
     "test_out_of_disk_space.py",
     "test_failure_4.py",
     "test_iter.py",
@@ -338,7 +364,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
-  tags = ["exclusive", "large_size_python_tests_shard_2", "team:serve"],
+  tags = ["exclusive", "large_size_python_tests_shard_2", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["pip_install_test-0.5-py3-none-any.whl"],
 )
@@ -352,7 +378,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_5.py",
   ],
   size = "large",
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -360,7 +386,7 @@ py_test(
   name = "test_runtime_env_complicated",
   size = "large",
   srcs = ["test_runtime_env_complicated.py"],
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["//python/ray/experimental/packaging/example_pkg"],
 )
@@ -369,7 +395,7 @@ py_test(
     name = "test_actor_group",
     size = "medium",
     srcs = ["test_actor_group.py"],
-    tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:serve"],
+    tags = ["exclusive", "medium_size_python_tests_a_to_j", "team:core"],
     deps = ["//:ray_lib", ":conftest"]
 )
 
@@ -435,7 +461,7 @@ py_test(
         "test_runtime_env_validation_1_schema.json",
         "test_runtime_env_validation_2_schema.json",
     ],
-    tags = ["exclusive", "small_size_python_tests", "team:serve"],
+    tags = ["exclusive", "small_size_python_tests", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -443,7 +469,7 @@ py_test(
     name = "test_runtime_env_ray_minimal",
     size = "medium",
     srcs = ["test_runtime_env_ray_minimal.py"],
-    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:serve"],
+    tags = ["exclusive", "medium_size_python_tests_k_to_z", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 

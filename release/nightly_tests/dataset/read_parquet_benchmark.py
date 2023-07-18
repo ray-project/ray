@@ -21,7 +21,7 @@ def read_parquet(
         use_threads=use_threads,
         filter=filter,
         columns=columns,
-    ).fully_executed()
+    ).materialize()
 
 
 def run_read_parquet_benchmark(benchmark: Benchmark):
@@ -83,6 +83,29 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
             )
     for dir in data_dirs:
         shutil.rmtree(dir)
+
+    # Test reading many small files.
+    num_files = 1000
+    num_row_groups_per_file = 2
+    total_rows = num_files * num_row_groups_per_file
+    compression = "gzip"
+
+    many_files_dir = "s3://air-example-data-2/read-many-parquet-files/"
+    # If needed, use the following utility to generate files on S3.
+    # Otherwise, the benchmark will read pre-generated files in the above bucket.
+    # generate_data(
+    #     num_rows=total_rows,
+    #     num_files=num_files,
+    #     num_row_groups_per_file=num_row_groups_per_file,
+    #     compression=compression,
+    #     data_dir=many_files_dir,
+    # )
+    test_name = f"read-many-parquet-files-s3-{num_files}-{compression}"
+    benchmark.run(
+        test_name,
+        read_parquet,
+        root=many_files_dir,
+    )
 
 
 if __name__ == "__main__":

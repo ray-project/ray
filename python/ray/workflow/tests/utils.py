@@ -55,5 +55,5 @@ def skip_client_mode_test():
     import pytest
     from ray._private.client_mode_hook import client_mode_should_convert
 
-    if client_mode_should_convert(auto_init=False):
+    if client_mode_should_convert():
         pytest.skip("Not for Ray client test")

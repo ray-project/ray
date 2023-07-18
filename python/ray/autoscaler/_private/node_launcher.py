@@ -61,12 +61,17 @@ class BaseNodeLauncher:
         self.node_types = node_types
         self.index = str(index) if index is not None else ""
 
-    def launch_node(self, config: Dict[str, Any], count: int, node_type: str):
+    def launch_node(
+        self, config: Dict[str, Any], count: int, node_type: str
+    ) -> Optional[Dict]:
         self.log("Got {} nodes to launch.".format(count))
-        self._launch_node(config, count, node_type)
+        created_nodes = self._launch_node(config, count, node_type)
         self.pending.dec(node_type, count)
+        return created_nodes
 
-    def _launch_node(self, config: Dict[str, Any], count: int, node_type: str):
+    def _launch_node(
+        self, config: Dict[str, Any], count: int, node_type: str
+    ) -> Optional[Dict]:
         if self.node_types:
             assert node_type, node_type
 
@@ -100,8 +105,9 @@ class BaseNodeLauncher:
 
         error_msg = None
         full_exception = None
+        created_nodes = {}
         try:
-            self.provider.create_node_with_resources(
+            created_nodes = self.provider.create_node_with_resources(
                 node_config, node_tags, count, resources
             )
         except NodeLaunchException as node_launch_exception:
@@ -157,6 +163,8 @@ class BaseNodeLauncher:
 
         if full_exception is not None:
             self.log(full_exception)
+
+        return created_nodes
 
     def log(self, statement):
         # launcher_class is "BaseNodeLauncher", or "NodeLauncher" if called

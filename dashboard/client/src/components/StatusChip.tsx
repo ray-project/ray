@@ -1,18 +1,21 @@
-import { Color } from "@material-ui/core";
-import {
-  blue,
-  blueGrey,
-  cyan,
-  green,
-  grey,
-  lightBlue,
-  red,
-} from "@material-ui/core/colors";
+import { Color, createStyles, makeStyles } from "@material-ui/core";
+import { blue, blueGrey, cyan, green, red } from "@material-ui/core/colors";
 import { CSSProperties } from "@material-ui/core/styles/withStyles";
+import classNames from "classnames";
 import React, { ReactNode } from "react";
+import { TaskStatus } from "../pages/job/hook/useJobProgress";
 import { ActorEnum } from "../type/actor";
+import { JobStatus } from "../type/job";
 import { PlacementGroupState } from "../type/placementGroup";
-import { TypeTaskStatus } from "../type/task";
+import {
+  ServeApplicationStatus,
+  ServeDeploymentStatus,
+  ServeReplicaState,
+  ServeSystemActorStatus,
+} from "../type/serve";
+
+const orange = "#DB6D00";
+const grey = "#5F6469";
 
 const colorMap = {
   node: {
@@ -21,40 +24,67 @@ const colorMap = {
   },
   worker: {
     ALIVE: green,
+    DEAD: red,
   },
   actor: {
     [ActorEnum.ALIVE]: green,
     [ActorEnum.DEAD]: red,
-    [ActorEnum.PENDING]: blue,
-    [ActorEnum.RECONSTRUCTING]: lightBlue,
+    [ActorEnum.DEPENDENCIES_UNREADY]: orange,
+    [ActorEnum.PENDING_CREATION]: orange,
+    [ActorEnum.RESTARTING]: orange,
   },
   task: {
-    [TypeTaskStatus.FAILED]: red,
-    [TypeTaskStatus.FINISHED]: green,
-    [TypeTaskStatus.RUNNING]: blue,
-    [TypeTaskStatus.RUNNING_IN_RAY_GET]: blue,
-    [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: blue,
-    [TypeTaskStatus.SUBMITTED_TO_WORKER]: "#cfcf08",
-    [TypeTaskStatus.PENDING_ARGS_FETCH]: blue,
-    [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]: blue,
-    [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: "#cfcf08",
-    [TypeTaskStatus.PENDING_ARGS_AVAIL]: "#f79e02",
+    [TaskStatus.FAILED]: red,
+    [TaskStatus.FINISHED]: green,
+    [TaskStatus.RUNNING]: blue,
+    [TaskStatus.SUBMITTED_TO_WORKER]: orange,
+    [TaskStatus.PENDING_NODE_ASSIGNMENT]: orange,
+    [TaskStatus.PENDING_ARGS_AVAIL]: orange,
+    [TaskStatus.UNKNOWN]: grey,
   },
   job: {
-    INIT: grey,
-    SUBMITTED: "#cfcf08",
-    DISPATCHED: lightBlue,
-    RUNNING: blue,
-    COMPLETED: green,
-    SUCCEEDED: green,
-    FINISHED: green,
-    FAILED: red,
+    [JobStatus.PENDING]: orange,
+    [JobStatus.RUNNING]: blue,
+    [JobStatus.STOPPED]: grey,
+    [JobStatus.SUCCEEDED]: green,
+    [JobStatus.FAILED]: red,
   },
   placementGroup: {
-    [PlacementGroupState.PENDING]: "#f79e02",
-    [PlacementGroupState.CREATED]: blue,
-    [PlacementGroupState.REMOVED]: red,
-    [PlacementGroupState.RESCHEDULING]: "#cfcf08",
+    [PlacementGroupState.PENDING]: orange,
+    [PlacementGroupState.CREATED]: green,
+    [PlacementGroupState.REMOVED]: grey,
+    [PlacementGroupState.RESCHEDULING]: orange,
+  },
+  serveApplication: {
+    [ServeApplicationStatus.NOT_STARTED]: grey,
+    [ServeApplicationStatus.DEPLOYING]: orange,
+    [ServeApplicationStatus.RUNNING]: green,
+    [ServeApplicationStatus.DEPLOY_FAILED]: red,
+    [ServeApplicationStatus.DELETING]: orange,
+    [ServeApplicationStatus.UNHEALTHY]: red,
+  },
+  serveDeployment: {
+    [ServeDeploymentStatus.UPDATING]: orange,
+    [ServeDeploymentStatus.HEALTHY]: green,
+    [ServeDeploymentStatus.UNHEALTHY]: red,
+  },
+  serveReplica: {
+    [ServeReplicaState.STARTING]: orange,
+    [ServeReplicaState.UPDATING]: orange,
+    [ServeReplicaState.RECOVERING]: orange,
+    [ServeReplicaState.RUNNING]: green,
+    [ServeReplicaState.STOPPING]: red,
+  },
+  serveHttpProxy: {
+    [ServeSystemActorStatus.HEALTHY]: green,
+    [ServeSystemActorStatus.UNHEALTHY]: red,
+    [ServeSystemActorStatus.STARTING]: orange,
+    [ServeSystemActorStatus.DRAINING]: blueGrey,
+  },
+  serveController: {
+    [ServeSystemActorStatus.HEALTHY]: green,
+    [ServeSystemActorStatus.UNHEALTHY]: red,
+    [ServeSystemActorStatus.STARTING]: orange,
   },
 } as {
   [key: string]: {
@@ -70,23 +100,31 @@ const typeMap = {
   [key: string]: Color;
 };
 
-export const StatusChip = ({
-  type,
-  status,
-  suffix,
-}: {
-  type: string;
-  status: string | ActorEnum | ReactNode;
-  suffix?: string;
-}) => {
-  const style = {
-    padding: "2px 8px",
-    border: "solid 1px",
-    borderRadius: 4,
-    fontSize: 12,
-    margin: 2,
-  } as CSSProperties;
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    root: {
+      padding: "2px 8px",
+      border: "solid 1px",
+      borderRadius: 4,
+      fontSize: 12,
+      display: "inline-flex",
+      alignItems: "center",
+    },
+    afterIcon: {
+      marginLeft: 4,
+    },
+  }),
+);
 
+export type StatusChipProps = {
+  type: keyof typeof colorMap;
+  status: string | ActorEnum | ReactNode;
+  suffix?: ReactNode;
+  icon?: ReactNode;
+};
+
+export const StatusChip = ({ type, status, suffix, icon }: StatusChipProps) => {
+  const classes = useStyles();
   let color: Color | string = blueGrey;
 
   if (typeMap[type]) {
@@ -101,6 +139,7 @@ export const StatusChip = ({
 
   const colorValue = typeof color === "string" ? color : color[500];
 
+  const style: CSSProperties = {};
   style.color = colorValue;
   style.borderColor = colorValue;
   if (color !== blueGrey) {
@@ -108,8 +147,11 @@ export const StatusChip = ({
   }
 
   return (
-    <span style={style}>
-      {status}
+    <span className={classes.root} style={style}>
+      {icon}
+      <span className={classNames({ [classes.afterIcon]: icon !== undefined })}>
+        {status}
+      </span>
       {suffix}
     </span>
   );

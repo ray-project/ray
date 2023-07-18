@@ -10,14 +10,13 @@ import psutil
 
 import ray
 from ray._private.internal_api import memory_summary
-from ray.data._internal.arrow_block import ArrowRow
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
 
-class RandomIntRowDatasource(Datasource[ArrowRow]):
+class RandomIntRowDatasource(Datasource):
     """An example datasource that generates rows with random int64 columns.
 
     Examples:
@@ -93,7 +92,7 @@ if __name__ == "__main__":
 
     if args.use_polars and not args.shuffle:
         print("Using polars for sort")
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         ctx.use_polars = True
 
     num_partitions = int(args.num_partitions)
@@ -119,7 +118,7 @@ if __name__ == "__main__":
             ds = ds.random_shuffle()
         else:
             ds = ds.sort(key="c_0")
-        ds.fully_executed()
+        ds.materialize()
         ds_stats = ds.stats()
     except Exception as e:
         exc = e

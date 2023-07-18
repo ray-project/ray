@@ -16,7 +16,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve.drivers_utils import load_http_adapter, HTTPAdapterFn
 from ray.serve._private.utils import install_serve_encoders_to_fastapi
-from ray.serve._private.http_util import ASGIHTTPSender
+from ray.serve._private.http_util import BufferedASGISender
 
 
 if TYPE_CHECKING:
@@ -74,7 +74,7 @@ def _unpack_dataframe_to_serializable(output_df: "pd.DataFrame") -> "pd.DataFram
     for col in output_df.columns:
         # TensorArray requires special handling to numpy array.
         if isinstance(output_df.dtypes[col], TensorDtype):
-            output_df.loc[:, col] = list(output_df[col].to_numpy())
+            output_df[col] = list(output_df[col].to_numpy())
         # # DL predictor outputs raw ndarray outputs as opaque numpy object.
         # # ex: output_df = pd.DataFrame({"predictions": [np.array(1)]})
         elif output_df.dtypes[col] == np.dtype(object) and all(
@@ -218,7 +218,7 @@ class SimpleSchemaIngress:
     async def __call__(self, request: starlette.requests.Request):
         # NOTE(simon): This is now duplicated from ASGIAppWrapper because we need to
         # generate FastAPI on the fly, we should find a way to unify the two.
-        sender = ASGIHTTPSender()
+        sender = BufferedASGISender()
         await self.app(request.scope, receive=request.receive, send=sender)
         return sender.build_asgi_response()
 

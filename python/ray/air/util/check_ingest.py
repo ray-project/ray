@@ -9,10 +9,11 @@ import numpy as np
 import ray
 from ray.air import session
 from ray.air.config import DatasetConfig, ScalingConfig
-from ray.data import Dataset, DatasetIterator, Preprocessor
+from ray.data import Dataset, DataIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
+from ray.train import DataConfig
 from ray.util.annotations import DeveloperAPI
 
 
@@ -24,6 +25,14 @@ class DummyTrainer(DataParallelTrainer):
 
     This is useful for debugging data ingest problem. This trainer supports normal
     scaling options same as any other Trainer (e.g., num_workers, use_gpu).
+
+    Args:
+        scaling_config: Configuration for how to scale training. This is the same
+            as for :class:`~ray.train.base_trainer.BaseTrainer`.
+        num_epochs: How many many times to iterate through the datasets for.
+        prefetch_batches: The number of batches to prefetch ahead of the
+            current block during the scan. This is the same as
+            :meth:`~ray.data.Dataset.iter_batches`
     """
 
     def __init__(
@@ -31,37 +40,29 @@ class DummyTrainer(DataParallelTrainer):
         *args,
         scaling_config: Optional[ScalingConfig] = None,
         num_epochs: int = 1,
-        prefetch_blocks: int = 1,
+        prefetch_batches: int = 1,
         batch_size: Optional[int] = 4096,
-        **kwargs
+        # Deprecated.
+        prefetch_blocks: int = 0,
+        **kwargs,
     ):
         if not scaling_config:
             scaling_config = ScalingConfig(num_workers=1)
         super().__init__(
             train_loop_per_worker=DummyTrainer.make_train_loop(
-                num_epochs, prefetch_blocks, batch_size
+                num_epochs, prefetch_batches, prefetch_blocks, batch_size
             ),
             *args,
             scaling_config=scaling_config,
-            **kwargs
+            **kwargs,
         )
-
-    def preprocess_datasets(self):
-        print("Starting dataset preprocessing")
-        start = time.perf_counter()
-        super().preprocess_datasets()
-        print("Preprocessed datasets in", time.perf_counter() - start, "seconds")
-        if self.preprocessor:
-            print("Preprocessor", self.preprocessor)
-            print(
-                "Preprocessor transform stats:\n\n{}".format(
-                    self.preprocessor.transform_stats()
-                )
-            )
 
     @staticmethod
     def make_train_loop(
-        num_epochs: int, prefetch_blocks: int, batch_size: Optional[int]
+        num_epochs: int,
+        prefetch_batches: int,
+        prefetch_blocks: int,
+        batch_size: Optional[int],
     ):
         """Make a debug train loop that runs for the given amount of epochs."""
 
@@ -79,7 +80,9 @@ class DummyTrainer(DataParallelTrainer):
                 epochs_read += 1
                 batch_start = time.perf_counter()
                 for batch in data_shard.iter_batches(
-                    prefetch_blocks=prefetch_blocks, batch_size=batch_size
+                    prefetch_batches=prefetch_batches,
+                    prefetch_blocks=prefetch_blocks,
+                    batch_size=batch_size,
                 ):
                     batch_delay = time.perf_counter() - batch_start
                     batch_delays.append(batch_delay)
@@ -90,6 +93,9 @@ class DummyTrainer(DataParallelTrainer):
                         )
                     elif isinstance(batch, np.ndarray):
                         bytes_read += batch.nbytes
+                    elif isinstance(batch, dict):
+                        for arr in batch.values():
+                            bytes_read += arr.nbytes
                     else:
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
@@ -130,9 +136,9 @@ def make_local_dataset_iterator(
     dataset: Dataset,
     preprocessor: Preprocessor,
     dataset_config: DatasetConfig,
-) -> DatasetIterator:
+) -> DataIterator:
     """A helper function to create a local
-    :py:class:`DatasetIterator <ray.data.DatasetIterator>`,
+    :py:class:`DataIterator <ray.data.DataIterator>`,
     like the one returned by :meth:`~ray.air.session.get_dataset_shard`.
 
     This function should only be used for development and debugging. It will
@@ -169,34 +175,34 @@ if __name__ == "__main__":
         "--num-epochs", "-e", type=int, default=1, help="Number of epochs to read."
     )
     parser.add_argument(
-        "--prefetch-blocks",
+        "--prefetch-batches",
         "-b",
         type=int,
         default=1,
-        help="Number of blocks to prefetch when reading data.",
+        help="Number of batches to prefetch when reading data.",
     )
 
     args = parser.parse_args()
 
     # Generate a synthetic dataset of ~10GiB of float64 data. The dataset is sharded
     # into 100 blocks (parallelism=100).
-    dataset = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
+    ds = ray.data.range_tensor(50000, shape=(80, 80, 4), parallelism=100)
 
     # An example preprocessor chain that just scales all values by 4.0 in two stages.
     preprocessor = Chain(
         BatchMapper(lambda df: df * 2, batch_format="pandas"),
         BatchMapper(lambda df: df * 2, batch_format="pandas"),
     )
+    ds = preprocessor.transform(ds)
 
     # Setup the dummy trainer that prints ingest stats.
     # Run and print ingest stats.
     trainer = DummyTrainer(
         scaling_config=ScalingConfig(num_workers=1, use_gpu=False),
-        datasets={"train": dataset},
-        preprocessor=preprocessor,
+        datasets={"train": ds},
         num_epochs=args.num_epochs,
-        prefetch_blocks=args.prefetch_blocks,
-        dataset_config={"train": DatasetConfig()},
+        prefetch_batches=args.prefetch_batches,
+        dataset_config=DataConfig(),
         batch_size=None,
     )
     print("Dataset config", trainer.get_dataset_config())

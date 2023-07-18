@@ -3,7 +3,7 @@ from typing import Optional
 
 import ray
 from ray._private import ray_constants
-from ray._private.gcs_utils import GcsClient
+from ray._raylet import GcsClient
 from ray.serve._private.constants import RAY_SERVE_KV_TIMEOUT_S, SERVE_LOGGER_NAME
 from ray.serve._private.storage.kv_store_base import KVStoreBase
 
@@ -17,7 +17,8 @@ def get_storage_key(namespace: str, storage_key: str) -> str:
 
 
 class KVStoreError(Exception):
-    pass
+    def __init__(self, rpc_code):
+        self.rpc_code = rpc_code
 
 
 class RayInternalKVStore(KVStoreBase):
@@ -63,8 +64,8 @@ class RayInternalKVStore(KVStoreBase):
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
                 timeout=self.timeout,
             )
-        except Exception as e:
-            raise KVStoreError(e.code())
+        except ray.exceptions.RpcError as e:
+            raise KVStoreError(e.rpc_code)
 
     def get(self, key: str) -> Optional[bytes]:
         """Get the value associated with the given key from the store.
@@ -84,8 +85,8 @@ class RayInternalKVStore(KVStoreBase):
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
                 timeout=self.timeout,
             )
-        except Exception as e:
-            raise KVStoreError(e.code())
+        except ray.exceptions.RpcError as e:
+            raise KVStoreError(e.rpc_code)
 
     def delete(self, key: str):
         """Delete the value associated with the given key from the store.
@@ -104,5 +105,5 @@ class RayInternalKVStore(KVStoreBase):
                 namespace=ray_constants.KV_NAMESPACE_SERVE,
                 timeout=self.timeout,
             )
-        except Exception as e:
-            raise KVStoreError(e.code())
+        except ray.exceptions.RpcError as e:
+            raise KVStoreError(e.rpc_code)

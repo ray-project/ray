@@ -7,6 +7,7 @@ from ray.rllib.execution import synchronous_parallel_sample
 from ray.rllib.execution.train_ops import multi_gpu_train_one_step, train_one_step
 from ray.rllib.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
     NUM_AGENT_STEPS_TRAINED,
@@ -50,7 +51,7 @@ class CRRConfig(AlgorithmConfig):
         self.actor_lr = 3e-4
         self.tau = 5e-3
 
-        # Overriding the trainer config default:
+        # Override the AlgorithmConfig default:
         # Only PyTorch supported thus far. Make this the default framework.
         self.framework_str = "torch"
         # If data ingestion/sample_time is slow, increase this
@@ -60,6 +61,19 @@ class CRRConfig(AlgorithmConfig):
 
         self.td_error_loss_fn = "mse"
         self.categorical_distribution_temperature = 1.0
+
+        # TODO (Artur): CRR should not need an exploration config as an offline
+        #  algorithm. However, the current implementation of the CRR algorithm
+        #  requires it. Investigate.
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
 
     def training(
         self,
@@ -184,10 +198,16 @@ class CRRConfig(AlgorithmConfig):
 NUM_GRADIENT_UPDATES = "num_grad_updates"
 
 
+@Deprecated(
+    old="rllib/algorithms/crr/",
+    new="rllib_contrib/crr/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class CRR(Algorithm):
 
     # TODO: we have a circular dependency for get
-    #  default config. config -> Trainer -> config
+    #  default config. config -> Algorithm -> config
     #  defining Config class in the same file for now as a workaround.
 
     def setup(self, config: AlgorithmConfig):

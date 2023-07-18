@@ -30,6 +30,14 @@ def path_eq(a, b):
     return Path(a).resolve() == Path(b).resolve()
 
 
+def test_storage_not_set(shutdown_only):
+    ray.init()
+    with pytest.raises(
+        RuntimeError, match=r".*No storage URI has been configured for the cluster.*"
+    ):
+        fs, prefix = storage.get_filesystem()
+
+
 def test_get_filesystem_local(shutdown_only, tmp_path):
     path = os.path.join(str(tmp_path), "foo/bar")
     ray.init(storage=path)

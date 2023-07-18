@@ -2,7 +2,6 @@ from gymnasium.spaces import Box, Discrete
 import logging
 from typing import Tuple, Type
 
-import ray
 from ray.rllib.algorithms.maml.maml_torch_policy import MAMLTorchPolicy
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -34,7 +33,6 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
                 "or using the multi-agent API."
             )
 
-        config = dict(ray.rllib.algorithms.mbmpo.mbmpo.DEFAULT_CONFIG, **config)
         super().__init__(observation_space, action_space, config)
 
     def make_model_and_action_dist(
@@ -45,7 +43,7 @@ class MBMPOTorchPolicy(MAMLTorchPolicy):
         Args:
             obs_space (gym.spaces.Space): The observation space.
             action_space (gym.spaces.Space): The action space.
-            config: The SAC trainer's config dict.
+            config: The SACConfig object.
 
         Returns:
             ModelV2: The ModelV2 to be used by the Policy. Note: An additional

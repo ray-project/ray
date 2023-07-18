@@ -39,20 +39,14 @@ const columns = [
   { label: "Submission ID" },
   { label: "Entrypoint" },
   { label: "Status" },
+  { label: "Status message" },
   { label: "Duration" },
   {
     label: "Tasks",
     helpInfo: (
       <Typography>
         The progress of the all submitted tasks per job. Tasks that are not yet
-        submitted will not show up in the progress bar.
-        <br />
-        <br />
-        Note: This column requires that prometheus is running. See{" "}
-        <a href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html#exporting-metrics">
-          here
-        </a>{" "}
-        for instructions.
+        submitted do not show up in the progress bar.
       </Typography>
     ),
   },
@@ -64,10 +58,11 @@ const columns = [
   { label: "Driver Pid" },
 ];
 
-const JobList = ({ newIA = false }: { newIA?: boolean }) => {
+const JobList = () => {
   const classes = useStyles();
   const {
     msg,
+    isLoading,
     isRefreshing,
     onSwitchChange,
     jobList,
@@ -78,7 +73,7 @@ const JobList = ({ newIA = false }: { newIA?: boolean }) => {
 
   return (
     <div className={classes.root}>
-      <Loading loading={msg.startsWith("Loading")} />
+      <Loading loading={isLoading} />
       <TitleCard title="JOBS">
         Auto Refresh:
         <Switch
@@ -141,11 +136,7 @@ const JobList = ({ newIA = false }: { newIA?: boolean }) => {
                 .map((job, index) => {
                   const { job_id, submission_id } = job;
                   return (
-                    <JobRow
-                      key={job_id ?? submission_id ?? index}
-                      job={job}
-                      newIA={newIA}
-                    />
+                    <JobRow key={job_id ?? submission_id ?? index} job={job} />
                   );
                 })}
             </TableBody>
@@ -159,14 +150,14 @@ const JobList = ({ newIA = false }: { newIA?: boolean }) => {
 /**
  * Jobs page for the new information hierarchy
  */
-export const NewIAJobsPage = () => {
+export const JobsLayout = () => {
   return (
     <React.Fragment>
       <MainNavPageInfo
         pageInfo={{
           title: "Jobs",
           id: "jobs",
-          path: "/new/jobs",
+          path: "/jobs",
         }}
       />
       <Outlet />

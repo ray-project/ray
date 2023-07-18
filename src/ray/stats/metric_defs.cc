@@ -98,6 +98,25 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
+double operator""_MB(unsigned long long int x) {
+  return static_cast<double>(1024L * 1024L * x);
+}
+
+DEFINE_stats(object_store_dist,
+             "The distribution of object size in bytes",
+             ("Source"),
+             ({32_MB,
+               64_MB,
+               128_MB,
+               256_MB,
+               512_MB,
+               1024_MB,
+               2048_MB,
+               4096_MB,
+               8192_MB,
+               16384_MB}),
+             ray::stats::HISTOGRAM);
+
 /// Placement group metrics from the GCS.
 DEFINE_stats(placement_groups,
              "Number of placement groups broken down by state.",
@@ -232,6 +251,13 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ("Reason"),
              (),
              ray::stats::GAUGE);
+DEFINE_stats(scheduler_placement_time_s,
+             "The time it takes for a worklod (task, actor, placement group) to "
+             "be placed. This is the time from when the tasks dependencies are "
+             "resolved to when it actually reserves resources on a node to run.",
+             ("WorkloadType"),
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
 
 /// Local Object Manager
 DEFINE_stats(
@@ -330,11 +356,12 @@ DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
              ray::stats::GAUGE);
 
 /// Memory Manager
-DEFINE_stats(memory_manager_worker_eviction_total,
-             "Total worker eviction events broken per work type {Actor, Task}",
-             ("Type"),
-             (),
-             ray::stats::COUNT);
+DEFINE_stats(
+    memory_manager_worker_eviction_total,
+    "Total worker eviction events broken per work type {Actor, Task, Driver} and name.",
+    ("Type", "Name"),
+    (),
+    ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray

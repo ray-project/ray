@@ -201,6 +201,28 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id)
       LOCKS_EXCLUDED(mutex_);
 
+  /// Own an object that the current owner (current process) dynamically created.
+  ///
+  /// The API is idempotent.
+  ///
+  /// TODO(sang): This API should be merged with AddDynamicReturn when
+  /// we turn on streaming generator by default.
+  ///
+  /// For normal task return, the owner creates and owns the references before
+  /// the object values are created. However, when you dynamically create objects,
+  /// the owner doesn't know (i.e., own) the references until it is reported from
+  /// the executor side.
+  ///
+  /// This API is used to own this type of dynamically generated references.
+  /// The executor should ensure the objects are not GC'ed until the owner
+  /// registers the dynamically created references by this API.
+  ///
+  /// \param[in] object_id The ID of the object that we now own.
+  /// \param[in] generator_id The Object ID of the streaming generator task.
+  void OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
+                                        const ObjectID &generator_id)
+      LOCKS_EXCLUDED(mutex_);
+
   /// Update the size of the object.
   ///
   /// \param[in] object_id The ID of the object.
@@ -314,6 +336,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   /// Returns the total number of ObjectIDs currently in scope.
   size_t NumObjectIDsInScope() const LOCKS_EXCLUDED(mutex_);
+
+  /// Returns the total number of objects owned by this worker.
+  size_t NumObjectsOwnedByUs() const LOCKS_EXCLUDED(mutex_);
+
+  /// Returns the total number of actors owned by this worker.
+  size_t NumActorsOwnedByUs() const LOCKS_EXCLUDED(mutex_);
 
   /// Returns a set of all ObjectIDs currently in scope (i.e., nonzero reference count).
   std::unordered_set<ObjectID> GetAllInScopeObjectIDs() const LOCKS_EXCLUDED(mutex_);
@@ -507,6 +535,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
   int64_t EvictLineage(int64_t min_bytes_to_evict);
+
+  /// Update that the object is ready to be fetched.
+  void UpdateObjectReady(const ObjectID &object_id);
 
   /// Whether the object is pending creation (the task that creates it is
   /// scheduled/executing).
@@ -913,7 +944,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void RemoveObjectLocationInternal(ReferenceTable::iterator it, const NodeID &node_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation)
+  void UpdateObjectPendingCreationInternal(const ObjectID &object_id,
+                                           bool pending_creation)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   /// Publish object locations to all subscribers.
@@ -1010,6 +1042,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// due to node failure. These objects are still in scope and need to be
   /// recovered.
   std::vector<ObjectID> objects_to_recover_ GUARDED_BY(mutex_);
+
+  /// Keep track of objects owend by this worker.
+  size_t num_objects_owned_by_us_ GUARDED_BY(mutex_) = 0;
+
+  /// Keep track of actors owend by this worker.
+  size_t num_actors_owned_by_us_ GUARDED_BY(mutex_) = 0;
 };
 
 }  // namespace core

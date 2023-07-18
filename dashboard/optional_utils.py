@@ -18,7 +18,7 @@ from aiohttp.web import Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-from ray._private.ray_constants import RAY_INTERNAL_NAMESPACE_PREFIX, env_bool
+from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
@@ -33,8 +33,6 @@ except AttributeError:
 
 
 logger = logging.getLogger(__name__)
-
-RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 class ClassMethodRouteTable:
@@ -151,7 +149,7 @@ class ClassMethodRouteTable:
 
 
 def rest_response(
-    success, message, convert_google_style=True, **kwargs
+    success, message, convert_google_style=True, reason=None, **kwargs
 ) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
@@ -169,6 +167,7 @@ def rest_response(
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
         status=200 if success else 500,
+        reason=reason,
     )
 
 

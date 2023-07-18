@@ -4,7 +4,7 @@ swimmer-ars:
     run: ARS
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         noise_stdev: 0.01
         num_rollouts: 1
         rollouts_used: 1

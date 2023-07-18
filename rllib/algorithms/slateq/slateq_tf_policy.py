@@ -207,15 +207,6 @@ def build_slateq_stats(policy: Policy, batch) -> Dict[str, TensorType]:
         "q_loss": policy._q_loss,
         "mean_actions": policy._mean_actions,
     }
-    # if hasattr(policy, "_mean_grads_0"):
-    #    stats.update({"mean_grads_0": policy._mean_grads_0})
-    #    stats.update({"mean_grads_1": policy._mean_grads_1})
-    #    stats.update({"mean_grads_2": policy._mean_grads_2})
-    #    stats.update({"mean_grads_3": policy._mean_grads_3})
-    #    stats.update({"mean_grads_4": policy._mean_grads_4})
-    #    stats.update({"mean_grads_5": policy._mean_grads_5})
-    #    stats.update({"mean_grads_6": policy._mean_grads_6})
-    #    stats.update({"mean_grads_7": policy._mean_grads_7})
     return stats
 
 
@@ -364,7 +355,7 @@ def rmsprop_optimizer(
 
 SlateQTFPolicy = build_tf_policy(
     name="SlateQTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.slateq.slateq.SlateQConfig(),
     # Build model, loss functions, and optimizers
     make_model=build_slateq_model,
     loss_fn=build_slateq_losses,

@@ -2,12 +2,14 @@ import dataclasses
 import importlib
 import logging
 import json
+import os
 import yaml
 from pathlib import Path
 import tempfile
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 from pkg_resources import packaging
 import ray
+import ssl
 
 try:
     import requests
@@ -202,8 +204,8 @@ class SubmissionClient:
         cookies: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
+        verify: Optional[Union[str, bool]] = True,
     ):
-
         # Remove any trailing slashes
         if address is not None and address.endswith("/"):
             address = address.rstrip("/")
@@ -221,6 +223,24 @@ class SubmissionClient:
         # Headers used for all requests sent to job server, optional and only
         # needed for cases like authentication to remote cluster.
         self._headers = cluster_info.headers
+        # Set SSL verify parameter for the requests library and create an ssl_context
+        # object when needed for the aiohttp library.
+        self._verify = verify
+        if isinstance(self._verify, str):
+            if os.path.isdir(self._verify):
+                cafile, capath = None, self._verify
+            elif os.path.isfile(self._verify):
+                cafile, capath = self._verify, None
+            else:
+                raise FileNotFoundError(
+                    f"Path to CA certificates: '{self._verify}', does not exist."
+                )
+            self._ssl_context = ssl.create_default_context(cafile=cafile, capath=capath)
+        else:
+            if self._verify is False:
+                self._ssl_context = False
+            else:
+                self._ssl_context = None
 
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
@@ -287,6 +307,7 @@ class SubmissionClient:
             data=data,
             json=json_data,
             headers=self._headers,
+            verify=self._verify,
             **kwargs,
         )
 

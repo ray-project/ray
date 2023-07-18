@@ -77,6 +77,14 @@ class TuneReportCallback(TuneCallback):
 
     Reports metrics to Ray Tune.
 
+    .. note::
+        In Ray 2.4, we introduced
+        :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`,
+        which provides native integration with PyTorch Lightning. Here is
+        :ref:`a simple example <lightning_mnist_example>` of how to use
+        ``LightningTrainer``.
+
+
     Args:
         metrics: Metrics to report to Tune. If this is a list,
             each item describes the metric key reported to PyTorch Lightning,
@@ -148,6 +156,13 @@ class _TuneCheckpointCallback(TuneCallback):
     """PyTorch Lightning checkpoint callback
 
     Saves checkpoints after each validation step.
+
+    .. note::
+        In Ray 2.4, we introduced
+        :class:`LightningTrainer <ray.train.lightning.LightningTrainer>`,
+        which provides native integration with PyTorch Lightning. Here is
+        :ref:`a simple example <lightning_mnist_example>` of how to use
+        ``LightningTrainer``.
 
     Checkpoint are currently not registered if no ``tune.report()`` call
     is made afterwards. Consider using ``TuneReportCheckpointCallback``

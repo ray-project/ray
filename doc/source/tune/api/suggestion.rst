@@ -84,7 +84,7 @@ identifier:
         ),
         run_config=air.RunConfig(
             name="my-experiment-1",
-            local_dir="~/my_results",
+            storage_path="~/my_results",
         )
     )
     results = tuner_1.fit()
@@ -331,7 +331,6 @@ If you are interested in implementing or contributing a new Search Algorithm, pr
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     Searcher
 

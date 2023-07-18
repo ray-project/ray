@@ -15,13 +15,14 @@ import multiprocessing
 import json
 import sys
 import logging
+from urllib.parse import urlparse
 from typing import Optional, List, Tuple
 
 OUTPUT_JSON_FILENAME = "output.json"
-AWS_CLI_INSTALLED = False
 AWS_CP_TIMEOUT = 300
 TIMEOUT_RETURN_CODE = 124  # same as bash timeout
 
+installed_pips = []
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(stream=sys.stderr)
@@ -52,33 +53,48 @@ def exponential_backoff_retry(
             retry_delay_s *= 2
 
 
-def run_aws_cp(source: str, target: str):
-    global AWS_CLI_INSTALLED
+def install_pip(pip: str):
+    if pip in installed_pips:
+        return
+    subprocess.run(["pip", "install", "-q", pip], check=True)
+    installed_pips.append(pip)
 
+
+def run_storage_cp(source: str, target: str):
     if not source or not target:
         return False
 
     if not Path(source).exists():
-        logger.error(f"Couldn't upload to s3: '{source}' does not exist.")
+        logger.warning(f"Couldn't upload to cloud storage: '{source}' does not exist.")
         return False
 
-    if not AWS_CLI_INSTALLED:
-        # Install awscli for uploading to s3
-        subprocess.run(["pip", "install", "-q", "awscli"], check=True)
-        AWS_CLI_INSTALLED = True
+    storage_service = urlparse(target).scheme
+    cp_cmd_args = []
+    if storage_service == "s3":
+        cp_cmd_args = [
+            "aws",
+            "s3",
+            "cp",
+            source,
+            target,
+            "--acl",
+            "bucket-owner-full-control",
+        ]
+    elif storage_service == "gs":
+        install_pip("gsutil")
+        cp_cmd_args = [
+            "gsutil",
+            "cp",
+            source,
+            target,
+        ]
+    else:
+        raise Exception(f"Not supporting storage service: {storage_service}")
 
     try:
         exponential_backoff_retry(
             lambda: subprocess.run(
-                [
-                    "aws",
-                    "s3",
-                    "cp",
-                    source,
-                    target,
-                    "--acl",
-                    "bucket-owner-full-control",
-                ],
+                cp_cmd_args,
                 timeout=AWS_CP_TIMEOUT,
                 check=True,
             ),
@@ -88,7 +104,7 @@ def run_aws_cp(source: str, target: str):
         )
         return True
     except subprocess.SubprocessError:
-        logger.exception("Couldn't upload to s3.")
+        logger.exception("Couldn't upload to cloud storage.")
         return False
 
 
@@ -218,9 +234,11 @@ def main(
     test_workload: str,
     test_workload_timeout: float,
     test_no_raise_on_timeout: bool,
-    results_s3_uri: Optional[str],
-    metrics_s3_uri: Optional[str],
-    output_s3_uri: Optional[str],
+    results_cloud_storage_uri: Optional[str],
+    metrics_cloud_storage_uri: Optional[str],
+    output_cloud_storage_uri: Optional[str],
+    upload_cloud_storage_uri: Optional[str],
+    artifact_path: Optional[str],
     prepare_commands: List[str],
     prepare_commands_timeouts: List[str],
 ):
@@ -253,6 +271,7 @@ def main(
     uploaded_results = False
     collected_metrics = False
     uploaded_metrics = False
+    uploaded_artifact = artifact_path is not None
     workload_time_taken = None
 
     # If all prepare commands passed, run actual test workload.
@@ -276,17 +295,27 @@ def main(
             )
 
         # Upload results.json
-        uploaded_results = run_aws_cp(
-            os.environ.get("TEST_OUTPUT_JSON", None), results_s3_uri
+        uploaded_results = run_storage_cp(
+            os.environ.get("TEST_OUTPUT_JSON", None), results_cloud_storage_uri
         )
 
         # Collect prometheus metrics
         collected_metrics = collect_metrics(workload_time_taken)
         if collected_metrics:
             # Upload prometheus metrics
-            uploaded_metrics = run_aws_cp(
-                os.environ.get("METRICS_OUTPUT_JSON", None), metrics_s3_uri
+            uploaded_metrics = run_storage_cp(
+                os.environ.get("METRICS_OUTPUT_JSON", None), metrics_cloud_storage_uri
             )
+
+        uploaded_artifact = run_storage_cp(
+            artifact_path,
+            os.path.join(
+                upload_cloud_storage_uri, os.environ["USER_GENERATED_ARTIFACT"]
+            )
+            if "USER_GENERATED_ARTIFACT" in os.environ
+            else None,
+        )
+
     else:
         return_code = None
 
@@ -300,6 +329,7 @@ def main(
         "uploaded_results": uploaded_results,
         "collected_metrics": collected_metrics,
         "uploaded_metrics": uploaded_metrics,
+        "uploaded_artifact": uploaded_artifact,
     }
     output_json = json.dumps(
         output_json, ensure_ascii=True, sort_keys=True, separators=(",", ":")
@@ -310,11 +340,11 @@ def main(
         fp.write(output_json)
 
     # Upload output.json
-    run_aws_cp(str(output_json_file), output_s3_uri)
+    run_storage_cp(str(output_json_file), output_cloud_storage_uri)
 
     logger.info("### Finished ###")
     # This will be read by the AnyscaleJobRunner on the buildkite runner
-    # if output.json cannot be obtained from S3
+    # if output.json cannot be obtained from cloud storage
     logger.info(f"### JSON |{output_json}| ###")
 
     # Flush buffers
@@ -348,21 +378,33 @@ if __name__ == "__main__":
         help="don't fail on timeout",
     )
     parser.add_argument(
-        "--results-s3-uri",
+        "--results-cloud-storage-uri",
         type=str,
         help="bucket address to upload results.json to",
         required=False,
     )
     parser.add_argument(
-        "--metrics-s3-uri",
+        "--metrics-cloud-storage-uri",
         type=str,
         help="bucket address to upload metrics.json to",
         required=False,
     )
     parser.add_argument(
-        "--output-s3-uri",
+        "--output-cloud-storage-uri",
         type=str,
         help="bucket address to upload output.json to",
+        required=False,
+    )
+    parser.add_argument(
+        "--upload-cloud-storage-uri",
+        type=str,
+        help="root cloud-storage bucket address to upload stuff",
+        required=False,
+    )
+    parser.add_argument(
+        "--artifact-path",
+        type=str,
+        help="user provided artifact path (on head node), must be a single file path",
         required=False,
     )
     parser.add_argument(

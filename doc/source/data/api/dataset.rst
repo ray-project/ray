@@ -1,7 +1,7 @@
 .. _dataset-api:
 
 Dataset API
-===========
+==============
 
 .. currentmodule:: ray.data
 
@@ -10,7 +10,6 @@ Constructor
 
 .. autosummary::
    :toctree: doc/
-   :template: autosummary/class_with_autosummary.rst
 
    Dataset
 
@@ -42,7 +41,7 @@ Sorting, Shuffling, Repartitioning
    Dataset.repartition
 
 Splitting and Merging Datasets
-------------------------------
+---------------------------------
 
 .. autosummary::
    :toctree: doc/
@@ -50,6 +49,7 @@ Splitting and Merging Datasets
    Dataset.split
    Dataset.split_at_indices
    Dataset.split_proportionately
+   Dataset.streaming_split
    Dataset.train_test_split
    Dataset.union
    Dataset.zip
@@ -61,6 +61,7 @@ Grouped and Global Aggregations
    :toctree: doc/
 
    Dataset.groupby
+   Dataset.unique
    Dataset.aggregate
    Dataset.sum
    Dataset.min
@@ -68,23 +69,15 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipeline
-----------------------
-
-.. autosummary::
-   :toctree: doc/
-
-   Dataset.repeat
-   Dataset.window
-
-Consuming Datasets
-------------------
+Consuming Data
+---------------------
 
 .. autosummary::
    :toctree: doc/
 
    Dataset.show
    Dataset.take
+   Dataset.take_batch
    Dataset.take_all
    Dataset.iterator
    Dataset.iter_rows
@@ -103,6 +96,7 @@ I/O and Conversion
    Dataset.write_csv
    Dataset.write_numpy
    Dataset.write_tfrecords
+   Dataset.write_webdataset
    Dataset.write_mongo
    Dataset.write_datasource
    Dataset.to_torch
@@ -124,8 +118,8 @@ Inspecting Metadata
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
-   Dataset.default_batch_format
    Dataset.num_blocks
    Dataset.size_bytes
    Dataset.input_files
@@ -136,11 +130,10 @@ Execution
 ---------
 
 .. autosummary::
-   :toctree: doc/
+    :toctree: doc/
 
-   Dataset.fully_executed
-   Dataset.is_fully_executed
-   Dataset.lazy
+    Dataset.materialize
+    ActorPoolStrategy
 
 Serialization
 -------------
@@ -151,3 +144,16 @@ Serialization
    Dataset.has_serializable_lineage
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
+
+.. _block-api:
+
+Internals
+---------
+
+.. autosummary::
+   :toctree: doc/
+
+   block.Block
+   block.BlockExecStats
+   block.BlockMetadata
+   block.BlockAccessor

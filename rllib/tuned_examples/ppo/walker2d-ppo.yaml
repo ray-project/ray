@@ -3,7 +3,7 @@ walker2d-v1-ppo:
     run: PPO
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         kl_coeff: 1.0
         num_sgd_iter: 20
         lr: .0001

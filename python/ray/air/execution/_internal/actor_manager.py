@@ -2,7 +2,7 @@ import logging
 import random
 import time
 import uuid
-from collections import defaultdict
+from collections import defaultdict, Counter
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Type, Union
 
 import ray
@@ -16,7 +16,6 @@ from ray.air.execution.resources import (
 from ray.air.execution._internal.tracked_actor import TrackedActor
 from ray.air.execution._internal.tracked_actor_task import TrackedActorTask
 from ray.exceptions import RayTaskError, RayActorError
-
 
 logger = logging.getLogger(__name__)
 
@@ -149,12 +148,16 @@ class RayActorManager:
         self._live_actors_to_ray_actors_resources: Dict[
             TrackedActor, Tuple[ray.actor.ActorHandle, AcquiredResources]
         ] = {}
+        self._live_resource_cache: Optional[Dict[str, Any]] = None
 
         # This dict contains all actors that should be killed (after calling
         # `remove_actor()`). Kill requests will be handled in wait().
         self._live_actors_to_kill: Set[TrackedActor] = set()
 
-    def next(self, timeout: Optional[Union[int, float]] = None) -> None:
+        # Track failed actors
+        self._failed_actor_ids: Set[int] = set()
+
+    def next(self, timeout: Optional[Union[int, float]] = None) -> bool:
         """Yield control to event manager to await the next event and invoke callbacks.
 
         Calling this method will wait for up to ``timeout`` seconds for the next
@@ -177,6 +180,9 @@ class RayActorManager:
         Args:
             timeout: Timeout in seconds to wait for next event.
 
+        Returns:
+            True if at least one event was processed.
+
         """
         # First issue any pending forceful actor kills
         actor_killed = self._try_kill_actor()
@@ -186,7 +192,7 @@ class RayActorManager:
 
         # If an actor was killed, this was our event, and we return.
         if actor_killed:
-            return
+            return True
 
         # Otherwise, collect all futures and await the next.
         resource_futures = self._resource_manager.get_resource_futures()
@@ -208,7 +214,7 @@ class RayActorManager:
         ready, _ = ray.wait(all_futures, num_returns=1, timeout=timeout)
 
         if not ready:
-            return
+            return False
 
         [future] = ready
 
@@ -227,6 +233,7 @@ class RayActorManager:
             )
 
         self._try_start_actors()
+        return True
 
     def _actor_start_resolved(self, tracked_actor: TrackedActor, future: ray.ObjectRef):
         """Callback to be invoked when actor started"""
@@ -244,6 +251,8 @@ class RayActorManager:
 
     def _actor_start_failed(self, tracked_actor: TrackedActor, exception: Exception):
         """Callback to be invoked when actor start/stop failed"""
+        self._failed_actor_ids.add(tracked_actor.actor_id)
+
         self._cleanup_actor(tracked_actor=tracked_actor)
 
         if tracked_actor._on_error:
@@ -261,16 +270,19 @@ class RayActorManager:
         tracked_actor = tracked_actor_task._tracked_actor
 
         if isinstance(exception, RayActorError):
-            # Here the actual actor process died.
-            # First, clean up any references to the actor and its futures
+            self._failed_actor_ids.add(tracked_actor.actor_id)
+
+            # Clean up any references to the actor and its futures
             self._cleanup_actor(tracked_actor=tracked_actor)
 
+            # Handle actor state callbacks
             if tracked_actor._on_error:
                 tracked_actor._on_error(tracked_actor, exception)
 
             # Then trigger actor task error callback
             if tracked_actor_task._on_error:
                 tracked_actor_task._on_error(tracked_actor, exception)
+
         elif isinstance(exception, RayTaskError):
             # Otherwise only the task failed. Invoke callback
             if tracked_actor_task._on_error:
@@ -348,6 +360,13 @@ class RayActorManager:
                 # Start Ray actor
                 actor = remote_actor_cls.remote(**kwargs)
 
+                # Track
+                self._live_actors_to_ray_actors_resources[tracked_actor] = (
+                    actor,
+                    acquired_resources,
+                )
+                self._live_resource_cache = None
+
                 # Schedule ready future
                 future = actor.__ray_ready__.remote()
 
@@ -378,11 +397,6 @@ class RayActorManager:
                     future=future,
                     on_result=on_actor_start,
                     on_error=on_error,
-                )
-
-                self._live_actors_to_ray_actors_resources[tracked_actor] = (
-                    actor,
-                    acquired_resources,
                 )
 
                 self._enqueue_cached_actor_tasks(tracked_actor=tracked_actor)
@@ -420,26 +434,21 @@ class RayActorManager:
         # Hard kill if requested
         ray.kill(ray_actor)
 
+        self._cleanup_actor_futures(tracked_actor)
+
         self._actor_stop_resolved(tracked_actor)
 
         return True
 
     def _cleanup_actor(self, tracked_actor: TrackedActor):
-        # Remove all actor task futures
-        futures = self._tracked_actors_to_task_futures.pop(tracked_actor, [])
-        for future in futures:
-            self._actor_task_events.discard_future(future)
-
-        # Remove all actor state futures
-        futures = self._tracked_actors_to_state_futures.pop(tracked_actor, [])
-        for future in futures:
-            self._actor_state_events.discard_future(future)
+        self._cleanup_actor_futures(tracked_actor)
 
         # Remove from tracked actors
         (
             ray_actor,
             acquired_resources,
         ) = self._live_actors_to_ray_actors_resources.pop(tracked_actor)
+        self._live_resource_cache = None
 
         # Return resources
         self._resource_manager.free_resources(acquired_resource=acquired_resources)
@@ -473,6 +482,22 @@ class RayActorManager:
     def num_total_actors(self):
         """Return number of total actors."""
         return len(self.all_actors)
+
+    @property
+    def num_actor_tasks(self):
+        """Return number of pending tasks"""
+        return self._actor_task_events.num_futures
+
+    def get_live_actors_resources(self):
+        if self._live_resource_cache:
+            return self._live_resource_cache
+
+        counter = Counter()
+        for _, acq in self._live_actors_to_ray_actors_resources.values():
+            for bdl in acq.resource_request.bundles:
+                counter.update(bdl)
+        self._live_resource_cache = dict(counter)
+        return self._live_resource_cache
 
     def add_actor(
         self,
@@ -519,7 +544,8 @@ class RayActorManager:
         self,
         tracked_actor: TrackedActor,
         kill: bool = False,
-    ) -> None:
+        stop_future: Optional[ray.ObjectRef] = None,
+    ) -> bool:
         """Remove a tracked actor.
 
         If the actor has already been started, this will stop the actor. This will
@@ -530,44 +556,87 @@ class RayActorManager:
         If the actor has only been requested, but not started, yet, this will cancel
         the actor request. This will not trigger any callback.
 
-
         If ``kill=True``, this will use ``ray.kill()`` to forcefully terminate the
         actor. Otherwise, graceful actor deconstruction will be scheduled after
         all currently tracked futures are resolved.
+
+        This method returns a boolean, indicating if a stop future is tracked and
+        the ``on_stop`` callback will be invoked. If the actor has been alive,
+        this will be ``True``. If the actor hasn't been scheduled, yet, or failed
+        (and triggered the ``on_error`` callback), this will be ``False``.
 
         Args:
             tracked_actor: Tracked actor to be removed.
             kill: If set, will forcefully terminate the actor instead of gracefully
                 scheduling termination.
+            stop_future: If set, use this future to track actor termination.
+                Otherwise, schedule a ``__ray_terminate__`` future.
+
+        Returns:
+            Boolean indicating if the actor was previously alive, and thus whether
+            a callback will be invoked once it is terminated.
+
         """
-        if tracked_actor in self._live_actors_to_ray_actors_resources:
+        if tracked_actor.actor_id in self._failed_actor_ids:
+            logger.debug(
+                f"Tracked actor already failed, no need to remove: {tracked_actor}"
+            )
+            return False
+        elif tracked_actor in self._live_actors_to_ray_actors_resources:
             # Ray actor is running.
 
             if not kill:
                 # Schedule __ray_terminate__ future
                 ray_actor, _ = self._live_actors_to_ray_actors_resources[tracked_actor]
 
+                # Clear state futures here to avoid resolving __ray_ready__ futures
+                for future in list(
+                    self._tracked_actors_to_state_futures[tracked_actor]
+                ):
+                    self._actor_state_events.discard_future(future)
+                    self._tracked_actors_to_state_futures[tracked_actor].remove(future)
+
+                    # If the __ray_ready__ future hasn't resolved yet, but we already
+                    # scheduled the actor via Actor.remote(), we just want to stop
+                    # it but not trigger any callbacks. This is in accordance with
+                    # the contract defined in the docstring.
+                    tracked_actor._on_start = None
+                    tracked_actor._on_stop = None
+                    tracked_actor._on_error = None
+
                 def on_actor_stop(*args, **kwargs):
                     self._actor_stop_resolved(tracked_actor=tracked_actor)
 
-                stop_future = ray_actor.__ray_terminate__.remote()
+                if stop_future:
+                    # If the stop future was schedule via the actor manager,
+                    # discard (track it as state future instead).
+                    self._actor_task_events.discard_future(stop_future)
+                else:
+                    stop_future = ray_actor.__ray_terminate__.remote()
+
                 self._actor_state_events.track_future(
                     future=stop_future,
                     on_result=on_actor_stop,
                     on_error=on_actor_stop,
                 )
-                self._tracked_actors_to_state_futures[tracked_actor].add(stop_future)
 
+                self._tracked_actors_to_state_futures[tracked_actor].add(stop_future)
             else:
                 # kill = True
                 self._live_actors_to_kill.add(tracked_actor)
 
+            return True
+
         elif tracked_actor in self._pending_actors_to_attrs:
             # Actor is pending, stop
             _, _, resource_request = self._pending_actors_to_attrs.pop(tracked_actor)
+            self._resource_request_to_pending_actors[resource_request].remove(
+                tracked_actor
+            )
             self._resource_manager.cancel_resource_request(
                 resource_request=resource_request
             )
+            return False
         else:
             raise ValueError(f"Unknown tracked actor: {tracked_actor}")
 
@@ -577,7 +646,13 @@ class RayActorManager:
         Args:
             tracked_actor: Tracked actor object.
         """
-        return tracked_actor in self._live_actors_to_ray_actors_resources
+        return (
+            tracked_actor in self._live_actors_to_ray_actors_resources
+            and tracked_actor.actor_id not in self._failed_actor_ids
+        )
+
+    def is_actor_failed(self, tracked_actor: TrackedActor) -> bool:
+        return tracked_actor.actor_id in self._failed_actor_ids
 
     def get_actor_resources(
         self, tracked_actor: TrackedActor
@@ -602,7 +677,8 @@ class RayActorManager:
         kwargs: Optional[Dict] = None,
         on_result: Optional[Callable[[TrackedActor, Any], None]] = None,
         on_error: Optional[Callable[[TrackedActor, Exception], None]] = None,
-    ) -> None:
+        _return_future: bool = False,
+    ) -> Optional[ray.ObjectRef]:
         """Schedule and track a task on an actor.
 
         This method will schedule a remote task ``method_name`` on the
@@ -636,6 +712,9 @@ class RayActorManager:
         args = args or tuple()
         kwargs = kwargs or {}
 
+        if tracked_actor.actor_id in self._failed_actor_ids:
+            return
+
         tracked_actor_task = TrackedActorTask(
             tracked_actor=tracked_actor, on_result=on_result, on_error=on_error
         )
@@ -653,12 +732,15 @@ class RayActorManager:
                 (tracked_actor_task, method_name, args, kwargs)
             )
         else:
-            self._schedule_tracked_actor_task(
+            res = self._schedule_tracked_actor_task(
                 tracked_actor_task=tracked_actor_task,
                 method_name=method_name,
                 args=args,
                 kwargs=kwargs,
+                _return_future=_return_future,
             )
+            if _return_future:
+                return res[1]
 
     def _schedule_tracked_actor_task(
         self,
@@ -667,7 +749,8 @@ class RayActorManager:
         *,
         args: Optional[Tuple] = None,
         kwargs: Optional[Dict] = None,
-    ) -> TrackedActorTask:
+        _return_future: bool = False,
+    ) -> Union[TrackedActorTask, Tuple[TrackedActorTask, ray.ObjectRef]]:
         tracked_actor = tracked_actor_task._tracked_actor
         ray_actor, _ = self._live_actors_to_ray_actors_resources[tracked_actor]
 
@@ -695,6 +778,9 @@ class RayActorManager:
         )
 
         self._tracked_actors_to_task_futures[tracked_actor].add(future)
+
+        if _return_future:
+            return tracked_actor_task, future
 
         return tracked_actor_task
 
@@ -771,3 +857,37 @@ class RayActorManager:
                 on_result=on_result,
                 on_error=on_error,
             )
+
+    def clear_actor_task_futures(self, tracked_actor: TrackedActor):
+        """Discard all actor task futures from a tracked actor."""
+        futures = self._tracked_actors_to_task_futures.pop(tracked_actor, [])
+        for future in futures:
+            self._actor_task_events.discard_future(future)
+
+    def _cleanup_actor_futures(self, tracked_actor: TrackedActor):
+        # Remove all actor task futures
+        self.clear_actor_task_futures(tracked_actor=tracked_actor)
+
+        # Remove all actor state futures
+        futures = self._tracked_actors_to_state_futures.pop(tracked_actor, [])
+        for future in futures:
+            self._actor_state_events.discard_future(future)
+
+    def cleanup(self):
+        for (
+            actor,
+            acquired_resources,
+        ) in self._live_actors_to_ray_actors_resources.values():
+            ray.kill(actor)
+            self._resource_manager.free_resources(acquired_resources)
+
+        for (
+            resource_request,
+            pending_actors,
+        ) in self._resource_request_to_pending_actors.items():
+            for i in range(len(pending_actors)):
+                self._resource_manager.cancel_resource_request(resource_request)
+
+        self._resource_manager.clear()
+
+        self.__init__(resource_manager=self._resource_manager)

@@ -27,7 +27,7 @@ from ray.dashboard.consts import RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR
 from ray.tests.conftest import _ray_start
 import ray
 import ray.experimental.internal_kv as kv
-from ray.experimental.state.api import list_nodes
+from ray.util.state import list_nodes
 
 
 def _check_job_succeeded(client: JobSubmissionClient, job_id: str) -> bool:

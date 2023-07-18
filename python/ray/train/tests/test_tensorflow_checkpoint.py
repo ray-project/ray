@@ -40,7 +40,7 @@ def get_model():
 def test_model_definition_raises_deprecation_warning():
     model = get_model()
     checkpoint = TensorflowCheckpoint.from_model(model)
-    with pytest.deprecated_call():
+    with pytest.raises(DeprecationWarning):
         checkpoint.get_model(model_definition=get_model)
 
 
@@ -142,7 +142,10 @@ def test_tensorflow_checkpoint_saved_model():
     batch_predictor = BatchPredictor.from_checkpoint(
         result_checkpoint, TensorflowPredictor
     )
-    batch_predictor.predict(ray.data.range(3))
+    predictions = batch_predictor.predict(ray.data.range(3))
+
+    for _ in predictions.iter_batches():
+        pass
 
 
 def test_tensorflow_checkpoint_h5():
@@ -170,7 +173,10 @@ def test_tensorflow_checkpoint_h5():
     batch_predictor = BatchPredictor.from_checkpoint(
         result_checkpoint, TensorflowPredictor
     )
-    batch_predictor.predict(ray.data.range(3))
+    predictions = batch_predictor.predict(ray.data.range(3))
+
+    for _ in predictions.iter_batches():
+        pass
 
 
 if __name__ == "__main__":

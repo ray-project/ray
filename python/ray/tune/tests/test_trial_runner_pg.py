@@ -89,7 +89,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
         )
 
         trial_executor = RayTrialExecutor(reuse_actors=reuse_actors)
-        trial_executor.setup(max_pending_trials=max_num_parallel, trainable_kwargs={})
+        trial_executor.setup(max_pending_trials=max_num_parallel)
 
         this = self
 
@@ -112,10 +112,7 @@ class TrialRunnerPlacementGroupTest(unittest.TestCase):
                     len(s) for s in resource_manager._request_to_ready_pgs.values()
                 )
                 num_in_use = len(resource_manager._acquired_pgs)
-                num_cached = sum(
-                    len(a)
-                    for a in trial_executor._resource_request_to_cached_actors.values()
-                )
+                num_cached = trial_executor._actor_cache.num_cached_objects
 
                 total_num_tracked = num_staging + num_ready + num_in_use + num_cached
 

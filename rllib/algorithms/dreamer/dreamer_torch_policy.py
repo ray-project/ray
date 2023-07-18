@@ -5,7 +5,6 @@ from typing import (
 )
 
 import logging
-import ray
 import numpy as np
 from typing import Dict, Optional
 
@@ -32,9 +31,6 @@ logger = logging.getLogger(__name__)
 
 class DreamerTorchPolicy(TorchPolicyV2):
     def __init__(self, observation_space, action_space, config):
-
-        config = dict(ray.rllib.algorithms.dreamer.DreamerConfig().to_dict(), **config)
-
         TorchPolicyV2.__init__(
             self,
             observation_space,
@@ -248,7 +244,7 @@ class DreamerTorchPolicy(TorchPolicyV2):
 
         policy.global_timestep += policy.config["env_config"]["frame_skip"]
 
-        return action, logp, state_batches
+        return action, logp, None, state_batches
 
     def make_model(self):
 

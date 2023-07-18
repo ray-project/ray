@@ -1,0 +1,7 @@
+import_path: ray.serve.tests.test_config_files.test_dag.conditional_dag.serve_dag
+
+deployments:
+
+  - name: Multiplier
+    user_config:
+    factor: 1

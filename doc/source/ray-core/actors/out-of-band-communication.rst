@@ -22,9 +22,11 @@ HTTP Server
 You can start a http server inside the actor and expose http endpoints to clients
 so users outside of the ray cluster can communicate with the actor.
 
-.. tabbed:: Python
+.. tab-set::
 
-    .. literalinclude:: ../doc_code/actor-http-server.py
+    .. tab-item:: Python
+
+        .. literalinclude:: ../doc_code/actor-http-server.py
 
 Similarly, you can expose other types of servers as well (e.g., gRPC servers).
 

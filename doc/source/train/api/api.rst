@@ -20,10 +20,10 @@ Trainer Base Classes
 
 .. autosummary::
     :toctree: doc/
-    :template: autosummary/class_with_autosummary.rst
 
     ~train.trainer.BaseTrainer
     ~train.data_parallel_trainer.DataParallelTrainer
+    ~train.DataConfig
     ~train.gbdt_trainer.GBDTTrainer
 
 ``BaseTrainer`` API
@@ -47,9 +47,29 @@ Train Backend Base Classes
 
 .. autosummary::
     :toctree: doc/
+    :template: autosummary/class_without_autosummary.rst
 
     ~train.backend.Backend
     ~train.backend.BackendConfig
+
+Ray Train Config
+----------------
+
+.. autosummary::
+
+    ~ray.train.DataConfig
+
+
+Ray Train Loop
+--------------
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.context.TrainContext
+    ~train.get_context
+    ~train.get_dataset_shard
+    ~train.report
 
 
 .. _train-integration-api:
@@ -85,6 +105,18 @@ PyTorch Training Loop Utilities
     ~train.torch.backward
     ~train.torch.enable_reproducibility
 
+.. _train-lightning-integration:
+
+PyTorch Lightning
+~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.lightning.LightningTrainer
+    ~train.lightning.LightningConfigBuilder
+    ~train.lightning.LightningCheckpoint
+    ~train.lightning.LightningPredictor
 
 Tensorflow/Keras
 ~~~~~~~~~~~~~~~~
@@ -140,15 +172,25 @@ LightGBM
     ~train.lightgbm.LightGBMCheckpoint
 
 
-HuggingFace
-~~~~~~~~~~~
+Hugging Face
+~~~~~~~~~~~~
+
+Transformers
+************
 
 .. autosummary::
     :toctree: doc/
 
-    ~train.huggingface.HuggingFaceTrainer
-    ~train.huggingface.HuggingFaceCheckpoint
+    ~train.huggingface.TransformersTrainer
+    ~train.huggingface.TransformersCheckpoint
 
+Accelerate
+**********
+
+.. autosummary::
+    :toctree: doc/
+
+    ~train.huggingface.AccelerateTrainer
 
 Scikit-Learn
 ~~~~~~~~~~~~
@@ -209,7 +251,7 @@ Restoration API for Built-in Trainers
 
 .. autosummary::
 
-    train.huggingface.HuggingFaceTrainer.restore
+    train.huggingface.TransformersTrainer.restore
 
 .. note::
 
@@ -222,4 +264,4 @@ Restoration API for Built-in Trainers
 
 .. seealso::
 
-    See :ref:`train-restore-faq` for more details on when and how trainer restore should be used.
+    See :ref:`train-restore-guide` for more details on when and how trainer restore should be used.

@@ -1,8 +1,10 @@
+#ci:group=MacOS
+
 common: &common
   env:
     BUILDKITE: "true"
     CI: "true"
-    PYTHON: "3.7"
+    PYTHON: "3.8"
     RAY_USE_RANDOM_PORTS: "1"
     RAY_DEFAULT_BUILD: "1"
     LC_ALL: en_US.UTF-8
@@ -22,11 +24,11 @@ prelude_commands: &prelude_commands |-
 epilogue_commands: &epilogue_commands |-
   # Cleanup runtime environment to save storage
   rm -rf /tmp/ray || true
-  # Cleanup local caches (this shouldn't clean up global disk cache)
+  # Cleanup local caches - this should not clean up global disk cache
   bazel clean
 
 steps:
-- label: ":mac: :apple: Wheels and Jars"
+- label: ":mac: :apple: Wheels and Jars (intel)"
   <<: *common
   conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
   commands:
@@ -64,13 +66,54 @@ steps:
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
     - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
 
+- label: ":mac: :mechanical_arm: Wheels and Jars (arm64)"
+  <<: *common
+  conditions: ["RAY_CI_MACOS_WHEELS_AFFECTED", "RAY_CI_PYTHON_DEPENDENCIES_AFFECTED"]
+  instance_size: arm64-medium
+  commands:
+    # Cleanup environments
+    - rm -rf /tmp/bazel_event_logs
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - (which bazel && bazel clean) || true
+    - brew install pkg-config nvm node || true
+    # TODO(simon): make sure to change both PR and wheel builds
+    # Special setup for jar builds (will be installed to the machine instead)
+    # - brew remove --force java & brew uninstall --force java & rm -rf /usr/local/Homebrew/Library/Taps/homebrew/homebrew-cask
+    # - brew install --cask adoptopenjdk/openjdk/adoptopenjdk8
+    - diskutil list external physical
+    - export JAVA_HOME=/Library/Java/JavaVirtualMachines/adoptopenjdk-8.jdk/Contents/Home
+    - java -version
+    # Build wheels
+    - export UPLOAD_WHEELS_AS_ARTIFACTS=1
+    - export MAC_WHEELS=1
+    - export MAC_JARS=1
+    - export RAY_INSTALL_JAVA=1
+    - export RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER=1
+    - export PYTHON=3.8
+    - . ./ci/ci.sh init && source ~/.zshenv
+    - ./ci/ci.sh build
+    # Test wheels
+    - ./ci/ci.sh test_wheels
+    # Build jars
+    - bash ./java/build-jar-multiplatform.sh darwin
+    # Upload the wheels and jars
+    # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
+    - if [ "$BUILDKITE_PULL_REQUEST" != "false" ]; then exit 0; fi
+    - python -m pip install -q docker aws_requests_auth boto3
+    # Upload to branch directory.
+    - python .buildkite/copy_files.py --destination branch_wheels --path ./.whl
+    - python .buildkite/copy_files.py --destination branch_jars --path ./.jar/darwin
+    # Upload to latest directory.
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination wheels --path ./.whl; fi
+    - if [ "$BUILDKITE_BRANCH" = "master" ]; then python .buildkite/copy_files.py --destination jars --path ./.jar/darwin; fi
+
 
 - label: ":mac: :apple: Ray Core Unit Tests and Dashboard"
   <<: *common
   conditions: ["RAY_CI_CORE_CPP_AFFECTED", "RAY_CI_PYTHON_AFFECTED", "RAY_CI_DASHBOARD_AFFECTED"]
   commands:
     - *prelude_commands
-    - TORCH_VERSION=1.6 ./ci/env/install-dependencies.sh
+    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
     # Use --dynamic_mode=off until MacOS CI runs on Big Sur or newer. Otherwise there are problems with running tests
     # with dynamic linking.
     - bazel test --config=ci --dynamic_mode=off --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only --test_tag_filters=-post_wheel_build --

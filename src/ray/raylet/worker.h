@@ -22,11 +22,11 @@
 #include "gtest/gtest_prod.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/id.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/common/task/task.h"
 #include "ray/common/task/task_common.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/process.h"
 
@@ -118,15 +118,16 @@ class WorkerInterface {
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
-  FRIEND_TEST(WorkerPoolTest, PopWorkerMultiTenancy);
-  FRIEND_TEST(WorkerPoolTest, TestWorkerCapping);
-  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingLaterNWorkersNotOwningObjects);
-  FRIEND_TEST(WorkerPoolTest, TestJobFinishedForceKillIdleWorker);
-  FRIEND_TEST(WorkerPoolTest,
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCapping);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest,
+              TestWorkerCappingLaterNWorkersNotOwningObjects);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);
-  FRIEND_TEST(WorkerPoolTest, TestWorkerCappingWithExitDelay);
-  FRIEND_TEST(WorkerPoolTest, MaximumStartupConcurrency);
-  FRIEND_TEST(WorkerPoolTest, HandleWorkerRegistration);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration);
 };
 
 /// Worker class encapsulates the implementation details of a worker. A worker

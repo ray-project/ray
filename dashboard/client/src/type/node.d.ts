@@ -58,6 +58,7 @@ export type GPUProcessStats = {
 export type GPUStats = {
   // This represents stats fetched from a node about a single GPU
   uuid: string;
+  index: number;
   name: string;
   temperatureGpu: number;
   fanSpeed: number;

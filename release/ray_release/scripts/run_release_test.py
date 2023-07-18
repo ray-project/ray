@@ -6,19 +6,21 @@ from pathlib import Path
 import click
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
-    DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     as_smoke_test,
     find_test,
     parse_python_version,
     read_and_validate_release_test_collection,
 )
+from ray_release.configs.global_config import init_global_config
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
+from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -56,7 +58,8 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "Can be e.g. `master` to fetch latest wheels from the "
         "Ray master branch. Can also be `<repo_url>:<branch>` or "
         "`<repo_url>:<commit>` to specify a different repository to "
-        "fetch wheels from, if available."
+        "fetch wheels from, if available. Can also be "
+        "`file://<path to local wheel>` for wheels built locally."
     ),
 )
 @click.option(
@@ -81,6 +84,14 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     help="Environment to use. Will overwrite environment used in test config.",
 )
 @click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
+@click.option(
     "--no-terminate",
     default=False,
     type=bool,
@@ -99,8 +110,13 @@ def main(
     cluster_id: Optional[str] = None,
     cluster_env_id: Optional[str] = None,
     env: Optional[str] = None,
+    global_config: str = "oss_config.yaml",
     no_terminate: bool = False,
 ):
+    global_config_file = os.path.join(
+        os.path.dirname(__file__), "..", "configs", global_config
+    )
+    init_global_config(global_config_file)
     test_collection_file = test_collection_file or os.path.join(
         os.path.dirname(__file__), "..", "..", "release_tests.yaml"
     )
@@ -147,6 +163,11 @@ def main(
     if report:
         reporters.append(DBReporter())
 
+    # TODO(can): this env var is used as a feature flag, in case we need to turn this
+    # off quickly. We should remove this when the new db reporter is stable.
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        reporters.append(RayTestDBReporter())
+
     try:
         result = run_release_test(
             test,
@@ -163,7 +184,6 @@ def main(
     except ReleaseTestError as e:
         logger.exception(e)
         return_code = e.exit_code.value
-
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"
