@@ -1011,13 +1011,13 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
-            if self.model["custom_model"] is not None:
-                raise ValueError(
-                    "Cannot use `custom_model` option with RLModule API."
-                    "`custom_model` is part of the ModelV2 API, which is not"
-                    "compatible with the RLModule API. The ModelV2 API is "
-                    "being deprecated."
-                )
+            for option in ["custom_model", "custom_model_config"]:
+                if self.model[option] is not None:
+                    raise ValueError(
+                        f"Cannot use `{option}` option with RLModule API."
+                        f"`{option}` is part of the ModelV2 API and Policy API, "
+                        f"which are not compatible with the RLModule API."
+                    )
 
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
@@ -2191,6 +2191,13 @@ class AlgorithmConfig(_Config):
             # is a dict or just any Sequence).
             for pid in policies:
                 validate_policy_id(pid, error=True)
+
+            if self._enable_rl_module_api:
+                raise ValueError(
+                    "`policies` uses the Policy and ModelV2 API. This is incompatible "
+                    "with the RLModule API. Please set `_enable_rl_module_api=False` "
+                    "to use the legacy Policy and ModelV2 API."
+                )
 
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):

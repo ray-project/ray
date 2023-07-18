@@ -803,6 +803,8 @@ class Algorithm(Trainable, AlgorithmBase):
     ) -> Optional[Type[Policy]]:
         """Returns a default Policy class to use, given a config.
 
+        Note that this method is ignored when the RLModule API is enabled.
+
         This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
