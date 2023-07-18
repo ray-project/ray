@@ -1,4 +1,4 @@
-from typing import Union, Optional, TYPE_CHECKING
+from typing import Dict, Union, Optional, TYPE_CHECKING
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
@@ -72,9 +72,117 @@ class NodeAffinitySchedulingStrategy:
         self._fail_on_unavailable = _fail_on_unavailable
 
 
+def _validate_label_match_operator_values(values, operator):
+    if not values:
+        raise ValueError(
+            f"The variadic parameter of the {operator} operator"
+            f' must be a non-empty tuple: e.g. {operator}("value1", "value2").'
+        )
+
+    index = 0
+    for value in values:
+        if not isinstance(value, str):
+            raise ValueError(
+                f"Type of value in position {index} for the {operator} operator "
+                f'must be str (e.g. {operator}("value1", "value2")) '
+                f"but got {str(value)} of type {type(value)}."
+            )
+        index = index + 1
+
+
+@PublicAPI(stability="alpha")
+class In:
+    def __init__(self, *values):
+        _validate_label_match_operator_values(values, "In")
+        self.values = list(values)
+
+
+@PublicAPI(stability="alpha")
+class NotIn:
+    def __init__(self, *values):
+        _validate_label_match_operator_values(values, "NotIn")
+        self.values = list(values)
+
+
+@PublicAPI(stability="alpha")
+class Exists:
+    def __init__(self):
+        pass
+
+
+@PublicAPI(stability="alpha")
+class DoesNotExist:
+    def __init__(self):
+        pass
+
+
+class _LabelMatchExpression:
+    """An expression used to select node by node's labels
+    Attributes:
+        key: the key of label
+        operator: In、NotIn、Exists、DoesNotExist
+    """
+
+    def __init__(self, key: str, operator: Union[In, NotIn, Exists, DoesNotExist]):
+        self.key = key
+        self.operator = operator
+
+
+LabelMatchExpressionsT = Dict[str, Union[In, NotIn, Exists, DoesNotExist]]
+
+
+@PublicAPI(stability="alpha")
+class NodeLabelSchedulingStrategy:
+    """Label based node affinity scheduling strategy
+
+    scheduling_strategy=NodeLabelSchedulingStrategy({
+          "region": In("us"),
+          "gpu_type": Exists()
+    })
+    """
+
+    def __init__(
+        self, hard: LabelMatchExpressionsT, *, soft: LabelMatchExpressionsT = None
+    ):
+        self.hard = _convert_map_to_expressions(hard, "hard")
+        self.soft = _convert_map_to_expressions(soft, "soft")
+
+
+def _convert_map_to_expressions(map_expressions: LabelMatchExpressionsT, param: str):
+    expressions = []
+    if map_expressions is None:
+        return expressions
+
+    if not isinstance(map_expressions, Dict):
+        raise ValueError(
+            f'The {param} parameter must be a map (e.g. {{"key1": In("value1")}}) '
+            f"but got type {type(map_expressions)}."
+        )
+
+    for key, value in map_expressions.items():
+        if not isinstance(key, str):
+            raise ValueError(
+                f"The map key of the {param} parameter must "
+                f'be of type str (e.g. {{"key1": In("value1")}}) '
+                f"but got {str(key)} of type {type(key)}."
+            )
+
+        if not isinstance(value, (In, NotIn, Exists, DoesNotExist)):
+            raise ValueError(
+                f"The map value for key {key} of the {param} parameter "
+                f"must be one of the `In`, `NotIn`, `Exists` or `DoesNotExist` "
+                f'operator (e.g. {{"key1": In("value1")}}) '
+                f"but got {str(value)} of type {type(value)}."
+            )
+
+        expressions.append(_LabelMatchExpression(key, value))
+    return expressions
+
+
 SchedulingStrategyT = Union[
     None,
     str,  # Literal["DEFAULT", "SPREAD"]
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
 ]
