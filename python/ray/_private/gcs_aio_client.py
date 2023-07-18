@@ -145,5 +145,4 @@ class GcsAioClient:
         ray_namespace: str = "",
         timeout: Optional[float] = None,
     ) -> gcs_service_pb2.GetNamedActorInfoReply:
-        logger.debug(f"get_named_actor_info {actor_name!r} {ray_namespace!r}")
-        return await self._async_proxy.get_named_actor_info(actor_name, ray_namespace, timeout)
+        assert False, "not implemented in GcsClient"
