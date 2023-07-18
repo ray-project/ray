@@ -695,7 +695,7 @@ class GenericProxy:
         try:
             try:
                 obj_ref_generator = await self._assign_request_with_timeout(
-                    hendle=handle,
+                    handle=handle,
                     serve_request=serve_request,
                     disconnected_task=proxy_asgi_receive_task,
                     timeout_s=self.request_timeout_s,
