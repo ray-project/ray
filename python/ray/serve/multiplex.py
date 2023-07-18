@@ -122,8 +122,8 @@ class _ModelMultiplexWrapper:
                 self.model_load_tasks.add(model_id)
                 self._push_multiplexed_replica_info = True
 
-                # If the number of models per replica is specified, check if the number of
-                # models on the current replica has reached the limit.
+                # If the number of models per replica is specified, check if
+                # the number of models on the current replica has reached the limit.
                 if (
                     self.max_num_models_per_replica > 0
                     and len(self.models) >= self.max_num_models_per_replica
