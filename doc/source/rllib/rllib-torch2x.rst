@@ -77,7 +77,7 @@ Some meta-level comments
 
 3. The speedups are more significant on more modern architectures such as A100s compared to older ones like T4.
 
-4. Torch compile is still evolving. We noticed significant differences between the 2.0.1 release and the 2.1 nightly release. Therefore, it is important to take this into account during benchmarking your own workloads.
+4. Torch compile is still evolving. We noticed significant differences between the 2.0.1 release and the 2.1 nightly release. Therefore, it is important to take the torch release  into account during benchmarking your own workloads.
 
 Exploration
 ------------
