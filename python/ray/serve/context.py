@@ -3,9 +3,10 @@ This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 
+import time
 import logging
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Dict
 
 import ray
 from ray.exceptions import RayActorError
@@ -22,6 +23,32 @@ _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 
 
+class MultiplexedModelState:
+    def __init__(self):
+        self.loaded_models: Dict[str, int] = {}
+
+    def mark_load(self, model_id: str):
+        self.loaded_models[model_id] = time.time()
+
+    def mark_unload(self, model_id: str):
+        if model_id in self.loaded_models:
+            del self.loaded_models[model_id]
+
+    def can_load_new_models(self):
+        MAX_MODELS = 2  # TODO don't hardcode
+        MIN_LOAD_TIME = 10.0
+
+        if len(self.loaded_models) < MAX_MODELS:
+            return True
+
+        now = time.time()
+        for model, timestamp in self.loaded_models.iteritems():
+            if now - timestamp > MIN_LOAD_TIME:
+                return True
+
+        return False
+
+
 @PublicAPI(stability="alpha")
 @dataclass
 class ReplicaContext:
@@ -32,6 +59,7 @@ class ReplicaContext:
     _internal_controller_name: str
     servable_object: Callable
     app_name: str
+    multiplexed_model_state: MultiplexedModelState
 
 
 @PublicAPI(stability="alpha")
@@ -78,7 +106,12 @@ def _set_internal_replica_context(
 ):
     global _INTERNAL_REPLICA_CONTEXT
     _INTERNAL_REPLICA_CONTEXT = ReplicaContext(
-        deployment, replica_tag, controller_name, servable_object, app_name
+        deployment,
+        replica_tag,
+        controller_name,
+        servable_object,
+        app_name,
+        MultiplexedModelState(),
     )
 
 

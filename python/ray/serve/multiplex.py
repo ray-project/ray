@@ -139,6 +139,8 @@ class _ModelMultiplexWrapper:
                 self.models[model_id] = await self._func(model_id)
             else:
                 self.models[model_id] = await self._func(self.self_arg, model_id)
+            context = get_internal_replica_context()
+            context.multiplexed_model_state.mark_load(model_id)
             self.model_load_latency_s.set(time.time() - load_start_time)
         return self.models[model_id]
 
@@ -155,6 +157,9 @@ class _ModelMultiplexWrapper:
             else:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
+
+        context = get_internal_replica_context()
+        context.multiplexed_model_state.mark_unload(model_id)
 
     async def _push_replica_info_throttled(self, model_ids: Set[str]) -> None:
         """Push the multiplexed replica info as soon as possible.
