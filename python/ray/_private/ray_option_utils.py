@@ -10,6 +10,7 @@ from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
+    NodeLabelSchedulingStrategy,
 )
 
 
@@ -129,6 +130,7 @@ _common_options = {
             str,
             PlacementGroupSchedulingStrategy,
             NodeAffinitySchedulingStrategy,
+            NodeLabelSchedulingStrategy,
         )
     ),
     "_metadata": Option((dict, type(None))),
