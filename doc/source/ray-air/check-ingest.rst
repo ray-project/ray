@@ -94,16 +94,16 @@ Migrating from the legacy DatasetConfig API
 
 Starting from Ray 2.6, the ``DatasetConfig`` API is deprecated, and it will be removed in a future release. If your workloads are still using it, consider migrating to the new :class:`DataConfig <ray.train.DataConfig>` API as soon as possible.
 
-The main difference is that preprocessing no longer part of the Trainer. As Dataset operations are lazy. You can apply any operations to your Datasets before passing them to the Trainer. The operations will be re-executed before each epoch.
+The main difference is that preprocessing is no longer part of the Trainer because Dataset operations are now lazily applied. This means that you can apply any operation to your Datasets before passing them to the Trainer, and the operation will be re-executed before each epoch.
 
-In the following example with the legacy ``DatasetConfig`` API, we pass 2 Datasets ("train" and "test") to the Trainer and apply an "add_noise" preprocessor per epoch to the "train" Dataset. Also, we will split the "train" Dataset, but not the "test" Dataset.
+In the following example with the legacy ``DatasetConfig`` API, we pass two Datasets ("train" and "test") to the Trainer and apply an "add_noise" preprocessor per epoch to the "train" Dataset. Also, we will split the "train" Dataset, but not the "test" Dataset.
 
 .. literalinclude:: doc_code/air_ingest_migration.py
     :language: python
     :start-after: __legacy_api__
     :end-before: __legacy_api_end__
 
-To migrate this example to the new :class:`DatasetConfig <ray.air.config.DatasetConfig>` API, we apply the "add_noise" preprocesor to the "train" Dataset prior to passing it to the Trainer. And we use ``DataConfig(datasets_to_split=["train"])`` to specify which Datasets need to be split. Note, the ``datasets_to_split`` argument is optional. By default, only the "train" Dataset will be split. If you don't want to split the "train" Dataset either, use ``datasets_to_split=[]``.
+To migrate this example to the new :class:`DatasetConfig <ray.air.config.DatasetConfig>` API, we apply the "add_noise" preprocesor to the "train" Dataset prior to passing it to the Trainer. Then, we use ``DataConfig(datasets_to_split=["train"])`` to specify which Datasets need to be split. Note that the ``datasets_to_split`` argument is optional. By default, only the "train" Dataset will be split. If you don't want to split the "train" Dataset either, use ``datasets_to_split=[]``.
 
 .. literalinclude:: doc_code/air_ingest_migration.py
     :language: python
