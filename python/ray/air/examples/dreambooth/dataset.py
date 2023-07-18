@@ -53,7 +53,7 @@ def get_train_dataset(args, image_resolution=512):
     class_prompt_ids = _tokenize(args.class_prompt)[0]
     instance_prompt_ids = _tokenize(args.instance_prompt)[0]
 
-    # Image preprocessing: resize and crop (for rectangular images)
+    # START: image preprocessing
     transform = transforms.Compose(
         [
             transforms.ToTensor(),
@@ -66,33 +66,36 @@ def get_train_dataset(args, image_resolution=512):
             transforms.Normalize([0.5], [0.5]),
         ]
     )
+    instance_ds_preprocessor = TorchVisionPreprocessor(
+        columns=["image"], output_columns=["instance_image"], transform=transform
+    )
+    class_ds_preprocessor = TorchVisionPreprocessor(
+        columns=["image"], output_columns=["class_image"], transform=transform
+    )
+    # END: image preprocessing
 
+    # START: Apply preprocessing steps as Ray Dataset operations
     # For each dataset:
     # - perform image preprocessing
     # - drop the original image column
     # - add a new column with the tokenized prompts
-    instance_ds_preprocessor = TorchVisionPreprocessor(
-        columns=["image"], output_columns=["instance_image"], transform=transform
-    )
     instance_dataset = (
         instance_ds_preprocessor.transform(instance_dataset)
         .drop_columns(["image"])
         .add_column("instance_prompt_ids", lambda df: [instance_prompt_ids] * len(df))
     )
+    # END: Apply preprocessing steps as Ray Dataset operations
 
-    class_ds_preprocessor = TorchVisionPreprocessor(
-        columns=["image"], output_columns=["class_image"], transform=transform
-    )
     class_dataset = (
         class_ds_preprocessor.transform(class_dataset)
         .drop_columns(["image"])
         .add_column("class_prompt_ids", lambda df: [class_prompt_ids] * len(df))
     )
+    # --- Ray Data
 
     # We may have too many duplicates of the instance images, so limit the
     # dataset size so that len(instance_dataset) == len(class_dataset)
     final_size = min(instance_dataset.count(), class_dataset.count())
-    # ---
 
     # Now, zip the images up.
     train_dataset = (

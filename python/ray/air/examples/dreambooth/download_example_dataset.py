@@ -4,7 +4,7 @@ import sys
 
 local_dir = sys.argv[1]
 
-os.mkdirs(local_dir, exist_ok=True)
+os.makedirs(local_dir, exist_ok=True)
 
 snapshot_download(
     "diffusers/dog-example",

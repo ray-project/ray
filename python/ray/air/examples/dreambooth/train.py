@@ -196,6 +196,7 @@ def train_fn(config):
 
             if global_step >= config["max_train_steps"]:
                 break
+    # END: Training loop
 
     # Create pipeline using the trained modules and save it.
     if session.get_world_rank() == 0:

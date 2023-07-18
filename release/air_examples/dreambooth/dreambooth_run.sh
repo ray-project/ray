@@ -1,8 +1,6 @@
 #!/bin/bash
 # shellcheck disable=SC2086
 
-# ATTN: This should be kept in sync with python/ray/air/examples/dreambooth/README.md
-
 set -xe
 
 # Step 0
@@ -22,11 +20,11 @@ export IMAGES_NEW_DIR="$DATA_PREFIX/images-new"
 
 mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGES_NEW_DIR
 
-# Unique token to identify our subject (e.g., a regular dog vs. our unqtkn dog)
+# Unique token to identify our subject (e.g., a random dog vs. our unqtkn dog)
 export UNIQUE_TOKEN="unqtkn"
 
-# For the finetuning dataset, we provide 2 examples (dog, lego car), or you can
-# pass in a directory of custom images. Only uncomment one of the 3:
+# Step 1
+# Only uncomment one of the following:
 
 # Option 1: Use the dog dataset ---------
 export CLASS_NAME="dog"
@@ -47,21 +45,22 @@ export INSTANCE_DIR=./images/dog
 # Copy own images into IMAGES_OWN_DIR
 cp -rf $INSTANCE_DIR/* "$IMAGES_OWN_DIR/"
 
-# Step 1
+# Step 2
 python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME --revision=$ORIG_MODEL_HASH
 
 # Clear reg dir
 rm -rf "$IMAGES_REG_DIR"/*.jpg
 
-# Step 2
+# Step 3: START
 python run_model.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$IMAGES_REG_DIR \
   --prompts="photo of a $CLASS_NAME" \
   --num_samples_per_prompt=200 \
   --use_ray_data
+# Step 3: END
 
-# Step 3
+# Step 4: START
 python train.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$TUNED_MODEL_DIR \
@@ -72,17 +71,19 @@ python train.py \
   --train_batch_size=2 \
   --lr=5e-6 \
   --max_train_steps=800
+# Step 4: END
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
 
-# Step 4
 # ATTN: Reduced the number of samples per prompt for faster testing
+# Step 5: START
 python run_model.py \
   --model_dir=$TUNED_MODEL_DIR \
   --output_dir=$IMAGES_NEW_DIR \
   --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" \
   --num_samples_per_prompt=5
+# Step 5: END
 
 # Save artifact
 mkdir -p /tmp/artifacts
