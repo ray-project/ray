@@ -32,7 +32,7 @@ attributed to that `RLModule`. Use Catalogs only if your customizations fits the
 
         This dict (or an overriding sub-set) is part of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
         and therefore also part of any algorithm-specific config.
-       To change the behavior RLlib's default models, override it and pass it to an AlgorithmConfig.
+        To change the behavior RLlib's default models, override it and pass it to an AlgorithmConfig.
         to change the behavior RLlib's default models.
 
         .. literalinclude:: ../../../rllib/models/catalog.py
