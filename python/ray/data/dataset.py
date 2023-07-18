@@ -3806,12 +3806,11 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
+    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+        """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
-        This method errors if the number of rows exceeds the
-        provided ``limit``. You can use :meth:`.limit` on the dataset
-        beforehand to truncate the dataset manually.
+        This method errors if the number of rows exceeds the provided ``limit``.
+        To truncate the dataset beforehand, call :meth:`.limit`.
 
         Examples:
             >>> import ray
@@ -3825,24 +3824,25 @@ class Dataset:
         Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return. An error is
-                raised if the dataset has more rows than this limit.
+            limit: The maximum number of rows to return. An error is
+                raised if the dataset has more rows than this limit. Defaults to
+                ``None``, which means no limit.
 
         Returns:
             A pandas DataFrame created from this dataset, containing a limited
-            number of records.
+            number of rows.
 
         Raises:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
             ``limit``.
         """
         count = self.count()
-        if count > limit:
+        if limit is not None and count > limit:
             raise ValueError(
                 f"the dataset has more than the given limit of {limit} "
-                f"records: {count}. If you are sure that a DataFrame with "
-                f"{count} rows will fit in local memory, use "
-                f"ds.to_pandas(limit={count})."
+                f"rows: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, set ds.to_pandas(limit=None) "
+                "to disable limits."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
