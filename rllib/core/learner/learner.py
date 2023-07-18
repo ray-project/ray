@@ -266,69 +266,85 @@ class Learner:
 
     Usage pattern:
 
-        .. code-block:: python
+        .. testcode::
 
-        # create a single agent RL module spec.
-        module_spec = SingleAgentRLModuleSpec(
-            module_class=MyModule,
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-            model_config_dict = {"hidden": [128, 128]}
-        )
+            # We use PPO and torch as an example here because many of the showcased
+            # components need implementations to come together. However, the same
+            # pattern is generally applicable.
 
-        # create a learner instance that will train the module
-        learner = MyLearner(module_spec=module_spec)
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule
+            )
+            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+            from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+            import gymnasium as gym
 
-        # Note: the learner should be built before it can be used.
-        learner.build()
+            env = gym.make("CartPole-v1")
 
-        # take one gradient update on the module and report the results
-        results = learner.update(batch)
-
-        # add a new module, perhaps for league based training
-        learner.add_module(
-            module_id="new_player",
-            module_spec=SingleAgentRLModuleSpec(
-                module_class=NewPlayerModule,
+            # Create a single agent RL module spec.
+            module_spec = SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                model_config_dict = {"hidden": [128, 128]}
+                model_config_dict = {"hidden": [128, 128]},
+                catalog_class = PPOCatalog,
             )
-        )
 
-        # Take another gradient update with both previous and new modules.
-        results = learner.update(batch)
+            # Create a learner instance that will train the module
+            learner = TorchLearner(module_spec=module_spec)
 
-        # remove a module
-        learner.remove_module("new_player")
+            # Note: the learner should be built before it can be used.
+            learner.build()
 
-        # will train previous modules only.
-        results = learner.update(batch)
+            # Take one gradient update on the module and report the results
+            # results = learner.update(...)
 
-        # get the state of the learner
-        state = learner.get_state()
+            # Add a new module, perhaps for league based training
+            learner.add_module(
+                module_id="new_player",
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=PPOTorchRLModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict = {"hidden": [128, 128]},
+                    catalog_class = PPOCatalog,
+                )
+            )
 
-        # set the state of the learner
-        learner.set_state(state)
+            # Take another gradient update with both previous and new modules.
+            # results = learner.update(...)
 
-        # get the weights of the underly multi-agent RLModule
-        weights = learner.get_module_state()
+            # Remove a module
+            learner.remove_module("new_player")
 
-        # set the weights of the underly multi-agent RLModule
-        learner.set_module_state(weights)
+            # Will train previous modules only.
+            # results = learner.update(...)
+
+            # Get the state of the learner
+            state = learner.get_state()
+
+            # Set the state of the learner
+            learner.set_state(state)
+
+            # Get the weights of the underly multi-agent RLModule
+            weights = learner.get_module_state()
+
+            # Set the weights of the underly multi-agent RLModule
+            learner.set_module_state(weights)
 
 
     Extension pattern:
 
-        .. code-block:: python
+        .. doctest::
 
-        class MyLearner(TorchLearner):
+            >>> from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 
-            def compute_loss(self, fwd_out, batch):
-                # compute the loss based on batch and output of the forward pass
-                # to access the learner hyper-parameters use `self._hps`
-
-                return {ALL_MODULES: loss}
+            >>> class MyLearner(TorchLearner):
+            ...
+            ...    def compute_loss(self, fwd_out, batch):
+            ...        # compute the loss based on batch and output of the forward pass
+            ...        # to access the learner hyper-parameters use `self._hps`
+            ...        return {ALL_MODULES: loss}
     """
 
     framework: str = None
@@ -1054,30 +1070,58 @@ class Learner:
 
         Example:
 
-        .. code-block:: python
+        .. doctest::
 
-            class DQNLearner(TorchLearner):
+            >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            ...     PPOTorchRLModule
+            ... )
+            >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+            >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import (
+            ...     PPOTorchLearner
+            ... )
+            >>> import gymnasium as gym
 
-                def additional_update_for_module(self, module_id: ModuleID, tau: float):
-                    # perform polyak averaging update
-                    main = self.module[module_id].main
-                    target = self.module[module_id].target
-                    for param, target_param in zip(
-                        main.parameters(), target.parameters()
-                    ):
-                        target_param.data.copy_(
-                            tau * param.data + (1.0 - tau) * target_param.data
-                        )
+            >>> env = gym.make("CartPole-v1")
 
-        And inside a training loop:
+            Create a single agent RL module spec.
+            >>> module_spec = SingleAgentRLModuleSpec(
+            ...     module_class=PPOTorchRLModule,
+            ...     observation_space=env.observation_space,
+            ...     action_space=env.action_space,
+            ...     model_config_dict = {"hidden": [128, 128]},
+            ...     catalog_class = PPOCatalog,
+            ... )
 
-        .. code-block:: python
+            >>> class CustomPPOLearner(PPOTorchLearner):
+            ...     def additional_update_for_module(self,
+            ...         *,
+            ...         module_id,
+            ...         hps,
+            ...         timestep,
+            ...         sampled_kl_values,
+            ...     ):
+            ...         tau = 0.005 # polyak averaging update parameter
+            ...         # perform polyak averaging update
+            ...         main = self.module[module_id].main
+            ...         target = self.module[module_id].target
+            ...         for param, target_param in zip(
+            ...             main.parameters(), target.parameters()
+            ...         ):
+            ...             target_param.data.copy_(
+            ...                 tau * param.data + (1.0 - tau) * target_param.data
+            ...             )
 
-            for _ in range(100):
-                sample = ...
-                self.learner.update(sample)
-                if self.learner.global_step % 10 == 0:
-                    self.learner.additional_update(tau=0.01)
+            >>> learner = CustomPPOLearner(module_spec=module_spec)
+
+            Note: the learner should be built before it can be used.
+            >>> learner.build()
+
+            Inside a training loop, we can now call the additional update as we like:
+            >>> for i in range(100):
+            ...     sample = ... # doctest: +SKIP
+            ...     learner.update(sample) # doctest: +SKIP
+            ...     if i % 10 == 0:
+            ...         learner.additional_update()
 
         Args:
             module_ids_to_update: The ids of the modules to update. If None, all
