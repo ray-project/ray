@@ -129,8 +129,9 @@ from ray.includes.common cimport (
 )
 from ray.includes.unique_ids cimport (
     CActorID,
-    CObjectID,
+    CClusterID,
     CNodeID,
+    CObjectID,
     CPlacementGroupID,
     ObjectIDIndexType,
 )
@@ -2335,16 +2336,25 @@ cdef class GcsClient:
         shared_ptr[CPythonGcsClient] inner
         object address
         object _nums_reconnect_retry
+        CClusterID cluster_id
 
-    def __cinit__(self, address, nums_reconnect_retry=5):
+    def __cinit__(self, address, nums_reconnect_retry=5, cluster_id=None):
         cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
+        self.cluster_id = CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
         self._connect()
 
-    def _connect(self):
-        check_status(self.inner.get().Connect())
+    def _connect(self, timeout=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        with nogil:
+            status = self.inner.get().Connect(self.cluster_id, timeout_ms)
+        check_status(status)
+
+    def get_cluster_id(self):
+        return self.cluster_id.Hex()
 
     @property
     def address(self):
@@ -2844,7 +2854,7 @@ cdef class CoreWorker:
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
-                  startup_token, session_name, entrypoint,
+                  startup_token, session_name, cluster_id, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms):
         self.is_local_mode = local_mode
 
@@ -2896,6 +2906,7 @@ cdef class CoreWorker:
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
         options.session_name = session_name
+        options.cluster_id = CClusterID.FromHex(cluster_id)
         options.entrypoint = entrypoint
         options.worker_launch_time_ms = worker_launch_time_ms
         options.worker_launched_time_ms = worker_launched_time_ms
