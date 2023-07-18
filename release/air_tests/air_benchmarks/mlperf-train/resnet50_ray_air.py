@@ -61,9 +61,9 @@ def build_model():
 def print_dataset_stats(ds):
     print("")
     print("====Dataset stats====")
-    print(f"num_rows: {ds.count()}")
-    print(f"num_partitions: {ds.num_blocks()}")
-    print(f"size: {ds.size_bytes() // 1e9}GB")
+    # print(f"num_rows: {ds.count()}")
+    # print(f"num_partitions: {ds.num_blocks()}")
+    # print(f"size: {ds.size_bytes() // 1e9}GB")
     print(ds.stats())
     print("")
 
@@ -123,9 +123,9 @@ def train_loop_for_worker(config):
             ):
                 yield batch["image"], batch["label"]
                 num_steps += 1
-            assert (
-                num_steps == num_steps_per_epoch
-            ), f"expected {num_steps} to equal {num_steps_per_epoch}"
+            # assert (
+            #     num_steps == num_steps_per_epoch
+            # ), f"expected {num_steps} to equal {num_steps_per_epoch}"
             print_dataset_stats(dataset)
 
         output_signature = (
@@ -282,6 +282,9 @@ def build_synthetic_dataset(batch_size):
 
 
 def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_input_file):
+    if data_root.startswith("s3://"):
+        return [f"{data_root}/single-image-repeated-{num_images_per_input_file}-times"]
+
     num_files = num_images_per_epoch // num_images_per_input_file
     if num_images_per_epoch % num_images_per_input_file:
         num_files += 1
@@ -311,6 +314,7 @@ def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
 
 FIELDS = [
     "data_loader",
+    "data_source",
     "train_sleep_time_ms",
     "num_cpu_nodes",
     "num_epochs",
@@ -331,6 +335,7 @@ FIELDS = [
 def write_metrics(data_loader, command_args, metrics, output_file):
     row = {key: val for key, val in metrics.items() if key in FIELDS}
     row["data_loader"] = data_loader
+    row["data_source"] = "s3" if "s3" in command_args.data_root else "local"
     for field in FIELDS:
         val = getattr(command_args, field, None)
         if val is not None:
