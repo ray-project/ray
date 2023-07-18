@@ -281,7 +281,7 @@ parts:
           - file: rllib/package_ref/index
 
       - file: ray-air/getting-started
-        title: "Ray AI Runtime (AIR)"
+        title: "ML Platform with Ray"
         sections:
           - file: ray-air/user-guides
             sections:
