@@ -19,7 +19,7 @@ that specific worker and can access and mutate the state of that worker.
 
           import ray
 
-          @ray.remote
+          @ray.remote(actor_class=True)
           class Counter:
               def __init__(self):
                   self.value = 0
@@ -125,7 +125,7 @@ You can specify resource requirements in actors too (see :ref:`resource-requirem
         .. testcode::
 
             # Specify required resources for an actor.
-            @ray.remote(num_cpus=2, num_gpus=0.5)
+            @ray.remote(actor_class=True, num_cpus=2, num_gpus=0.5)
             class Actor:
                 pass
 

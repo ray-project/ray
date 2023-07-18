@@ -1,15 +1,19 @@
-```{include} /_includes/overview/announcement.md
+```{include}
+
 ```
 
 (gentle-intro)=
 
 # Getting Started
+
 Use Ray to scale applications on your laptop or the cloud. Choose the right guide for your task.
+
 * Scale end-to-end ML applications: [Ray AI Runtime Quickstart](#ray-ai-runtime-quickstart)
 * Scale single ML workloads: [Ray Libraries Quickstart](#ray-libraries-quickstart)
 * Scale general Python applications: [Ray Core Quickstart](#ray-core-quickstart)
 * Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
 * Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
+
 ## Ray AI Runtime Quickstart
 
 Explore Ray's full suite of libraries for end-to-end ML pipelines, with the `air` packages:
@@ -18,7 +22,7 @@ Explore Ray's full suite of libraries for end-to-end ML pipelines, with the `air
 pip install -U "ray[air]"
 ```
 
-`````{dropdown} Efficiently process your data into features.
+`````{dropdown}
 
 Load data into a ``Dataset``.
 
@@ -37,7 +41,7 @@ Preprocess your data with a ``Preprocessor``.
 ```
 `````
 
-`````{dropdown} Scale out model training.
+`````{dropdown}
 
 This example will use XGBoost to train a Machine Learning model, so, install Ray's wrapper library `xgboost_ray`:
 
@@ -54,7 +58,7 @@ Train a model with an ``XGBoostTrainer``.
 ```
 `````
 
-`````{dropdown} Tune the hyperparameters to find the best model with Ray Tune.
+`````{dropdown}
 
 Configure the parameters for tuning:
 
@@ -73,7 +77,7 @@ Run hyperparameter tuning with Ray Tune to find the best model:
 ```
 `````
 
-`````{dropdown} Use the trained model for Batch prediction
+`````{dropdown}
 
 Use the trained model for batch prediction with
 ``Dataset.map_batches()``.
@@ -93,7 +97,7 @@ Learn more about Ray AIR
 
 Use individual libraries for single ML workloads, without having to install the full AI Runtime package. Click on the dropdowns for your workload below.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Data: Scalable Datasets for ML
+`````{dropdown}
 :animate: fade-in-slide-down
 
 Scale offline inference and training ingest with [Ray Data](data_key_concepts) --
@@ -150,7 +154,7 @@ Learn more about Ray Data
 ```
 `````
 
-``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Train: Distributed Model Training
+``````{dropdown}
 :animate: fade-in-slide-down
 
 Ray Train abstracts away the complexity of setting up a distributed training
@@ -295,7 +299,7 @@ Learn more about Ray Train
 
 ``````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Tune: Hyperparameter Tuning at Scale
+`````{dropdown}
 :animate: fade-in-slide-down
 
 [Tune](../tune/index.rst) is a library for hyperparameter tuning at any scale.
@@ -334,8 +338,7 @@ Learn more about Ray Tune
 
 `````
 
-
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Serve: Scalable Model Serving
+`````{dropdown}
 :animate: fade-in-slide-down
 
 [Ray Serve](../serve/index) is a scalable model-serving library built on Ray.
@@ -368,8 +371,7 @@ Learn more about Ray Serve
 
 `````
 
-
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> RLlib: Industry-Grade Reinforcement Learning
+`````{dropdown}
 :animate: fade-in-slide-down
 
 [RLlib](../rllib/index.rst) is an industry-grade library for reinforcement learning (RL) built on top of Ray.
@@ -404,8 +406,7 @@ Learn more about Ray RLlib
 Turn functions and classes easily into Ray tasks and actors,
 for Python and Java, with simple primitives for building and running distributed applications.
 
-
-``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Functions with Ray Tasks
+``````{dropdown}
 :animate: fade-in-slide-down
 
 `````{tab-set}
@@ -496,7 +497,7 @@ Learn more about Ray Core
 
 ``````
 
-``````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Core: Parallelizing Classes with Ray Actors
+``````{dropdown}
 :animate: fade-in-slide-down
 
 Ray provides actors to allow you to parallelize an instance of a class in Python or Java.
@@ -612,7 +613,7 @@ Learn more about Ray Core
 
 Deploy your applications on Ray clusters, often with minimal code changes to your existing code.
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Clusters: Launching a Ray Cluster on AWS
+`````{dropdown}
 :animate: fade-in-slide-down
 
 Ray programs can run on a single machine, or seamlessly scale to large clusters.
@@ -659,8 +660,7 @@ Learn more about launching Ray Clusters
 
 Use built-in observability tools to monitor and debug Ray applications and clusters.
 
-
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray Dashboard: Web GUI to monitor and debug Ray
+`````{dropdown}
 :animate: fade-in-slide-down
 
 Ray dashboard provides a visual interface that displays real-time system metrics, node-level resource monitoring, job profiling, and task visualizations. The dashboard is designed to help users understand the performance of their Ray applications and identify potential issues.
@@ -688,7 +688,7 @@ Learn more about Ray Dashboard
 
 `````
 
-`````{dropdown} <img src="images/ray_svg_logo.svg" alt="ray" width="50px"> Ray State APIs: CLI to access cluster states
+`````{dropdown}
 :animate: fade-in-slide-down
 
 Ray state APIs allow users to conveniently access the current state (snapshot) of Ray through CLI or Python SDK.
@@ -715,7 +715,7 @@ Run the following code.
         print("Start!")
         time.sleep(300)
 
-    @ray.remote
+    @ray.remote(actor_class=True)
     class Actor:
         def __init__(self):
             print("Actor created")
@@ -766,8 +766,10 @@ Learn more about Ray State APIs
 
 `````
 
-```{include} learn-more.md
+```{include}
+
 ```
 
-```{include} /_includes/overview/announcement_bottom.md
+```{include}
+
 ```
