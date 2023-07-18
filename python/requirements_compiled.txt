@@ -507,8 +507,8 @@ torch-scatter==2.1.0
 torch-sparse==0.6.15
 torch-spline-conv==1.2.1
 torchdata==0.6.1
-torchmetrics==0.10.3 ; python_version > "3.7"
-torchtext==0.15.2 ; python_version > "3.7"
+torchmetrics==0.9.3 ; python_version > "3.7"
+torchtext==0.14.0 ; python_version > "3.7"
 torchvision==0.14.0 ; python_version > "3.7"
 tornado==6.1
 tqdm==4.64.1
