@@ -116,6 +116,7 @@ To update the application, modify the config file and use `serve deploy` again.
 For a deeper dive into how to deploy, update, and monitor Serve applications, see the following pages:
 - Learn the details of the [Serve config file format](serve-in-production-config-file).
 - Learn how to [deploy on Kubernetes using KubeRay](serve-in-production-kubernetes).
+- Learn how to [build custom Docker images](serve-custom-docker-images) to use with KubeRay.
 - Learn how to [monitor running Serve applications](serve-monitoring).
 
 [KubeRay]: https://ray-project.github.io/kuberay/
