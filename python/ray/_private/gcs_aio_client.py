@@ -20,6 +20,7 @@ class AsyncProxy:
     def _function_to_async(self, func):
         async def wrapper(*args, **kwargs):
             return await self.loop.run_in_executor(self.executor, func, *args, **kwargs)
+
         return wrapper
 
     def __getattr__(self, name):
@@ -64,7 +65,8 @@ class GcsAioClient:
     async def check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
     ) -> List[bool]:
-        assert False, "not implemented in GcsClient"
+        logger.debug(f"check_alive {node_ips!r}")
+        return await self._async_proxy.check_alive(node_ips, timeout)
 
     async def internal_kv_get(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
@@ -104,7 +106,9 @@ class GcsAioClient:
                 this will be 1 if the key was added and 0 if the key already exists.
         """
         logger.debug(f"internal_kv_put {key!r} {value!r} {overwrite} {namespace!r}")
-        return await self._async_proxy.internal_kv_put(key, value, overwrite, namespace, timeout)
+        return await self._async_proxy.internal_kv_put(
+            key, value, overwrite, namespace, timeout
+        )
 
     async def internal_kv_del(
         self,
@@ -114,7 +118,9 @@ class GcsAioClient:
         timeout: Optional[float] = None,
     ) -> int:
         logger.debug(f"internal_kv_del {key!r} {del_by_prefix} {namespace!r}")
-        return await self._async_proxy.internal_kv_del(key, del_by_prefix, namespace, timeout)
+        return await self._async_proxy.internal_kv_del(
+            key, del_by_prefix, namespace, timeout
+        )
 
     async def internal_kv_exists(
         self, key: bytes, namespace: Optional[bytes], timeout: Optional[float] = None
@@ -139,4 +145,5 @@ class GcsAioClient:
         ray_namespace: str = "",
         timeout: Optional[float] = None,
     ) -> gcs_service_pb2.GetNamedActorInfoReply:
-        assert False, "not implemented in GcsClient"
+        logger.debug(f"get_named_actor_info {actor_name!r} {ray_namespace!r}")
+        return await self._async_proxy.get_named_actor_info(actor_name, ray_namespace, timeout)

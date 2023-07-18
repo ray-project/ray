@@ -368,6 +368,10 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
         CRayStatus Connect()
 
+        CRayStatus CheckAlive(
+            const c_vector[c_string] &raylet_addresses,
+            int64_t timeout_ms,
+            c_vector[c_bool] &result)
         CRayStatus InternalKVGet(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_string &value)
