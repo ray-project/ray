@@ -58,6 +58,35 @@ def register_pydantic_serializer(serialization_context):
 
 
 @DeveloperAPI
+def register_fastapi_serializer(serialization_context):
+    """Register FastAPI serializer that's compatible with Pydantic 2.x."""
+
+    try:
+        import fastapi
+    except ImportError:
+        return
+
+    try:
+        import pydantic
+
+        if pydantic.__version__.startswith("1."):
+            # Only register serializer for Pydantic 2.x.
+            return
+    except ImportError:
+        return
+
+    serialization_context._register_cloudpickle_serializer(
+        fastapi._compat.ModelField,
+        custom_serializer=lambda o: {
+            "field_info": o.field_info,
+            "name": o.name,
+            "mode": o.mode,
+        },
+        custom_deserializer=lambda kwargs: fastapi._compat.ModelField(**kwargs),
+    )
+
+
+@DeveloperAPI
 def register_starlette_serializer(serialization_context):
     try:
         import starlette.datastructures
@@ -76,6 +105,7 @@ def register_starlette_serializer(serialization_context):
 @DeveloperAPI
 def apply(serialization_context):
     register_pydantic_serializer(serialization_context)
+    register_fastapi_serializer(serialization_context)
     register_starlette_serializer(serialization_context)
 
     if sys.platform != "win32":
