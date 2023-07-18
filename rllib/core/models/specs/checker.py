@@ -41,9 +41,10 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         - a single constraint. The constraint can be a Spec object, a type, or None.
 
 
-    Examples of canoncial format #1:
-
     .. doctest::
+
+        Examples of canoncial format #1:
+
         >>> spec = {'foo': int, 'bar': {'baz': None}}
         >>> convert_to_canonical_format(spec)
         SpecDict({'foo': TypeSpec(<class 'int'>), 'bar': SpecDict({'baz': None})})
@@ -57,7 +58,7 @@ def convert_to_canonical_format(spec: SpecType) -> Union[Spec, SpecDict]:
         >>> convert_to_canonical_format(spec)
         SpecDict({'bar': SpecDict({'baz': TensorSpec(shape=('b', 'h'), dtype=None)})})
 
-    # Example of canoncial format #2:
+        Example of canoncial format #2:
 
         >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
 
