@@ -7,7 +7,7 @@ import json
 
 
 DEFAULT_IMAGE_SIZE = 224
-DIR = "/home/ray/data"
+DIR = "/home/ray/imagenet-1gb-data"
 
 
 def build_torch_dataset(
@@ -28,6 +28,8 @@ def build_torch_dataset(
 
 
 if __name__ == "__main__":
+    # TODO(swang): Should also add tf.data with and without transform.
+
     metrics = []
 
     def iterate(dataset, label):
