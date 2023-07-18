@@ -67,19 +67,13 @@ class TensorflowCheckpoint(Checkpoint):
 
         Examples:
 
-            .. testcode::
+        .. testcode::
 
-                from ray.train.tensorflow import TensorflowCheckpoint
-                import tensorflow as tf
+            from ray.train.tensorflow import TensorflowCheckpoint
+            import tensorflow as tf
 
-                model = tf.keras.applications.resnet.ResNet101()
-                checkpoint = TensorflowCheckpoint.from_model(model)
-
-            .. testoutput::
-                :options: +MOCK
-                :hide:
-
-                ...  # Model may or may not be downloaded
+            model = tf.keras.applications.resnet.ResNet101()
+            checkpoint = TensorflowCheckpoint.from_model(model)
 
         """
         checkpoint = cls.from_dict(
