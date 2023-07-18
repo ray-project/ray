@@ -300,8 +300,22 @@ Multi-node clusters are untested. To get started with local Ray development:
 Windows Support
 ---------------
 
-Windows support is currently in beta, and multi-node Ray clusters are untested.
-Please submit any issues you encounter on
+Windows support is in Beta. Ray supports running on Windows with the following caveats (only the first is
+Ray-specific, the rest are true anywhere Windows is used):
+
+* Multi-node Ray clusters are untested.
+
+* Filenames are tricky on Windows and there still may be a few places where Ray
+  assumes UNIX filenames rather than Windows ones. This can be true in downstream
+  packages as well.
+
+* Performance on Windows is known to be slower since opening files on Windows
+  is considerably slower than on other operating systems. This can affect logging.
+
+* Windows does not have a copy-on-write forking model, so spinning up new
+  processes can require more memory.
+
+Submit any issues you encounter to
 `GitHub <https://github.com/ray-project/ray/issues/>`_.
 
 Installing Ray on Arch Linux
