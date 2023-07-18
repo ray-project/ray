@@ -18,8 +18,9 @@ from ray.tune.experimental.output import (
     _get_trial_table_data,
     _get_dict_as_table_data,
     _infer_params,
-    TrainReporter,
     AirVerbosity,
+    TrainReporter,
+    TuneTerminalReporter,
 )
 from ray.tune.experiment.trial import Trial
 
@@ -287,29 +288,50 @@ def test_result_include():
     ]
 
 
-def test_train_heartbeat():
+@pytest.mark.parametrize("progress_reporter_cls", [TrainReporter, TuneTerminalReporter])
+def test_heartbeat_reset(progress_reporter_cls):
+    """Test heartbeat functionality in train and tune.
+
+    Tune prints a table every `heartbeat_freq` seconds.
+    Train prints a heartbeat every `heartbeat_freq` seconds, but a result
+    also resets the counter.
+    """
     # Train heartbeats are only reporter in VERBOSE
-    reporter = TrainReporter(verbosity=AirVerbosity.VERBOSE)
-    reporter._get_heartbeat = mock.MagicMock()
+    reporter = progress_reporter_cls(verbosity=AirVerbosity.VERBOSE)
+    reporter._print_heartbeat = mock.MagicMock()
 
     with freeze_time() as frozen:
         reporter.print_heartbeat([])
-        assert reporter._get_heartbeat.call_count == 1
+        assert reporter._print_heartbeat.call_count == 1
 
         # Tick until heartbeat freq. Next call to print_heartbeat should trigger
         frozen.tick(reporter._heartbeat_freq)
         reporter.print_heartbeat([])
-        assert reporter._get_heartbeat.call_count == 2
+        assert reporter._print_heartbeat.call_count == 2
 
         # Not quite there, yet. This should not trigger a heartbeat.
         frozen.tick(reporter._heartbeat_freq // 2)
         reporter.print_heartbeat([])
-        assert reporter._get_heartbeat.call_count == 2
+        assert reporter._print_heartbeat.call_count == 2
 
         # Let's report a result. This will reset the heartbeat timer
         reporter.on_trial_result(
             0, [], Trial("__fake", stub=True), {TRAINING_ITERATION: 1}
         )
+
+        # Progress another half heartbeat. In Tune this triggers a heartbeat,
+        # but in train the heartbeat is reset on trial result.
+        frozen.tick(reporter._heartbeat_freq // 2 + 1)
+        reporter.print_heartbeat([])
+
+        if progress_reporter_cls == TrainReporter:
+            # Thus, train shouldn't have reported
+            assert reporter._print_heartbeat.call_count == 2
+        elif progress_reporter_cls == TuneTerminalReporter:
+            # But Tune should have.
+            assert reporter._print_heartbeat.call_count == 3
+        else:
+            raise RuntimeError("Test faulty.")
 
 
 if __name__ == "__main__":

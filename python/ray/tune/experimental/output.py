@@ -609,7 +609,6 @@ class ProgressReporter:
         self._start_time = time.time()
         self._last_heartbeat_time = float("-inf")
         self._start_time = time.time()
-        self._last_heartbeat_time = 0
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
 
@@ -1085,7 +1084,7 @@ class TrainReporter(ProgressReporter):
         result: Dict,
         **info,
     ):
-        self._last_heartbeat_time = time.monotonic()
+        self._last_heartbeat_time = time.time()
         super().on_trial_result(
             iteration=iteration,
             trials=trials,
