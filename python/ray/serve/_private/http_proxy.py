@@ -892,8 +892,7 @@ class GRPCProxy(GenericProxy):
             print("serve_request", serve_request)
 
             return await self._consume_generator(
-                obj_ref_generator=obj_ref_generator,
-                request_id=request_id
+                obj_ref_generator=obj_ref_generator, request_id=request_id
             )
 
         except Exception as e:
