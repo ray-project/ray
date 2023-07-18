@@ -7,6 +7,7 @@ import logging
 import pickle
 from typing import Any, List, Optional, Type
 
+import pydantic
 import starlette
 from fastapi.encoders import jsonable_encoder
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -337,9 +338,14 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if not isinstance(route, (APIRoute, APIWebSocketRoute)):
             continue
 
-        # If there is a response model, FastAPI creates a copy of the fields.
-        # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if isinstance(route, APIRoute) and route.response_model:
+        # In Pydantic 1.x, if there is a response model, FastAPI creates a
+        # copy of the fields. But FastAPI creates the field incorrectly by
+        # missing the outer_type_.
+        if (
+            pydantic.__version__.startswith("1.")
+            and isinstance(route, APIRoute)
+            and route.response_model
+        ):
             route.secure_cloned_response_field.outer_type_ = (
                 route.response_field.outer_type_
             )
