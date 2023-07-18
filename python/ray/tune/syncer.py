@@ -79,6 +79,11 @@ _EXCLUDE_FROM_SYNC = [
     f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
+
+class HeadNodeSyncDeprecationWarning(DeprecationWarning):
+    pass
+
+
 _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "Ray AIR no longer supports the synchronization of checkpoints and other "
     "artifacts from worker nodes to the head node. This means that the "
@@ -935,7 +940,7 @@ class SyncerCallback(Callback):
             # that means that it lives on some other node and would be synced to head
             # prior to Ray 2.6.
             if not os.path.exists(checkpoint.dir_or_data):
-                raise DeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+                raise HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             # else:
             #   No need to raise an error about syncing, since the driver can find
             #   the checkpoint, because either:
