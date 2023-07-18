@@ -29,7 +29,7 @@ Catalogs can we written to build models for new RLModules (for new algorithms).
 
         This dict (or an overriding sub-set) is part of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
         and therefore also part of any algorithm-specific config.
-        You can override its values and pass it to an AlgorithmConfig
+       To change the behavior RLlib's default models, override it and pass it to an AlgorithmConfig.
         to change the behavior RLlib's default models.
 
         .. literalinclude:: ../../../rllib/models/catalog.py
@@ -101,9 +101,9 @@ across algorithms.
 How do Catalogs solve this?
 ----------------------------
 
-As states above, Catalogs implement decision-trees for sub-components of RL Modules.
+As states above, Catalogs implement decision-trees for sub-components of `RLModules`.
 Models and distributions from a Catalog object are meant to fit together.
-Since we mostly build RL Modules out of :py:class:`~ray.rllib.core.models.base.Encoder` s, Heads and :py:class:`~ray.rllib.models.distributions.Distribution` s, Catalogs also generally reflect this.
+Since we mostly build RLModules out of :py:class:`~ray.rllib.core.models.base.Encoder` s, Heads and :py:class:`~ray.rllib.models.distributions.Distribution` s, Catalogs also generally reflect this.
 For example, the PPOCatalog will output Encoders that output a latent vector and two Heads that take this latent vector as input.
 (That's why Catalogs have a ``latent_dims`` attribute). Heads and distributions behave accordingly.
 Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
@@ -129,7 +129,7 @@ The two default methods to access components on the base class are...
 - :py:meth:`~ray.rllib.core.models.catalog.Catalog.build_encoder`
 - :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_action_dist_cls`
 
-You can override these to quickly hack what models RL Modules build.
+You can override these to quickly hack what models RLModules build.
 Other methods are private and should only be overridden to make deep changes to the decision tree to enhance the capabilities of Catalogs.
 Additionally, :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config` is a method that can be used when tokenization
 is required. By default, this happens only for recurrent Encoders (e.g. :py:class:`~ray.rllib.core.models.torch.encoder.TorchLSTMEncoder`),

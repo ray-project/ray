@@ -29,8 +29,7 @@ for example, for building ``heads``.
 Advanced usage
 --------------
 
-The following methods and attributes are used internally by the Catalog to build the default models.
-You can override these to enhance Catalogs.
+The following methods and attributes are used internally by the Catalog to build the default models. Only override them when you need more granular control.
 
 .. autosummary::
     :toctree: doc/
