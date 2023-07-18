@@ -232,60 +232,61 @@ class RLModule(abc.ABC):
     Subclasses should call super().__init__(config) in their __init__ method.
     Here is the pseudocode for how the forward methods are called:
 
-    .. doctest::
+    .. testcode::
 
-        Example for creating a sampling loop:
+        # Example for creating a sampling loop:
 
-        >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-        ...     PPOTorchRLModule
-        ... )
-        >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-        >>> import gymnasium as gym
-        >>> import torch
+        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+            PPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+        import gymnasium as gym
+        import torch
 
-        >>> env = gym.make("CartPole-v1")
+        env = gym.make("CartPole-v1")
 
-        Create a single agent RL module spec.
-        >>> module_spec = SingleAgentRLModuleSpec(
-        ...     module_class=PPOTorchRLModule,
-        ...     observation_space=env.observation_space,
-        ...     action_space=env.action_space,
-        ...     model_config_dict = {"hidden": [128, 128]},
-        ...     catalog_class = PPOCatalog,
-        ... )
-        >>> module = module_spec.build()
-        >>> action_dist_class = module.get_inference_action_dist_cls()
-        >>> obs, info = env.reset()
-        >>> terminated = False
+        # Create a single agent RL module spec.
+        module_spec = SingleAgentRLModuleSpec(
+            module_class=PPOTorchRLModule,
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config_dict = {"hidden": [128, 128]},
+            catalog_class = PPOCatalog,
+        )
+        module = module_spec.build()
+        action_dist_class = module.get_inference_action_dist_cls()
+        obs, info = env.reset()
+        terminated = False
 
-        >>> while not terminated:
-        ...    fwd_ins = {"obs": torch.Tensor([obs])}
-        ...    fwd_outputs = module.forward_exploration(fwd_ins)
-        ...    # this can be either deterministic or stochastic distribution
-        ...    action_dist = action_dist_class.from_logits(
-        ...        fwd_outputs["action_dist_inputs"]
-        ...    )
-        ...    action = action_dist.sample()[0].numpy()
-        ...    obs, reward, terminated, truncated, info = env.step(action)
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_exploration(fwd_ins)
+            # this can be either deterministic or stochastic distribution
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
+            obs, reward, terminated, truncated, info = env.step(action)
 
-        Example for training:
+        # Example for training:
 
-        >>> fwd_ins = {"obs": torch.Tensor([obs])}
-        >>> fwd_outputs = module.forward_train(fwd_ins)
-        >>> loss = compute_loss(fwd_outputs, fwd_ins) # doctest: +SKIP
-        >>> update_params(module, loss) # doctest: +SKIP
+        fwd_ins = {"obs": torch.Tensor([obs])}
+        fwd_outputs = module.forward_train(fwd_ins)
+        # loss = compute_loss(fwd_outputs, fwd_ins)
+        # update_params(module, loss)
 
-        Example for inference:
+        # Example for inference:
 
-        >>> while not terminated:
-        ...    fwd_ins = {"obs": torch.Tensor([obs])}
-        ...    fwd_outputs = module.forward_inference(fwd_ins)
-        ...    # this can be either deterministic or stochastic distribution
-        ...    action_dist = action_dist_class.from_logits(
-        ...        fwd_outputs["action_dist_inputs"]
-        ...    )
-        ...    action = action_dist.sample()[0].numpy()
-        ...    obs, reward, terminated, truncated, info = env.step(action)
+        while not terminated:
+            fwd_ins = {"obs": torch.Tensor([obs])}
+            fwd_outputs = module.forward_inference(fwd_ins)
+            # this can be either deterministic or stochastic distribution
+            action_dist = action_dist_class.from_logits(
+                fwd_outputs["action_dist_inputs"]
+            )
+            action = action_dist.sample()[0].numpy()
+            obs, reward, terminated, truncated, info = env.step(action)
+
 
     Args:
         config: The config for the RLModule.

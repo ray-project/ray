@@ -190,23 +190,23 @@ def check_input_specs(
 
     Examples (See more examples in ../tests/test_specs_dict.py):
 
-    .. doc-test::
-        >>> import torch
-        >>> from torch import nn
-        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
+    .. testcode::
+        import torch
+        from torch import nn
+        from ray.rllib.core.models.specs.specs_base import TensorSpec
 
-        >>> class MyModel(nn.Module):
-        ...     @property
-        ...     def input_specs(self):
-        ...         return {"obs": TensorSpec("b, d", d=64)}
-        ...
-        ...     @check_input_specs("input_specs")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         ...
+        class MyModel(nn.Module):
+            @property
+            def input_specs(self):
+                return {"obs": TensorSpec("b, d", d=64)}
 
-        >>> model = MyModel()
-        >>> model.forward({"obs": torch.randn(32, 64)}) # No error
-        >>> model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
+            @check_input_specs("input_specs")
+            def forward(self, input_data, return_loss=False):
+                ...
+
+        model = MyModel()
+        model.forward({"obs": torch.randn(32, 64)}) # No error
+        model.forward({"obs": torch.randn(32, 32)}) # raises ValueError
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
@@ -315,20 +315,20 @@ def check_output_specs(
 
     Examples (See more examples in ../tests/test_specs_dict.py):
 
-    .. doctest::
+    .. testcode::
 
-        >>> import torch
-        >>> from torch import nn
-        >>> from ray.rllib.core.models.specs.specs_base import TensorSpec
+        import torch
+        from torch import nn
+        from ray.rllib.core.models.specs.specs_base import TensorSpec
 
-        >>> class MyModel(nn.Module):
-        ...     @property
-        ...     def output_specs(self):
-        ...         return {"obs": TensorSpec("b, d", d=64)}
-        ...
-        ...     @check_output_specs("output_specs")
-        ...     def forward(self, input_data, return_loss=False):
-        ...         return {"obs": torch.randn(32, 64)}
+        class MyModel(nn.Module):
+            @property
+            def output_specs(self):
+                return {"obs": TensorSpec("b, d", d=64)}
+
+            @check_output_specs("output_specs")
+            def forward(self, input_data, return_loss=False):
+                return {"obs": torch.randn(32, 64)}
 
     Args:
         func: The instance method to decorate. It should be a callable that takes
