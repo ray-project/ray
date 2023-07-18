@@ -1011,6 +1011,14 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
+            if self.model["custom_model"] is not None:
+                raise ValueError(
+                    "Cannot use `custom_model` option with RLModule API."
+                    "`custom_model` is part of the ModelV2 API, which is not"
+                    "compatible with the RLModule API. The ModelV2 API is "
+                    "being deprecated."
+                )
+
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
