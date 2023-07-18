@@ -1,9 +1,3 @@
-- label: ":book: Lint"
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/ci.sh lint
-
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   instance_size: medium
