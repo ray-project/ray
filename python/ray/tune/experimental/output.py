@@ -606,7 +606,7 @@ class ProgressReporter:
             verbosity: AirVerbosity level.
         """
         self._verbosity = verbosity
-        self._start_time = time.monotonic()
+        self._start_time = time.time()
         self._last_heartbeat_time = 0
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
@@ -638,7 +638,7 @@ class ProgressReporter:
     @property
     def _time_heartbeat_str(self):
         current_time_str, running_time_str = _get_time_str(
-            self._start_time, time.monotonic()
+            self._start_time, time.time()
         )
         return (
             f"Current time: {current_time_str}. Total running time: " + running_time_str
@@ -647,9 +647,9 @@ class ProgressReporter:
     def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
             return
-        if force or time.monotonic() - self._last_heartbeat_time > self._heartbeat_freq:
+        if force or time.time() - self._last_heartbeat_time > self._heartbeat_freq:
             self._print_heartbeat(trials, *args, force=force)
-            self._last_heartbeat_time = time.monotonic()
+            self._last_heartbeat_time = time.time()
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
         raise NotImplementedError
@@ -686,7 +686,7 @@ class ProgressReporter:
     ):
         if self.verbosity < self._intermediate_result_verbosity:
             return
-        curr_time_str, running_time_str = _get_time_str(self._start_time, time.monotonic())
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"finished iteration {result[TRAINING_ITERATION]} "
@@ -700,7 +700,7 @@ class ProgressReporter:
     ):
         if self.verbosity < self._start_end_verbosity:
             return
-        curr_time_str, running_time_str = _get_time_str(self._start_time, time.monotonic())
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         finished_iter = 0
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
