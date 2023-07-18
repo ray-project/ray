@@ -117,37 +117,39 @@ class _ModelMultiplexWrapper:
             model = self.models.pop(model_id)
             self.models[model_id] = model
         else:
-            # If the number of models per replica is specified, check if the number of
-            # models on the current replica has reached the limit.
-            if (
-                self.max_num_models_per_replica > 0
-                and len(self.models) >= self.max_num_models_per_replica
-            ):
-                # Unload the least recently used model.
-                self.models_unload_counter.inc()
-                unload_start_time = time.time()
-                await self.unload_model()
-                self.model_unload_latency_s.set(time.time() - unload_start_time)
-            # Load the model.
-            logger.info(f"Loading model '{model_id}'.")
-            self.models_load_counter.inc()
-            load_start_time = time.time()
-            self.model_load_tasks.add(model_id)
-            self._push_multiplexed_replica_info = True
-            if self.self_arg is None:
-                self.models[model_id] = await self._func(model_id)
-            else:
-                self.models[model_id] = await self._func(self.self_arg, model_id)
-            self.model_load_tasks.remove(model_id)
-            self.model_load_latency_s.set(time.time() - load_start_time)
+            try:
+                # Broadcast the multiplexed replica info to the controller.
+                self.model_load_tasks.add(model_id)
+                self._push_multiplexed_replica_info = True
+
+                # If the number of models per replica is specified, check if the number of
+                # models on the current replica has reached the limit.
+                if (
+                    self.max_num_models_per_replica > 0
+                    and len(self.models) >= self.max_num_models_per_replica
+                ):
+                    # Unload the least recently used model.
+                    self.models_unload_counter.inc()
+                    unload_start_time = time.time()
+                    await self.unload_model()
+                    self.model_unload_latency_s.set(time.time() - unload_start_time)
+                # Load the model.
+                logger.info(f"Loading model '{model_id}'.")
+                self.models_load_counter.inc()
+                load_start_time = time.time()
+                if self.self_arg is None:
+                    self.models[model_id] = await self._func(model_id)
+                else:
+                    self.models[model_id] = await self._func(self.self_arg, model_id)
+                self.model_load_latency_s.set(time.time() - load_start_time)
+            finally:
+                self.model_load_tasks.remove(model_id)
         return self.models[model_id]
 
     async def unload_model(self) -> None:
         """Unload the least recently used model."""
         model_id, model = self.models.popitem(last=False)
         logger.info(f"Unloading model '{model_id}'.")
-
-        self._push_multiplexed_replica_info = True
 
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
