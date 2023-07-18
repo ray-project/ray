@@ -1,11 +1,11 @@
 from typing import Callable, Dict, List, Optional
 
 import ray
+from .ref_bundles import RefBundle
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.ref_bundles import RefBundle
 from ray.data._internal.logical.interfaces import Operator
 from ray.data._internal.stats import StatsDict
 

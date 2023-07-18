@@ -1,8 +1,8 @@
 from typing import Iterable, Iterator, Optional
 
-from ray.data._internal.execution.interfaces.execution_options import ExecutionOptions
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.interfaces.ref_bundles import RefBundle
+from .execution_options import ExecutionOptions
+from .physical_operator import PhysicalOperator
+from .ref_bundles import RefBundle
 from ray.data._internal.stats import DatasetStats
 
 

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, Tuple
 
 import ray
-from ray.data._internal.execution.interfaces.common import NodeIdStr
+from .common import NodeIdStr
 from ray.data._internal.memory_tracing import trace_deallocation
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext

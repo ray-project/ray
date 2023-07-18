@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.data._internal.progress_bar import ProgressBar
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.transform_fn import MapTransformFn
+    from .transform_fn import MapTransformFn
 
 
 @dataclass
