@@ -92,7 +92,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=cudagraphs, mode=reduce-overhead
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up       |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup        |
 |------------|----------------------|---------------------|----------------|
 | 1          | 1444.352012          | 1061.51702          | -0.2650565712 |
 | 4          | 1232.765904          | 971.4321448         | -0.211989769  |
