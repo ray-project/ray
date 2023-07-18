@@ -925,7 +925,7 @@ void NodeManager::QueryAllWorkerStates(
           }
         });
   }
-  if(all_dead) {
+  if (all_dead) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
