@@ -260,14 +260,6 @@ for a new mock Cartpole environment that returns additional features and require
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-
-End-to-end Example
-------------------
-
-TODO: End-to-end case study: adapting an old policy to bootstrap the training of new LSTM policies,
-then serve the newly trained policy in a server/client setup.
-
-
 Notable TODOs
 -------------
 
