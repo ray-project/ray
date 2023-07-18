@@ -101,7 +101,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=cudagraphs, mode=max-autotune
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up       |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup       |
 |------------|----------------------|---------------------|----------------|
 | 1          | 1450.048725          | 1073.293067         | -0.259822757   |
 | 4          | 1233.033495          | 970.9492169         | -0.2125524402  |
@@ -111,7 +111,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=inductor, mode=default
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up          |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1407.150602          | 1388.549445         | -0.01321902363    |
 | 4          | 1125.619106          | 1115.115648         | -0.009331271877   |
@@ -121,7 +121,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=inductor, mode=reduce-overhead
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up          |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1436.253369          | 1638.012412         | 0.1404759401      |
 | 4          | 1220.94159           | 1418.971087         | 0.1621940798      |
@@ -131,7 +131,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=inductor, mode=reduce-overhead
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up          |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1436.253369          | 1638.012412         | 0.1404759401      |
 | 4          | 1220.94159           | 1418.971087         | 0.1621940798      |
@@ -140,7 +140,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=inductor, mode=max-autotune
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up          |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1387.162631          | 1610.492709         | 0.1609977612      |
 | 4          | 1229.153562          | 1444.786043         | 0.1754316859      |
@@ -178,7 +178,7 @@ Similar to torch 2.0 numbers.
 ### T4, torch=2.1.0.dev20230614+cu118,  backend=inductor, mode=reduce-overhead
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up          |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1415.243828          | 1627.604089         | 0.1500520668      |
 | 4          | 1205.818761          | 1363.914143         | 0.1311104022      |
@@ -195,7 +195,7 @@ Similar to torch 2.0 numbers.
 ### V100, torch=2.0.1+cu118, backend=cudagraphs, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 940.8116683          | 1455.383784         | 0.5469448698      |
 | 4          | 929.174622           | 1176.58136          | 0.2662650618      |
@@ -205,7 +205,7 @@ Similar to torch 2.0 numbers.
 ### V100, torch=2.0.1+cu118, backend=cudagraphs, mode=reduce-overhead
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 902.5531645          | 1411.217542         | 0.5635838391      |
 | 4          | 946.2815455          | 1166.741298         | 0.2329747987      |
@@ -215,7 +215,7 @@ Similar to torch 2.0 numbers.
 ### V100, torch=2.0.1+cu118, backend=cudagraphs, mode=max-autotune
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 899.2288182          | 1423.560527         | 0.5830904196      |
 | 4          | 934.5095328          | 1176.58136          | 0.2590362312      |
@@ -226,7 +226,7 @@ Similar to torch 2.0 numbers.
 ### V100, torch=2.0.1+cu118, backend=inductor, mode=default
 ---
 
-| Batch Size | No Compile Throughput | Compiled Throughput | Speed Up          |
+| Batch Size | No Compile Throughput | Compiled Throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1407.150602          | 1388.549445         | -0.01321902363    |
 | 4          | 1125.619106          | 1115.115648         | -0.009331271877   |
@@ -236,7 +236,7 @@ Similar to torch 2.0 numbers.
 ### V100, torch=2.0.1+cu118, backend=inductor, mode=reduce-overhead
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 912.675235           | 929.174622          | 0.01807804833     |
 | 4          | 949.0402977          | 949.0402977         | 0                 |
@@ -247,7 +247,7 @@ Similar to torch 2.0 numbers.
 ### V100, torch=2.0.1+cu118, backend=inductor, mode=max-autotune
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 914.3843777          | 1759.572145         | 0.9243243742      |
 | 4          | 905.0625994          | 1352.579591         | 0.4944597112      |
@@ -262,7 +262,7 @@ Skipped.
 ### V100, torch=2.1.0.dev20230614+cu118,   backend=cudagraphs, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 930.059557           | 1434.012471         | 0.541850154       |
 | 4          | 930.9461792          | 1166.741298         | 0.2532854468      |
@@ -282,7 +282,7 @@ Skipped.
 ### V100, torch=2.1.0.dev20230614+cu118,  backend=inductor, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 907.5859293          | 961.1835129         | 0.05905510638     |
 | 4          | 923.9001753          | 984.4380173         | 0.06552422395     |
@@ -292,7 +292,7 @@ Skipped.
 ### V100, torch=2.1.0.dev20230614+cu118,  backend=inductor, mode=reduce-overhead
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 927.4097944          | 1722.332421         | 0.8571427985      |
 | 4          | 917.8219393          | 1323.255468         | 0.4417344054      |
@@ -302,7 +302,7 @@ Skipped.
 ### V100, torch=2.1.0.dev20230614+cu118, backend=inductor, mode=max-autotune
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 930.9461792          | 1737.655781         | 0.8665480556      |
 | 4          | 928.2913694          | 1319.679074         | 0.4216216135      |
@@ -319,7 +319,7 @@ Skipped.
 ---
 
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1422.524449          | 2244.971293         | 0.5781600764      |
 | 4          | 1451.058688          | 2239.822237         | 0.5435779795      |
@@ -330,7 +330,7 @@ Skipped.
 ### A100, torch=2.0.1+cu118, backend=cudagraphs, mode=reduce-overhead
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1208.616982          | 1896.237785         | 0.5689319392      |
 | 4          | 1500.095985          | 2271.075658         | 0.5139535612      |
@@ -340,7 +340,7 @@ Skipped.
 ### A100, torch=2.0.1+cu118, backend=cudagraphs, mode=max-autotune
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1375.440154          | 2199.465066         | 0.599099066       |
 | 4          | 1401.093953          | 2194.522411         | 0.5662921145      |
@@ -351,7 +351,7 @@ Skipped.
 ### A100, torch=2.0.1+cu118, backend=inductor, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1222.230956          | 1244.028691         | 0.01783438281     |
 | 4          |                      |                     |                   |
@@ -362,7 +362,7 @@ Skipped.
 ### A100, torch=2.0.1+cu118, backend=inductor, mode=reduce-overhead
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 912.675235           | 929.174622          | 0.01807804833     |
 | 4          | 949.0402977          | 949.0402977         | 0                 |
@@ -385,7 +385,7 @@ Failed due to "got an unexpected keyword argument 'mode'" error
 ### A100, torch=2.1.0.dev20230614+cu118,   backend=cudagraphs, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1373.505625          | 2281.688087         | 0.6612149571      |
 | 4          | 1415.30794           | 2319.625867         | 0.6389548891      |
@@ -405,7 +405,7 @@ Skipped.
 ### A100, torch=2.1.0.dev20230614+cu118,  backend=inductor, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1377.380141          | 1434.012471         | 0.04111597675     |
 | 4          | 1337.756796          | 1391.114692         | 0.0398860954      |
@@ -416,7 +416,7 @@ Skipped.
 ### A100, torch=2.1.0.dev20230614+cu118,  backend=inductor, mode=reduce-overhead
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1377.380141          | 1434.012471         | 0.04111597675     |
 | 4          | 1337.756796          | 1391.114692         | 0.0398860954      |
@@ -427,7 +427,7 @@ Skipped.
 ### A100, torch=2.1.0.dev20230614+cu118, backend=inductor, mode=max-autotune
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1178.000566          | 3023.413447         | 1.566563662       |
 | 4          | 1210.11466           | 3110.071612         | 1.570063578       |
@@ -438,7 +438,7 @@ Skipped.
 ### A100, torch=2.1.0.dev20230614+cu118, backend=inductor, mode=max-autotune
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 1379.325608          | 3180.985245         | 1.306188782       |
 | 4          | 1417.362103          | 3244.393766         | 1.289036625       |
@@ -450,7 +450,7 @@ Skipped.
 ### CPU, torch=2.0.1+cu118, backend=cudagraphs, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 578.1523201          | 531.928471          | -0.07995098789    |
 | 4          | 331.9012918          | 311.6321031         | -0.06106992993    |
@@ -470,7 +470,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=inductor, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 546.7588311          | 565.3345955         | 0.03397432888     |
 | 4          | 331.510474           | 340.0472254         | 0.02575107572     |
@@ -480,7 +480,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=inductor, mode="reduce-overhead"
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 540.1341171          | 563.8606004         | 0.043927022       |
 | 4          | 328.3528669          | 337.565962          | 0.02805851913     |
@@ -490,7 +490,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=inductor, mode="max-autotune"
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 580.6391773          | 598.2063383         | 0.03025486687     |
 | 4          | 328.9560153          | 338.3792342         | 0.02864583246     |
@@ -500,7 +500,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=onnxrt, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 567.1300498          | 763.7599065         | 0.3467103477      |
 | 4          | 330.0556529          | 421.0370352         | 0.2756546707      |
@@ -510,7 +510,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=onnxrt, mode="reduce-overhead"
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 578.993195           | 775.3957802         | 0.3392139786      |
 | 4          | 333.5218966          | 422.1717724         | 0.2657992675      |
@@ -520,7 +520,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=onnxrt, mode="max-autotune"
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 536.158516           | 770.1312457         | 0.4363872301      |
 | 4          | 332.4220525          | 418.4212516         | 0.2587048557      |
@@ -530,7 +530,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=ipex, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 584.9814324          | 796.2696504         | 0.361187905       |
 | 4          | 332.1605868          | 408.9404238         | 0.2311527618      |
@@ -540,7 +540,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=ipex, mode="reduce-overhead"
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 584.9814324          | 799.9283288         | 0.3674422547      |
 | 4          | 331.7075254          | 408.6623514         | 0.2319960208      |
@@ -550,7 +550,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.0.1+cu118, backend=ipex, mode="max-autotune"
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 577.9651795          | 796.2899452         | 0.3777472648      |
 | 4          | 329.1032688          | 408.9511096         | 0.2426224483      |
@@ -560,7 +560,7 @@ Did not run the benchmark because it did not seem promising based on default res
 ### CPU, torch=2.1.0.dev20230614+cu118, backend=cudagraphs, mode=default
 ---
 
-The numbers did not show significant speed up
+The numbers did not show significant speedup
 
 ### CPU, torch=2.1.0.dev20230614+cu118, backend=cudagraphs, mode="reduce-overhead"
 ---
@@ -575,7 +575,7 @@ Failed due to "got an unexpected keyword argument `mode` error
 ### CPU, torch=2.1.0.dev20230614+cu118, backend=inductor, mode=default
 ---
 
-The numbers did not show significant speed up
+The numbers did not show significant speedup
 
 ### CPU, torch=2.1.0.dev20230614+cu118, backend=inductor, mode="reduce-overhead"
 ---
@@ -590,7 +590,7 @@ Failed due to "got an unexpected keyword argument `mode` error
 ### CPU, torch=2.1.0.dev20230614+cu118, backend=onnxrt, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up          |
+| batch_size | no compile throughput | compiled throughput | Speedup          |
 |------------|----------------------|---------------------|-------------------|
 | 1          | 541.1677144          | 492.941076          | -0.08911588254    |
 | 4          | 308.4683275          | 405.3072657         | 0.3139347854      |
