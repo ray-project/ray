@@ -79,6 +79,11 @@ _R1 = TypeVar("_R1")
 _R2 = TypeVar("_R2")
 _R3 = TypeVar("_R3")
 _R4 = TypeVar("_R4")
+_R5 = TypeVar("_R5")
+_R6 = TypeVar("_R6")
+_R7 = TypeVar("_R7")
+_R8 = TypeVar("_R8")
+_R9 = TypeVar("_R9")
 _T0 = TypeVar("_T0")
 _T1 = TypeVar("_T1")
 _T2 = TypeVar("_T2")
@@ -1259,6 +1264,131 @@ class ActorHandle(Generic[_ActorT]):
             [
                 _ActorT,
             ],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5],
+        ],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6],
+        ],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [
+                _ActorT,
+            ],
             _R,
         ],
         *,
@@ -1333,6 +1463,117 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], tuple[_R0, _R1, _R2, _R3, _R4, _R5]],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6]],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7]
+        ],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8]
+        ],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9]
+        ],
+        __arg0: _ActorArg[_T0],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -1424,6 +1665,124 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[[_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3, _R4, _R5]],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -1522,6 +1881,132 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2, _R3, _R4, _R5]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -1629,6 +2114,138 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1, _R2, _R3, _R4, _R5]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -1745,6 +2362,144 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4], tuple[_R0, _R1, _R2, _R3, _R4, _R5]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4], tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -1870,6 +2625,150 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5], tuple[_R0, _R1, _R2, _R3, _R4, _R5]
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -2004,6 +2903,156 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -2146,6 +3195,161 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -2296,6 +3500,166 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
@@ -2456,6 +3820,171 @@ class ActorHandle(Generic[_ActorT]):
         ray.ObjectRef[_R2],
         ray.ObjectRef[_R3],
         ray.ObjectRef[_R4],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[6],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[7],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[8],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[9],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+    ]:
+        ...
+
+    @overload
+    def remote(
+        self,
+        __method: Callable[
+            [_ActorT, _T0, _T1, _T2, _T3, _T4, _T5, _T6, _T7, _T8, _T9],
+            tuple[_R0, _R1, _R2, _R3, _R4, _R5, _R6, _R7, _R8, _R9],
+        ],
+        __arg0: _ActorArg[_T0],
+        __arg1: _ActorArg[_T1],
+        __arg2: _ActorArg[_T2],
+        __arg3: _ActorArg[_T3],
+        __arg4: _ActorArg[_T4],
+        __arg5: _ActorArg[_T5],
+        __arg6: _ActorArg[_T6],
+        __arg7: _ActorArg[_T7],
+        __arg8: _ActorArg[_T8],
+        __arg9: _ActorArg[_T9],
+        *,
+        num_returns: Literal[10],
+        name: str = Undefined,
+        concurrency_group: str = Undefined,
+    ) -> tuple[
+        ray.ObjectRef[_R0],
+        ray.ObjectRef[_R1],
+        ray.ObjectRef[_R2],
+        ray.ObjectRef[_R3],
+        ray.ObjectRef[_R4],
+        ray.ObjectRef[_R5],
+        ray.ObjectRef[_R6],
+        ray.ObjectRef[_R7],
+        ray.ObjectRef[_R8],
+        ray.ObjectRef[_R9],
     ]:
         ...
 
