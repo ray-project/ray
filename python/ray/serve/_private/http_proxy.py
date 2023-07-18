@@ -593,6 +593,7 @@ class GenericProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
+        print("in _assign_request_with_timeout")
         assignment_task = None
         if isinstance(serve_request, ASGIServeRequest):
             assignment_task = handle.remote(
@@ -756,78 +757,12 @@ class GenericProxy:
     def generate_request_id(self) -> str:
         return get_random_letters(10)
 
-
-class GRPCProxy(GenericProxy):
-    async def Predict(self, serve_request: serve_pb2.RayServeRequest, context):
-        print("in grpc proxy, Predict called!!")
-        print("request", serve_request)
-        print("context.invocation_metadata()", context.invocation_metadata())
-        print("context.details()", context.details())
-        print("context.peer()", context.peer())
-
-        request = GRPCServeRequest(request=serve_request)
-        app_name = serve_request.application
-        multiplexed_model_id = serve_request.multiplexed_model_id
-        request_id = serve_request.request_id
-        if not request_id:
-            request_id = self.generate_request_id()
-
-        path, handle = self.prefix_router.get_route_from_target(app_name)
-        handle = handle.options(serve_grpc_request=True)
-        if multiplexed_model_id:
-            handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-
-        request_context_info = {
-            "route": path,
-            "request_id": request_id,
-            "app_name": app_name,
-            "multiplexed_model_id": multiplexed_model_id,
-        }
-        ray.serve.context._serve_request_context.set(
-            ray.serve.context.RequestContext(**request_context_info)
-        )
-
-        # TODO (genesu): support routes and healthz?
-        # TODO (genesu): support draining
-        # TODO (genesu): catch timeout for this
-        result_generator = await self._assign_request_with_timeout(
-            handle=handle,
-            serve_request=request,
-            timeout_s=self.request_timeout_s,
-        )
-        print("result_generator", result_generator)
-        result = await next(result_generator)
-        print("Predict, result", result)
-        user_response = ProtoAny()
-        user_response.ParseFromString(result)
-        print("Predict, deserialized_result", user_response)
-        return serve_pb2.RayServeResponse(
-            user_response=user_response,
-            request_id=request_id,
-        )
-
-
-class HTTPProxy(GenericProxy):
-    """This class is meant to be instantiated and run by an ASGI HTTP server.
-
-    >>> import uvicorn
-    >>> controller_name = ... # doctest: +SKIP
-    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
-    """
-
-    async def __call__(self, scope, receive, send):
-        """Implements the ASGI protocol.
-
-        See details at:
-            https://asgi.readthedocs.io/en/latest/specs/index.html.
-        """
-        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
-        assert serve_request.request_type in {"http", "websocket"}
+    async def proxy_request(self, serve_request: ServeRequest):
+        assert serve_request.request_type in {"http", "websocket", "grpc"}
 
         method = serve_request.method
 
         # only use the non-root part of the path for routing
-        root_path = serve_request.root_path
         route_path = serve_request.route_path
 
         if route_path == "/-/routes":
@@ -870,7 +805,7 @@ class HTTPProxy(GenericProxy):
 
             matched_route = self.prefix_router.match_route(route_path)
             print("matched_route: ", matched_route)
-            if matched_route is None:
+            if matched_route is None and isinstance(serve_request, ASGIServeRequest):
                 self.request_error_counter.inc(
                     tags={
                         "route": route_path,
@@ -895,28 +830,17 @@ class HTTPProxy(GenericProxy):
             # Modify the path and root path so that reverse lookups and redirection
             # work as expected. We do this here instead of in replicas so it can be
             # changed without restarting the replicas.
-            if route_prefix != "/":
+            if route_prefix != "/" and isinstance(serve_request, ASGIServeRequest):
                 assert not route_prefix.endswith("/")
                 serve_request.set_path(route_path.replace(route_prefix, "", 1))
-                serve_request.set_root_path(root_path + route_prefix)
+                serve_request.set_root_path(serve_request.root_path + route_prefix)
 
-            request_id = self.generate_request_id()
-            request_context_info = {
-                "route": route_path,
-                "request_id": request_id,
-                "app_name": app_name,
-            }
-            print("before setting request context")
             start_time = time.time()
-            for key, value in serve_request.headers:
-                if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
-                    multiplexed_model_id = value.decode()
-                    handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-                    request_context_info["multiplexed_model_id"] = multiplexed_model_id
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
-                    request_context_info["request_id"] = value.decode()
-            ray.serve.context._serve_request_context.set(
-                ray.serve.context.RequestContext(**request_context_info)
+            handle, request_id = self.setup_request_context_and_handle(
+                app_name=app_name,
+                handle=handle,
+                route_path=route_path,
+                serve_request=serve_request,
             )
 
             print(
@@ -927,12 +851,11 @@ class HTTPProxy(GenericProxy):
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
                 status_code = await self.send_request_to_replica_streaming(
-                    request_id=request_context_info["request_id"],
+                    request_id=request_id,
                     handle=handle,
                     serve_request=serve_request,
                 )
             else:
-                # TODO (genesu): use serve request
                 status_code = await self.send_request_to_replica_unary(
                     handle=handle,
                     serve_request=serve_request,
@@ -985,6 +908,120 @@ class HTTPProxy(GenericProxy):
             # If anything during the request failed, we still want to ensure the ongoing
             # request counter is decremented and possibly reset the keep alive object.
             self._ongoing_requests_end()
+
+
+class GRPCProxy(GenericProxy):
+    def setup_request_context_and_handle(
+        self,
+        app_name: str,
+        handle: RayServeHandle,
+        route_path: str,
+        serve_request: ServeRequest,
+    ) -> Tuple[RayServeHandle, str]:
+        print("in GRPCProxy#setup_request_context_and_handle", app_name, route_path)
+        multiplexed_model_id = serve_request.multiplexed_model_id
+        request_id = serve_request.request_id
+        if not request_id:
+            request_id = self.generate_request_id()
+
+        handle = handle.options(serve_grpc_request=True)
+        if multiplexed_model_id:
+            handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+
+        request_context_info = {
+            "route": route_path,
+            "request_id": request_id,
+            "app_name": app_name,
+            "multiplexed_model_id": serve_request.multiplexed_model_id,
+        }
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(**request_context_info)
+        )
+        return handle, request_id
+
+    async def Predict(self, request: serve_pb2.RayServeRequest, context):
+        print("in grpc proxy, Predict called!!")
+        print("request", request)
+        print("context.invocation_metadata()", context.invocation_metadata())
+        print("context.details()", context.details())
+        print("context.peer()", context.peer())
+
+        app_name = request.application
+        route_path, handle = self.prefix_router.get_route_from_target(app_name)
+        print("route_path", route_path)
+
+        serve_request = GRPCServeRequest(request=request, route_path=route_path)
+        handle, request_id = self.setup_request_context_and_handle(
+            app_name=app_name,
+            handle=handle,
+            route_path=route_path,
+            serve_request=serve_request,
+        )
+        print("after setup_request_context_and_handle", request_id)
+
+        # TODO (genesu): support routes and healthz?
+        # TODO (genesu): support draining
+        # TODO (genesu): catch timeout for this
+        result_generator = await self._assign_request_with_timeout(
+            handle=handle,
+            serve_request=serve_request,
+            timeout_s=self.request_timeout_s,
+        )
+        print("result_generator", result_generator)
+        result = await next(result_generator)
+        print("Predict, result", result)
+        user_response = ProtoAny()
+        user_response.ParseFromString(result)
+        print("Predict, deserialized_result", user_response)
+        return serve_pb2.RayServeResponse(
+            user_response=user_response,
+            request_id=request_id,
+        )
+
+
+class HTTPProxy(GenericProxy):
+    """This class is meant to be instantiated and run by an ASGI HTTP server.
+
+    >>> import uvicorn
+    >>> controller_name = ... # doctest: +SKIP
+    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
+    """
+
+    def setup_request_context_and_handle(
+        self,
+        serve_request: ServeRequest,
+        route_path: str,
+        handle: RayServeHandle,
+        app_name: str,
+    ) -> Tuple[RayServeHandle, str]:
+        print("in HTTPProxy#setup_request_context_and_handle", app_name, route_path)
+
+        request_id = self.generate_request_id()
+        request_context_info = {
+            "route": route_path,
+            "request_id": request_id,
+            "app_name": app_name,
+        }
+        for key, value in serve_request.headers:
+            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+                multiplexed_model_id = value.decode()
+                handle = handle.options(multiplexed_model_id=multiplexed_model_id)
+                request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                request_context_info["request_id"] = value.decode()
+        ray.serve.context._serve_request_context.set(
+            ray.serve.context.RequestContext(**request_context_info)
+        )
+        return handle, request_id
+
+    async def __call__(self, scope, receive, send):
+        """Implements the ASGI protocol.
+
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
+        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
+        await self.proxy_request(serve_request=serve_request)
 
 
 class RequestIdMiddleware:

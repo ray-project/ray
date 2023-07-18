@@ -58,9 +58,26 @@ class ASGIServeRequest(ServeRequest):
 
 
 class GRPCServeRequest(ServeRequest):
-    def __init__(self, request: serve_pb2.RayServeRequest):
+    def __init__(self, request: serve_pb2.RayServeRequest, route_path: str):
         self.request = request
+        self.route_path = route_path
 
     @property
     def user_request(self) -> ProtoAny:
         return self.request.user_request
+
+    @property
+    def request_type(self) -> str:
+        return "grpc"
+
+    @property
+    def method(self) -> str:
+        return "GRPC"
+
+    @property
+    def multiplexed_model_id(self) -> str:
+        return self.request.multiplexed_model_id
+
+    @property
+    def request_id(self) -> str:
+        return self.request.request_id
