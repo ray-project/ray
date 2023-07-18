@@ -24,13 +24,7 @@ def iterate(dataset, label, metrics):
     print(label, end - start, "epoch", i)
 
     tput = num_rows / (end - start)
-    metrics.append(
-        {
-            "perf_metric_name": label,
-            "perf_metric_value": tput,
-            "perf_metric_type": "THROUGHPUT",
-        }
-    )
+    metrics[label] = tput
 
 
 def build_torch_dataset(
@@ -161,13 +155,13 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    metrics = []
+    metrics = {}
 
     tf_dataset = tf.keras.preprocessing.image_dataset_from_directory(
         args.data_root, batch_size=args.batch_size, image_size=FULL_IMAGE_SIZE
     )
     for i in range(args.num_epochs):
-       iterate(tf_dataset, "tf.data", metrics)
+        iterate(tf_dataset, "tf.data", metrics)
     tf_dataset = tf_dataset.map(lambda img, label: (tf_crop_and_flip(img), label))
     for i in range(args.num_epochs):
         iterate(tf_dataset, "tf.data+transform", metrics)
@@ -252,8 +246,17 @@ if __name__ == "__main__":
             metrics,
         )
 
+    metrics_list = []
+    for label, tput in metrics.items():
+        metrics_list.append(
+            {
+                "perf_metric_name": label,
+                "perf_metric_value": tput,
+                "perf_metric_type": "THROUGHPUT",
+            }
+        )
     result_dict = {
-        "perf_metrics": metrics,
+        "perf_metrics": metrics_list,
         "success": 1,
     }
 
