@@ -3065,6 +3065,11 @@ class ActorDecorator(Protocol):
 
 
 @overload
+def remote(__class: type[_T]) -> ray.actor._UnboundActorClass[_T]:
+    ...
+
+
+@overload
 def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 

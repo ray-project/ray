@@ -442,6 +442,18 @@ class _ActorOptionWrapper(Generic[_ActorT, Unpack[_ActorInitArgs]]):
         ...
 
 
+class _UnboundActorOptionWrapper(Generic[_ActorT]):
+    """
+    Only for type hints
+    """
+
+    def remote(self, *args: Any, **kwargs) -> ActorHandle[_ActorT]:
+        ...
+
+    def bind(self, *args: Any, **kwargs) -> "ClassNode":
+        ...
+
+
 @PublicAPI
 class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
     """An actor class.
@@ -1076,7 +1088,7 @@ class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
         return actor_handle
 
     @DeveloperAPI
-    def bind(self, *args: Unpack[_ActorInitArgs], **kwargs):
+    def bind(self, *args: Unpack[_ActorInitArgs], **kwargs) -> "ClassNode":
         """
         For Ray DAG building that creates static graph from decorated
         class or functions.
@@ -1086,6 +1098,21 @@ class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
         return ClassNode(
             self.__ray_metadata__.modified_class, args, kwargs, self._default_options
         )
+
+
+class _UnboundActorClass(ActorClass[_ActorT]):
+    """
+    Only for type hints
+    """
+
+    def bind(self, *args: Any, **kwargs) -> "ClassNode":
+        return super().bind(*args, **kwargs)
+
+    def remote(self, *args: Any, **kwargs) -> "ActorHandle[_ActorT]":
+        return super().bind(*args, **kwargs)
+
+    def options(self, **actor_options) -> "_UnboundActorOptionWrapper[_ActorT]":
+        return super().options(**actor_options)
 
 
 @PublicAPI
