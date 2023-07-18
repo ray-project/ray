@@ -27,26 +27,30 @@ class LightningCheckpoint(TorchCheckpoint):
     LightningCheckpoint loads file named ``model`` under the specified directory.
 
     Examples:
-        >>> from ray.train.lightning import LightningCheckpoint
-        >>>
-        >>> # Suppose we saved a checkpoint in "./checkpoint_00000/model":
-        >>> # Option 1: Load from a file
-        >>> checkpoint = LightningCheckpoint.from_path( # doctest: +SKIP
-        ...     path="./checkpoint_00000/model"
-        ... )
-        >>>
-        >>> # Option 2: Load from a directory
-        >>> checkpoint = LightningCheckpoint.from_directory( # doctest: +SKIP
-        ...     path="./checkpoint_00000/"
-        ... )
-        >>>
-        >>> # Suppose we saved a checkpoint in an S3 bucket:
-        >>> # Option 3: Load from URI
-        >>> checkpoint = LightningCheckpoint.from_uri( # doctest: +SKIP
-        ...     path="s3://path/to/checkpoint/directory/"
-        ... )
-        >>>
-        >>>
+
+    .. testcode::
+        :skipif: True
+
+        from ray.train.lightning import LightningCheckpoint
+
+        # Suppose we saved a checkpoint in "./checkpoint_000000/model":
+        # Option 1 (Preferred): Load from the checkpoint file
+        checkpoint = LightningCheckpoint.from_path(
+            path="./checkpoint_00000/model"
+        )
+
+        # Option 2: Load from a directory
+        checkpoint = LightningCheckpoint.from_directory(
+            path="./checkpoint_00000/"
+        )
+
+        # Suppose we saved a checkpoint in an S3 bucket:
+        # Option 3: Load from URI
+        checkpoint = LightningCheckpoint.from_uri(
+            path="s3://path/to/checkpoint/directory/"
+        )
+
+
     """
 
     def __init__(self, *args, **kwargs):
