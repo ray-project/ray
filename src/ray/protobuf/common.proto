@@ -49,6 +49,43 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+message LabelIn {
+  repeated string values = 1;
+}
+
+message LabelNotIn {
+  repeated string values = 1;
+}
+
+message LabelExists {}
+
+message LabelDoesNotExist {}
+
+message LabelOperator {
+  oneof LabelOperator {
+    LabelIn label_in = 1;
+    LabelNotIn label_not_in = 2;
+    LabelExists label_exists = 3;
+    LabelDoesNotExist label_does_not_exist = 4;
+  }
+}
+
+message LabelMatchExpression {
+  string key = 1;
+  LabelOperator operator = 2;
+}
+
+message LabelMatchExpressions {
+  repeated LabelMatchExpression expressions = 1;
+}
+
+message NodeLabelSchedulingStrategy {
+  // Required expressions to be satisfied
+  LabelMatchExpressions hard = 1;
+  // Preferred expressions to be satisfied
+  LabelMatchExpressions soft = 2;
+}
+
 message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
@@ -80,6 +117,7 @@ message SchedulingStrategy {
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
     NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
+    NodeLabelSchedulingStrategy node_label_scheduling_strategy = 5;
   }
 }
 
