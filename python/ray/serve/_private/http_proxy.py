@@ -373,21 +373,25 @@ class GenericProxy:
                     return
             await asyncio.sleep(0.2)
 
-    async def _not_found(self, scope, receive, send):
-        current_path = scope["path"]
+    async def _not_found(self, serve_request: ServeRequest):
+        current_path = serve_request.path
         response = Response(
             f"Path '{current_path}' not found. "
             "Please ping http://.../-/routes for route table.",
             status_code=404,
         )
-        await response.send(scope, receive, send)
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
 
-    async def _draining_response(self, scope, receive, send):
+    async def _draining_response(self, serve_request: ServeRequest):
         response = Response(
             "This node is being drained.",
             status_code=503,
         )
-        await response.send(scope, receive, send)
+        await response.send(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
 
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
@@ -445,16 +449,16 @@ class GenericProxy:
     async def send_request_to_replica_unary(
         self,
         handle: RayServeHandle,
-        scope: Scope,
-        receive: Receive,
-        send: Send,
+        serve_request: ServeRequest,
     ) -> str:
-        http_body_bytes = await receive_http_body(scope, receive, send)
+        http_body_bytes = await receive_http_body(
+            serve_request.scope, serve_request.receive, serve_request.send
+        )
 
         # NOTE(edoakes): it's important that we defer building the starlette
         # request until it reaches the replica to avoid unnecessary
         # serialization cost, so we use a simple dataclass here.
-        request = HTTPRequestWrapper(scope, http_body_bytes)
+        request = HTTPRequestWrapper(serve_request.scope, http_body_bytes)
 
         # Perform a pickle here to improve latency. Stdlib pickle for simple
         # dataclasses are 10-100x faster than cloudpickle.
@@ -468,7 +472,7 @@ class GenericProxy:
         # call might never arrive; if it does, it can only be `http.disconnect`.
         while retries < HTTP_REQUEST_MAX_RETRIES + 1:
             assignment_task: asyncio.Task = handle.remote(request)
-            client_disconnection_task = loop.create_task(receive())
+            client_disconnection_task = loop.create_task(serve_request.receive())
             done, _ = await asyncio.wait(
                 [assignment_task, client_disconnection_task],
                 return_when=FIRST_COMPLETED,
@@ -480,7 +484,7 @@ class GenericProxy:
                     "This is an invalid HTTP state."
                 )
                 logger.warning(
-                    f"Client from {scope['client']} disconnected, cancelling the "
+                    f"Client from {serve_request.client} disconnected, cancelling the "
                     "request.",
                     extra={"log_to_stderr": False},
                 )
@@ -520,7 +524,7 @@ class GenericProxy:
             except RayTaskError as e:
                 error_message = f"Unexpected error, traceback: {e}."
                 await Response(error_message, status_code=500).send(
-                    scope, receive, send
+                    serve_request.scope, serve_request.receive, serve_request.send
                 )
                 return "500"
             except RayActorError:
@@ -540,14 +544,18 @@ class GenericProxy:
                 backoff = False
         else:
             error_message = f"Task failed with {HTTP_REQUEST_MAX_RETRIES} retries."
-            await Response(error_message, status_code=500).send(scope, receive, send)
+            await Response(error_message, status_code=500).send(
+                serve_request.scope, serve_request.receive, serve_request.send
+            )
             return "500"
 
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
-            await result(scope, receive, send)
+            await result(serve_request.scope, serve_request.receive, serve_request.send)
             return str(result.status_code)
         else:
-            await Response(result).send(scope, receive, send)
+            await Response(result).send(
+                serve_request.scope, serve_request.receive, serve_request.send
+            )
             return "200"
 
     async def proxy_asgi_receive(
@@ -600,8 +608,8 @@ class GenericProxy:
             assignment_task = handle.remote(
                 StreamingGRPCRequest(
                     pickled_grpc_user_request=pickle.dumps(
-                        serve_request.request.user_request
-                    ),  # TODO (sugene): fixit
+                        serve_request.user_request
+                    ),
                     http_proxy_handle=self.self_actor_handle,
                 )
             )
@@ -684,7 +692,7 @@ class GenericProxy:
         receive_queue = ASGIMessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
-            self.proxy_asgi_receive(request.receive, receive_queue)
+            self.proxy_asgi_receive(serve_request.receive, receive_queue)
         )
 
         status_code = ""
@@ -692,15 +700,15 @@ class GenericProxy:
         try:
             try:
                 obj_ref_generator = await self._assign_request_with_timeout(
-                    handle,
-                    request.scope,
-                    proxy_asgi_receive_task,
+                    hendle=handle,
+                    serve_request=serve_request,
+                    disconnected_task=proxy_asgi_receive_task,
                     timeout_s=self.request_timeout_s,
                 )
                 if obj_ref_generator is None:
                     logger.info(
-                        f"Client from {request.client} disconnected, cancelling the "
-                        "request.",
+                        f"Client from {serve_request.client} disconnected, "
+                        "cancelling the request.",
                         extra={"log_to_stderr": False},
                     )
                     return DISCONNECT_ERROR_CODE
@@ -714,7 +722,7 @@ class GenericProxy:
             try:
                 status_code = await self._consume_and_send_asgi_message_generator(
                     obj_ref_generator,
-                    request.send,
+                    serve_request.send,
                     timeout_s=calculate_remaining_timeout(
                         timeout_s=self.request_timeout_s,
                         start_time_s=start,
@@ -741,7 +749,7 @@ class GenericProxy:
                 # a client message via the receive interface.
                 if (
                     status_code == ""
-                    and request.request_type == "websocket"
+                    and serve_request.request_type == "websocket"
                     and proxy_asgi_receive_task.exception() is None
                 ):
                     status_code = str(proxy_asgi_receive_task.result())
@@ -749,6 +757,9 @@ class GenericProxy:
             del self.asgi_receive_queues[request_id]
 
         return status_code
+
+    def generate_request_id(self) -> str:
+        return get_random_letters(10)
 
 
 class GRPCProxy(GenericProxy):
@@ -764,7 +775,7 @@ class GRPCProxy(GenericProxy):
         multiplexed_model_id = serve_request.multiplexed_model_id
         request_id = serve_request.request_id
         if not request_id:
-            request_id = get_random_letters(10)
+            request_id = self.generate_request_id()
 
         path, handle = self.prefix_router.get_route_from_target(app_name)
         handle = handle.options(serve_grpc_request=True)
@@ -815,23 +826,18 @@ class HTTPProxy(GenericProxy):
         See details at:
             https://asgi.readthedocs.io/en/latest/specs/index.html.
         """
-        print("in GenericProxy#__call__")
-        print("scope: ", scope)
-        print("receive: ", receive)
-        print("send: ", send)
-        request = ASGIServeRequest(scope=scope, receive=receive, send=send)
-        assert request.request_type in {"http", "websocket"}
+        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
+        assert serve_request.request_type in {"http", "websocket"}
 
-        # TODO (genesu): implement those methods onto asgi request wrapper
-        method = scope.get("method", "websocket").upper()
+        method = serve_request.method
 
         # only use the non-root part of the path for routing
-        root_path = scope["root_path"]
-        route_path = scope["path"][len(root_path) :]
+        root_path = serve_request.root_path
+        route_path = serve_request.route_path
 
         if route_path == "/-/routes":
             if self._draining:
-                return await self._draining_response(scope, receive, send)
+                return await self._draining_response(serve_request=serve_request)
 
             self.request_counter.inc(
                 tags={
@@ -842,12 +848,12 @@ class HTTPProxy(GenericProxy):
                 }
             )
             return await starlette.responses.JSONResponse(self.route_info)(
-                scope, receive, send
+                serve_request.scope, serve_request.receive, serve_request.send
             )
 
         if route_path == "/-/healthz":
             if self._draining:
-                return await self._draining_response(scope, receive, send)
+                return await self._draining_response(serve_request=serve_request)
 
             self.request_counter.inc(
                 tags={
@@ -858,7 +864,7 @@ class HTTPProxy(GenericProxy):
                 }
             )
             return await starlette.responses.PlainTextResponse("success")(
-                scope, receive, send
+                serve_request.scope, serve_request.receive, serve_request.send
             )
 
         try:
@@ -885,7 +891,9 @@ class HTTPProxy(GenericProxy):
                         "status_code": "404",
                     }
                 )
-                return await self._not_found(scope, receive, send)
+                return await self._not_found(
+                    serve_request.scope, serve_request.receive, serve_request.send
+                )
 
             route_prefix, handle, app_name, app_is_cross_language = matched_route
 
@@ -894,20 +902,18 @@ class HTTPProxy(GenericProxy):
             # changed without restarting the replicas.
             if route_prefix != "/":
                 assert not route_prefix.endswith("/")
-                scope["path"] = route_path.replace(route_prefix, "", 1)
-                scope["root_path"] = root_path + route_prefix
+                serve_request.set_path(route_path.replace(route_prefix, "", 1))
+                serve_request.set_root_path(root_path + route_prefix)
 
-            request_id = get_random_letters(10)
+            request_id = self.generate_request_id()
             request_context_info = {
                 "route": route_path,
                 "request_id": request_id,
                 "app_name": app_name,
             }
-            start_time = time.time()
             print("before setting request context")
-            for key, value in scope.get("headers", []):
-                print("key: ", key)
-                print("value: ", value)
+            start_time = time.time()
+            for key, value in serve_request.headers:
                 if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
                     multiplexed_model_id = value.decode()
                     handle = handle.options(multiplexed_model_id=multiplexed_model_id)
@@ -926,14 +932,15 @@ class HTTPProxy(GenericProxy):
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
                 status_code = await self.send_request_to_replica_streaming(
-                    request_context_info["request_id"], handle, receive
+                    request_id=request_context_info["request_id"],
+                    handle=handle,
+                    serve_request=serve_request,
                 )
             else:
+                # TODO (genesu): use serve request
                 status_code = await self.send_request_to_replica_unary(
-                    handle,
-                    scope,
-                    receive,
-                    send,
+                    handle=handle,
+                    serve_request=serve_request,
                 )
 
             self.request_counter.inc(
