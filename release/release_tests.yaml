@@ -6201,7 +6201,7 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_images_vs_torch_benchmark_single_node
+- name: read_images_comparison_microbenchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset
 
