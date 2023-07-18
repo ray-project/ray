@@ -1075,23 +1075,6 @@ class TrainReporter(ProgressReporter):
     def _print_heartbeat(self, trials, *args, force: bool = False):
         print(self._get_heartbeat(trials, force_full_output=force))
 
-    def on_trial_result(
-        self,
-        iteration: int,
-        trials: List[Trial],
-        trial: Trial,
-        result: Dict,
-        **info,
-    ):
-        self._last_heartbeat_time = time.monotonic()
-        super().on_trial_result(
-            iteration=iteration,
-            trials=trials,
-            trial=trial,
-            result=result,
-            **info
-        )
-
 
 class AirResultProgressCallback(Callback):
     def __init__(self, progress_reporter: Optional[ProgressReporter] = None):
