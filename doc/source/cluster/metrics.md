@@ -83,7 +83,7 @@ See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app
 #### Loading Ray Prometheus configurations with Docker Compose
 In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus configuration files.
 
-To fix this issue, employ an automated shell script for seamlessly transferring the Prometheus configurations from the Ray container to a shared volume. To ensure a proper setup, the shared volume should be mounted on the respective path for the container, which contains the recommended configurations to initiate the Prometheus servers.
+To fix this issue, employ an automated shell script for seamlessly transferring the Prometheus configurations from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations to initiate the Prometheus servers.
 
 (scrape-metrics)=
 ## Scraping metrics
