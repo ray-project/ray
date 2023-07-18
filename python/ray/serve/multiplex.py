@@ -147,6 +147,8 @@ class _ModelMultiplexWrapper:
         model_id, model = self.models.popitem(last=False)
         logger.info(f"Unloading model '{model_id}'.")
 
+        self._push_multiplexed_replica_info = True
+
         # If the model has __del__ attribute, call it.
         # This is to clean up the model resources eagerly.
         if hasattr(model, "__del__"):
