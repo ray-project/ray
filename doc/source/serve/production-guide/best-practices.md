@@ -12,12 +12,13 @@ This section helps you:
 
 This section summarizes the best practices for deploying to production using the Serve CLI:
 
-* Use `serve run` to manually test and improve your deployment graph locally.
-* Use `serve build` to create a Serve config file for your deployment graph.
-    * Put your deployment graph's code in a remote repository and manually configure the `working_dir` or `py_modules` fields in your Serve config file's `runtime_env` to point to that repository.
+* Use `serve run` to manually test and improve your Serve application locally.
+* Use `serve build` to create a Serve config file for your Serve application.
+    * For development, put your Serve application's code in a remote repository and manually configure the `working_dir` or `py_modules` fields in your Serve config file's `runtime_env` to point to that repository.
+    * For production, put your Serve application's code in a custom Docker image instead of a `runtime_env`. See [this tutorial](serve-custom-docker-images) to learn how to create custom Docker images and deploy them on KubeRay.
 * Use `serve status` to track your Serve application's health and deployment progress.
 * Use `serve config` to check the latest config that your Serve application received. This is its goal state.
-* Make lightweight configuration updates (e.g. `num_replicas` or `user_config` changes) by modifying your Serve config file and redeploying it with `serve deploy`.
+* Make lightweight configuration updates (e.g., `num_replicas` or `user_config` changes) by modifying your Serve config file and redeploying it with `serve deploy`.
 
 (serve-in-production-inspecting)=
 
