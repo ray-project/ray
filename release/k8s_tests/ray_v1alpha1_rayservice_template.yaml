@@ -27,7 +27,6 @@ data:
     bind 0.0.0.0
     appendonly yes
     protected-mode no
-    requirepass 5241590000000000
     pidfile /data/redis-6379.pid
 ---
 apiVersion: v1
@@ -171,6 +170,8 @@ spec:
                   value: "600"
                 - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
                   value: "1"
+                - name: RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+                  value: "0"
               resources:
                 limits:
                   cpu: 2
@@ -289,6 +290,8 @@ spec:
                     value: "5"
                   - name: SERVE_DEPLOYMENT_HANDLE_IS_SYNC
                     value: "1"
+                  - name: RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
+                    value: "0"
                 ports:
                   - containerPort: 80
                     name: client

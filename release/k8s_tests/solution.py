@@ -35,6 +35,11 @@ def e(val):
     return val + 3
 
 
+@serve.deployment
+def x(val):
+    return 3 * val + 6
+
+
 with InputNode() as user_input:
     oa = a.bind(user_input)
     ob = b.bind(oa)
