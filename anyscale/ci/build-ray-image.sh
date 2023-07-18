@@ -71,6 +71,7 @@ ML_TMP="$(mktemp -d)"
 cp docker/ray-ml/Dockerfile "${ML_TMP}/Dockerfile"
 cp docker/ray-ml/install-ml-docker-requirements.sh "${ML_TMP}/."
 cp python/requirements.txt "${ML_TMP}/."
+cp python/requirements_compiled.txt "${ML_TMP}/."
 cp python/requirements/docker/ray-docker-requirements.txt "${ML_TMP}/."
 cp python/requirements/ml/*-requirements.txt "${ML_TMP}/."
 # This retagging is required because the Dockerfile hardcodes the base image.
