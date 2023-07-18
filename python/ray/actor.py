@@ -92,7 +92,7 @@ _T9 = TypeVar("_T9")
 _ActorInitArgs = TypeVarTuple("_ActorInitArgs")
 if TYPE_CHECKING:
     _ActorArg = Union[_T, ray.ObjectRef[_T]]
-
+    from ray.dag.class_node import ClassNode
 
 Undefined: Any = object()
 
@@ -433,7 +433,7 @@ class ActorOptionWrapper(Generic[_ActorT, Unpack[_ActorInitArgs]]):
     def remote(self, *args: Unpack[_ActorInitArgs], **kwargs) -> ActorHandle[_ActorT]:
         ...
 
-    def bind(self, *args, **kwargs):
+    def bind(self, *args: Unpack[_ActorInitArgs], **kwargs) -> "ClassNode":
         ...
 
 
@@ -1071,7 +1071,7 @@ class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
         return actor_handle
 
     @DeveloperAPI
-    def bind(self, *args, **kwargs):
+    def bind(self, *args: Unpack[_ActorInitArgs], **kwargs):
         """
         For Ray DAG building that creates static graph from decorated
         class or functions.
