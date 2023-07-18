@@ -83,7 +83,7 @@ Here is a complete view of the experiments done in this benchmark.
 ### T4, torch=2.0.1+cu118, backend=cudagraphs, mode=default
 ---
 
-| batch_size | no compile throughput | compiled throughput | Speed up       |
+| batch_size | no compile throughput | compiled throughput | Speedup        |
 |------------|----------------------|---------------------|----------------|
 | 1          | 1416.944392          | 1070.498744         | -0.2445019368 |
 | 4          | 1229.927594          | 976.0135413         | -0.2064463419 |
