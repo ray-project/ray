@@ -647,7 +647,7 @@ class ProgressReporter:
     def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
             return
-        if force or time.time() - self._last_heartbeat_time > self._heartbeat_freq:
+        if force or time.time() - self._last_heartbeat_time >= self._heartbeat_freq:
             self._print_heartbeat(trials, *args, force=force)
             self._last_heartbeat_time = time.time()
 
@@ -815,7 +815,7 @@ class TuneReporterBase(ProgressReporter):
         self._mode = mode
         # will be populated when first result comes in.
         self._inferred_metric = None
-        self._inferred_params = _infer_params(config)
+        self._inferred_params = _infer_params(config or {})
         super(TuneReporterBase, self).__init__(
             verbosity=verbosity, progress_metrics=progress_metrics
         )
@@ -967,7 +967,7 @@ class TuneRichReporter(TuneReporterBase):
     def __init__(
         self,
         verbosity: AirVerbosity,
-        num_samples: int,
+        num_samples: int = 0,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
