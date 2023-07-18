@@ -34,6 +34,8 @@
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 
 namespace ray {
+class GcsClientTest;
+class GcsClientTest_TestCheckAlive_Test;
 
 namespace gcs {
 
@@ -82,6 +84,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// Connect to GCS Service. Non-thread safe.
   /// This function must be called before calling other functions.
   /// \param instrumented_io_context IO execution service.
+  /// \param cluster_id Optional cluster ID to provide to the client.
   ///
   /// \return Status
   virtual Status Connect(instrumented_io_context &io_service,
@@ -175,6 +178,9 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   std::unique_ptr<WorkerInfoAccessor> worker_accessor_;
   std::unique_ptr<PlacementGroupInfoAccessor> placement_group_accessor_;
   std::unique_ptr<InternalKVAccessor> internal_kv_accessor_;
+
+  friend class ray::GcsClientTest;
+  FRIEND_TEST(ray::GcsClientTest, TestCheckAlive);
   std::unique_ptr<TaskInfoAccessor> task_accessor_;
 
  private:

@@ -95,7 +95,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     // Create GCS client.
     gcs::GcsClientOptions options("127.0.0.1:5397");
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
+    ReconnectClient();
   }
 
   void TearDown() override {
@@ -113,6 +113,18 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       TestSetupUtil::FlushAllRedisServers();
     }
     rpc::ResetServerCallExecutor();
+  }
+
+  void ReconnectClient() {
+    ClusterID cluster_id = gcs_server_->rpc_server_.GetClusterId();
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
+  }
+
+  void StampContext(grpc::ClientContext &context) {
+    RAY_CHECK(gcs_client_->client_call_manager_)
+        << "Cannot stamp context before initializing client call manager.";
+    context.AddMetadata(kClusterIdKey,
+                        gcs_client_->client_call_manager_->cluster_id_.Hex());
   }
 
   void RestartGcsServer() {
@@ -141,12 +153,17 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           grpc::CreateChannel(absl::StrCat("127.0.0.1:", gcs_server_->GetPort()),
                               grpc::InsecureChannelCredentials());
       auto stub = rpc::NodeInfoGcsService::NewStub(std::move(channel));
+      bool in_memory =
+          RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage;
       grpc::ClientContext context;
+      StampContext(context);
       context.set_deadline(std::chrono::system_clock::now() + 1s);
       const rpc::CheckAliveRequest request;
       rpc::CheckAliveReply reply;
       auto status = stub->CheckAlive(&context, request, &reply);
-      if (!status.ok()) {
+      // If it is in memory, we don't have the new token until we connect again.
+      if (!((!in_memory && status.ok()) ||
+            (in_memory && GrpcStatusToRayStatus(status).IsAuthError()))) {
         RAY_LOG(WARNING) << "Unable to reach GCS: " << status.error_code() << " "
                          << status.error_message();
         continue;
@@ -923,6 +940,7 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
 
   // Restart GCS.
   RestartGcsServer();
+  ReconnectClient();
 
   for (int index = 0; index < actor_count; ++index) {
     auto actor_table_data = Mocker::GenActorTableData(job_id);
@@ -945,9 +963,26 @@ TEST_P(GcsClientTest, TestEvictExpiredDestroyedActors) {
   }
 }
 
+TEST_P(GcsClientTest, TestGcsAuth) {
+  // Restart GCS.
+  RestartGcsServer();
+  auto node_info = Mocker::GenNodeInfo();
+  if (RayConfig::instance().gcs_storage() != gcs::GcsServer::kInMemoryStorage) {
+    EXPECT_TRUE(RegisterNode(*node_info));
+    return;
+  }
+
+  EXPECT_FALSE(RegisterNode(*node_info));
+  ReconnectClient();
+  EXPECT_TRUE(RegisterNode(*node_info));
+}
+
 TEST_P(GcsClientTest, TestEvictExpiredDeadNodes) {
   // Restart GCS.
   RestartGcsServer();
+  if (RayConfig::instance().gcs_storage() == gcs::GcsServer::kInMemoryStorage) {
+    ReconnectClient();
+  }
 
   // Simulate the scenario of node dead.
   int node_count = RayConfig::instance().maximum_gcs_dead_node_cached_count();
