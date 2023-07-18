@@ -472,6 +472,18 @@ class ClientActorHandle(ClientStub):
     def _actor_id(self) -> ClientActorRef:
         return self.actor_ref
 
+    @property
+    def methods(self):
+        return self
+
+    def remote(self, __method: "ClientRemoteMethod", *args, **actor_options):
+        if not isinstance(__method, ClientRemoteMethod):
+            if is_function_or_method(__method):
+                __method = getattr(self, __method.__name__)
+            else:
+                raise ValueError(f"invalid method {__method}")
+        return __method.options(**actor_options).remote(*args)
+
     def __getattr__(self, key):
         if key == "_method_num_returns":
             # We need to explicitly handle this value since it is used below,
