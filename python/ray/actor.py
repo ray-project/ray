@@ -434,7 +434,7 @@ def _process_option_dict(actor_options):
     return _filled_options
 
 
-class ActorOptionWrapper(Generic[_ActorT, Unpack[_ActorInitArgs]]):
+class _ActorOptionWrapper(Generic[_ActorT, Unpack[_ActorInitArgs]]):
     def remote(self, *args: Unpack[_ActorInitArgs], **kwargs) -> ActorHandle[_ActorT]:
         ...
 
@@ -600,7 +600,7 @@ class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
 
     def options(
         self, **actor_options
-    ) -> ActorOptionWrapper[_ActorT, Unpack[_ActorInitArgs]]:
+    ) -> _ActorOptionWrapper[_ActorT, Unpack[_ActorInitArgs]]:
         """Configures and overrides the actor instantiation parameters.
 
         The arguments are the same as those that can be passed
@@ -706,7 +706,7 @@ class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
                 updated_options["runtime_env"]
             )
 
-        class _ActorOptionWrapper(ActorOptionWrapper):
+        class ActorOptionWrapper(_ActorOptionWrapper):
             def remote(self, *args, **kwargs):
                 return actor_cls._remote(args=args, kwargs=kwargs, **updated_options)
 
@@ -725,7 +725,7 @@ class ActorClass(Generic[_ActorT, Unpack[_ActorInitArgs]]):
                     updated_options,
                 )
 
-        return _ActorOptionWrapper()
+        return ActorOptionWrapper()
 
     @_tracing_actor_creation
     def _remote(
