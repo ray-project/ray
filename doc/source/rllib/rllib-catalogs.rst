@@ -8,13 +8,16 @@
 Catalog (Alpha)
 ===============
 
-Catalogs are where `RLModules <rllib-rlmodule.html>`__ primarily get their models and action distributions from.
-Each :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has its own default
+
+Catalog is a utility abstraction that modularizes the construction of components for `RLModules <rllib-rlmodule.html>`__.
+It includes information such how input observation spaces should be encoded,
+what action distributions should be used, and so on.
 :py:class:`~ray.rllib.core.models.catalog.Catalog`. For example,
 :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` has the
 :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`.
-Catalogs can be extended to offer more or different models or distributions to RLModules (e.g. to PPOTorchRLModule).
-Catalogs can we written to build models for new RLModules (for new algorithms).
+To customize existing RLModules either change the RLModule directly by inheriting the class and changing the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method or, alternatively, extend the Catalog class
+attributed to that `RLModule`. Use Catalogs only if your customizations fits the abstractions provided by Catalog.
 
 .. note::
     Modifying Catalogs signifies advanced use cases so you should only consider this if modifying an RLModule or writing one does not cover your use case.
@@ -109,7 +112,7 @@ For example, the PPOCatalog will output Encoders that output a latent vector and
 Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
 By default this happens in :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_encoder_config` and :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
 Whenever you build a model, the config is turned into a model.
-Distributions are instantiated per forward pass of an RL Module and are therefore not built.
+Distributions are instantiated per forward pass of an `RLModule` and are therefore not built.
 
 API philosophy
 --------------
@@ -132,8 +135,9 @@ The two default methods to access components on the base class are...
 You can override these to quickly hack what models RL Modules build.
 Other methods are private and should only be overridden to make deep changes to the decision tree to enhance the capabilities of Catalogs.
 Additionally, :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config` is a method that can be used when tokenization
-is required. By default, this happens only for recurrent Encoders (e.g. :py:class:`~ray.rllib.core.models.torch.encoder.TorchLSTMEncoder`),
-where the tokenizer is an Encoder itself that is used to tokenize inputs inside of a recurrent Encoder.
+is required. Tokenization means single-step-embedding. Encoding also means embedding but can span multiple timesteps.
+In fact, RLlib's tokenizers used in it's recurrent Encoders (e.g. :py:class:`~ray.rllib.core.models.torch.encoder.TorchLSTMEncoder`),
+are instances of non-recurrent Encoder classes.
 
 Catalog and AlgorithmConfig
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
