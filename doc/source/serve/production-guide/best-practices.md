@@ -12,14 +12,6 @@ This section helps you:
 
 This section summarizes the best practices for deploying to production using the Serve CLI:
 
-* Understand best practices when operating Serve in production
-* Learn more about managing Serve with the Serve CLI
-* Configure your HTTP requests when querying Serve
-
-## CLI best practices
-
-This section summarizes the best practices for deploying to production using the Serve CLI:
-
 * Use `serve run` to manually test and improve your Serve application locally.
 * Use `serve build` to create a Serve config file for your Serve application.
     * For development, put your Serve application's code in a remote repository and manually configure the `working_dir` or `py_modules` fields in your Serve config file's `runtime_env` to point to that repository.
