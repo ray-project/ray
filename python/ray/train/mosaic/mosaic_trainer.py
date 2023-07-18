@@ -35,6 +35,7 @@ class MosaicTrainer(TorchTrainer):
 
     .. testcode::
         :skipif: True
+        # TODO(yunxuan): Enable the test after we resolve the mosaicml dependency issue
 
         import torch.utils.data
         import torchvision
