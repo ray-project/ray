@@ -633,14 +633,10 @@ class GenericProxy:
             assignment_task.cancel()
             raise TimeoutError()
 
-
-
     def generate_request_id(self) -> str:
         return get_random_letters(10)
 
-    async def proxy_request(
-        self, serve_request: ServeRequest
-    ) -> ServeResponse:
+    async def proxy_request(self, serve_request: ServeRequest) -> ServeResponse:
         assert serve_request.request_type in {"http", "websocket", "grpc"}
 
         method = serve_request.method
@@ -940,7 +936,6 @@ class GRPCProxy(GenericProxy):
                 del self.asgi_receive_queues[request_id]
 
         return status_code, obj_ref_generator
-
 
 
 class HTTPProxy(GenericProxy):
