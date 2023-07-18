@@ -191,7 +191,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 class RAY_EXPORT PythonGcsClient {
  public:
   explicit PythonGcsClient(const GcsClientOptions &options);
-  Status Connect();
+  Status Connect(ClusterID &cluster_id, int64_t timeout_ms = -1);
 
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
                     int64_t timeout_ms,
@@ -242,6 +242,19 @@ class RAY_EXPORT PythonGcsClient {
                    bool &is_accepted);
 
  private:
+  inline grpc::ClientContext &&PrepareContext(int64_t timeout_ms) {
+    grpc::ClientContext context;
+    if (timeout_ms != -1) {
+      context.set_deadline(std::chrono::system_clock::now() +
+                           std::chrono::milliseconds(timeout_ms));
+    }
+    if (!cluster_id_.IsNil()) {
+      context.AddMetadata(kClusterIdKey, cluster_id_.Hex());
+    }
+    return std::move(context);
+  }
+
+  ClusterID cluster_id_;
   GcsClientOptions options_;
   std::unique_ptr<rpc::InternalKVGcsService::Stub> kv_stub_;
   std::unique_ptr<rpc::RuntimeEnvGcsService::Stub> runtime_env_stub_;

@@ -8,6 +8,9 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         T FromBinary(const c_string &binary)
 
         @staticmethod
+        T FromHex(const c_string &hex)
+
+        @staticmethod
         const T Nil()
 
         @staticmethod
@@ -153,6 +156,14 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         int64_t ObjectIndex() const
 
         CTaskID TaskId() const
+
+    cdef cppclass CClusterID "ray::ClusterID"(CUniqueID):
+
+        @staticmethod
+        CClusterID FromHex(const c_string &hex_str)
+
+        @staticmethod
+        const CClusterID Nil()
 
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
 

@@ -83,6 +83,9 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+        self.cluster_id = (
+            ray_params.cluster_id if hasattr(ray_params, "cluster_id") else None
+        )
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -648,7 +651,8 @@ class Node:
             last_ex = None
             try:
                 gcs_address = self.gcs_address
-                client = GcsClient(address=gcs_address)
+                client = GcsClient(address=gcs_address, cluster_id=self.cluster_id)
+                self.cluster_id = client.get_cluster_id()
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
@@ -1064,6 +1068,7 @@ class Node:
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
+            self._cluster_id,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.storage,

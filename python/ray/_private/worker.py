@@ -463,6 +463,7 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
+        self.cluster_id = None
 
     @property
     def connected(self):
@@ -2262,6 +2263,7 @@ def connect(
         runtime_env_hash,
         startup_token,
         session_name,
+        node.cluster_id,
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,

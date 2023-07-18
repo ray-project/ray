@@ -69,6 +69,8 @@ DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.
 DEFINE_int64(object_store_memory, -1, "The initial memory of the object store.");
 DEFINE_string(node_name, "", "The user-provided identifier or name for this node.");
 DEFINE_string(session_name, "", "Session name (ClusterID) of the cluster.");
+DEFINE_string(cluster_id, "", "ID of the cluster, separate from observability.");
+
 #ifdef __linux__
 DEFINE_string(plasma_directory,
               "/dev/shm",
@@ -153,6 +155,11 @@ int main(int argc, char *argv[]) {
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
   const std::string labels_json_str = FLAGS_labels;
+
+  ray::ClusterID cluster_id = ray::ClusterID::Nil();
+  if (FLAGS_cluster_id != "") {
+    cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
+  }
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -171,7 +178,7 @@ int main(int argc, char *argv[]) {
   ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
-  RAY_CHECK_OK(gcs_client->Connect(main_service));
+  RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
