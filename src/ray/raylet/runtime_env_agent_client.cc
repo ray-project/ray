@@ -195,14 +195,14 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                             int port,
                             std::function<std::shared_ptr<boost::asio::deadline_timer>(
                                 std::function<void()>, uint32_t delay_ms)> delay_executor,
-                            uint32_t agent_manager_retry_interval_ms,
-                            uint32_t agent_register_timeout_ms)
+                            uint32_t agent_register_timeout_ms,
+                            uint32_t agent_manager_retry_interval_ms)
       : io_context_(io_context),
         address_(address),
         port_str_(std::to_string(port)),
         delay_executor_(delay_executor),
-        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms),
-        agent_register_timeout_ms_(agent_register_timeout_ms) {}
+        agent_register_timeout_ms_(agent_register_timeout_ms),
+        agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
   ~HttpRuntimeEnvAgentClient() = default;
 
   template <typename T>
@@ -439,8 +439,8 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function<void()>,
                                                              uint32_t delay_ms)>
       delay_executor_;
-  const uint32_t agent_manager_retry_interval_ms_;
   const uint32_t agent_register_timeout_ms_;
+  const uint32_t agent_manager_retry_interval_ms_;
 };
 }  // namespace
 
@@ -450,16 +450,14 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     int port,
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
-    uint32_t agent_manager_retry_interval_ms,
-    uint32_t agent_register_timeout_ms
-
-) {
+    uint32_t agent_register_timeout_ms,
+    uint32_t agent_manager_retry_interval_ms) {
   return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,
-                                                     agent_manager_retry_interval_ms,
-                                                     agent_register_timeout_ms);
+                                                     agent_register_timeout_ms,
+                                                     agent_manager_retry_interval_ms);
 }
 
 }  // namespace raylet
