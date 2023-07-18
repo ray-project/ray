@@ -3809,7 +3809,7 @@ class Dataset:
     def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
         """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
-        This method errors if the number of rows exceeds the provided ``limit``. 
+        This method errors if the number of rows exceeds the provided ``limit``.
         To truncate the dataset beforehand, call :meth:`.limit`.
 
         Examples:
@@ -3825,7 +3825,7 @@ class Dataset:
 
         Args:
             limit: The maximum number of rows to return. An error is
-                raised if the dataset has more rows than this limit. Defaults to 
+                raised if the dataset has more rows than this limit. Defaults to
                 ``None``, which means no limit.
 
         Returns:
