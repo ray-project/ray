@@ -60,7 +60,7 @@ def test_fastapi_function(serve_instance):
 
     resp = requests.get("http://localhost:8000/f/not-number")
     assert resp.status_code == 422  # Unprocessable Entity
-    assert resp.json()["detail"][0]["type"] == "type_error.integer"
+    assert resp.json()["detail"][0]["type"] == "int_parsing"
 
 
 def test_ingress_prefix(serve_instance):
