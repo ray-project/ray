@@ -26,7 +26,7 @@ This is useful for training torch models with batches from your dataset. For con
     import ray
     import torch
 
-    ds = ray.data.read_images("example://image-datasets/simple")
+    ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
     for batch in ds.iter_torch_batches(batch_size=2):
         print(batch)
@@ -104,7 +104,7 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
             import torch
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             def convert_to_torch(row: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 return {"tensor": torch.as_tensor(row["image"])}
@@ -135,7 +135,7 @@ Transformations applied with `map` or `map_batches` can return torch tensors.
             import torch
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             def convert_to_torch(batch: Dict[str, np.ndarray]) -> Dict[str, torch.Tensor]:
                 return {"tensor": torch.as_tensor(batch["image"])}
@@ -177,7 +177,7 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             import ray
 
             # Create the Dataset.
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
 
             # Define the torchvision transform.
             transform = transforms.Compose(
@@ -213,7 +213,7 @@ You can use built-in torch transforms from `torchvision`, `torchtext`, and `torc
             import ray
 
             # Create the Dataset.
-            ds = ray.data.read_text("example://simple.txt")
+            ds = ray.data.read_text("s3://anonymous@ray-example-data/simple.txt")
 
             # Define the torchtext transform.
             VOCAB_FILE = "https://huggingface.co/bert-base-uncased/resolve/main/vocab.txt"
