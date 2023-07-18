@@ -2234,6 +2234,7 @@ def connect(
         "" if mode != SCRIPT_MODE else entrypoint,
         worker_launch_time_ms,
         worker_launched_time_ms,
+        node.get_session_dir_path(),
     )
 
     # Notify raylet that the core worker is ready.

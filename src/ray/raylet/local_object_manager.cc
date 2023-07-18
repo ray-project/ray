@@ -647,10 +647,15 @@ int64_t LocalObjectManager::GetPrimaryBytes() const {
 }
 
 void LocalObjectManager::DumpPrimaryCopies(std::filesystem::path path) {
+  if(!std::filesystem::exists(path)) {
+    std::filesystem::create_directories(path);
+  }
+
   for(auto& [obj_id, obj_info] : local_objects_) {
     if(auto iter = pinned_objects_.find(obj_id); iter != pinned_objects_.end()) {
-
-      std::ofstream out(path / std::filesystem::path(obj_id.Hex()), std::ios::binary);
+      auto p = path / std::filesystem::path(obj_id.Hex());
+      RAY_LOG(INFO) << "Dumpping: " << obj_id << " to " << p;
+      std::ofstream out(p, std::ios::binary);
       auto& obj = *iter->second;
       auto& nested_objs = obj.GetNestedRefs();
       auto cnt = nested_objs.size();
@@ -671,6 +676,8 @@ void LocalObjectManager::DumpPrimaryCopies(std::filesystem::path path) {
       size = metadata->Size();
       out.write(reinterpret_cast<const char*>(&size), sizeof(size));
       out.write(reinterpret_cast<const char*>(metadata->Data()), metadata->Size());
+    } else {
+      RAY_LOG(INFO) << "Failed to dump: " << obj_id << " because it's not a pinned object";
     }
   }
 }

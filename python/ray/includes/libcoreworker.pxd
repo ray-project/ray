@@ -356,6 +356,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         int runtime_env_hash
         int startup_token
         c_string session_name
+        c_string session_dir
         c_string entrypoint
         int64_t worker_launch_time_ms
         int64_t worker_launched_time_ms

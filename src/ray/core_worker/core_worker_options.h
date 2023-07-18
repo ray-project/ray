@@ -189,6 +189,7 @@ struct CoreWorkerOptions {
       object_allocator;
   /// Session name (Cluster ID) of the cluster.
   std::string session_name;
+  std::string session_dir;
   std::string entrypoint;
   int64_t worker_launch_time_ms;
   int64_t worker_launched_time_ms;

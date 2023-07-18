@@ -574,7 +574,7 @@ ray::Status NodeManager::RegisterGcs() {
               if (status.ok()) {
                 if (!alive) {
                   // GCS think this raylet is dead. Fail the node
-                  RAY_LOG(FATAL) 
+                  RAY_LOG(FATAL)
                       << "GCS consider this node to be dead. This may happen when "
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
@@ -769,7 +769,42 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
 void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
                               rpc::DrainObjectStoreReply* reply,
                               rpc::SendReplyCallback send_reply_callback) {
-  
+  RAY_LOG(INFO) << "Received DrainObjectStore request";
+  auto p = std::filesystem::path(initial_config_.session_dir + "/drain_object_store");
+  local_object_manager_.DumpPrimaryCopies(p);
+  auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
+                                                          /*filter_io_workers*/ true);
+  if (all_workers.empty()) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
+  auto rpc_replied = std::make_shared<size_t>(0);
+  auto num_workers = all_workers.size();
+  bool all_dead = true;
+  for (const auto &worker : all_workers) {
+    if (worker->IsDead()) {
+      *rpc_replied += 1;
+      continue;
+    }
+    all_dead = false;
+
+    worker->rpc_client()->ExportObjectOwnership(
+        rpc::ExportObjectOwnershipRequest(), [num_workers, rpc_replied,
+                                               send_reply_callback](const ray::Status &status,
+                                                                    const rpc::ExportObjectOwnershipReply &r) {
+          *rpc_replied += 1;
+          if (!status.ok()) {
+            RAY_LOG(ERROR) << "Failed to send ExportObjectOwnership request: " << status.ToString();
+          }
+          if (*rpc_replied == num_workers) {
+            send_reply_callback(Status::OK(), nullptr, nullptr);
+          }
+        });
+  }
+  if(all_dead) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
 }
 
 void NodeManager::HandleGetTasksInfo(
