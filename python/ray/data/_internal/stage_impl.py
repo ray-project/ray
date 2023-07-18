@@ -1,5 +1,5 @@
 import itertools
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.data._internal.block_list import BlockList
@@ -312,7 +312,9 @@ def _do_zip(
 class SortStage(AllToAllStage):
     """Implementation of `Dataset.sort()`."""
 
-    def __init__(self, ds: "Dataset", key: Optional[str], descending: bool):
+    def __init__(
+        self, ds: "Dataset", key: Optional[Union[str, List[str]]], descending: bool
+    ):
         def do_sort(
             block_list,
             ctx: TaskContext,
@@ -331,10 +333,7 @@ class SortStage(AllToAllStage):
             if isinstance(key, list):
                 if not key:
                     raise ValueError("`key` must be a list of non-zero length")
-                for subkey in key:
-                    _validate_key_fn(schema, subkey)
-            else:
-                _validate_key_fn(schema, key)
+            _validate_key_fn(schema, key)
             return sort_impl(blocks, clear_input_blocks, key, descending, ctx)
 
         super().__init__(

@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -108,7 +108,7 @@ class Sort(AbstractAllToAll):
     def __init__(
         self,
         input_op: LogicalOperator,
-        key: Optional[str],
+        key: Optional[Union[str, List[str]]],
         descending: bool,
     ):
         super().__init__(

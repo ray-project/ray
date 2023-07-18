@@ -433,7 +433,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
-        table_items = [tuple(d.values()) for d in table.select(columns).to_pylist()]
+        table_items = [
+            tuple(d.values())
+            for d in transform_pyarrow.to_pylist(table.select(columns))
+        ]
         if descending:
             bounds = [
                 len(table) - bisect.bisect_left(table_items[::-1], b)

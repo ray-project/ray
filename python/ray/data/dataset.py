@@ -2014,7 +2014,9 @@ class Dataset:
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
-    def sort(self, key: Optional[str] = None, descending: bool = False) -> "Dataset":
+    def sort(
+        self, key: Optional[Union[str, List[str]]] = None, descending: bool = False
+    ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
 
         Examples:
