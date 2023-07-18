@@ -203,8 +203,6 @@ class LongestPrefixRouter:
 
         return None
 
-
-class GRPCRouter(LongestPrefixRouter):
     def get_route_from_target(
         self, target: str
     ) -> Optional[Tuple[str, RayServeHandle]]:
@@ -214,9 +212,9 @@ class GRPCRouter(LongestPrefixRouter):
             target: the target to match against endpoint.
 
         Returns:
-            (route, handle, app_name, is_cross_language) if found, else None.
+            (route, handle) if found, else None.
         """
-        print("GRPCRouter#match_route", target)
+        print("get_route_from_target, target", target)
         for route, endpoint_and_app_name in self.route_info.items():
             endpoint, app_name = endpoint_and_app_name
             print("app_name", app_name, "endpoint", endpoint)
@@ -241,7 +239,6 @@ class GenericProxy:
         controller_name: str,
         node_id: NodeId,
         request_timeout_s: Optional[float] = None,
-        router_class: Type[LongestPrefixRouter] = LongestPrefixRouter,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -275,7 +272,7 @@ class GenericProxy:
                 _is_for_http_requests=True,
             )
 
-        self.prefix_router = router_class(get_handle)
+        self.prefix_router = LongestPrefixRouter(get_handle)
         self.long_poll_client = LongPollClient(
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
@@ -392,14 +389,6 @@ class GenericProxy:
         await response.send(
             serve_request.scope, serve_request.receive, serve_request.send
         )
-
-    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
-        queue = self.asgi_receive_queues.get(request_id, None)
-        if queue is None:
-            raise KeyError(f"Request ID {request_id} not found.")
-
-        await queue.wait_for_message()
-        return queue.get_messages_nowait()
 
     def _try_set_prevent_downscale_ref(self):
         """Try to set put a primary copy of object in the object store to prevent node
@@ -557,29 +546,6 @@ class GenericProxy:
                 serve_request.scope, serve_request.receive, serve_request.send
             )
             return ASGIServeResponse(status_code="200")
-
-    async def proxy_asgi_receive(
-        self, receive: Receive, queue: ASGIMessageQueue
-    ) -> Optional[int]:
-        """Proxies the `receive` interface, placing its messages into the queue.
-
-        Once a disconnect message is received, the call exits and `receive` is no longer
-        called.
-
-        For HTTP messages, `None` is always returned.
-        For websocket messages, the disconnect code is returned if a disconnect code is
-        received.
-        """
-        while True:
-            msg = await receive()
-            print("proxy_asgi_receive", msg)
-            await queue(msg)
-
-            if msg["type"] == "http.disconnect":
-                return None
-
-            if msg["type"] == "websocket.disconnect":
-                return msg["code"]
 
     async def _assign_request_with_timeout(
         self,
@@ -945,6 +911,37 @@ class HTTPProxy(GenericProxy):
         serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
         await self.proxy_request(serve_request=serve_request)
 
+    async def receive_asgi_messages(self, request_id: str) -> List[Message]:
+        queue = self.asgi_receive_queues.get(request_id, None)
+        if queue is None:
+            raise KeyError(f"Request ID {request_id} not found.")
+
+        await queue.wait_for_message()
+        return queue.get_messages_nowait()
+
+    async def proxy_asgi_receive(
+        self, receive: Receive, queue: ASGIMessageQueue
+    ) -> Optional[int]:
+        """Proxies the `receive` interface, placing its messages into the queue.
+
+        Once a disconnect message is received, the call exits and `receive` is no longer
+        called.
+
+        For HTTP messages, `None` is always returned.
+        For websocket messages, the disconnect code is returned if a disconnect code is
+        received.
+        """
+        while True:
+            msg = await receive()
+            print("proxy_asgi_receive", msg)
+            await queue(msg)
+
+            if msg["type"] == "http.disconnect":
+                return None
+
+            if msg["type"] == "websocket.disconnect":
+                return msg["code"]
+
     async def _consume_and_send_asgi_message_generator(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
@@ -1143,7 +1140,6 @@ class HTTPProxyActor:
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
-            router_class=GRPCRouter,
         )
 
         self.wrapped_app = self.app
