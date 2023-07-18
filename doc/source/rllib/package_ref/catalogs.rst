@@ -11,7 +11,7 @@ Basic usage
 -----------
 
 Use the following basic API to get a default ``encoder`` or ``action distribution``
-out of Catalog. You can inherit from Catalog and modify the following methods to hack a Catalog.
+out of Catalog. To change the catalog behavior, modify the following methods.
 Algorithm-specific implementations of Catalog have additional methods,
 for example, for building ``heads``.
 
