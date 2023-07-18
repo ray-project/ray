@@ -12,6 +12,7 @@ from ray.includes.optional cimport (
 from ray.includes.unique_ids cimport (
     CActorID,
     CJobID,
+    CClusterID,
     CWorkerID,
     CObjectID,
     CTaskID,
@@ -334,8 +335,9 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
         CPythonGcsClient(const CGcsClientOptions &options)
 
-        CRayStatus Connect()
-
+        CRayStatus Connect(
+            CClusterID &cluster_id,
+            int64_t timeout_ms)
         CRayStatus InternalKVGet(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_string &value)
@@ -367,7 +369,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
-
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
