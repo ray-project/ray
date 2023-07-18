@@ -3166,7 +3166,7 @@ py_test(
     main = "examples/rl_module/mobilenet_rlm.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "small",
-    srcs = ["examples/catalog/mobilenet_v2_encoder.py"],
+    srcs = ["examples/rl_module/mobilenet_rlm.py"],
 )
 
 py_test(
