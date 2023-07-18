@@ -204,21 +204,9 @@ def submit(
 
     submission_id = submission_id or job_id
 
-    if ray_constants.RAY_JOB_SUBMIT_HOOK in os.environ:
-        # Submit all args as **kwargs per the JOB_SUBMIT_HOOK contract.
-        _load_class(os.environ[ray_constants.RAY_JOB_SUBMIT_HOOK])(
-            address=address,
-            job_id=submission_id,
-            submission_id=submission_id,
-            runtime_env=runtime_env,
-            runtime_env_json=runtime_env_json,
-            metadata_json=metadata_json,
-            working_dir=working_dir,
-            entrypoint=entrypoint,
-            entrypoint_num_cpus=entrypoint_num_cpus,
-            entrypoint_num_gpus=entrypoint_num_gpus,
-            entrypoint_resources=entrypoint_resources,
-            no_wait=no_wait,
+    if ray_constants.RAY_RUNTIME_ENV_HOOK in os.environ:
+        runtime_env = _load_class(os.environ[ray_constants.RAY_RUNTIME_ENV_HOOK])(
+            runtime_env
         )
 
     client = _get_sdk_client(address, create_cluster_if_needed=True, verify=verify)
