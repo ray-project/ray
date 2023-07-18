@@ -266,71 +266,71 @@ class Learner:
 
     Usage pattern:
 
-        .. doctest::
+        .. testcode::
 
-            We use PPO and torch as an example here because many of the showcased
-            components need implementations to come together. However, the same
-            pattern is generally applicable.
+            # We use PPO and torch as an example here because many of the showcased
+            # components need implementations to come together. However, the same
+            # pattern is generally applicable.
 
-            >>> from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            ...     PPOTorchRLModule
-            ... )
-            >>> from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-            >>> from ray.rllib.core.learner.torch.torch_learner import TorchLearner
-            >>> import gymnasium as gym
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule
+            )
+            from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+            from ray.rllib.core.learner.torch.torch_learner import TorchLearner
+            import gymnasium as gym
 
-            >>> env = gym.make("CartPole-v1")
+            env = gym.make("CartPole-v1")
 
-            Create a single agent RL module spec.
-            >>> module_spec = SingleAgentRLModuleSpec(
-            ...     module_class=PPOTorchRLModule,
-            ...     observation_space=env.observation_space,
-            ...     action_space=env.action_space,
-            ...     model_config_dict = {"hidden": [128, 128]},
-            ...     catalog_class = PPOCatalog,
-            ... )
+            # Create a single agent RL module spec.
+            module_spec = SingleAgentRLModuleSpec(
+                module_class=PPOTorchRLModule,
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                model_config_dict = {"hidden": [128, 128]},
+                catalog_class = PPOCatalog,
+            )
 
-            Create a learner instance that will train the module
-            >>> learner = TorchLearner(module_spec=module_spec)
+            # Create a learner instance that will train the module
+            learner = TorchLearner(module_spec=module_spec)
 
-            Note: the learner should be built before it can be used.
-            >>> learner.build()
+            # Note: the learner should be built before it can be used.
+            learner.build()
 
-            Take one gradient update on the module and report the results
-            >>> results = learner.update(batch) # doctest: +SKIP
+            # Take one gradient update on the module and report the results
+            # results = learner.update(...)
 
-            Add a new module, perhaps for league based training
-            >>> learner.add_module(
-            ...     module_id="new_player",
-            ...     module_spec=SingleAgentRLModuleSpec(
-            ...         module_class=PPOTorchRLModule,
-            ...         observation_space=env.observation_space,
-            ...         action_space=env.action_space,
-            ...         model_config_dict = {"hidden": [128, 128]},
-            ...         catalog_class = PPOCatalog,
-            ...     )
-            ... )
+            # Add a new module, perhaps for league based training
+            learner.add_module(
+                module_id="new_player",
+                module_spec=SingleAgentRLModuleSpec(
+                    module_class=PPOTorchRLModule,
+                    observation_space=env.observation_space,
+                    action_space=env.action_space,
+                    model_config_dict = {"hidden": [128, 128]},
+                    catalog_class = PPOCatalog,
+                )
+            )
 
-            Take another gradient update with both previous and new modules.
-            >>> results = learner.update(...) # doctest: +SKIP
+            # Take another gradient update with both previous and new modules.
+            # results = learner.update(...)
 
-            Remove a module
-            >>> learner.remove_module("new_player")
+            # Remove a module
+            learner.remove_module("new_player")
 
-            Will train previous modules only.
-            >>> results = learner.update(...) # doctest: +SKIP
+            # Will train previous modules only.
+            # results = learner.update(...)
 
-            Get the state of the learner
-            >>> state = learner.get_state()
+            # Get the state of the learner
+            state = learner.get_state()
 
-            Set the state of the learner
-            >>> learner.set_state(state)
+            # Set the state of the learner
+            learner.set_state(state)
 
-            Get the weights of the underly multi-agent RLModule
-            >>> weights = learner.get_module_state()
+            # Get the weights of the underly multi-agent RLModule
+            weights = learner.get_module_state()
 
-            Set the weights of the underly multi-agent RLModule
-            >>> learner.set_module_state(weights)
+            # Set the weights of the underly multi-agent RLModule
+            learner.set_module_state(weights)
 
 
     Extension pattern:
