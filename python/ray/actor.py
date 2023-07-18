@@ -17,11 +17,6 @@ from typing import (
     overload,
 )
 
-if sys.version_info >= (3, 11):
-    from typing import TypeVarTuple, Unpack
-else:
-    from typing_extensions import TypeVarTuple, Unpack
-
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
 import ray._private.worker
@@ -59,6 +54,12 @@ from ray.util.tracing.tracing_helper import (
     _tracing_actor_creation,
     _tracing_actor_method_invocation,
 )
+
+if sys.version_info >= (3, 11):
+    from typing import TypeVarTuple, Unpack
+else:
+    from typing_extensions import TypeVarTuple, Unpack
+
 
 logger = logging.getLogger(__name__)
 
@@ -1328,7 +1329,9 @@ class ActorHandle(Generic[_ActorT]):
     ) -> ray.ObjectRef[_R]:
         ...
 
-    def remote(self, __method: ActorMethod, *args, actor_options: dict[str, Any] | None = None):  # type: ignore
+    def remote(  # type: ignore
+        self, __method: ActorMethod, *args, actor_options: dict[str, Any] | None = None
+    ):
         if not isinstance(__method, ActorMethod):
             if is_function_or_method(__method):
                 __method = getattr(self, __method.__name__)
