@@ -19,8 +19,10 @@ if __name__ == "__main__":
 
     missing_bazel_targets = []
     for f in glob.glob("python/**/tests/test_*.py", recursive=True):
-        if f.startswith("python/build/") or f.startswith(
-            "python/ray/thirdparty_files/"
+        if (
+            f.startswith("python/build/")
+            or f.startswith("python/ray/thirdparty_files/")
+            or f.startswith("python/ray/_private/runtime_env/agent/thirdparty_files/")
         ):
             continue
         # TODO(jiaodong) Remove this once experimental module is tested

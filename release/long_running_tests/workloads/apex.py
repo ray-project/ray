@@ -52,6 +52,7 @@ run_experiments(
                 "min_time_s_per_iteration": 10,
                 "min_sample_timesteps_per_iteration": 10,
             },
+            "storage_path": "/mnt/cluster_storage",
         }
     },
     callbacks=[ProgressCallback()],

@@ -702,3 +702,96 @@ padding: 20px;
     margin-bottom: 5px;
     font-size: small;
 }
+
+/* Override float positioning of next-prev buttons so that
+ they take up space normally, and we can put other stuff at
+ the bottom of the page. */
+.prev-next-area {
+  display: flex;
+  flex-direction: row;
+}
+.prev-next-area a.left-prev {
+  margin-right: auto;
+  width: fit-content;
+  float: none;
+}
+.prev-next-area a.right-next {
+  margin-left: auto;
+  width: fit-content;
+  float: none;
+}
+
+/* CSAT widgets */
+#csat-inputs {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+}
+
+.csat-hidden {
+  display: none !important;
+}
+
+#csat-feedback-label {
+  color: #000;
+  font-weight: 500;
+}
+
+.csat-button {
+  margin-left: 16px;
+  padding: 8px 16px 8px 16px;
+  border-radius: 4px;
+  border: 1px solid #D2DCE6;
+  background: #FFF;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  width: 85px;
+}
+
+#csat-textarea-group {
+  display: flex;
+  flex-direction: column;
+}
+
+#csat-submit {
+  margin-left: auto;
+  font-weight: 700;
+  border: none;
+  margin-top: 12px;
+  cursor: pointer;
+}
+
+#csat-feedback-received {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+}
+
+.csat-button-active {
+  border: 1px solid #000;
+}
+
+.csat-icon {
+  margin-right: 4px;
+}
+
+footer.col.footer {
+  display: flex;
+  flex-direction: row;
+}
+
+footer.col.footer > p {
+  margin-left: auto;
+}
+
+#csat {
+  min-width: 60%;
+}
+
+#csat-textarea {
+  resize: none;
+}
