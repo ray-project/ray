@@ -63,8 +63,8 @@ class RuntimeEnvAgentClient {
   /// \param[in] job_id The job id which the runtime env belongs to.
   /// \param[in] serialized_runtime_env The runtime
   /// environment serialized in JSON as from `RuntimeEnv::Serialize` method.
-  ///  \param[in] serialized_allocated_resource_instances The serialized allocated
-  ///  resource instances.
+  /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
+  /// instances.
   /// \param[in] callback The callback function.
   virtual void GetOrCreateRuntimeEnv(
       const JobID &job_id,
