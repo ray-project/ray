@@ -121,6 +121,11 @@ R = TypeVar("R")
 
 DAGNode = TypeVar("DAGNode")
 
+_T = TypeVar("_T")
+_ActorT = TypeVar("_ActorT")
+if TYPE_CHECKING:
+    _ActorInitArg = Union[_T, ObjectRef[_T]]
+
 
 class RemoteFunctionNoArgs(Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
@@ -2828,11 +2833,17 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def _make_remote(function_or_class, options):
+def _make_remote(function_or_class, options, actor_class: bool = False):
     if not function_or_class.__module__:
         function_or_class.__module__ = "global"
 
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
+        if actor_class:
+            raise TypeError(
+                "The @ray.remote decorator must be applied "
+                "to a class when actor_class=True"
+            )
+
         ray_option_utils.validate_task_options(options, in_options=False)
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
@@ -2920,326 +2931,6 @@ class RemoteDecorator(Protocol):
 
 # Only used for type annotations as a placeholder
 Undefined: Any = object()
-
-
-@overload
-def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
-    ...
-
-
-@overload
-def remote(__function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
-    ...
-
-
-@overload
-def remote(__function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
-    ...
-
-
-@overload
-def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3], R]
-) -> RemoteFunction3[R, T0, T1, T2, T3]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3, T4], R]
-) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5], R]
-) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
-) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
-) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
-) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
-    ...
-
-
-@overload
-def remote(
-    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-    ...
-
-
-# Pass on typing actors for now. The following makes it so no type errors
-# are generated for actors.
-@overload
-def remote(__t: type) -> Any:
-    ...
-
-
-# Passing options
-@overload
-def remote(
-    *,
-    num_returns: Union[int, float] = Undefined,
-    num_cpus: Union[int, float] = Undefined,
-    num_gpus: Union[int, float] = Undefined,
-    resources: Dict[str, float] = Undefined,
-    accelerator_type: str = Undefined,
-    memory: Union[int, float] = Undefined,
-    max_calls: int = Undefined,
-    max_restarts: int = Undefined,
-    max_task_retries: int = Undefined,
-    max_retries: int = Undefined,
-    runtime_env: Dict[str, Any] = Undefined,
-    retry_exceptions: bool = Undefined,
-    scheduling_strategy: Union[
-        None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
-    ] = Undefined,
-) -> RemoteDecorator:
-    ...
-
-
-@PublicAPI
-def remote(
-    *args, **kwargs
-) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
-    """Defines a remote function or an actor class.
-
-    This function can be used as a decorator with no arguments
-    to define a remote function or actor as follows:
-
-    .. testcode::
-
-        import ray
-
-        @ray.remote
-        def f(a, b, c):
-            return a + b + c
-
-        object_ref = f.remote(1, 2, 3)
-        result = ray.get(object_ref)
-        assert result == (1 + 2 + 3)
-
-        @ray.remote
-        class Foo:
-            def __init__(self, arg):
-                self.x = arg
-
-            def method(self, a):
-                return self.x + a
-
-        actor_handle = Foo.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
-
-    Equivalently, use a function call to create a remote function or actor.
-
-    .. testcode::
-
-        def g(a, b, c):
-            return a + b + c
-
-        remote_g = ray.remote(g)
-        object_ref = remote_g.remote(1, 2, 3)
-        assert ray.get(object_ref) == (1 + 2 + 3)
-
-        class Bar:
-            def __init__(self, arg):
-                self.x = arg
-
-            def method(self, a):
-                return self.x + a
-
-        RemoteBar = ray.remote(Bar)
-        actor_handle = RemoteBar.remote(123)
-        object_ref = actor_handle.method.remote(321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
-
-
-    It can also be used with specific keyword arguments as follows:
-
-    .. testcode::
-
-        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-        def f():
-            return 1, 2
-
-        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-        class Foo:
-            def method(self):
-                return 1
-
-    Remote task and actor objects returned by @ray.remote can also be
-    dynamically modified with the same arguments as above using
-    ``.options()`` as follows:
-
-    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    ... def f():
-    ...     return 1, 2
-    >>>
-    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
-    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
-    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
-
-    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    ... class Foo:
-    ...     def method(self):
-    ...         return 1
-    >>>
-    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-    >>> foo_actor = Foo_with_no_resources.remote()
-    >>> assert ray.get(foo_actor.method.remote()) == 1
-
-
-    A remote actor will be terminated when all actor handle to it
-    in Python is deleted, which will cause them to complete any outstanding
-    work and then shut down. If you only have 1 reference to an actor handle,
-    calling ``del actor`` *could* trigger actor deletion. Note that your program
-    may have multiple references to the same ActorHandle, and actor termination
-    will not occur until the reference count goes to 0. See the Python
-    documentation for more context about object deletion.
-    https://docs.python.org/3.9/reference/datamodel.html#object.__del__
-
-    If you want to kill actors immediately, you can also call ``ray.kill(actor)``.
-
-    .. tip::
-        Avoid repeatedly passing in large arguments to remote task or method calls.
-
-        Instead, use ray.put to create a copy of the object in the object store.
-
-        See :ref:`more info here <ray-pass-large-arg-by-value>`.
-
-    Args:
-        num_returns: This is only for *remote functions*. It specifies
-            the number of object refs returned by the remote function
-            invocation. The default value is 1.
-            Pass "dynamic" to allow the task to decide how many
-            return values to return during execution, and the caller will
-            receive an ObjectRef[ObjectRefGenerator].
-            See :ref:`dynamic generators <dynamic-generators>` for more details.
-        num_cpus: The quantity of CPU resources to reserve
-            for this task or for the lifetime of the actor.
-            By default, tasks use 1 CPU resource and actors use 1 CPU
-            for scheduling and 0 CPU for running
-            (This means, by default, actors cannot get scheduled on a zero-cpu node,
-            but an infinite number of them can run on any non-zero cpu node.
-            The default value for actors was chosen for historical reasons.
-            It’s recommended to always explicitly set num_cpus for actors
-            to avoid any surprises.
-            If resources are specified explicitly,
-            they are required for both scheduling and running.)
-            See :ref:`specifying resource requirements <resource-requirements>`
-            for more details.
-        num_gpus: The quantity of GPU resources to reserve
-            for this task or for the lifetime of the actor.
-            The default value is 0.
-            See :ref:`Ray GPU support <gpu-support>` for more details.
-        resources (Dict[str, float]): The quantity of various
-            :ref:`custom resources <custom-resources>`
-            to reserve for this task or for the lifetime of the actor.
-            This is a dictionary mapping strings (resource names) to floats.
-            By default it is empty.
-        accelerator_type: If specified, requires that the task or actor run
-            on a node with the specified type of accelerator.
-            See `ray.util.accelerators` for accelerator types.
-        memory: The heap memory request in bytes for this task/actor,
-            rounded down to the nearest integer.
-        max_calls: Only for *remote functions*. This specifies the
-            maximum number of times that a given worker can execute
-            the given remote function before it must exit
-            (this can be used to address :ref:`memory leaks <gpu-leak>` in third-party
-            libraries or to reclaim resources that cannot easily be
-            released, e.g., GPU memory that was acquired by TensorFlow).
-            By default this is infinite for CPU tasks and 1 for GPU tasks
-            (to force GPU tasks to release resources after finishing).
-        max_restarts: Only for *actors*. This specifies the maximum
-            number of times that the actor should be restarted when it dies
-            unexpectedly. The minimum valid value is 0 (default),
-            which indicates that the actor doesn't need to be restarted.
-            A value of -1 indicates that an actor should be restarted
-            indefinitely.
-            See :ref:`actor fault tolerance <fault-tolerance-actors>` for more details.
-        max_task_retries: Only for *actors*. How many times to
-            retry an actor task if the task fails due to a system error,
-            e.g., the actor has died. If set to -1, the system will
-            retry the failed task until the task succeeds, or the actor
-            has reached its max_restarts limit. If set to `n > 0`, the
-            system will retry the failed task up to n times, after which the
-            task will throw a `RayActorError` exception upon :obj:`ray.get`.
-            Note that Python exceptions are not considered system errors
-            and will not trigger retries.
-            The default value is 0.
-            See :ref:`actor fault tolerance <fault-tolerance-actors>` for more details.
-        max_retries: Only for *remote functions*. This specifies
-            the maximum number of times that the remote function
-            should be rerun when the worker process executing it
-            crashes unexpectedly. The minimum valid value is 0,
-            the default value is 3, and a value of -1 indicates
-            infinite retries.
-            See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
-        runtime_env (Dict[str, Any]): Specifies the runtime environment for
-            this actor or task and its children. See
-            :ref:`runtime-environments` for detailed documentation.
-        retry_exceptions: Only for *remote functions*. This specifies whether
-            application-level errors should be retried up to max_retries times.
-            This can be a boolean or a list of exceptions that should be retried.
-            See :ref:`task fault tolerance <fault-tolerance-tasks>` for more details.
-        scheduling_strategy: Strategy about how to
-            schedule a remote function or actor. Possible values are
-            None: ray will figure out the scheduling strategy to use, it
-            will either be the PlacementGroupSchedulingStrategy using parent's
-            placement group if parent has one and has
-            placement_group_capture_child_tasks set to true,
-            or "DEFAULT";
-            "DEFAULT": default hybrid scheduling;
-            "SPREAD": best effort spread scheduling;
-            `PlacementGroupSchedulingStrategy`:
-            placement group based scheduling;
-            `NodeAffinitySchedulingStrategy`:
-            node id based affinity scheduling.
-            See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
-            for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-
-    """
-    # "callable" returns true for both function and class.
-    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
-        # This is the case where the decorator is just @ray.remote.
-        # "args[0]" is the class or function under the decorator.
-        return _make_remote(args[0], {})
-    assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
-    return functools.partial(_make_remote, options=kwargs)
-
-
-_T = TypeVar("_T")
-_ActorT = TypeVar("_ActorT")
-if TYPE_CHECKING:
-    _ActorInitArg = Union[_T, ObjectRef[_T]]
 
 
 class ActorDecorator(Protocol):
@@ -3374,151 +3065,108 @@ class ActorDecorator(Protocol):
 
 
 @overload
-def actor_class(__class: Callable[[], _ActorT]) -> ray.actor.ActorClass[_ActorT]:
+def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0], _ActorT]
-) -> ray.actor.ActorClass[_ActorT, _ActorInitArg[T0]]:
+def remote(__function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1], _ActorT]
-) -> ray.actor.ActorClass[_ActorT, _ActorInitArg[T0], _ActorInitArg[T1]]:
+def remote(__function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-]:
+def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3], R]
+) -> RemoteFunction3[R, T0, T1, T2, T3]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3, T4], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-    _ActorInitArg[T4],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3, T4], R]
+) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3, T4, T5], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-    _ActorInitArg[T4],
-    _ActorInitArg[T5],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3, T4, T5], R]
+) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3, T4, T5, T6], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-    _ActorInitArg[T4],
-    _ActorInitArg[T5],
-    _ActorInitArg[T6],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
+) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-    _ActorInitArg[T4],
-    _ActorInitArg[T5],
-    _ActorInitArg[T6],
-    _ActorInitArg[T7],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
+) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-    _ActorInitArg[T4],
-    _ActorInitArg[T5],
-    _ActorInitArg[T6],
-    _ActorInitArg[T7],
-    _ActorInitArg[T8],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
+) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
     ...
 
 
 @overload
-def actor_class(
-    __class: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], _ActorT]
-) -> ray.actor.ActorClass[
-    _ActorT,
-    _ActorInitArg[T0],
-    _ActorInitArg[T1],
-    _ActorInitArg[T2],
-    _ActorInitArg[T3],
-    _ActorInitArg[T4],
-    _ActorInitArg[T5],
-    _ActorInitArg[T6],
-    _ActorInitArg[T7],
-    _ActorInitArg[T8],
-    _ActorInitArg[T9],
-]:
+def remote(
+    __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
+) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
     ...
 
 
+# Pass on typing actors for now. The following makes it so no type errors
+# are generated for actors.
 @overload
-def actor_class(
+def remote(__t: type) -> Any:
+    ...
+
+
+# Passing options
+@overload
+def remote(
     *,
+    num_returns: Union[int, float] = Undefined,
+    num_cpus: Union[int, float] = Undefined,
+    num_gpus: Union[int, float] = Undefined,
+    resources: Dict[str, float] = Undefined,
+    accelerator_type: str = Undefined,
+    memory: Union[int, float] = Undefined,
+    max_calls: int = Undefined,
+    max_restarts: int = Undefined,
+    max_task_retries: int = Undefined,
+    max_retries: int = Undefined,
+    runtime_env: Dict[str, Any] = Undefined,
+    retry_exceptions: bool = Undefined,
+    scheduling_strategy: Union[
+        None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
+    ] = Undefined,
+) -> RemoteDecorator:
+    ...
+
+
+@overload
+def remote(
+    *,
+    actor_class: Literal[True],
     num_returns: Union[int, float] = Undefined,
     num_cpus: Union[int, float] = Undefined,
     num_gpus: Union[int, float] = Undefined,
@@ -3539,17 +3187,27 @@ def actor_class(
 
 
 @PublicAPI
-def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
-    """Defines an actor class.
+def remote(
+    *args, actor_class: bool = False, **kwargs
+) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
+    """Defines a remote function or an actor class.
 
     This function can be used as a decorator with no arguments
-    to define an actor as follows:
+    to define a remote function or actor as follows:
 
     .. testcode::
 
         import ray
 
-        @ray.actor_class
+        @ray.remote
+        def f(a, b, c):
+            return a + b + c
+
+        object_ref = f.remote(1, 2, 3)
+        result = ray.get(object_ref)
+        assert result == (1 + 2 + 3)
+
+        @ray.remote(actor_class=True)
         class Foo:
             def __init__(self, arg):
                 self.x = arg
@@ -3558,22 +3216,20 @@ def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
                 return self.x + a
 
         actor_handle = Foo.remote(123)
-
-        object_ref = actor_handle.remote(actor_handle.methods.method, 321)
-        result = ray.get(object_ref)
-        assert result == (123 + 321)
-
-        # The above operations are equivalent to
         object_ref = actor_handle.method.remote(321)
         result = ray.get(object_ref)
         assert result == (123 + 321)
 
-    Equivalently, use a function call to create a remote actor. (Highly recommended,
-    because we will lose the original class after decorate it)
+    Equivalently, use a function call to create a remote function or actor.
 
     .. testcode::
 
-        import ray
+        def g(a, b, c):
+            return a + b + c
+
+        remote_g = ray.remote(g)
+        object_ref = remote_g.remote(1, 2, 3)
+        assert ray.get(object_ref) == (1 + 2 + 3)
 
         class Bar:
             def __init__(self, arg):
@@ -3582,26 +3238,39 @@ def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
             def method(self, a):
                 return self.x + a
 
-        RemoteBar = ray.actor_class(Bar)
+        RemoteBar = ray.remote(Bar)
         actor_handle = RemoteBar.remote(123)
         object_ref = actor_handle.method.remote(321)
         result = ray.get(object_ref)
         assert result == (123 + 321)
 
+
     It can also be used with specific keyword arguments as follows:
 
     .. testcode::
 
-        @ray.actor_class(num_cpus=2, resources={"CustomResource": 1})
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        def f():
+            return 1, 2
+
+        @ray.remote(actor_class=True, num_cpus=2, resources={"CustomResource": 1})
         class Foo:
             def method(self):
                 return 1
 
-    Remote actor objects returned by @ray.actor_class can also be
+    Remote task and actor objects returned by @ray.remote can also be
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    >>> @ray.actor_class(num_cpus=2, resources={"CustomResource": 1})
+    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+    ... def f():
+    ...     return 1, 2
+    >>>
+    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
+    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
+    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
+
+    >>> @ray.remote(actor_class=True, num_cpus=2, resources={"CustomResource": 1})
     ... class Foo:
     ...     def method(self):
     ...         return 1
@@ -3623,7 +3292,7 @@ def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
     If you want to kill actors immediately, you can also call ``ray.kill(actor)``.
 
     .. tip::
-        Avoid repeatedly passing in large arguments method calls.
+        Avoid repeatedly passing in large arguments to remote task or method calls.
 
         Instead, use ray.put to create a copy of the object in the object store.
 
@@ -3722,4 +3391,10 @@ def actor_class(*args, **kwargs) -> Union[ray.actor.ActorClass, ActorDecorator]:
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
     """
-    return remote(*args, **kwargs)  # type: ignore
+    # "callable" returns true for both function and class.
+    if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
+        # This is the case where the decorator is just @ray.remote.
+        # "args[0]" is the class or function under the decorator.
+        return _make_remote(args[0], {}, actor_class=actor_class)
+    assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
+    return functools.partial(_make_remote, options=kwargs, actor_class=actor_class)

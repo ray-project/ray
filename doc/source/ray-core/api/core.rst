@@ -27,7 +27,6 @@ Actors
 
     ray.remote
     ray.actor.ActorClass.options
-    ray.actor_class
     ray.method
     ray.get_actor
     ray.kill

@@ -1223,7 +1223,7 @@ def test_keep_calling_get_actor(ray_start_regular_shared):
 
 
 def test_actor_class_decorator(ray_start_regular_shared):
-    @ray.actor_class
+    @ray.remote(actor_class=True)
     class Test:
         def __init__(self, x):
             self.x = x
@@ -1241,7 +1241,7 @@ def test_actor_class_decorator(ray_start_regular_shared):
 
 
 def test_actor_class_namespace(ray_start_regular_shared):
-    @ray.actor_class
+    @ray.remote(actor_class=True)
     class Actor:
         def f(self):
             return "ok"
@@ -1259,7 +1259,7 @@ def test_actor_class_namespace(ray_start_regular_shared):
 
 
 def test_actor_class_options_num_returns(ray_start_regular_shared):
-    @ray.actor_class
+    @ray.remote(actor_class=True)
     class Foo:
         def method(self):
             return 1, 2
