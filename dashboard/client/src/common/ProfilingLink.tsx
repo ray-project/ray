@@ -1,5 +1,5 @@
 import { Link } from "@material-ui/core";
-import React, { PropsWithChildren } from "react";
+import React, { PropsWithChildren, useState } from "react";
 import { ClassNameProps } from "./props";
 
 type CpuProfilingLinkProps = PropsWithChildren<
@@ -19,18 +19,44 @@ export const TaskCpuProfilingLink = ({
   taskId,
   attemptNumber,
 }: TaskProfilingStackTraceProps) => {
+  const [svgContent, setSvgContent] = useState("");
+  const [warning, setWarning] = useState("");
   if (!taskId) {
     return null;
   }
+  const handleClick = async (taskId: any) => {
+    if (!taskId) {
+      return;
+    }
+    console.info("taskId: ", taskId);
+
+    const startTime = performance.now();
+
+    const response = await fetch(
+      `task/cpu_profile?task_id=${taskId}&attempt_number=${attemptNumber}`,
+    );
+    const endTime = performance.now();
+    const elapsedTime = endTime - startTime;
+    console.info("Elapsed time (ms): ", elapsedTime);
+
+    console.info("response: ", response);
+
+    const data = await response.json();
+    console.info("data: ", data);
+
+    setSvgContent(data.content);
+    setWarning(data.warning);
+
+    const newWindow = window.open("", "_blank") as Window;
+    newWindow.document.write(`<p>${warning}</p>${svgContent}`);
+    newWindow.document.close();
+  };
   return (
-    <Link
-      href={`task/cpu_profile?task_id=${taskId}&attempt_number=${attemptNumber}`}
-      target="_blank"
-      title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph."
-      rel="noreferrer"
-    >
-      CPU&nbsp;Flame&nbsp;Graph
-    </Link>
+    <div onClick={() => handleClick(taskId)}>
+      <Link title="Profile the Python worker for 5 seconds (default) and display a CPU flame graph.">
+        CPU&nbsp;Flame&nbsp;Graph
+      </Link>
+    </div>
   );
 };
 

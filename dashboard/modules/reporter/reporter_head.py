@@ -39,12 +39,8 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "This task is running in a worker that is running multiple tasks. Please notice the info you see here is for the all the tasks in this worker.The task_id running on this task is: \n"
 
 
-def get_warning_text(reply, task_ids):
-    return (
-        reply.output
-        if len(task_ids) == 1
-        else WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids) + "\n" + reply.output
-    )
+def get_warning_text(task_ids):
+    return WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids) + "\n"
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
@@ -179,9 +175,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         worker_id = tasks[0]["worker_id"]
         worker_option = ListApiOptions(
-            filters=[
-                ("worker_id", "=", worker_id),
-            ],
+            filters=[("worker_id", "=", worker_id), ("state", "=", "RUNNING")],
             detail=True,
             timeout=10,
         )
@@ -291,7 +285,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
         logger.info("Returning stack trace, size {}".format(len(reply.output)))
-        return aiohttp.web.Response(text=get_warning_text(reply, task_ids_in_a_worker))
+
+        return aiohttp.web.Response(
+            text=get_warning_text(task_ids_in_a_worker) + reply.output
+            if len(task_ids_in_a_worker) > 1
+            else reply.output
+        )
 
     @routes.get("/task/cpu_profile")
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
@@ -357,7 +356,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             new_pid,
             new_ip,
             new_state,
-            _,
+            task_ids_in_a_worker,
         ) = await self.get_worker_details_for_task(task_id, attempt_number)
 
         try:
@@ -369,13 +368,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
+
         return aiohttp.web.Response(
-            body=reply.output,
-            headers={
-                "Content-Type": "image/svg+xml"
-                if format == "flamegraph"
-                else "text/plain"
-            },
+            body=json.dumps(
+                {
+                    "content": reply.output,
+                    "warning": get_warning_text(task_ids_in_a_worker),
+                }
+                if len(task_ids_in_a_worker) > 1
+                else {"content": reply.output}
+            ),
+            headers={"Content-Type": "application/json"},
         )
 
     @routes.get("/worker/traceback")
