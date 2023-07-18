@@ -64,6 +64,16 @@ enum class ServerCallState {
 
 class ServerCallFactory;
 
+/// Represents a service handler that might not
+/// be ready to serve RPCs immediately after construction.
+class DelayedServiceHandler {
+ public:
+  virtual ~DelayedServiceHandler() = default;
+
+  /// Blocks until the service is ready to serve RPCs.
+  virtual void WaitUntilInitialized() = 0;
+};
+
 /// Represents an incoming request of a gRPC server.
 ///
 /// The lifecycle and state transition of a `ServerCall` is as follows:
@@ -148,6 +158,8 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] preprocess_function If not nullptr, it will be called before handling
+  /// request.
   ServerCallImpl(
       const ServerCallFactory &factory,
       ServiceHandler &service_handler,
@@ -155,7 +167,8 @@ class ServerCallImpl : public ServerCall {
       instrumented_io_context &io_service,
       std::string call_name,
       const ClusterID &cluster_id,
-      bool record_metrics)
+      bool record_metrics,
+      std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -196,6 +209,9 @@ class ServerCallImpl : public ServerCall {
   }
 
   void HandleRequestImpl() {
+    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+      service_handler_.WaitUntilInitialized();
+    }
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
