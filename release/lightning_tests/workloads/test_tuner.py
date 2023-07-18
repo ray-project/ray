@@ -53,6 +53,7 @@ if __name__ == "__main__":
         lightning_trainer,
         param_space={"lightning_config": lightning_config},
         run_config=ray.air.RunConfig(
+            storage_path="/mnt/cluster_storage",
             name="release-tuner-test",
             verbose=2,
             checkpoint_config=CheckpointConfig(

@@ -131,6 +131,10 @@ compile_pip_dependencies() {
       "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
   fi
 
+  # Remove some pins from upstream dependencies:
+  # ray, xgboost-ray, lightgbm-ray, tune-sklearn
+  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/requirements_compiled.txt"
+
   cat "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   if [ "$HAS_TORCH" -eq 0 ]; then
@@ -140,7 +144,7 @@ compile_pip_dependencies() {
 
 test_core() {
   local args=(
-    "//:*"
+    "//:*" "//src/..."
   )
   case "${OSTYPE}" in
     msys)
@@ -148,7 +152,7 @@ test_core() {
         -//:core_worker_test
         -//src/ray/util/tests:event_test
         -//:gcs_server_rpc_test
-        -//:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
+        -//src/ray/common/test:ray_syncer_test # TODO (iycheng): it's flaky on windows. Add it back once we figure out the cause
         -//:gcs_health_check_manager_test
         -//:gcs_client_reconnection_test
       )
@@ -469,13 +473,11 @@ build_wheels_and_jars() {
       IMAGE_TAG="2022-12-20-b4884d9"
 
       local MOUNT_ENV=()
-      if [ "${LINUX_JARS-}" == "1" ]; then
-        MOUNT_ENV+=(
-          -e "BUILD_JAR=1"
-        )
+      if [[ "${LINUX_JARS-}" == "1" ]]; then
+        MOUNT_ENV+=(-e "BUILD_JAR=1")
       fi
 
-      if [ -z "${BUILDKITE-}" ]; then
+      if [[ -z "${BUILDKITE-}" ]]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
@@ -510,7 +512,7 @@ build_wheels_and_jars() {
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
-      if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+      if [[ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" == "1" ]]; then
         cp -r .whl /tmp/artifacts/.whl
         chmod -R 777 /tmp/artifacts/.whl
       fi
