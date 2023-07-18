@@ -81,3 +81,6 @@ class GRPCServeRequest(ServeRequest):
     @property
     def request_id(self) -> str:
         return self.request.request_id
+
+    def set_request_id(self, request_id: str):
+        self.request.request_id = request_id
