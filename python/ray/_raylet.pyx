@@ -2171,6 +2171,20 @@ cdef class GcsClient:
         return self._nums_reconnect_retry
 
     @_auto_reconnect
+    def check_alive(
+        self, node_ips: c_vector[c_string], timeout: Optional[float] = None
+    ):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_vector[c_bool] c_result
+        with nogil:
+            check_status(self.inner.get().CheckAlive(node_ips, timeout_ms, c_result))
+        result = []
+        for r in c_result:
+            result.append(r)
+        return result
+
+    @_auto_reconnect
     def internal_kv_get(self, c_string key, namespace=None, timeout=None):
         cdef:
             c_string ns = namespace or b""
