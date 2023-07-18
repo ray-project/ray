@@ -473,13 +473,11 @@ build_wheels_and_jars() {
       IMAGE_TAG="2022-12-20-b4884d9"
 
       local MOUNT_ENV=()
-      if [ "${LINUX_JARS-}" == "1" ]; then
-        MOUNT_ENV+=(
-          -e "BUILD_JAR=1"
-        )
+      if [[ "${LINUX_JARS-}" == "1" ]]; then
+        MOUNT_ENV+=(-e "BUILD_JAR=1")
       fi
 
-      if [ -z "${BUILDKITE-}" ]; then
+      if [[ -z "${BUILDKITE-}" ]]; then
         # This command should be kept in sync with ray/python/README-building-wheels.md,
         # except the "${MOUNT_BAZEL_CACHE[@]}" part.
         docker run --rm -w /ray -v "${PWD}":/ray "${MOUNT_BAZEL_CACHE[@]}" \
@@ -514,7 +512,7 @@ build_wheels_and_jars() {
       mkdir -p /tmp/artifacts/.whl
       rm -rf /tmp/artifacts/.whl || true
 
-      if [ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" = "1" ]; then
+      if [[ "${UPLOAD_WHEELS_AS_ARTIFACTS-}" == "1" ]]; then
         cp -r .whl /tmp/artifacts/.whl
         chmod -R 777 /tmp/artifacts/.whl
       fi
