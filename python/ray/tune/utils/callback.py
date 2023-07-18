@@ -91,10 +91,10 @@ def _create_default_callbacks(
         ]
         callbacks = new_callbacks
     if air_verbosity is not None:  # new flow
-        from ray.tune.experimental.output import AirResultCallbackWrapper
+        from ray.tune.experimental.output import AirResultProgressCallback
 
         callbacks.append(
-            AirResultCallbackWrapper(air_verbosity, metrics=progress_metrics)
+            AirResultProgressCallback()
         )
     elif not has_trial_progress_callback:  # old flow
         trial_progress_callback = TrialProgressCallback(

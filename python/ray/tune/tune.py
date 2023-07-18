@@ -1066,6 +1066,8 @@ def run(
             mode=mode,
         )
     else:
+        from ray.tune.experimental.output import AirResultProgressCallback
+
         air_progress_reporter = _detect_air_reporter(
             air_verbosity,
             num_samples=search_alg.total_samples,
@@ -1073,7 +1075,12 @@ def run(
             metric=metric,
             mode=mode,
             config=config,
+            progress_metrics=progress_metrics,
         )
+        for callback in callbacks:
+            if isinstance(callback, AirResultProgressCallback):
+                callback.set_progress_reporter(air_progress_reporter)
+                break
 
     # rich live context manager has to be called encapsulating
     # the while loop. For other kind of reporters, no op.
