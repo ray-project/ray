@@ -61,10 +61,10 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 
-from ray.serve._private.request_wrappers import (
-    RequestWrapper,
-    ASGIRequestWrapper,
-    GRPCRequestWrapper,
+from ray.serve._private.serve_request import (
+    ServeRequest,
+    ASGIServeRequest,
+    GRPCServeRequest,
 )
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
@@ -576,7 +576,7 @@ class GenericProxy:
     async def _assign_request_with_timeout(
         self,
         handle: RayServeHandle,
-        request: RequestWrapper,
+        serve_request: ServeRequest,
         disconnected_task: Optional[asyncio.Task] = None,
         timeout_s: Optional[float] = None,
     ) -> Optional[StreamingObjectRefGenerator]:
@@ -589,18 +589,18 @@ class GenericProxy:
         case, we will abort assigning a replica and return `None`.
         """
         assignment_task = None
-        if isinstance(request, ASGIRequestWrapper):
+        if isinstance(serve_request, ASGIServeRequest):
             assignment_task = handle.remote(
                 StreamingHTTPRequest(
-                    pickled_asgi_scope=pickle.dumps(request.scope),
+                    pickled_asgi_scope=pickle.dumps(serve_request.scope),
                     http_proxy_handle=self.self_actor_handle,
                 )
             )
-        if isinstance(request, GRPCRequestWrapper):
+        if isinstance(serve_request, GRPCServeRequest):
             assignment_task = handle.remote(
                 StreamingGRPCRequest(
                     pickled_grpc_user_request=pickle.dumps(
-                        request.request.user_request
+                        serve_request.request.user_request
                     ),  # TODO (sugene): fixit
                     http_proxy_handle=self.self_actor_handle,
                 )
@@ -675,7 +675,7 @@ class GenericProxy:
         self,
         request_id: str,
         handle: RayServeHandle,
-        request: RequestWrapper,
+        serve_request: ServeRequest,
     ) -> str:
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
@@ -759,7 +759,7 @@ class GRPCProxy(GenericProxy):
         print("context.details()", context.details())
         print("context.peer()", context.peer())
 
-        request = GRPCRequestWrapper(request=serve_request)
+        request = GRPCServeRequest(request=serve_request)
         app_name = serve_request.application
         multiplexed_model_id = serve_request.multiplexed_model_id
         request_id = serve_request.request_id
@@ -783,11 +783,10 @@ class GRPCProxy(GenericProxy):
 
         # TODO (genesu): support routes and healthz?
         # TODO (genesu): support draining
-
         # TODO (genesu): catch timeout for this
         result_generator = await self._assign_request_with_timeout(
             handle=handle,
-            request=request,
+            serve_request=request,
             timeout_s=self.request_timeout_s,
         )
         print("result_generator", result_generator)
@@ -800,37 +799,6 @@ class GRPCProxy(GenericProxy):
             user_response=user_response,
             request_id=request_id,
         )
-
-        path = self.prefix_router.get_route_from_target(request.target)
-        request_id = ray.serve.context._serve_request_context.get().request_id
-        headers = [
-            (SERVE_MULTIPLEXED_MODEL_ID.encode("utf-8"), b"11"),
-            (RAY_SERVE_REQUEST_ID_HEADER.encode("utf-8"), request_id.encode("utf-8")),
-            (SERVE_GRPC_REQUEST.encode("utf-8"), b""),
-        ]
-        print("path", path)
-        print("request_id", request_id)
-
-        scope = {
-            "type": "http",
-            "path": path,
-            "root_path": "",
-            "headers": headers,
-        }
-        receive = make_buffered_asgi_receive(request.input.SerializeToString())
-        send = BufferedASGISender()
-        await self(
-            scope=scope,
-            receive=receive,
-            send=send,
-        )  # Calling self to use http code path
-        response_body = ProtoAny()
-        for message in send.messages:
-            if message.get("type") == "http.response.body":
-                response_body.ParseFromString(message["body"])
-        print("send.messages", send.messages)
-        print("response_body", response_body)
-        return serve_pb2.RayServeResponse(output=response_body)
 
 
 class HTTPProxy(GenericProxy):
@@ -851,7 +819,7 @@ class HTTPProxy(GenericProxy):
         print("scope: ", scope)
         print("receive: ", receive)
         print("send: ", send)
-        request = ASGIRequestWrapper(scope=scope, receive=receive, send=send)
+        request = ASGIServeRequest(scope=scope, receive=receive, send=send)
         assert request.request_type in {"http", "websocket"}
 
         # TODO (genesu): implement those methods onto asgi request wrapper

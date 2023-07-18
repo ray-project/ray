@@ -9,11 +9,11 @@ from ray.serve.generated import serve_pb2
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class RequestWrapper:
+class ServeRequest:
     pass
 
 
-class ASGIRequestWrapper(RequestWrapper):
+class ASGIServeRequest(ServeRequest):
     def __init__(self, scope: Scope, receive: Receive, send: Send):
         self.scope = scope
         self.receive = receive
@@ -28,6 +28,6 @@ class ASGIRequestWrapper(RequestWrapper):
         return self.scope["client"]
 
 
-class GRPCRequestWrapper(RequestWrapper):
+class GRPCServeRequest(ServeRequest):
     def __init__(self, request: serve_pb2.RayServeRequest):
         self.request = request

@@ -610,11 +610,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         in for scheduling. However, in cases where the number of available replicas
         is updated or a task exits unexpectedly, we may need to start multiple.
         """
-        print("maybe_start_scheduling_tasks called!!!")
         tasks_to_start = (
             self.target_num_scheduling_tasks - self.curr_num_scheduling_tasks
         )
-        print("tasks_to_start", tasks_to_start)
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
                 self._loop.create_task(self.fulfill_pending_requests())
