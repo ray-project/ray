@@ -1,7 +1,7 @@
 import logging
 
 from starlette.types import Receive, Scope, Send
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.generated import serve_pb2
@@ -96,6 +96,10 @@ class ASGIServeResponse(ServeRequest):
 
 
 class GRPCServeResponse(ServeResponse):
-    def __init__(self, response: ProtoAny, status_code: str):
+    def __init__(
+        self,
+        status_code: str,
+        response: Optional[serve_pb2.RayServeResponse] = None
+    ):
         super().__init__(status_code)
         self.response = response

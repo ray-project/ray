@@ -834,17 +834,30 @@ class GRPCProxy(GenericProxy):
         print("route_path", route_path)
 
         serve_request = GRPCServeRequest(request=request, route_path=route_path)
-        result_generator = await self.proxy_request(serve_request=serve_request)
-        print("result_generator", result_generator)
-        result = await next(result_generator)
-        print("Predict, result", result)
+        serve_response = await self.proxy_request(serve_request=serve_request)
+        print("Predict, serve_response", serve_response)
+        return serve_response.response
+
+    async def _consume_generator(
+        self,
+        obj_ref_generator: StreamingObjectRefGenerator,
+        request_id: str,
+    ) -> ServeResponse:
+        # TODO (genesu): Non-streaming request only has one result. Make this work
+        #  with streaming results as well.
+        print("_consume_generator, obj_ref_generator", obj_ref_generator)
+        result = await next(obj_ref_generator)
+        print("_consume_generator, result", result)
         user_response = ProtoAny()
         user_response.ParseFromString(result)
-        print("Predict, deserialized_result", user_response)
-        return serve_pb2.RayServeResponse(
+        print("_consume_generator, deserialized_result", user_response)
+        response = serve_pb2.RayServeResponse(
             user_response=user_response,
-            request_id=serve_request.request_id,
+            request_id=request_id,
         )
+        print("_consume_generator, response", response)
+
+        return GRPCServeResponse(status_code="200", response=response)
 
     async def send_request_to_replica_streaming(
         self,
@@ -852,26 +865,13 @@ class GRPCProxy(GenericProxy):
         handle: RayServeHandle,
         serve_request: ServeRequest,
     ) -> ServeResponse:
-        # Proxy the receive interface by placing the received messages on a queue.
-        # The downstream replica must call back into `receive_asgi_messages` on this
-        # actor to receive the messages.
-        print("in HTTPProxy#send_request_to_replica_streaming!!")
-        proxy_asgi_receive_task = None
-        if isinstance(serve_request, ASGIServeRequest):
-            receive_queue = ASGIMessageQueue()
-            self.asgi_receive_queues[request_id] = receive_queue
-            proxy_asgi_receive_task = get_or_create_event_loop().create_task(
-                self.proxy_asgi_receive(serve_request.receive, receive_queue)
-            )
 
-        status_code = ""
         start = time.time()
         try:
             try:
                 obj_ref_generator = await self._assign_request_with_timeout(
                     handle=handle,
                     serve_request=serve_request,
-                    disconnected_task=proxy_asgi_receive_task,
                     timeout_s=self.request_timeout_s,
                 )
                 if obj_ref_generator is None:
@@ -890,52 +890,16 @@ class GRPCProxy(GenericProxy):
 
             print("obj_ref_generator", obj_ref_generator)
             print("serve_request", serve_request)
-            print(
-                "isinstance(serve_request, GRPCServeRequest)",
-                isinstance(serve_request, GRPCServeRequest),
-            )
-            if isinstance(serve_request, GRPCServeRequest):
-                return "200", obj_ref_generator
 
-            try:
-                status_code = await self._consume_and_send_asgi_message_generator(
-                    obj_ref_generator,
-                    serve_request.send,
-                    timeout_s=calculate_remaining_timeout(
-                        timeout_s=self.request_timeout_s,
-                        start_time_s=start,
-                        curr_time_s=time.time(),
-                    ),
-                )
-            except TimeoutError:
-                logger.warning(
-                    f"Request {request_id} timed out after "
-                    f"{self.request_timeout_s}s while executing."
-                )
-                return TIMEOUT_ERROR_CODE, None
+            return await self._consume_generator(
+                obj_ref_generator=obj_ref_generator,
+                request_id=request_id
+            )
 
         except Exception as e:
             print("in HTTPProxy#send_request_to_replica_streaming exception!!", e)
             logger.exception(e)
-            status_code = "500"
-        finally:
-            if isinstance(serve_request, ASGIServeRequest):
-                if not proxy_asgi_receive_task.done():
-                    proxy_asgi_receive_task.cancel()
-                else:
-                    # If the server disconnects, status_code is set above from the
-                    # disconnect message. Otherwise the disconnect code comes from
-                    # a client message via the receive interface.
-                    if (
-                        status_code == ""
-                        and serve_request.request_type == "websocket"
-                        and proxy_asgi_receive_task.exception() is None
-                    ):
-                        status_code = str(proxy_asgi_receive_task.result())
-
-                del self.asgi_receive_queues[request_id]
-
-        return status_code, obj_ref_generator
+            return GRPCServeResponse(status_code="500")
 
 
 class HTTPProxy(GenericProxy):
