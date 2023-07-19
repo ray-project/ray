@@ -19,10 +19,11 @@ from ray.autoscaler.v2.schema import (
 )
 from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import (
+    get_available_resources,
     get_cluster_resource_state,
+    get_total_resources,
     report_autoscaling_state,
 )
-from ray.autoscaler.v2.utils import get_available_resources, get_total_resources
 from ray.core.generated import autoscaler_pb2, autoscaler_pb2_grpc
 from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 from ray.util.state.api import list_nodes

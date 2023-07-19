@@ -542,18 +542,3 @@ def is_autoscaler_v2() -> bool:
         == b"1"
     )
     return _is_autoscaler_v2_cached
-
-
-def get_total_resources(usages: List[ResourceUsage]) -> Dict[str, float]:
-    """Returns a map of resource name to total resource."""
-    return {r.resource_name: r.total for r in usages}
-
-
-def get_available_resources(usages: List[ResourceUsage]) -> Dict[str, float]:
-    """Returns a map of resource name to available resource."""
-    return {r.resource_name: r.total - r.used for r in usages}
-
-
-def get_used_resources(usages: List[ResourceUsage]) -> Dict[str, float]:
-    """Returns a map of resource name to used resource."""
-    return {r.resource_name: r.used for r in usages}
