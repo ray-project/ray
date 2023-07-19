@@ -175,10 +175,22 @@ data preprocessing as part of training, and transitioning from training to servi
 
 Read more about building ML platforms with Ray in :ref:`this section <ray-for-ml-infra>`.
 
-..
-  https://docs.google.com/drawings/d/1atB1dLjZIi8ibJ2-CoHdd3Zzyl_hDRWyK2CJAVBBLdU/edit
+  Shopify's Merlin architecture built on Ray.
 
-.. image:: /images/ray-air.svg
+Spotify `uses Ray for advanced applications <https://www.anyscale.com/ray-summit-2022/agenda/sessions/180>`_ that include personalizing content recommendations for home podcasts, and personalizing Spotify Radio track sequencing.
+
+.. figure:: /images/spotify.png
+
+  How Ray ecosystem empowers ML scientists and engineers at Spotify.
+
+The following highlights feature companies leveraging Ray's unified API to build simpler, more flexible ML platforms.
+
+- `[Blog] The Magic of Merlin - Shopify's New ML Platform <https://shopify.engineering/merlin-shopify-machine-learning-platform>`_
+- `[Slides] Large Scale Deep Learning Training and Tuning with Ray <https://drive.google.com/file/d/1BS5lfXfuG5bnI8UM6FdUrR7CiSuWqdLn/view>`_
+- `[Blog] Griffin: How Instacart’s ML Platform Tripled in a year <https://www.instacart.com/company/how-its-made/griffin-how-instacarts-ml-platform-tripled-ml-applications-in-a-year/>`_
+- `[Talk] Predibase - A low-code deep learning platform built for scale <https://www.youtube.com/watch?v=B5v9B5VSI7Q>`_
+- `[Blog] Building a ML Platform with Kubeflow and Ray on GKE <https://cloud.google.com/blog/products/ai-machine-learning/build-a-ml-platform-with-kubeflow-and-ray-on-gke>`_
+- `[Talk] Ray Summit Panel - ML Platform on Ray <https://www.youtube.com/watch?v=_L0lsShbKaY>`_
 
 End-to-End ML Workflows
 -----------------------
