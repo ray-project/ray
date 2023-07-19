@@ -9,7 +9,6 @@ from typing import (
     Optional,
     Tuple,
     Union,
-    TYPE_CHECKING,
 )
 
 import contextlib
@@ -588,7 +587,7 @@ def _print_dict_as_table(
     )
 
 
-class ProgressReporter:
+class ProgressReporter(Callback):
     """Periodically prints out status update."""
 
     # TODO: Make this configurable
@@ -619,6 +618,13 @@ class ProgressReporter:
     @property
     def verbosity(self) -> AirVerbosity:
         return self._verbosity
+
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        **kwargs,
+    ):
+        self._start_time = start_time
 
     def experiment_started(
         self,
@@ -824,6 +830,15 @@ class TuneReporterBase(ProgressReporter):
         super(TuneReporterBase, self).__init__(
             verbosity=verbosity, progress_metrics=progress_metrics
         )
+
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        total_samples: Optional[int] = None,
+        **kwargs,
+    ):
+        super().setup(start_time=start_time)
+        self._num_samples = total_samples
 
     def _get_overall_trial_progress_str(self, trials):
         result = " | ".join(
@@ -1092,23 +1107,3 @@ class TrainReporter(ProgressReporter):
         super().on_trial_result(
             iteration=iteration, trials=trials, trial=trial, result=result, **info
         )
-
-
-class AirResultProgressCallback(Callback):
-    def __init__(self, progress_reporter: Optional[ProgressReporter] = None):
-        self._progress_reporter = progress_reporter
-
-    def set_progress_reporter(self, progress_reporter: ProgressReporter):
-        self._progress_reporter = progress_reporter
-
-    def on_trial_result(self, *args, **kwargs):
-        self._progress_reporter.on_trial_result(*args, **kwargs)
-
-    def on_trial_start(self, *args, **kwargs):
-        self._progress_reporter.on_trial_start(*args, **kwargs)
-
-    def on_trial_complete(self, *args, **kwargs):
-        self._progress_reporter.on_trial_complete(*args, **kwargs)
-
-    def on_checkpoint(self, *args, **kwargs):
-        self._progress_reporter.on_checkpoint(*args, **kwargs)
