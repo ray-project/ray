@@ -51,6 +51,13 @@ def parse_args() -> None:
         "Files will be generated on each of these nodes.",
     )
 
+    parser.add_argument(
+        "--parquet",
+        default=False,
+        action="store_true",
+        help="Whether to also output parquet files generated from inputs.",
+    )
+
     input_data_group = parser.add_mutually_exclusive_group(required=True)
     input_data_group.add_argument(
         "--shard-url",
@@ -75,6 +82,7 @@ def generate_local_files(
     shard_url: Optional[str],
     image_url: str,
     output_directory: str,
+    output_parquet: bool = False,
 ) -> None:
     if not os.path.exists(output_directory):
         os.makedirs(output_directory)
@@ -98,10 +106,18 @@ def generate_local_files(
     elif shard_url:
         download_single_shard(shard_url, filenames[0])
 
-    bcast_single_shard(filenames[0], filenames[1:])
+    file_type = "tf" if num_images_per_shard else "binary"
+    bcast_single_shard(
+        filenames[0], filenames[1:], file_type=file_type, write_parquet=output_parquet
+    )
 
 
-def bcast_single_shard(src_filename: str, dst_filenames: Iterable[str]) -> None:
+def bcast_single_shard(
+    src_filename: str,
+    dst_filenames: Iterable[str],
+    file_type: str,
+    write_parquet: bool = False,
+) -> None:
     print(f"Copying {src_filename} {len(dst_filenames)} times")
 
     # TODO(swang): Mark the file path with the number of images contained and
@@ -109,6 +125,16 @@ def bcast_single_shard(src_filename: str, dst_filenames: Iterable[str]) -> None:
     for dst in dst_filenames:
         print(f"Copying {src_filename} to {dst}")
         shutil.copyfile(src_filename, dst)
+    if write_parquet:
+        all_files = [src_filename] + list(dst_filenames)
+        if file_type == "tf":
+            ds = ray.data.read_tfrecords(all_files)
+        elif file_type == "binary":
+            ds = ray.data.read_binary_files(all_files)
+        else:
+            raise ValueError(f"Unknown file type {file_type}")
+        ds.write_parquet(src_filename + ".parquet")
+        print("===> Wrote parquet to ", src_filename + ".parquet")
 
 
 def download_single_shard(
@@ -268,6 +294,7 @@ if __name__ == "__main__":
                 args.shard_url,
                 args.single_image_url,
                 args.output_directory,
+                args.parquet,
             )
         )
     ray.get(results)

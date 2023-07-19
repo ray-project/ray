@@ -297,11 +297,16 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
     return filenames
 
 
-def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
-    filenames = get_tfrecords_filenames(
-        data_root, num_images_per_epoch, num_images_per_input_file
-    )
-    ds = ray.data.read_tfrecords(filenames)
+def build_dataset(
+    data_root, num_images_per_epoch, num_images_per_input_file, is_parquet
+):
+    if not is_parquet:
+        filenames = get_tfrecords_filenames(
+            data_root, num_images_per_epoch, num_images_per_input_file
+        )
+        ds = ray.data.read_tfrecords(filenames)
+    else:
+        ds = ray.data.read_parquet(data_root)
     # TODO(swang): If we are reading the actual dataset and we only want to read
     # a fraction of images, then we should actually call .limit(), but right now
     # this materializes all data to the object store. For now, we can just skip
@@ -478,6 +483,8 @@ if __name__ == "__main__":
     parser.add_argument("--use-gpu", action="store_true")
     parser.add_argument("--online-processing", action="store_true")
     parser.add_argument("--num-cpu-nodes", default=0, type=int)
+    parser.add_argument("--parquet", default=False, action="store_true")
+    parser.add_argument("--randomize-block-order", default=False, action="store_true")
     args = parser.parse_args()
 
     ray.init(
@@ -538,6 +545,7 @@ if __name__ == "__main__":
                 args.data_root,
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
+                args.parquet,
             )
             # Set a lower batch size for images to prevent OOM.
             batch_size = 32
@@ -552,6 +560,9 @@ if __name__ == "__main__":
                     batch_format="pandas",
                 )
             train_loop_config["data_loader"] = RAY_DATA
+
+    if args.randomize_block_order:
+        datasets["train"] = datasets["train"].randomize_block_order()
 
     trainer = TensorflowTrainer(
         train_loop_for_worker,
