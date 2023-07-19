@@ -106,6 +106,9 @@ class _ModelMultiplexWrapper:
             The user-constructed model object.
         """
         context = get_internal_replica_context().multiplexed_model_state
+        unique_request = (time.time(), model_id)
+        context.active_requests.add(unique_request)
+        context.debug_print()
 
         if type(model_id) != str:
             raise TypeError("The model ID must be a string.")
@@ -124,6 +127,7 @@ class _ModelMultiplexWrapper:
                 await asyncio.sleep(10)
 
             if model_id in self.models:
+                context.active_requests.remove(unique_request)
                 return self.models[model_id]  # Someone else loaded me since.
 
             context.loading = True
@@ -152,6 +156,7 @@ class _ModelMultiplexWrapper:
             self.model_load_latency_s.set(time.time() - load_start_time)
             logger.info(f"Done loading model '{model_id}'.")
             context.loading = False
+        context.active_requests.remove(unique_request)
         return self.models[model_id]
 
     async def unload_model(self) -> None:

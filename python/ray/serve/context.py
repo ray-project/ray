@@ -27,6 +27,7 @@ class MultiplexedModelState:
     def __init__(self):
         self.loading = False
         self.loaded_models: Dict[str, int] = {}
+        self.active_requests = set()
 
     def mark_load(self, model_id: str):
         self.loaded_models[model_id] = time.time()
@@ -37,11 +38,15 @@ class MultiplexedModelState:
             del self.loaded_models[model_id]
         print("Mark unload", model_id, self.loaded_models)
 
+    def debug_print(self):
+        now = time.time()
+        print("Model state", {k: now - v for k, v in self.loaded_models.items()}, self.loading, self.active_requests)
+
     def can_load_new_models(self):
         now = time.time()
         MAX_MODELS = 2  # TODO don't hardcode
         MIN_LOAD_TIME = 20.0
-        print("Model state", {k: now - v for k, v in self.loaded_models.items()}, self.loading)
+        self.debug_print()
 
         if self.loading:
             logger.info("Rejecting, currently loading")

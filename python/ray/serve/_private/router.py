@@ -181,6 +181,7 @@ class ActorReplicaWrapper:
         queue_len, accepted = await self._actor_handle.get_num_ongoing_requests.remote()
         if queue_len >= self._replica_info.max_concurrent_queries:
             accepted = False
+        print("queue state", queue_len, accepted)
         return queue_len, accepted
 
     def _send_query_java(self, query: Query) -> ray.ObjectRef:
