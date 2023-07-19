@@ -223,13 +223,11 @@ class LongestPrefixRouter:
 
 
 class GenericProxy:
-    """This class is meant to be instantiated and run by an ASGI HTTP server.
+    """This class is  served as the base class for different types of proxies.
 
-    It also served as the base class for proxies.
-
-    >>> import uvicorn
-    >>> controller_name = ... # doctest: +SKIP
-    >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
+    It contains all the common setup and methods required for running a proxy.
+    At minimum, the particular proxy class need to implement
+    `setup_request_context_and_handle()` and `send_request_to_replica_streaming()`.
     """
 
     def __init__(
@@ -755,8 +753,51 @@ class GenericProxy:
 
         return serve_response
 
+    def setup_request_context_and_handle(
+        self,
+        app_name: str,
+        handle: RayServeHandle,
+        route_path: str,
+        serve_request: ServeRequest,
+    ) -> Tuple[RayServeHandle, str]:
+        raise NotImplementedError
+
+    async def send_request_to_replica_streaming(
+        self,
+        request_id: str,
+        handle: RayServeHandle,
+        serve_request: ServeRequest,
+    ) -> ServeResponse:
+        raise NotImplementedError
+
 
 class GRPCProxy(GenericProxy):
+    """This class is meant to be instantiated and run by an gRPC server.
+
+    >>> import grpc
+    >>> controller_name = ... # doctest: +SKIP
+    >>> grpc_server = grpc.aio.server() # doctest: +SKIP
+    >>> serve_pb2_grpc.add_RayServeServiceServicer_to_server( # doctest: +SKIP
+    >>>     self.grpc_proxy, grpc_server # doctest: +SKIP
+    >>> ) # doctest: +SKIP
+    """
+
+    async def Predict(self, request: serve_pb2.RayServeRequest, context):
+        print("in grpc proxy, Predict called!!")
+        print("request", request)
+        print("context.invocation_metadata()", context.invocation_metadata())
+        print("context.details()", context.details())
+        print("context.peer()", context.peer())
+
+        app_name = request.application
+        route_path, handle = self.prefix_router.get_route_from_target(app_name)
+        print("route_path", route_path)
+
+        serve_request = GRPCServeRequest(request=request, route_path=route_path)
+        serve_response = await self.proxy_request(serve_request=serve_request)
+        print("Predict, serve_response", serve_response)
+        return serve_response.response
+
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -785,22 +826,6 @@ class GRPCProxy(GenericProxy):
             ray.serve.context.RequestContext(**request_context_info)
         )
         return handle, request_id
-
-    async def Predict(self, request: serve_pb2.RayServeRequest, context):
-        print("in grpc proxy, Predict called!!")
-        print("request", request)
-        print("context.invocation_metadata()", context.invocation_metadata())
-        print("context.details()", context.details())
-        print("context.peer()", context.peer())
-
-        app_name = request.application
-        route_path, handle = self.prefix_router.get_route_from_target(app_name)
-        print("route_path", route_path)
-
-        serve_request = GRPCServeRequest(request=request, route_path=route_path)
-        serve_response = await self.proxy_request(serve_request=serve_request)
-        print("Predict, serve_response", serve_response)
-        return serve_response.response
 
     async def _consume_generator(
         self,
@@ -871,6 +896,15 @@ class HTTPProxy(GenericProxy):
     >>> uvicorn.run(HTTPProxy(controller_name)) # doctest: +SKIP
     """
 
+    async def __call__(self, scope, receive, send):
+        """Implements the ASGI protocol.
+
+        See details at:
+            https://asgi.readthedocs.io/en/latest/specs/index.html.
+        """
+        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
+        await self.proxy_request(serve_request=serve_request)
+
     def setup_request_context_and_handle(
         self,
         serve_request: ServeRequest,
@@ -897,15 +931,6 @@ class HTTPProxy(GenericProxy):
             ray.serve.context.RequestContext(**request_context_info)
         )
         return handle, request_id
-
-    async def __call__(self, scope, receive, send):
-        """Implements the ASGI protocol.
-
-        See details at:
-            https://asgi.readthedocs.io/en/latest/specs/index.html.
-        """
-        serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
-        await self.proxy_request(serve_request=serve_request)
 
     async def receive_asgi_messages(self, request_id: str) -> List[Message]:
         queue = self.asgi_receive_queues.get(request_id, None)
