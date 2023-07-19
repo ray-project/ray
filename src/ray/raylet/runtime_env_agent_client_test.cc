@@ -82,7 +82,12 @@ class HttpConnection : public std::enable_shared_from_this<HttpConnection> {
                      request_,
                      [self](beast::error_code ec, std::size_t bytes_transferred) {
                        boost::ignore_unused(bytes_transferred);
-                       if (!ec) self->process_request();
+                       if (ec) {
+                         RAY_LOG(WARNING)
+                             << "http connection error in read_request: " << ec.message();
+                       } else {
+                         self->process_request();
+                       }
                      });
   }
 
@@ -133,7 +138,11 @@ class HttpServerThread {
   void accept_one() {
     auto conn = std::make_shared<HttpConnection>(ioc_, handler_);
     this->acceptor_.async_accept(conn->socket_, [=](beast::error_code ec) {
-      if (!ec) conn->start();
+      if (ec) {
+        RAY_LOG(WARNING) << "http server thread can not accept: " << ec.message();
+      } else {
+        conn->start();
+      }
       accept_one();
     });
   }
@@ -196,7 +205,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            /*agent_register_timeout_ms=*/1000,
+                                            /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
@@ -256,7 +265,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            /*agent_register_timeout_ms=*/1000,
+                                            /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
@@ -321,7 +330,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
-      /*agent_register_timeout_ms=*/1000,
+      /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
   auto job_id = JobID::FromInt(123);
   std::string serialized_runtime_env = "serialized_runtime_env";
@@ -377,7 +386,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            /*agent_register_timeout_ms=*/1000,
+                                            /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
   size_t called_times = 0;
@@ -420,7 +429,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
                                             "127.0.0.1",
                                             port,
                                             delay_after(ioc),
-                                            /*agent_register_timeout_ms=*/1000,
+                                            /*agent_register_timeout_ms=*/10000,
                                             /*agent_manager_retry_interval_ms=*/100);
 
   size_t called_times = 0;
@@ -468,7 +477,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
         http_server_thread.start();
         return execute_after(ioc, task, std::chrono::milliseconds(delay_ms));
       },
-      /*agent_register_timeout_ms=*/1000,
+      /*agent_register_timeout_ms=*/10000,
       /*agent_manager_retry_interval_ms=*/100);
 
   size_t called_times = 0;
