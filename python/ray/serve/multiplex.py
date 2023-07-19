@@ -138,7 +138,7 @@ class _ModelMultiplexWrapper:
             # Load the model.
             logger.info(f"Loading model '{model_id}'.")
             self.models_load_counter.inc()
-            self._push_replica_info_throttled({model_id}.union(self.models.keys()))
+            await self._push_replica_info_throttled({model_id}.union(self.models.keys()))
             load_start_time = time.time()
             if self.self_arg is None:
                 self.models[model_id] = await self._func(model_id)
@@ -177,7 +177,7 @@ class _ModelMultiplexWrapper:
             time.monotonic() - self._last_replica_push_time
             > PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S
         ):
-            self._push_replica_info_now(model_ids)
+            await self._push_replica_info_now(model_ids)
         else:
             self._replica_info_to_push = model_ids
 
@@ -187,7 +187,7 @@ class _ModelMultiplexWrapper:
         while True:
             try:
                 if self._replica_info_to_push:
-                    self._push_replica_info_now(self._replica_info_to_push)
+                    await self._push_replica_info_now(self._replica_info_to_push)
                     self._replica_info_to_push = None
             except Exception as e:
                 logger.warning(
