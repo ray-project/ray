@@ -266,7 +266,7 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator["TorchBatchType"]:
+    ) -> Iterator["TorchTensorBatchType"]:
         """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator yields a dictionary of column-tensors. If you are looking for

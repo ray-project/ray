@@ -3343,9 +3343,7 @@ class Dataset:
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
-        """Return an iterator over batches of data.
-
-        This method is useful for model training.
+        """Return a batched iterator over the dataset.
 
         Examples:
 
@@ -3418,8 +3416,8 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TorchBatchType]:
-        """Return an iterator over batches of data represented as Torch tensors.
+    ) -> Iterator["TorchTensorBatchType"]:
+        """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator yields batches of type ``Dict[str, torch.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
@@ -3526,7 +3524,7 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return an iterator over batches of data represented as TensorFlow tensors.
+        """Return a batched iterator of TensorFlow Tensors over the dataset.
 
         This iterator yields batches of type ``Dict[str, tf.Tensor]``.
         For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
