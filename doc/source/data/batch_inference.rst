@@ -500,7 +500,7 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
         compute=scale,
         # Pass in the Checkpoint to the XGBoostPredictor constructor.
         fn_constructor_kwargs={"checkpoint": checkpoint}
-        )
+    )
     predictions.show(limit=1)
 
 .. testoutput::
