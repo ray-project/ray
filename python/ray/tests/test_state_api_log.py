@@ -47,7 +47,7 @@ from ray.dashboard.modules.log.log_agent import (
 from ray.dashboard.modules.log.log_agent import _stream_log_in_chunk
 from ray.dashboard.modules.log.log_manager import LogsManager
 from ray.dashboard.tests.conftest import *  # noqa
-from ray.util.state import get_log, list_logs, list_nodes, list_workers
+from ray.util.state import get_log, list_logs, list_nodes, list_workers, list_tasks
 from ray.util.state.common import GetLogOptions
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
 from ray.util.state.state_manager import StateDataSourceClient
@@ -1550,6 +1550,56 @@ def test_log_cli(shutdown_only):
         assert result.output == data.decode(encoding="iso-8859-1", errors="replace")
         return True
 
+    wait_for_condition(verify)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Windows has logging race from tasks."
+)
+def test_worker_file_moved(shutdown_only):
+    @ray.remote
+    class Actor:
+        def print(self, msg):
+            print(msg, end="")
+
+        def get_pid(self):
+            import os
+
+            return os.getpid()
+
+    TEST_LOG_LINE = "this is a test log line\n"
+    a = Actor.remote()
+    t = a.print.remote(TEST_LOG_LINE)
+    ray.get(t)
+    pid = ray.get(a.get_pid.remote())
+
+    def verify():
+        # Verify actor log.
+        lines = get_log(actor_id=a._actor_id.hex())
+        assert TEST_LOG_LINE in "".join(lines)
+
+        return True
+
+    wait_for_condition(verify)
+
+    task = list_tasks(detail=True, filters=[("task_id", "=", t.task_id().hex())])[0]
+    log_dir = ray._private.worker._global_node.get_logs_dir_path()
+    worker_id = task.worker_id
+    job_id = task.job_id
+    worker_filename = f"worker-{worker_id}-{job_id}-{pid}.out"
+    worker_file_path = os.path.join(log_dir, worker_filename)
+    # Check content of the file
+    with open(worker_file_path, "r") as f:
+        assert TEST_LOG_LINE in f.read()
+
+    # Move file to /old
+    old_dir = os.path.join(log_dir, "old")
+    os.makedirs(old_dir, exist_ok=True)
+    os.rename(worker_file_path, os.path.join(old_dir, worker_filename))
+
+    assert not os.path.exists(worker_file_path), worker_file_path
+
+    # Verify again it works.
     wait_for_condition(verify)
 
 

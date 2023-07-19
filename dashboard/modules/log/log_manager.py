@@ -182,11 +182,11 @@ class LogsManager:
 
         if worker_id is not None:
             log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{worker_id}*{suffix}"
+                node_id, timeout, glob_filter=f"**/*{worker_id}*{suffix}"
             )
         else:
             log_files = await self.list_logs(
-                node_id, timeout, glob_filter=f"*{pid}*{suffix}"
+                node_id, timeout, glob_filter=f"**/*{pid}*{suffix}"
             )
 
         # Find matching worker logs.
