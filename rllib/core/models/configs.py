@@ -741,7 +741,7 @@ class MLPEncoderConfig(_MLPConfig):
 
     @_framework_implemented()
     def build(self, framework: str = "torch") -> "Encoder":
-        self._validate(framework)
+        self._validate(framework=framework)
 
         if framework == "torch":
             from ray.rllib.core.models.torch.encoder import TorchMLPEncoder
