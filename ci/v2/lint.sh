@@ -29,6 +29,9 @@ annotations() {
 }
 
 run_semgrep() {
+  # semgrep 1.32.0 requires rich>=12.6.0, but we install rich 12.0.1 which is 
+  # incompatible.
+  pip install rich==12.6.0
   semgrep ci --config "${WORKSPACE_DIR}/semgrep.yml"
 }
 
