@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 
-set -eo pipefail
+set -euxo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)/.."
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-lint_readme() {
+readme() {
   if python -s -c "import docutils" >/dev/null 2>/dev/null; then
     (
       cd "${WORKSPACE_DIR}"/python
@@ -16,28 +16,19 @@ lint_readme() {
   fi
 }
 
-lint_scripts() {
+code_format() {
   FORMAT_SH_PRINT_DIFF=1 "${ROOT_DIR}"/lint/format.sh --all-scripts
 }
 
-lint_banned_words() {
+banned_words() {
   "${ROOT_DIR}"/lint/check-banned-words.sh
 }
 
-lint_annotations() {
+annotations() {
   "${ROOT_DIR}"/lint/check_api_annotations.py
 }
 
-lint_bazel() {
-  if [[ ! "${OSTYPE}" =~ ^linux ]]; then
-    echo "Bazel lint not supported on non-linux systems."
-    exit 1
-  fi
-  if [[ "$(uname -m)" != "x86_64" ]]; then
-    echo "Bazel lint only supported on x86_64."
-    exit 1
-  fi
-
+bazel_buildifier() {
   LINT_BAZEL_TMP="$(mktemp -d)"
   curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
     -o "${LINT_BAZEL_TMP}/buildifier"
@@ -47,7 +38,7 @@ lint_bazel() {
   rm -rf "${LINT_BAZEL_TMP}"  # Clean up
 }
 
-lint_bazel_pytest() {
+bazel_pytest() {
   pip install yq
   cd "${WORKSPACE_DIR}"
   for team in "team:core" "team:ml" "team:rllib" "team:serve"; do
@@ -59,7 +50,7 @@ lint_bazel_pytest() {
   done
 }
 
-lint_web() {
+web() {
   (
     cd "${WORKSPACE_DIR}"/python/ray/dashboard/client
     set +x # suppress set -x since it'll get very noisy here
@@ -81,68 +72,32 @@ lint_web() {
   )
 }
 
-lint_copyright() {
+copyright() {
   (
     "${ROOT_DIR}"/lint/copyright-format.sh -c
   )
 }
 
-lint() {
-  local platform=""
-  case "${OSTYPE}" in
-    linux*) platform=linux;;
-  esac
-
+clang() {
   if command -v clang-format > /dev/null; then
     "${ROOT_DIR}"/lint/check-git-clang-format-output.sh
   else
     { echo "WARNING: Skipping linting C/C++ as clang-format is not installed."; } 2> /dev/null
   fi
-
-#  if command -v clang-tidy > /dev/null; then
-#    pushd "${WORKSPACE_DIR}"
-#      "${ROOT_DIR}"/env/install-llvm-binaries.sh
-#    popd
-#    Disable clang-tidy until ergonomic issues are resolved.
-#    "${ROOT_DIR}"/lint/check-git-clang-tidy-output.sh
-#  else
-#    { echo "WARNING: Skipping running clang-tidy which is not installed."; } 2> /dev/null
-#  fi
-
-  # Run script linting
-  lint_scripts
-
-  # Run banned words check.
-  lint_banned_words
-
-  # Run annotations check.
-  lint_annotations
-
-  # Make sure that the README is formatted properly.
-  lint_readme
-
-  if [ "${platform}" = linux ]; then
-    # Run Bazel linter Buildifier.
-    lint_bazel
-
-    # Check if py_test files have the if __name__... snippet
-    lint_bazel_pytest
-
-    # Run TypeScript and HTML linting.
-    lint_web
-
-    # lint copyright
-    lint_copyright
-
-    # lint test script
-    pushd "${WORKSPACE_DIR}"
-       bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/lint/check-bazel-team-owner.py
-       bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/lint/check-bazel-team-owner.py
-    popd
-
-    # Make sure tests will be run by CI.
-    python "${ROOT_DIR}"/pipeline/check-test-run.py
-  fi
 }
 
-lint
+test_script() {
+  # lint test script
+  pushd "${WORKSPACE_DIR}"
+    bazel query 'kind("cc_test", //...)' --output=xml | python "${ROOT_DIR}"/lint/check-bazel-team-owner.py
+    bazel query 'kind("py_test", //...)' --output=xml | python "${ROOT_DIR}"/lint/check-bazel-team-owner.py
+  popd
+}
+
+test_run() {
+  # Make sure tests will be run by CI.
+  python "${ROOT_DIR}"/pipeline/check-test-run.py
+}
+
+LINT=1 "${ROOT_DIR}"/env/install-dependencies.sh
+"$@"
