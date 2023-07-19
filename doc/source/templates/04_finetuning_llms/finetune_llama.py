@@ -432,7 +432,6 @@ def main():
     )
 
     results = trainer.fit()
-    breakpoint()
 
 
 if __name__ == "__main__":
