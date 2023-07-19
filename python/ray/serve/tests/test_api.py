@@ -888,23 +888,31 @@ def test_status_basic(serve_instance):
     # Before Serve is started, serve.status() should just return empty list
     assert len(serve.status()) == 0
 
-    from ray.serve.tests.test_config_files.test_dag.conditional_dag import serve_dag
-    from ray.serve.tests.test_config_files.world import DagNode
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class A:
+        def __call__(self, val: int):
+            return val + 1
 
-    handle_1 = serve.run(serve_dag, name="pizza", route_prefix="/a")
-    handle_2 = serve.run(DagNode, name="world", route_prefix="/b")
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    def f():
+        return "hello world"
 
-    assert ray.get(handle_1.predict.remote("ADD", 6)) == "4 pizzas please!"
-    assert ray.get(handle_2.remote()) == "wonderful world"
+    @serve.deployment(ray_actor_options={"num_cpus": 0.1})
+    class MyDriver:
+        def __init__(self, dag: RayServeDAGHandle):
+            self.dag = dag
 
-    expected_dep_1 = {
-        "pizza_DAGDriver",
-        "pizza_Multiplier",
-        "pizza_Adder",
-        "pizza_Router",
-        "pizza_create_order",
-    }
-    expected_dep_2 = {"world_BasicDriver", "world_f"}
+        async def __call__(self):
+            return await (await self.dag.remote())
+
+    handle_1 = serve.run(A.bind(), name="plus", route_prefix="/a")
+    handle_2 = serve.run(MyDriver.bind(f.bind()), name="hello", route_prefix="/b")
+
+    assert ray.get(handle_1.remote(8)) == 9
+    assert ray.get(handle_2.remote()) == "hello world"
+
+    expected_dep_1 = {"plus_A"}
+    expected_dep_2 = {"hello_MyDriver", "hello_f"}
 
     status = serve.status()
     assert len(status) == 2
@@ -919,9 +927,12 @@ def test_status_constructor_error(serve_instance):
     traceback is surfaced in serve.status().
     """
 
-    from ray.serve.tests.test_config_files.fail import node
+    @serve.deployment
+    class A:
+        def __init__(self):
+            1 / 0
 
-    serve.run(node, _blocking=False)
+    serve.run(A.bind(), _blocking=False)
 
     def check_for_failed_deployment():
         status = serve.status()[0]
@@ -939,11 +950,19 @@ def test_status_package_unavailable_in_controller(serve_instance):
     but not on controller is serialized and surfaced properly in serve.status().
     """
 
-    from ray.serve.tests.test_config_files.sqlalchemy import TestDeployment
+    @serve.deployment
+    class MyDeployment:
+        def __init__(self):
+            from sqlalchemy import create_engine
+            import pymysql
+
+            pymysql.install_as_MySQLdb()
+
+            create_engine("mysql://some_wrong_url:3306").connect()
 
     ray_actor_options = {"runtime_env": {"pip": ["PyMySQL", "sqlalchemy==1.3.19"]}}
     serve.run(
-        TestDeployment.options(ray_actor_options=ray_actor_options).bind(),
+        MyDeployment.options(ray_actor_options=ray_actor_options).bind(),
         _blocking=False,
     )
 
