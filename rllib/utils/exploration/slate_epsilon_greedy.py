@@ -79,8 +79,10 @@ class SlateEpsilonGreedy(EpsilonGreedy):
 
         per_slate_q_values = action_distribution.inputs
         all_slates = self.model.slates
+        device = all_slates.device
 
         exploit_indices = action_distribution.deterministic_sample()
+        exploit_indices = exploit_indices.to(device)
         exploit_action = all_slates[exploit_indices]
 
         batch_size = per_slate_q_values.size()[0]
@@ -94,7 +96,10 @@ class SlateEpsilonGreedy(EpsilonGreedy):
             epsilon = self.epsilon_schedule(self.last_timestep)
             # A random action.
             random_indices = torch.randint(
-                0, per_slate_q_values.shape[1], (per_slate_q_values.shape[0],)
+                0,
+                per_slate_q_values.shape[1],
+                (per_slate_q_values.shape[0],),
+                device=device,
             )
             random_actions = all_slates[random_indices]
 
