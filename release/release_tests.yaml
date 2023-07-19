@@ -6201,6 +6201,32 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
+- name: read_images_comparison_microbenchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash run_image_loader_microbenchmark.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset
