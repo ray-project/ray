@@ -147,7 +147,7 @@ class BatchPredictor:
                 the columns in the output dataset will contain
                 just the prediction results.
             batch_size: Split dataset into batches of this size for prediction.
-            min_scoring_workers: Minimum number of scoring actors
+            min_scoring_workers: Minimum number of scoring actors.
             max_scoring_workers: If set, specify the maximum number of scoring actors.
             num_cpus_per_worker: Number of CPUs to allocate per scoring worker.
                 Set to 1 by default.
