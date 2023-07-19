@@ -97,7 +97,7 @@ class Result:
 
     def _repr(self, indent: int = 0) -> str:
         """Construct the representation with specified number of space indent."""
-        from ray.tune.result import AUTO_RESULT_KEYS
+        from ray.tune.experimental.output import BLACKLISTED_KEYS
 
         shown_attributes = {k: getattr(self, k) for k in self._items_to_repr}
         if self.error:
@@ -107,7 +107,7 @@ class Result:
 
         if self.metrics:
             shown_attributes["metrics"] = {
-                k: v for k, v in self.metrics.items() if k not in AUTO_RESULT_KEYS
+                k: v for k, v in self.metrics.items() if k not in BLACKLISTED_KEYS
             }
 
         cls_indent = " " * indent
