@@ -2095,7 +2095,7 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_.
-            :class:`~ray.data.IterableDataset` and
+            ``IterableDataset`` and
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             are not supported.
 
@@ -2112,6 +2112,17 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
         hf_ds_arrow = dataset.with_format("arrow")
         ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
+    elif isinstance(dataset, datasets.DatasetDict):
+        available_keys = list(dataset.keys())
+        logger.error(
+            "You provided a Hugging Face DatasetDict which contains multiple "
+            "datasets, but `from_huggingface` now only accepts a siingle Hugging Face "
+            "Dataset. To convert just a single Hugging Face Dataset to a "
+            "Ray Dataset, specify a split. For example, "
+            "`ray.data.from_huggingface(my_dataset_dictionary"
+            f"['{available_keys[0]}'])`. "
+            f"Available splits are {available_keys}."
+        )
     else:
         raise TypeError(
             f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}"
