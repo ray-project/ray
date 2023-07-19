@@ -344,8 +344,11 @@ def check_compute_single_action(
                 input_dict[SampleBatch.PREV_ACTIONS] = action_in
                 input_dict[SampleBatch.PREV_REWARDS] = reward_in
             if state_in:
-                for i, s in enumerate(state_in):
-                    input_dict[f"state_in_{i}"] = s
+                if what.config.get("_enable_rl_module_api", False):
+                    input_dict["state_in"] = state_in
+                else:
+                    for i, s in enumerate(state_in):
+                        input_dict[f"state_in_{i}"] = s
             input_dict_batched = SampleBatch(
                 tree.map_structure(lambda s: np.expand_dims(s, 0), input_dict)
             )
@@ -392,8 +395,15 @@ def check_compute_single_action(
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
         if state_out:
-            for si, so in zip(state_in, state_out):
-                check(list(si.shape), so.shape)
+            for si, so in zip(tree.flatten(state_in), tree.flatten(state_out)):
+                if tf.is_tensor(si):
+                    # If si is a tensor of Dimensions, we need to convert it
+                    # We expect this to be the case for TF RLModules who's initial
+                    # states are Tf Tensors.
+                    si_shape = si.shape.as_list()
+                else:
+                    si_shape = list(si.shape)
+                check(si_shape, so.shape)
 
         if unsquash is None:
             unsquash = what.config["normalize_actions"]
@@ -811,6 +821,12 @@ def run_learning_tests_from_yaml(
     # Keep track of those experiments we still have to run.
     # If an experiment passes, we'll remove it from this dict.
     experiments_to_run = experiments.copy()
+
+    # When running as a release test, use `/mnt/cluster_storage` as the storage path.
+    release_test_storage_path = "/mnt/cluster_storage"
+    if os.path.exists(release_test_storage_path):
+        for k, e in experiments_to_run.items():
+            e["storage_path"] = release_test_storage_path
 
     try:
         ray.init(address="auto")

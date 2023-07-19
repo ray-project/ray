@@ -187,7 +187,7 @@ py_test(
 
 py_test(
     name = "test_constructor_failure",
-    size = "medium",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -203,6 +203,14 @@ py_test(
 
 py_test(
     name = "test_deployment_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deployment_scheduler",
     size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -246,6 +254,15 @@ py_test(
 
 py_test(
     name = "test_handle",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
+    name = "test_handle_streaming",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -313,6 +330,14 @@ py_test(
 )
 
 py_test(
+    name = "test_request_timeout",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
     name = "test_standalone",
     size = "large",
     srcs = serve_tests_srcs,
@@ -321,7 +346,7 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone2",
+    name = "test_standalone_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -329,7 +354,7 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone3",
+    name = "test_standalone_3",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -387,6 +412,15 @@ py_test(
 
 py_test(
     name = "test_cli",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    data = [":test_config_files"],
+)
+
+py_test(
+    name = "test_cli_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -494,37 +528,20 @@ py_test(
    deps = [":serve_lib"],
 )
 
-# Runs a subset of the tests with experimental streaming turned on.
-py_test(
-   name = "test_experimental_streaming",
-   size = "large",
-   srcs = glob(["tests/test_experimental_streaming.py",
-               "tests/test_api.py",
-               "tests/test_failure.py",
-               "tests/test_fastapi.py",
-               "tests/test_http_adapters.py",
-               "**/conftest.py"]),
-   tags = ["exclusive", "team:serve"],
-   deps = [":serve_lib"],
-   env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
-)
-
 py_test(
     name = "test_streaming_response",
-    size = "large",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test(
     name = "test_websockets",
-    size = "large",
+    size = "small",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
-    env = {"RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING": "1"},
 )
 
 py_test(
@@ -603,16 +620,8 @@ py_test(
 )
 
 py_test(
-    name = "test_json_serde",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_gradio",
-    size = "small",
+    size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
@@ -654,13 +663,37 @@ py_test(
     name = "test_serve_ha",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "xcommit"],
     deps = [":serve_lib"],
 )
 
 py_test(
     name = "test_callback",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_http_headers",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_endpoint_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_app",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],

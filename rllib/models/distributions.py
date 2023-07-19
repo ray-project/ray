@@ -13,10 +13,24 @@ class Distribution(abc.ABC):
     """The base class for distribution over a random variable.
 
     Examples:
-        >>> model = ... # a model that outputs a vector of logits
-        >>> action_logits = model.forward(obs)
-        >>> action_dist = Distribution(action_logits)
+
+    .. doctest::
+
+        >>> import torch
+        >>> from ray.rllib.core.models.configs import MLPHeadConfig
+        >>> from ray.rllib.models.torch.torch_distributions import TorchCategorical
+
+        >>> model = MLPHeadConfig(input_dims=[1]).build(framework="torch")
+
+        Create an action distribution from model logits
+        >>> action_logits = model(torch.Tensor([[1]]))
+        >>> action_dist = TorchCategorical.from_logits(action_logits)
         >>> action = action_dist.sample()
+
+        Create another distribution from a dummy Tensor
+        >>> action_dist2 = TorchCategorical.from_logits(torch.Tensor([0]))
+
+        Compute some common metrics
         >>> logp = action_dist.logp(action)
         >>> kl = action_dist.kl(action_dist2)
         >>> entropy = action_dist.entropy()
@@ -130,42 +144,42 @@ class Distribution(abc.ABC):
         Returns:
             The created distribution.
 
-        .. code-block:: python
+        .. doctest::
 
-            import numpy as np
-            from ray.rllib.models.distributions import Distribution
+            >>> import numpy as np
+            >>> from ray.rllib.models.distributions import Distribution
 
-            class Uniform(Distribution):
-                def __init__(self, lower, upper):
-                    self.lower = lower
-                    self.upper = upper
+            >>> class Uniform(Distribution):
+            ...    def __init__(self, lower, upper):
+            ...        self.lower = lower
+            ...        self.upper = upper
+            ...
+            ...    def sample(self):
+            ...        return self.lower + (self.upper - self.lower) * np.random.rand()
+            ...
+            ...    def logp(self, x):
+            ...        ...
+            ...
+            ...    def kl(self, other):
+            ...        ...
+            ...
+            ...    def entropy(self):
+            ...        ...
+            ...
+            ...    @staticmethod
+            ...    def required_input_dim(space):
+            ...        ...
+            ...
+            ...    def rsample(self):
+            ...        ...
+            ...
+            ...    @classmethod
+            ...    def from_logits(cls, logits, **kwargs):
+            ...        return Uniform(logits[:, 0], logits[:, 1])
 
-                def sample(self):
-                    return self.lower + (self.upper - self.lower) * np.random.rand()
-
-                def logp(self, x):
-                    ...
-
-                def kl(self, other):
-                    ...
-
-                def entropy(self):
-                    ...
-
-                @staticmethod
-                def required_input_dim(space):
-                    ...
-
-                def rsample(self):
-                    ...
-
-                @classmethod
-                def from_logits(cls, logits, **kwargs):
-                    return Uniform(logits[:, 0], logits[:, 1])
-
-            logits = np.array([[0.0, 1.0], [2.0, 3.0]])
-            my_dist = Uniform.from_logits(logits)
-            my_dist.sample()
+            >>> logits = np.array([[0.0, 1.0], [2.0, 3.0]])
+            >>> my_dist = Uniform.from_logits(logits)
+            >>> sample = my_dist.sample()
         """
         raise NotImplementedError
 

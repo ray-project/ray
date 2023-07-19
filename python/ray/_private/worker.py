@@ -73,7 +73,9 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
+from ray._private.runtime_env.setup_hook import (
+    upload_worker_process_setup_hook_if_needed,
+)
 from ray._private.storage import _load_class
 from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -1137,14 +1139,15 @@ def init(
     This will autodetect an existing Ray cluster or start a new Ray instance if
     no existing cluster is found:
 
-    .. code-block:: python
+    .. testcode::
 
         ray.init()
 
     To explicitly connect to an existing local cluster, use this as follows. A
     ConnectionError will be thrown if no existing local cluster is found.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="auto")
 
@@ -1152,7 +1155,8 @@ def init(
     in the appropriate address). Note the addition of "ray://" at the beginning
     of the address.
 
-    .. code-block:: python
+    .. testcode::
+        :skipif: True
 
         ray.init(address="ray://123.45.67.89:10001")
 
@@ -2168,7 +2172,7 @@ def connect(
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
-        runtime_env = upload_worker_setup_hook_if_needed(
+        runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
             worker,
         )
@@ -2182,8 +2186,11 @@ def connect(
         # assumes that the directory structures on the machines in the clusters
         # are the same.
         # When using an interactive shell, there is no script directory.
+        # We also want to skip adding script directory when running from dashboard.
         code_paths = []
-        if not interactive_mode:
+        if not interactive_mode and not (
+            namespace and namespace == ray_constants.RAY_INTERNAL_DASHBOARD_NAMESPACE
+        ):
             script_directory = os.path.dirname(os.path.realpath(sys.argv[0]))
             # If driver's sys.path doesn't include the script directory
             # (e.g driver is started via `python -m`,

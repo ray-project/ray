@@ -9,6 +9,7 @@
   instance_size: medium
   commands:
     # Build the wheels and jars
+    - export RAY_INSTALL_JAVA=1
     - UPLOAD_WHEELS_AS_ARTIFACTS=1 LINUX_WHEELS=1 LINUX_JARS=1 ./ci/ci.sh build
     # Upload the wheels and jars
     # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
@@ -26,7 +27,7 @@
   conditions: ["RAY_CI_LINUX_WHEELS_AFFECTED"]
   instance_size: medium
   commands:
-    - LINUX_WHEELS=1 ./ci/ci.sh build
+    - LINUX_WHEELS=1 BUILD_ONE_PYTHON_ONLY=py38 ./ci/ci.sh build
     - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
     - ./ci/env/env_info.sh
     - bazel test --config=ci $(./ci/run/bazel_export_options)

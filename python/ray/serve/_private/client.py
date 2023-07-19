@@ -20,7 +20,6 @@ from ray.serve._private.constants import (
     CLIENT_POLLING_INTERVAL_S,
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
-    SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.deploy_utils import get_deploy_args
@@ -95,7 +94,7 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
-    def shutdown(self) -> None:
+    def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
@@ -107,53 +106,17 @@ class ServeControllerClient:
             del self.handle_cache[k]
 
         if ray.is_initialized() and not self._shutdown:
-            ray.get(self._controller.shutdown.remote())
-            self._wait_for_deployments_shutdown()
-
-            ray.kill(self._controller, no_restart=True)
-
-            # Wait for the named actor entry gets removed as well.
-            started = time.time()
-            while True:
-                try:
-                    ray.get_actor(self._controller_name, namespace=SERVE_NAMESPACE)
-                    if time.time() - started > 5:
-                        logger.warning(
-                            "Waited 5s for Serve to shutdown gracefully but "
-                            "the controller is still not cleaned up. "
-                            "You can ignore this warning if you are shutting "
-                            "down the Ray cluster."
-                        )
-                        break
-                except ValueError:  # actor name is removed
-                    break
-
-            self._shutdown = True
-
-    def _wait_for_deployments_shutdown(self, timeout_s: int = 60):
-        """Waits for all deployments to be shut down and deleted.
-
-        Raises TimeoutError if this doesn't happen before timeout_s.
-        """
-        start = time.time()
-        while time.time() - start < timeout_s:
-            deployment_statuses = self.get_all_deployment_statuses()
-            if len(deployment_statuses) == 0:
-                break
-            else:
-                logger.debug(
-                    f"Waiting for shutdown, {len(deployment_statuses)} "
-                    "deployments still alive."
+            try:
+                ray.get(self._controller.graceful_shutdown.remote(), timeout=timeout_s)
+            except ray.exceptions.RayActorError:
+                # Controller has been shut down.
+                pass
+            except TimeoutError:
+                logger.warning(
+                    f"Controller failed to shut down within {timeout_s}s. "
+                    "Check controller logs for more details."
                 )
-            time.sleep(CLIENT_POLLING_INTERVAL_S)
-        else:
-            live_names = [
-                deployment_status.name for deployment_status in deployment_statuses
-            ]
-            raise TimeoutError(
-                f"Shutdown didn't complete after {timeout_s}s. "
-                f"Deployments still alive: {live_names}."
-            )
+            self._shutdown = True
 
     def _wait_for_deployment_healthy(self, name: str, timeout_s: int = -1):
         """Waits for the named deployment to enter "HEALTHY" status.
@@ -308,7 +271,14 @@ class ServeControllerClient:
             route_prefix=route_prefix,
         )
 
-        updating = ray.get(self._controller.deploy.remote(**controller_deploy_args))
+        updating = ray.get(
+            self._controller.deploy.remote(
+                # TODO(edoakes): this is a hack because the deployment_language
+                # doesn't seem to get set properly from Java.
+                is_deployed_from_python=True,
+                **controller_deploy_args,
+            )
+        )
 
         tag = self.log_deployment_update_status(name, version, updating)
 
@@ -480,7 +450,6 @@ class ServeControllerClient:
         missing_ok: Optional[bool] = False,
         sync: bool = True,
         _is_for_http_requests: bool = False,
-        _stream: bool = False,
     ) -> Union[RayServeHandle, RayServeSyncHandle]:
         """Retrieve RayServeHandle for service deployment to invoke it from Python.
 
@@ -493,8 +462,6 @@ class ServeControllerClient:
                 that's only usable in asyncio loop.
             _is_for_http_requests: Indicates that this handle will be used
                 to send HTTP requests from the proxy to ingress deployment replicas.
-            _stream: Indicates that this handle should use
-                `num_returns="streaming"`.
 
         Returns:
             RayServeHandle
@@ -502,7 +469,7 @@ class ServeControllerClient:
         cache_key = (deployment_name, missing_ok, sync)
         if cache_key in self.handle_cache:
             cached_handle = self.handle_cache[cache_key]
-            if cached_handle._is_polling and cached_handle._is_same_loop:
+            if cached_handle._is_same_loop:
                 return cached_handle
 
         all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
@@ -511,17 +478,13 @@ class ServeControllerClient:
 
         if sync:
             handle = RayServeSyncHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
-                _stream=_stream,
             )
         else:
             handle = RayServeHandle(
-                self._controller,
                 deployment_name,
                 _is_for_http_requests=_is_for_http_requests,
-                _stream=_stream,
             )
 
         self.handle_cache[cache_key] = handle

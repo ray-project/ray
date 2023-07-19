@@ -36,8 +36,7 @@ while Ray Tune trainable "actors" run on any node (either on the same node or on
     This actor can then asynchronously execute method calls and maintain its own internal state.
 
 The driver spawns parallel worker processes (:ref:`Ray actors <actor-guide>`)
-that are responsible for evaluating each trial using its hyperparameter configuration and the provided trainable
-(see the `ray trial executor source code <https://github.com/ray-project/ray/blob/master/python/ray/tune/ray_trial_executor.py>`__).
+that are responsible for evaluating each trial using its hyperparameter configuration and the provided trainable.
 
 While the Trainable is executing (:ref:`trainable-execution`), the Tune Driver communicates with each actor
 via actor methods to receive intermediate training results and pause/stop actors (see :ref:`trial-lifecycle`).
