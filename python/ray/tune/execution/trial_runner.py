@@ -47,7 +47,7 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import HeadNodeSyncDeprecationWarning, SyncConfig
+from ray.tune.syncer import _HeadNodeSyncDeprecationWarning, SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
@@ -955,7 +955,7 @@ class _TuneControllerBase:
                 self._mark_trial_to_checkpoint(trial)
         except Exception as e:
             if (
-                isinstance(e, HeadNodeSyncDeprecationWarning)
+                isinstance(e, _HeadNodeSyncDeprecationWarning)
                 or self._fail_fast == TrialRunner.RAISE
             ):
                 raise e

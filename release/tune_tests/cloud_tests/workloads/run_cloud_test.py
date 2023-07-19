@@ -48,6 +48,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
@@ -1041,10 +1042,12 @@ def test_head_node_syncing_disabled_error():
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
         run_config=air.RunConfig(storage_path=None),
-        tune_config=tune.TuneConfig(num_samples=4),
+        tune_config=tune.TuneConfig(num_samples=6),
     )
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(TuneError) as error_context:
         tuner.fit()
+    # The original `_HeadNodeSyncDeprecationWarning` gets wrapped in 2 TuneError's
+    assert "_HeadNodeSyncDeprecationWarning" in str(error_context.value.__cause__)
     print("Success: checkpointing without a storage path raises an error")
 
     # Workaround: continue running, with syncing explicitly disabled

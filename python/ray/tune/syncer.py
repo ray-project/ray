@@ -80,7 +80,10 @@ _EXCLUDE_FROM_SYNC = [
 ]
 
 
-class HeadNodeSyncDeprecationWarning(DeprecationWarning):
+class _HeadNodeSyncDeprecationWarning(DeprecationWarning):
+    """Error raised when trying to rely on deprecated head node syncing when
+    checkpointing across multiple nodes."""
+
     pass
 
 
@@ -941,7 +944,7 @@ class SyncerCallback(Callback):
             # that means that it lives on some other node and would be synced to head
             # prior to Ray 2.6.
             if not os.path.exists(checkpoint.dir_or_data):
-                raise HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+                raise _HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             # else:
             #   No need to raise an error about syncing, since the driver can find
             #   the checkpoint, because either:
