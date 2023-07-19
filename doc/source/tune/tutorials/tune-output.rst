@@ -324,7 +324,7 @@ You can create a custom logger by inheriting the LoggerCallback interface (:ref:
     class CustomLoggerCallback(LoggerCallback):
         """Custom logger interface"""
 
-        def __init__(self, filename: str = "log.txt):
+        def __init__(self, filename: str = "log.txt"):
             self._trial_files = {}
             self._filename = filename
 

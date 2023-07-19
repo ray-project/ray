@@ -654,6 +654,7 @@ void GcsServer::InitGcsWorkerManager() {
 
 void GcsServer::InitGcsAutoscalerStateManager() {
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      config_.session_name,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
       *gcs_node_manager_,
