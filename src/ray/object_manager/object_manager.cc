@@ -78,7 +78,6 @@ ObjectManager::ObjectManager(
       self_node_id_(self_node_id),
       config_(config),
       object_directory_(object_directory),
-      //plugin_manager_(PluginManager::GetInstance(config)),
     //   object_store_internal_(std::make_unique<ObjectStoreRunner>(
     //       config,
     //       std::move(plugin_manager_.CreateObjectStoreRunnerInstance(config.plugin_name)),
@@ -104,7 +103,6 @@ ObjectManager::ObjectManager(
     //             },
     //             "ObjectManager.ObjectDeleted");
     //       })),
-      // buffer_pool_store_client_(std::make_shared<plasma::PlasmaClient>()),
       //buffer_pool_store_client_(plugin_manager_.CreateObjectStoreClientInstance(config.plugin_name)),
       //buffer_pool_(buffer_pool_store_client_, config_.object_chunk_size),
       rpc_work_(rpc_service_),
@@ -120,10 +118,11 @@ ObjectManager::ObjectManager(
                         boost::posix_time::milliseconds(config.timer_freq_ms)) {
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   PluginManager& plugin_manager = PluginManager::GetInstance();
-  plugin_manager.SetObjectStores(config.plugin_name, config.store_socket_name,
-                                 config.object_store_memory, config.huge_pages,
-                                 config.plasma_directory, config.fallback_directory,
-                                 config.plugin_path, config.plugin_params);
+  RAY_LOG(INFO) << plugin_manager.GetCurrentObjectStoreName();
+  plugin_manager.SetObjectStores(config.plugin_name,
+                                 config.plugin_path, 
+                                 config.plugin_params);
+  RAY_LOG(INFO) << plugin_manager.GetCurrentObjectStoreName();
   object_store_internal_ = std::make_unique<ObjectStoreRunner>(
           config,
           std::move(plugin_manager.CreateObjectStoreRunnerInstance(config.plugin_name)),

@@ -185,7 +185,7 @@ class RayParams:
     ):
         self.plugin_name = plugin_name
         self.plugin_path = plugin_path
-        self.plugin_params = plugin_params
+        self.plugin_params = plugin_params or {}
         print("ray._private.parameter plugin_params {}".format(plugin_params))
         self.redis_address = redis_address
         self.gcs_address = gcs_address

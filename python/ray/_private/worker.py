@@ -2202,8 +2202,15 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
-
-    print("Executing here")
+    print("session_name {}".format(session_name))
+    print("Launching ray core worker Executing here")
+    print("worker.py creating CoreWorker, plasma_store_socket_name: {}".format(node.plasma_store_socket_name))
+    folder_path = '/tmp/ray/' + session_name + '/sockets/'
+    print(folder_path)
+    file_list = os.listdir(folder_path)
+    for file_name in file_list:
+        print(file_name)
+    
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
@@ -2227,6 +2234,8 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
+
+    print("worker.py -- Right after creating core worker")
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

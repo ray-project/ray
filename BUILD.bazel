@@ -2398,7 +2398,10 @@ cc_library(
         [
             "src/ray/object_manager/*.cc",
             "src/ray/object_manager/notification/*.cc",
-        ]
+        ],
+        exclude = [
+            "src/ray/object_manager/plugin_manager.cc",
+        ],
     ),
     hdrs = glob([
         "src/ray/object_manager/*.h",
@@ -2411,6 +2414,7 @@ cc_library(
         ":gcs",
         ":object_manager_rpc",
         ":plasma_store_server_lib",
+        ":plugin_manager",
         ":ray_common",
         ":ray_util",
         "@boost//:asio",

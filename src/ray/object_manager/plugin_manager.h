@@ -1,3 +1,5 @@
+#pragma once
+
 #include <dlfcn.h>
 #include <iostream>
 #include <map>
@@ -25,31 +27,25 @@ class PluginManager {
   std::unique_ptr<plasma::ObjectStoreRunnerInterface> CreateObjectStoreRunnerInstance(const std::string& name);
   std::shared_ptr<plasma::ObjectStoreClientInterface> CreateObjectStoreClientInstance(const std::string& name);
   std::shared_ptr<plasma::ObjectStoreClientInterface> CreateCurrentClientInstance();
+  std::string GetCurrentObjectStoreName();
   void LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_path, const std::string plugin_params);
   void SetObjectStores(const std::string plugin_name, 
-                       const std::string store_socket_name,
-                       const int64_t object_store_memory,
-                       const bool huge_pages,
-                       const std::string plasma_directory,
-                       const std::string fallback_directory,
                        const std::string plugin_path,
                        const std::string plugin_params);
 
-  static PluginManager& GetInstance() {
-    static PluginManager instance;
-    //instance.SetObjectStores(config);
-    return instance;
-  }
-  PluginManager(){}
-  ~PluginManager(){}
+  static PluginManager &GetInstance();
 
  private:
   PluginManager(const PluginManager&) = delete;
+  PluginManager(PluginManager &&) = delete;
   PluginManager& operator=(const PluginManager&) = delete;
+  PluginManager& operator=(PluginManager &&) = delete;
+  PluginManager(): current_object_store_name_("default"){}
+  ~PluginManager(){}
 
   std::map<std::string, PluginManagerObjectStore> object_stores_;
   std::map<std::string, ObjectStoreClientCreator> client_creators_;
-  std::string current_object_store_name_ = "default";
+  std::string current_object_store_name_;
 };
 
 } // namespace ray

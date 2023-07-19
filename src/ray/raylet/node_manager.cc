@@ -38,7 +38,7 @@
 #include "ray/util/event_label.h"
 #include "ray/util/sample.h"
 #include "ray/util/util.h"
-
+#include "ray/object_manager/plugin_manager.h"
 
 namespace {
 
@@ -298,6 +298,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
+  RAY_LOG(INFO) << "Inside NodeManager " << plugin_manager.GetCurrentObjectStoreName();
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
