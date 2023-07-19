@@ -1,7 +1,45 @@
-#ci:group=:book: lint
+#ci:group=:book: lint (civ2)
 
-- label: "lint"
+- label: "clang"
   commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/v2/lint.sh
+    - ./ci/v2/lint.sh clang
+
+- label: "code format"
+  commands:
+    - ./ci/v2/lint.sh code_format
+
+- label: "banned words"
+  commands:
+    - ./ci/v2/lint.sh banned_words
+
+- label: "annotations"
+  commands:
+    - ./ci/v2/lint.sh annotations
+
+- label: "readme"
+  commands:
+    - ./ci/v2/lint.sh readme
+
+- label: "bazel buildifier"
+  commands:
+    - ./ci/v2/lint.sh bazel_buildifier
+
+- label: "bazel pytest"
+  commands:
+    - ./ci/v2/lint.sh bazel_pytest
+
+- label: "web"
+  commands:
+    - ./ci/v2/lint.sh web
+
+- label: "copyright"
+  commands:
+    - ./ci/v2/lint.sh copyright
+
+- label: "test script"
+  commands:
+    - ./ci/v2/lint.sh test_script
+
+- label: "test run"
+  commands:
+    - ./ci/v2/lint.sh test_run
