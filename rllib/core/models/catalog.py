@@ -112,7 +112,7 @@ class Catalog:
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def _determine_components_hook(self):
-        """Hook for subclasses to override.
+        """Decision tree hook for subclasses to override.
 
         By default, this method executes the decision tree that determines the
         components that a Catalog builds. You can extend the components by overriding

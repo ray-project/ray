@@ -136,7 +136,7 @@ You can override these to quickly hack what models RLModules build.
 Other methods are private and should only be overridden to make deep changes to the decision tree to enhance the capabilities of Catalogs.
 Additionally, :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config` is a method that can be used when tokenization
 is required. Tokenization means single-step-embedding. Encoding also means embedding but can span multiple timesteps.
-In fact, RLlib's tokenizers used in it's recurrent Encoders (e.g. :py:class:`~ray.rllib.core.models.torch.encoder.TorchLSTMEncoder`),
+In fact, RLlib's tokenizers used in its recurrent Encoders (e.g. :py:class:`~ray.rllib.core.models.torch.encoder.TorchLSTMEncoder`),
 are instances of non-recurrent Encoder classes.
 
 Catalog and AlgorithmConfig
@@ -207,6 +207,12 @@ This is more similar to what RLlib does internally.
        :start-after: __sphinx_doc_ppo_models_begin__
        :end-before: __sphinx_doc_ppo_models_end__
 
+Note that the above two examples illustrate in principle what it takes to implement a Catalog.
+In this case, we see the difference between `Catalog` and `PPOCatalog`.
+In most cases, we can reuse the capabilities of the base :py:class:`~ray.rllib.core.models.catalog.Catalog` base class
+and only need to add methods to build head networks that we can then use in the appropriate `RLModule`.
+
+
 Inject your custom model or action distributions into Catalogs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -218,7 +224,7 @@ Have a look at these lines from the constructor of the :py:class:`~ray.rllib.alg
     :start-after: __sphinx_doc_begin__
     :end-before: __sphinx_doc_end__
 
-Note that what happens inside the constructor of PPOTorchRLModule is similar to how we used when `Creating models and distributions for PPO <rllib-catalogs.html#creating-models-and-distributions-for-ppo>`__.
+Note that what happens inside the constructor of PPOTorchRLModule is similar to the earlier example `Creating models and distributions for PPO <rllib-catalogs.html#creating-models-and-distributions-for-ppo>`__.
 
 Consequently, in order to build a custom :py:class:`~ray.rllib.core.models.Model` compatible with a PPORLModule,
 you can override methods by inheriting from :py:class:`~ray.rllib.algorithms.ppo.ppo_catalog.PPOCatalog`
