@@ -79,6 +79,14 @@ _EXCLUDE_FROM_SYNC = [
     f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
+
+class _HeadNodeSyncDeprecationWarning(DeprecationWarning):
+    """Error raised when trying to rely on deprecated head node syncing when
+    checkpointing across multiple nodes."""
+
+    pass
+
+
 _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "Ray AIR no longer supports the synchronization of checkpoints and other "
     "artifacts from worker nodes to the head node. This means that the "
@@ -93,7 +101,8 @@ _SYNC_TO_HEAD_DEPRECATION_MESSAGE = (
     "`RunConfig(storage_path='/mnt/path/to/nfs_storage')`\n"
     "See this Github issue for more details on transitioning to cloud storage/NFS "
     "as well as an explanation on why this functionality is "
-    "being removed: https://github.com/ray-project/ray/issues/37177\n\n"
+    "being removed: https://github.com/ray-project/ray/issues/37177\n"
+    "If you are already using NFS, you can ignore this warning message.\n\n"
     "Other temporary workarounds:\n"
     "- If you want to avoid errors/warnings and continue running with "
     "syncing explicitly turned off, set `RunConfig(SyncConfig(syncer=None))`\n"
@@ -112,10 +121,9 @@ class SyncConfig:
     See :ref:`tune-persisted-experiment-data` for an overview of what data is
     synchronized.
 
-    If an ``upload_dir`` is specified, both experiment and trial checkpoints
-    will be stored on remote (cloud) storage. Synchronization then only
-    happens via uploading/downloading from this remote storage -- no syncing will
-    happen between nodes.
+    If a remote ``RunConfig(storage_path)`` is specified, both experiment and trial
+    checkpoints will be stored on remote (cloud) storage. Synchronization then only
+    happens via uploading/downloading from this remote storage.
 
     There are a few scenarios where syncing takes place:
 
@@ -123,25 +131,27 @@ class SyncConfig:
         (which includes experiment state such as searcher state, the list of trials
         and their statuses, and trial metadata)
     (2) Workers directly syncing trial checkpoints to the cloud
-    (3) Workers syncing their trial directories to the head node
-        (this is the default option when no cloud storage is used)
+    (3) Workers syncing their trial directories to the head node (Deprecated)
     (4) Workers syncing artifacts (which include all files saved in the trial directory
         *except* for checkpoints) directly to the cloud.
+
+    .. warning::
+        When running on multiple nodes, using the local filesystem of the head node as
+        the persistent storage location is *deprecated*.
+        If you save trial checkpoints and run on a multi-node cluster,
+        Tune will raise an error by default, if NFS or cloud storage is not setup.
+        See `this issue <https://github.com/ray-project/ray/issues/37177>`_
+        for more information, including temporary workarounds
+        as well as the deprecation and removal schedule.
 
     See :ref:`tune-storage-options` for more details and examples.
 
     Args:
-        upload_dir: Optional URI to sync training results and checkpoints
-            to (e.g. ``s3://bucket``, ``gs://bucket`` or ``hdfs://path``).
-            Specifying this will enable cloud-based checkpointing.
-        syncer: If ``upload_dir`` is specified, then this config accepts a custom
-            syncer subclassing :class:`~ray.tune.syncer.Syncer` which will be
+        upload_dir: This config is deprecated in favor of ``RunConfig(storage_path)``.
+        syncer: If a cloud ``storage_path`` is configured, then this config accepts a
+            custom syncer subclassing :class:`~ray.tune.syncer.Syncer` which will be
             used to synchronize checkpoints to/from cloud storage.
-            If no ``upload_dir`` is specified, this config can be set to ``None``,
-            which disables the default worker-to-head-node syncing.
-            Defaults to ``"auto"`` (auto detect), which assigns a default syncer
-            that uses pyarrow to handle cloud storage syncing when ``upload_dir``
-            is provided.
+            Defaults to ``"auto"`` (auto detect), which defaults to use ``pyarrow.fs``.
         sync_period: Minimum time in seconds to wait between two sync operations.
             A smaller ``sync_period`` will have more up-to-date data at the sync
             location but introduces more syncing overhead.
@@ -157,10 +167,10 @@ class SyncConfig:
             trial directory (accessed via `session.get_trial_dir()`) to the cloud.
             Artifact syncing happens at the same frequency as trial checkpoint syncing.
             **Note**: This is scenario (4).
-        sync_on_checkpoint: If *True*, a sync from a worker's remote trial directory
+        sync_on_checkpoint: This config is deprecated.
+            If *True*, a sync from a worker's remote trial directory
             to the head node will be forced on every trial checkpoint, regardless
-            of the ``sync_period``.
-            Defaults to True.
+            of the ``sync_period``. Defaults to True.
             **Note**: This is ignored if ``upload_dir`` is specified, since this
             only applies to worker-to-head-node syncing (3).
     """
@@ -934,7 +944,7 @@ class SyncerCallback(Callback):
             # that means that it lives on some other node and would be synced to head
             # prior to Ray 2.6.
             if not os.path.exists(checkpoint.dir_or_data):
-                raise DeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
+                raise _HeadNodeSyncDeprecationWarning(_SYNC_TO_HEAD_DEPRECATION_MESSAGE)
             # else:
             #   No need to raise an error about syncing, since the driver can find
             #   the checkpoint, because either:
