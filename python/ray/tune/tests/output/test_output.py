@@ -81,16 +81,16 @@ def test_get_time_str():
 
 
 def test_get_trials_by_state():
-    t1 = Trial("__fake")
+    t1 = Trial("__fake", stub=True)
     t1.set_status(Trial.RUNNING)
-    t2 = Trial("__fake")
+    t2 = Trial("__fake", stub=True)
     t2.set_status(Trial.PENDING)
     trials = [t1, t2]
     assert _get_trials_by_state(trials) == {"RUNNING": [t1], "PENDING": [t2]}
 
 
 def test_infer_user_metrics():
-    t = Trial("__fake")
+    t = Trial("__fake", stub=True)
     t.last_result = LAST_RESULT
     result = [
         "episode_reward_max",
@@ -109,15 +109,15 @@ def test_max_len():
 
 
 def test_current_best_trial():
-    t1 = Trial("__fake")
-    t2 = Trial("__fake")
+    t1 = Trial("__fake", stub=True)
+    t2 = Trial("__fake", stub=True)
     t1.last_result = {"metric": 2}
     t2.last_result = {"metric": 1}
     assert _current_best_trial([t1, t2], metric="metric", mode="min") == (t2, "metric")
 
 
 def test_best_trial_str():
-    t = Trial("__fake")
+    t = Trial("__fake", stub=True)
     t.trial_id = "18ae7_00005"
     t.last_result = {
         "loss": 0.5918508041056858,
@@ -131,7 +131,7 @@ def test_best_trial_str():
 
 
 def test_get_trial_info():
-    t = Trial("__fake")
+    t = Trial("__fake", stub=True)
     t.trial_id = "af42b609"
     t.set_status(Trial.RUNNING)
     t.last_result = LAST_RESULT
@@ -151,7 +151,7 @@ def test_get_trial_info():
 def test_get_trial_table_data_less_than_20():
     trials = []
     for i in range(20):
-        t = Trial("__fake")
+        t = Trial("__fake", stub=True)
         t.trial_id = str(i)
         t.set_status(Trial.RUNNING)
         t.last_result = {"episode_reward_mean": 100 + i}
@@ -171,7 +171,7 @@ def test_get_trial_table_data_more_than_20():
     # total of 30 trials.
     for status in [Trial.RUNNING, Trial.TERMINATED, Trial.PENDING]:
         for i in range(10):
-            t = Trial("__fake")
+            t = Trial("__fake", stub=True)
             t.trial_id = str(i)
             t.set_status(status)
             t.last_result = {"episode_reward_mean": 100 + i}

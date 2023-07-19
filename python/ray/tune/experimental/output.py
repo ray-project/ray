@@ -8,7 +8,6 @@ from typing import (
     Optional,
     Tuple,
     Union,
-    TYPE_CHECKING,
 )
 
 import contextlib
@@ -57,9 +56,6 @@ from ray.tune.result import (
 )
 from ray.tune.experiment.trial import Trial
 
-if TYPE_CHECKING:
-    from ray.tune.stopper import Stopper
-
 logger = logging.getLogger(__name__)
 
 # defines the mapping of the key in result and the key to be printed in table.
@@ -74,6 +70,22 @@ DEFAULT_COLUMNS = collections.OrderedDict(
         EPISODE_REWARD_MEAN: "reward",
     }
 )
+
+# These keys are blacklisted for printing out training/tuning intermediate/final result!
+BLACKLISTED_KEYS = {
+    "config",
+    "date",
+    "done",
+    "hostname",
+    "iterations_since_restore",
+    "node_ip",
+    "pid",
+    "time_since_restore",
+    "timestamp",
+    "trial_id",
+    "experiment_tag",
+    "should_checkpoint",
+}
 
 VALID_SUMMARY_TYPES = {
     int,
@@ -571,15 +583,22 @@ def _print_dict_as_table(
     )
 
 
-class ProgressReporter:
+class ProgressReporter(Callback):
     """Periodically prints out status update."""
 
     # TODO: Make this configurable
     _heartbeat_freq = 30  # every 30 sec
     # to be updated by subclasses.
     _heartbeat_threshold = None
+    _start_end_verbosity = None
+    _intermediate_result_verbosity = None
+    _addressing_tmpl = None
 
-    def __init__(self, verbosity: AirVerbosity):
+    def __init__(
+        self,
+        verbosity: AirVerbosity,
+        progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
+    ):
         """
 
         Args:
@@ -588,6 +607,19 @@ class ProgressReporter:
         self._verbosity = verbosity
         self._start_time = time.time()
         self._last_heartbeat_time = 0
+        self._progress_metrics = progress_metrics
+        self._trial_last_printed_results = {}
+
+    @property
+    def verbosity(self) -> AirVerbosity:
+        return self._verbosity
+
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        **kwargs,
+    ):
+        self._start_time = start_time
 
     def experiment_started(
         self,
@@ -621,12 +653,108 @@ class ProgressReporter:
     def print_heartbeat(self, trials, *args, force: bool = False):
         if self._verbosity < self._heartbeat_threshold:
             return
-        if force or time.time() - self._last_heartbeat_time > self._heartbeat_freq:
+        if force or time.time() - self._last_heartbeat_time >= self._heartbeat_freq:
             self._print_heartbeat(trials, *args, force=force)
             self._last_heartbeat_time = time.time()
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
         raise NotImplementedError
+
+    def _print_result(self, trial, result: Optional[Dict] = None, force: bool = False):
+        """Only print result if a different result has been reported, or force=True"""
+        result = result or trial.last_result
+
+        last_result_iter = self._trial_last_printed_results.get(trial.trial_id, -1)
+        this_iter = result.get(TRAINING_ITERATION, 0)
+
+        if this_iter != last_result_iter or force:
+            _print_dict_as_table(
+                result,
+                header=f"{self._addressing_tmpl.format(trial)} result",
+                include=self._progress_metrics,
+                exclude=BLACKLISTED_KEYS,
+                division=AUTO_RESULT_KEYS,
+            )
+            self._trial_last_printed_results[trial.trial_id] = this_iter
+
+    def _print_config(self, trial):
+        _print_dict_as_table(
+            trial.config, header=f"{self._addressing_tmpl.format(trial)} config"
+        )
+
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List[Trial],
+        trial: Trial,
+        result: Dict,
+        **info,
+    ):
+        if self.verbosity < self._intermediate_result_verbosity:
+            return
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
+        print(
+            f"{self._addressing_tmpl.format(trial)} "
+            f"finished iteration {result[TRAINING_ITERATION]} "
+            f"at {curr_time_str}. Total running time: " + running_time_str
+        )
+        self._print_result(trial, result)
+        print("")
+
+    def on_trial_complete(
+        self, iteration: int, trials: List[Trial], trial: Trial, **info
+    ):
+        if self.verbosity < self._start_end_verbosity:
+            return
+        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
+        finished_iter = 0
+        if trial.last_result and TRAINING_ITERATION in trial.last_result:
+            finished_iter = trial.last_result[TRAINING_ITERATION]
+        print(
+            f"{self._addressing_tmpl.format(trial)} "
+            f"completed after {finished_iter} iterations "
+            f"at {curr_time_str}. Total running time: " + running_time_str
+        )
+        self._print_result(trial)
+        print("")
+
+    def on_checkpoint(
+        self,
+        iteration: int,
+        trials: List[Trial],
+        trial: Trial,
+        checkpoint: "_TrackedCheckpoint",
+        **info,
+    ):
+        if self._verbosity < self._intermediate_result_verbosity:
+            return
+        # don't think this is supposed to happen but just to be save.
+        saved_iter = "?"
+        if trial.last_result and TRAINING_ITERATION in trial.last_result:
+            saved_iter = trial.last_result[TRAINING_ITERATION]
+        print(
+            f"{self._addressing_tmpl.format(trial)} "
+            f"saved a checkpoint for iteration {saved_iter} "
+            f"at: {checkpoint.dir_or_data}"
+        )
+        print("")
+
+    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
+        if self.verbosity < self._start_end_verbosity:
+            return
+        has_config = bool(trial.config)
+
+        if has_config:
+            print(
+                f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
+            )
+            self._print_config(trial)
+        else:
+            print(
+                f"{self._addressing_tmpl.format(trial)} "
+                f"started without custom configuration."
+            )
+        print("")
 
 
 def _detect_reporter(
@@ -636,6 +764,7 @@ def _detect_reporter(
     metric: Optional[str] = None,
     mode: Optional[str] = None,
     config: Optional[Dict] = None,
+    progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
 ):
     # TODO: Add JupyterNotebook and Ray Client case later.
     rich_enabled = bool(int(os.environ.get("RAY_AIR_RICH_LAYOUT", "0")))
@@ -653,6 +782,7 @@ def _detect_reporter(
                 metric=metric,
                 mode=mode,
                 config=config,
+                progress_metrics=progress_metrics,
             )
         else:
             reporter = TuneTerminalReporter(
@@ -661,17 +791,21 @@ def _detect_reporter(
                 metric=metric,
                 mode=mode,
                 config=config,
+                progress_metrics=progress_metrics,
             )
     else:
         if rich_enabled:
             logger.warning("`RAY_AIR_RICH_LAYOUT` is only effective with Tune usecase.")
-        reporter = TrainReporter(verbosity)
+        reporter = TrainReporter(verbosity, progress_metrics=progress_metrics)
     return reporter
 
 
 class TuneReporterBase(ProgressReporter):
     _heartbeat_threshold = AirVerbosity.DEFAULT
     _wrap_headers = False
+    _intermediate_result_verbosity = AirVerbosity.VERBOSE
+    _start_end_verbosity = AirVerbosity.DEFAULT
+    _addressing_tmpl = "Trial {}"
 
     def __init__(
         self,
@@ -680,14 +814,26 @@ class TuneReporterBase(ProgressReporter):
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
+        progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
     ):
         self._num_samples = num_samples
         self._metric = metric
         self._mode = mode
         # will be populated when first result comes in.
         self._inferred_metric = None
-        self._inferred_params = _infer_params(config)
-        super(TuneReporterBase, self).__init__(verbosity=verbosity)
+        self._inferred_params = _infer_params(config or {})
+        super(TuneReporterBase, self).__init__(
+            verbosity=verbosity, progress_metrics=progress_metrics
+        )
+
+    def setup(
+        self,
+        start_time: Optional[float] = None,
+        total_samples: Optional[int] = None,
+        **kwargs,
+    ):
+        super().setup(start_time=start_time)
+        self._num_samples = total_samples
 
     def _get_overall_trial_progress_str(self, trials):
         result = " | ".join(
@@ -836,10 +982,11 @@ class TuneRichReporter(TuneReporterBase):
     def __init__(
         self,
         verbosity: AirVerbosity,
-        num_samples: int,
+        num_samples: int = 0,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
+        progress_metrics: Optional[Union[List[str], List[Dict[str, str]]]] = None,
     ):
         super().__init__(
             verbosity=verbosity,
@@ -847,6 +994,7 @@ class TuneRichReporter(TuneReporterBase):
             metric=metric,
             mode=mode,
             config=config,
+            progress_metrics=progress_metrics,
         )
         self._live = None
 
@@ -918,6 +1066,9 @@ class TuneRichReporter(TuneReporterBase):
 class TrainReporter(ProgressReporter):
     # the minimal verbosity threshold at which heartbeat starts getting printed.
     _heartbeat_threshold = AirVerbosity.VERBOSE
+    _intermediate_result_verbosity = AirVerbosity.DEFAULT
+    _start_end_verbosity = AirVerbosity.DEFAULT
+    _addressing_tmpl = "Training"
 
     def _get_heartbeat(self, trials: List[Trial], force_full_output: bool = False):
         # Training on iteration 1. Current time: 2023-03-22 15:29:25 (running for 00:00:03.24)  # noqa
@@ -938,175 +1089,3 @@ class TrainReporter(ProgressReporter):
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
         print(self._get_heartbeat(trials, force_full_output=force))
-
-
-# These keys are blacklisted for printing out training/tuning intermediate/final result!
-BLACKLISTED_KEYS = {
-    "config",
-    "date",
-    "done",
-    "hostname",
-    "iterations_since_restore",
-    "node_ip",
-    "pid",
-    "time_since_restore",
-    "timestamp",
-    "trial_id",
-    "experiment_tag",
-    "should_checkpoint",
-}
-
-
-class AirResultCallbackWrapper(Callback):
-    # This is only to bypass the issue that by the time default callbacks
-    # are added, there is no information on `num_samples` yet.
-    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
-        self._verbosity = verbosity
-        self._callback = None
-        self._metrics = metrics
-
-    def setup(
-        self,
-        stop: Optional["Stopper"] = None,
-        num_samples: Optional[int] = None,
-        total_num_samples: Optional[int] = None,
-        **info,
-    ):
-        self._callback = (
-            TuneResultProgressCallback(self._verbosity, metrics=self._metrics)
-            if total_num_samples > 1
-            else TrainResultProgressCallback(self._verbosity, metrics=self._metrics)
-        )
-
-    # everything ELSE is just passing through..
-    def __getattribute__(self, attr):
-        proxy_through_keys = {
-            "on_trial_result",
-            "on_trial_complete",
-            "on_checkpoint",
-            "on_trial_start",
-        }
-        if attr not in proxy_through_keys:
-            return super().__getattribute__(attr)
-        return getattr(self._callback, attr)
-
-
-class AirResultProgressCallback(Callback):
-    # to be filled in by subclasses.
-    _start_end_verbosity = None
-    _intermediate_result_verbosity = None
-    _addressing_tmpl = None
-
-    def __init__(self, verbosity: AirVerbosity, metrics: Collection[str] = ()):
-        self._verbosity = verbosity
-        self._start_time = time.time()
-        self._trial_last_printed_results = {}
-        self._metrics = metrics
-
-    def _print_result(self, trial, result: Optional[Dict] = None, force: bool = False):
-        """Only print result if a different result has been reported, or force=True"""
-        result = result or trial.last_result
-
-        last_result_iter = self._trial_last_printed_results.get(trial.trial_id, -1)
-        this_iter = result.get(TRAINING_ITERATION, 0)
-
-        if this_iter != last_result_iter or force:
-            _print_dict_as_table(
-                result,
-                header=f"{self._addressing_tmpl.format(trial)} result",
-                include=self._metrics,
-                exclude=BLACKLISTED_KEYS,
-                division=AUTO_RESULT_KEYS,
-            )
-            self._trial_last_printed_results[trial.trial_id] = this_iter
-
-    def _print_config(self, trial):
-        _print_dict_as_table(
-            trial.config, header=f"{self._addressing_tmpl.format(trial)} config"
-        )
-
-    def on_trial_result(
-        self,
-        iteration: int,
-        trials: List[Trial],
-        trial: Trial,
-        result: Dict,
-        **info,
-    ):
-        if self._verbosity < self._intermediate_result_verbosity:
-            return
-        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
-        print(
-            f"{self._addressing_tmpl.format(trial)} "
-            f"finished iteration {result[TRAINING_ITERATION]} "
-            f"at {curr_time_str}. Total running time: " + running_time_str
-        )
-        self._print_result(trial, result)
-        print("")
-
-    def on_trial_complete(
-        self, iteration: int, trials: List[Trial], trial: Trial, **info
-    ):
-        if self._verbosity < self._start_end_verbosity:
-            return
-        curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
-        finished_iter = 0
-        if trial.last_result and TRAINING_ITERATION in trial.last_result:
-            finished_iter = trial.last_result[TRAINING_ITERATION]
-        print(
-            f"{self._addressing_tmpl.format(trial)} "
-            f"completed after {finished_iter} iterations "
-            f"at {curr_time_str}. Total running time: " + running_time_str
-        )
-        self._print_result(trial)
-        print("")
-
-    def on_checkpoint(
-        self,
-        iteration: int,
-        trials: List[Trial],
-        trial: Trial,
-        checkpoint: "_TrackedCheckpoint",
-        **info,
-    ):
-        if self._verbosity < self._intermediate_result_verbosity:
-            return
-        # don't think this is supposed to happen but just to be save.
-        saved_iter = "?"
-        if trial.last_result and TRAINING_ITERATION in trial.last_result:
-            saved_iter = trial.last_result[TRAINING_ITERATION]
-        print(
-            f"{self._addressing_tmpl.format(trial)} "
-            f"saved a checkpoint for iteration {saved_iter} "
-            f"at: {checkpoint.dir_or_data}"
-        )
-        print("")
-
-    def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
-        if self._verbosity < self._start_end_verbosity:
-            return
-        has_config = bool(trial.config)
-
-        if has_config:
-            print(
-                f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
-            )
-            self._print_config(trial)
-        else:
-            print(
-                f"{self._addressing_tmpl.format(trial)} "
-                f"started without custom configuration."
-            )
-        print("")
-
-
-class TuneResultProgressCallback(AirResultProgressCallback):
-    _intermediate_result_verbosity = AirVerbosity.VERBOSE
-    _start_end_verbosity = AirVerbosity.DEFAULT
-    _addressing_tmpl = "Trial {}"
-
-
-class TrainResultProgressCallback(AirResultProgressCallback):
-    _intermediate_result_verbosity = AirVerbosity.DEFAULT
-    _start_end_verbosity = AirVerbosity.DEFAULT
-    _addressing_tmpl = "Training"

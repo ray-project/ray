@@ -35,7 +35,6 @@ from ray.tune.execution.tune_controller import TuneController
 from ray.tune.experiment import Experiment, _convert_to_experiment_list
 from ray.tune.experimental.output import (
     get_air_verbosity,
-    _detect_reporter as _detect_air_reporter,
     IS_NOTEBOOK,
     AirVerbosity,
 )
@@ -966,7 +965,10 @@ def run(
         callbacks,
         sync_config=sync_config,
         air_verbosity=air_verbosity,
+        entrypoint=_entrypoint,
+        config=config,
         metric=metric,
+        mode=mode,
         progress_metrics=progress_metrics,
     )
 
@@ -1066,14 +1068,15 @@ def run(
             mode=mode,
         )
     else:
-        air_progress_reporter = _detect_air_reporter(
-            air_verbosity,
-            num_samples=search_alg.total_samples,
-            entrypoint=_entrypoint,
-            metric=metric,
-            mode=mode,
-            config=config,
-        )
+        from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
+
+        for callback in callbacks:
+            if isinstance(callback, AirProgressReporter):
+                air_progress_reporter = callback
+                air_progress_reporter.setup(
+                    start_time=tune_start, total_samples=search_alg.total_samples
+                )
+                break
 
     # rich live context manager has to be called encapsulating
     # the while loop. For other kind of reporters, no op.
