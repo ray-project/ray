@@ -176,7 +176,7 @@ class DatasetPipeline:
         local_shuffle_seed: Optional[int] = None,
         _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
     ) -> Iterator[DataBatch]:
-        """Return a local batched iterator over the data in the pipeline.
+        """Return a batched iterator over the data in the pipeline.
 
         Examples:
             >>> import ray
