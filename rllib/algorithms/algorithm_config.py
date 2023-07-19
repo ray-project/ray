@@ -2192,13 +2192,6 @@ class AlgorithmConfig(_Config):
             for pid in policies:
                 validate_policy_id(pid, error=True)
 
-            if self._enable_rl_module_api:
-                raise ValueError(
-                    "`policies` uses the Policy and ModelV2 API. This is incompatible "
-                    "with the RLModule API. Please set `_enable_rl_module_api=False` "
-                    "to use the legacy Policy and ModelV2 API."
-                )
-
             # Validate each policy spec in a given dict.
             if isinstance(policies, dict):
                 for pid, spec in policies.items():
