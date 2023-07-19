@@ -35,4 +35,4 @@ class TaskContext:
 
     # The Ray remote arguments of the fused upstream MapOperator.
     # This should be set if upstream_map_transform_fn is set.
-    upstream_map_ray_remote_args: Optional[dict[str, Any]] = None
+    upstream_map_ray_remote_args: Optional[Dict[str, Any]] = None
