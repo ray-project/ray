@@ -2095,7 +2095,7 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
 
     Args:
         dataset: A `Hugging Face Datasets Dataset`_.
-            :class:`~ray.data.IterableDataset` and 
+            :class:`~ray.data.IterableDataset` and
             `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
             are not supported.
 
