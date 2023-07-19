@@ -62,7 +62,8 @@ def register_fastapi_serializer(serialization_context):
     """Register FastAPI serializer that's compatible with Pydantic 2.x."""
 
     try:
-        import fastapi
+        # Check if FastAPI is installed on the cluster
+        import fastapi  # noqa: F401
     except ImportError:
         return
 
@@ -75,14 +76,39 @@ def register_fastapi_serializer(serialization_context):
     except ImportError:
         return
 
+    from fastapi.routing import APIRoute
+
     serialization_context._register_cloudpickle_serializer(
-        fastapi._compat.ModelField,
+        APIRoute,
         custom_serializer=lambda o: {
-            "field_info": o.field_info,
+            "path": o.path,
+            "endpoint": o.endpoint,
+            "response_model": o.response_model,
+            "status_code": o.status_code,
+            "tags": o.tags,
+            "dependencies": o.dependencies,
+            "summary": o.summary,
+            "description": o.description,
+            "response_description": o.response_description,
+            "responses": o.responses,
+            "deprecated": o.deprecated,
             "name": o.name,
-            "mode": o.mode,
+            "methods": o.methods,
+            "operation_id": o.operation_id,
+            "response_model_include": o.response_model_include,
+            "response_model_exclude": o.response_model_exclude,
+            "response_model_by_alias": o.response_model_by_alias,
+            "response_model_exclude_unset": o.response_model_exclude_unset,
+            "response_model_exclude_defaults": o.response_model_exclude_defaults,
+            "response_model_exclude_none": o.response_model_exclude_none,
+            "include_in_schema": o.include_in_schema,
+            "response_class": o.response_class,
+            "dependency_overrides_provider": o.dependency_overrides_provider,
+            "callbacks": o.callbacks,
+            "openapi_extra": o.openapi_extra,
+            "generate_unique_id_function": o.generate_unique_id_function,
         },
-        custom_deserializer=lambda kwargs: fastapi._compat.ModelField(**kwargs),
+        custom_deserializer=lambda s: APIRoute(**s),
     )
 
 
