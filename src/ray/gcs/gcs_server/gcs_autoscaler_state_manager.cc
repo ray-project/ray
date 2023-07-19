@@ -114,6 +114,7 @@ void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
   state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
   state->set_cluster_resource_state_version(
       IncrementAndGetNextClusterResourceStateVersion());
+  state->set_cluster_session_name(session_name_);
 
   GetNodeStates(state);
   GetPendingResourceRequests(state);

@@ -56,9 +56,9 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
     gcs_placement_group_manager_ =
         std::make_shared<MockGcsPlacementGroupManager>(*gcs_resource_manager_);
-
     gcs_autoscaler_state_manager_.reset(
-        new GcsAutoscalerStateManager(*cluster_resource_manager_,
+        new GcsAutoscalerStateManager("fake_cluster",
+                                      *cluster_resource_manager_,
                                       *gcs_resource_manager_,
                                       *gcs_node_manager_,
                                       *gcs_placement_group_manager_));
