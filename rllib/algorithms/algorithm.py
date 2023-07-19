@@ -1083,7 +1083,15 @@ class Algorithm(Trainable, AlgorithmBase):
                         for ma_batch in batches:
                             ma_batch = ma_batch.as_multi_agent()
                             for batch in ma_batch.policy_batches.values():
-                                assert batch.is_terminated_or_truncated()
+                                if not batch.is_terminated_or_truncated():
+                                    raise ValueError(
+                                        "RLlib attempts to evaluate your policy per "
+                                        "episode, which is determined by the "
+                                        "evaluation config's "
+                                        "`evaluation_duration_unit`. However, "
+                                        "the evaluation batch is neither terminated "
+                                        "nor truncated."
+                                    )
                     # n timesteps per returned batch.
                     else:
                         num_units_done += (
