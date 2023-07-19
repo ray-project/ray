@@ -1,0 +1,11 @@
+rules:
+  - id: code-block-python
+    paths:
+      include:
+        - "python/ray/data/**/*.py"
+        - "doc/source/data/**/*.rst"
+    languages:
+      - generic
+    message: "Don't use 'code-block:: python', it's not tested! Use 'testcode' instead!"
+    pattern: "code-block:: python"
+    severity: ERROR

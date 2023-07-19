@@ -36,6 +36,10 @@
   commands:
     - ./ci/v2/lint.sh copyright
 
+- label: "code blocks"
+  commands:
+    - ./ci/v2/lint.sh code_blocks
+
 - label: "test script"
   commands:
     - ./ci/v2/lint.sh test_script
