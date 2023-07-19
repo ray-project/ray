@@ -48,6 +48,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray import air, tune
 from ray.air import Checkpoint, session
+from ray.tune import TuneError
 from ray.tune.execution.trial_runner import _find_newest_experiment_checkpoint
 from ray.tune.utils.serialization import TuneFunctionDecoder
 
@@ -1035,17 +1036,18 @@ def test_head_node_syncing_disabled_error():
 
     # Raise an error for checkpointing + no storage path
     def train_fn(config):
+        time.sleep(1)
         session.report({"score": 1}, checkpoint=Checkpoint.from_dict({"dummy": 1}))
 
     tuner = tune.Tuner(
         tune.with_resources(train_fn, {"CPU": 2.0}),
-        run_config=air.RunConfig(
-            storage_path=None, failure_config=air.FailureConfig(fail_fast="raise")
-        ),
-        tune_config=tune.TuneConfig(num_samples=4),
+        run_config=air.RunConfig(storage_path=None),
+        tune_config=tune.TuneConfig(num_samples=6),
     )
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(TuneError) as error_context:
         tuner.fit()
+    # The original `_HeadNodeSyncDeprecationWarning` gets wrapped in 2 TuneError's
+    assert "_HeadNodeSyncDeprecationWarning" in str(error_context.value.__cause__)
     print("Success: checkpointing without a storage path raises an error")
 
     # Workaround: continue running, with syncing explicitly disabled
@@ -1053,7 +1055,6 @@ def test_head_node_syncing_disabled_error():
         tune.with_resources(train_fn, {"CPU": 2.0}),
         run_config=air.RunConfig(
             storage_path=None,
-            failure_config=air.FailureConfig(fail_fast="raise"),
             sync_config=tune.SyncConfig(syncer=None),
         ),
         tune_config=tune.TuneConfig(num_samples=4),
@@ -1067,13 +1068,11 @@ def test_head_node_syncing_disabled_error():
 
     tuner = tune.Tuner(
         tune.with_resources(train_fn_no_checkpoint, {"CPU": 2.0}),
-        run_config=air.RunConfig(
-            storage_path=None, failure_config=air.FailureConfig(fail_fast="raise")
-        ),
+        run_config=air.RunConfig(storage_path=None),
         tune_config=tune.TuneConfig(num_samples=4),
     )
     tuner.fit()
-    print("Success: a multi-node experiment without checkpoint still runs")
+    print("Success: a multi-node experiment without checkpointing still runs")
 
 
 # TODO(ml-team): [Deprecation - head node syncing]
