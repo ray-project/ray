@@ -54,10 +54,12 @@ class MultiplexedModelState:
             return False
 
         if len(self.loaded_models) < MAX_MODELS:
+            print("Accepted have space")
             return True
 
         for model, timestamp in self.loaded_models.items():
             if now - timestamp > MIN_LOAD_TIME:
+                print("Accepted model is aged out")
                 return True
 
         logger.info("Rejecting due to duty cycle")
