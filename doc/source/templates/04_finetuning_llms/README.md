@@ -28,8 +28,8 @@ python finetune_llama.py --bs 4 --model_name [hf_model_id] --output_dir /mnt/sha
 This script was tested across three model sizes on the following cluster configurations on Anyscale platform. 
 
 
-| Model Size | HF Model ID| Instance Type | GPUs |
-| --- | --- | --- | --- | --- |
-| 7B  | `daryl149/llama-2-7b-chat-hf` | 16x`g5.xlarge` | 8xA10G (24G) | 
-| 13B | `daryl149/llama-2-13b-chat-hf` | 4x`g5.24xlarge` | 32xA10G (24G) | 
-| 70B | `anonymous4chan/llama-2-70b` | 4x`g5.24xlarge` | 32xA10G (24G) |gi
+| Model Size | HF Model ID                     | Instance Type  | GPUs         |
+|------------|--------------------------------|----------------|--------------|
+| 7B         | `daryl149/llama-2-7b-chat-hf`   | 16x `g5.xlarge` | 8x A10G (24G) |
+| 13B        | `daryl149/llama-2-13b-chat-hf`  | 4x `g5.24xlarge`| 32x A10G (24G)|
+| 70B        | `anonymous4chan/llama-2-70b`   | 4x `g5.24xlarge`| 32x A10G (24G)|
