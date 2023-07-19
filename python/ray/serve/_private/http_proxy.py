@@ -6,7 +6,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple, Type
+from typing import Callable, Dict, List, Optional, Set, Tuple
 import grpc
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -829,8 +829,6 @@ class GRPCProxy(GenericProxy):
         handle: RayServeHandle,
         serve_request: ServeRequest,
     ) -> ServeResponse:
-
-        start = time.time()
         try:
             try:
                 obj_ref_generator = await self._assign_request_with_timeout(
