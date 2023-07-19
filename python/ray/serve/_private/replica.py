@@ -11,7 +11,6 @@ from typing import Any, AsyncGenerator, Callable, Optional, Tuple, Dict
 import traceback
 
 import starlette.responses
-
 from starlette.requests import Request
 from starlette.types import Message, Receive, Scope, Send
 
@@ -64,6 +63,7 @@ from ray.serve._private.utils import (
     MetricsPusher,
 )
 from ray.serve._private.version import DeploymentVersion
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -346,7 +346,6 @@ def create_replica_wrapper(name: str):
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
             print("handle_request_streaming, request_metadata:", request_metadata)
-            # TODO: fix this code branch to use grpc request.
 
             if request_metadata.serve_grpc_request:
                 print("handle_request_streaming, serve_grpc_request", request_args)
@@ -739,9 +738,6 @@ class RayServeReplica:
         print("request.pickled_grpc_user_request", request.pickled_grpc_user_request)
         user_request = pickle.loads(request.pickled_grpc_user_request)
         print("user_request", user_request)
-        # parsed_body = ProtoAny()
-        # parsed_body.ParseFromString(user_request)
-        # print("parsed_body", parsed_body)
 
         runner_method = self.get_runner_method(request_metadata)
         if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
@@ -812,8 +808,8 @@ class RayServeReplica:
                 result = await method_to_call(*request_args, **request_kwargs)
                 if inspect.isgenerator(result) or inspect.isasyncgen(result):
                     raise TypeError(
-                        f"Method '{runner_method.__name__}' returned a generator. You"
-                        " must use `handle.options(stream=True)` to call "
+                        f"Method '{runner_method.__name__}' returned a generator. You "
+                        "must use `handle.options(stream=True)` to call "
                         "generators on a deployment."
                     )
 
@@ -833,9 +829,9 @@ class RayServeReplica:
             if request_metadata.is_http_request and not isinstance(
                 self.callable, ASGIAppReplicaWrapper
             ):
-                # For the FastAPI codepath, the response has already been sent
-                # over the ASGI interface, but for the vanilla deployment
-                # codepath we need to send it.
+                # For the FastAPI codepath, the response has already been sent over the
+                # ASGI interface, but for the vanilla deployment codepath we need to
+                # send it.
                 await self.send_user_result_over_asgi(result, scope, receive, send)
 
             return result
