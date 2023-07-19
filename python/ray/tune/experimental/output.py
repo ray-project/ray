@@ -86,7 +86,6 @@ BLACKLISTED_KEYS = {
     "trial_id",
     "experiment_tag",
     "should_checkpoint",
-    "_report_on",  # LIGHTNING_REPORT_STAGE_KEY
 }
 
 VALID_SUMMARY_TYPES = {
@@ -291,12 +290,12 @@ def _max_len(value: Any, max_len: int = 20, wrap: bool = False) -> Any:
         # Maximum two rows.
         # Todo: Make this configurable in the refactor
         if len(value) > max_len * 2:
-            value = "..." + string[(3 - (max_len * 2)) :]
+            value = "..." + string[(3 - (max_len * 2)):]
 
         wrapped = textwrap.wrap(value, width=max_len)
         return "\n".join(wrapped)
 
-    result = "..." + string[(3 - max_len) :]
+    result = "..." + string[(3 - max_len):]
     return result
 
 
@@ -611,12 +610,9 @@ class ProgressReporter(Callback):
         """
         self._verbosity = verbosity
         self._start_time = time.time()
-        self._last_heartbeat_time = float("-inf")
-        self._start_time = time.time()
+        self._last_heartbeat_time = 0
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
-
-        self._in_block = None
 
     @property
     def verbosity(self) -> AirVerbosity:
@@ -628,19 +624,6 @@ class ProgressReporter(Callback):
         **kwargs,
     ):
         self._start_time = start_time
-
-    def _start_block(self, indicator: Any):
-        if self._in_block != indicator:
-            self._end_block()
-        self._in_block = indicator
-
-    def _end_block(self):
-        if self._in_block:
-            print("")
-        self._in_block = None
-
-    def on_experiment_end(self, trials: List["Trial"], **info):
-        self._end_block()
 
     def experiment_started(
         self,
@@ -712,7 +695,6 @@ class ProgressReporter(Callback):
     ):
         if self.verbosity < self._intermediate_result_verbosity:
             return
-        self._start_block(f"trial_{trial}_result_{result[TRAINING_ITERATION]}")
         curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         print(
             f"{self._addressing_tmpl.format(trial)} "
@@ -720,6 +702,7 @@ class ProgressReporter(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
+        print("")
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
@@ -730,14 +713,13 @@ class ProgressReporter(Callback):
         finished_iter = 0
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
-
-        self._start_block(f"trial_{trial}_complete")
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"completed after {finished_iter} iterations "
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
+        print("")
 
     def on_checkpoint(
         self,
@@ -753,20 +735,18 @@ class ProgressReporter(Callback):
         saved_iter = "?"
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
-
-        self._start_block(f"trial_{trial}_result_{saved_iter}")
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"saved a checkpoint for iteration {saved_iter} "
             f"at: {checkpoint.dir_or_data}"
         )
+        print("")
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self.verbosity < self._start_end_verbosity:
             return
         has_config = bool(trial.config)
 
-        self._start_block(f"trial_{trial}_start")
         if has_config:
             print(
                 f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
@@ -777,6 +757,7 @@ class ProgressReporter(Callback):
                 f"{self._addressing_tmpl.format(trial)} "
                 f"started without custom configuration."
             )
+        print("")
 
 
 def _detect_reporter(
@@ -1111,16 +1092,3 @@ class TrainReporter(ProgressReporter):
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
         print(self._get_heartbeat(trials, force_full_output=force))
-
-    def on_trial_result(
-        self,
-        iteration: int,
-        trials: List[Trial],
-        trial: Trial,
-        result: Dict,
-        **info,
-    ):
-        self._last_heartbeat_time = time.time()
-        super().on_trial_result(
-            iteration=iteration, trials=trials, trial=trial, result=result, **info
-        )
