@@ -23,7 +23,7 @@ option java_outer_classname = "ServeProtos";
 
 option java_multiple_files = true;
 
-import "google/protobuf/any.proto";
+// import "google/protobuf/any.proto";
 
 // Configuration options for Serve's replica autoscaler.
 message AutoscalingConfig {

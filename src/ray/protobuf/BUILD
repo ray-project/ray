@@ -342,6 +342,7 @@ cc_proto_library(
 proto_library(
     name = "serve_proto",
     srcs = ["serve.proto"],
+    deps = ["@com_google_protobuf//:any_proto"],
     visibility = ["//java:__subpackages__"],
 )
 
