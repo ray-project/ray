@@ -566,10 +566,8 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ =
-      std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
-                                         main_service_,
-                                         rpc_server_.GetClusterId());
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(
+      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
 }
 
 void GcsServer::InitKVManager() {
@@ -656,6 +654,7 @@ void GcsServer::InitGcsWorkerManager() {
 
 void GcsServer::InitGcsAutoscalerStateManager() {
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      config_.session_name,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
       *gcs_node_manager_,
