@@ -168,7 +168,7 @@ gpytorch==1.10
 gradio==3.11.0 ; platform_system != "Windows"
 grapheme==0.6.0
 graphql-core==3.2.3
-graphviz==0.20.1
+graphviz==0.8.4
 greenlet==2.0.2
 grpcio==1.54.2
 gsutil==5.25
