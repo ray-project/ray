@@ -148,18 +148,32 @@ def mock_modules():
 
 def mock_sphinx_typing_stringify():
     from sphinx.util import typing as sphinx_typing
+    from sphinx.ext import autodoc
 
     original_stringify = sphinx_typing.stringify
 
     def stringify(value):
         try:
             return original_stringify(value)
-        except AttributeError:
+        except AttributeError as e:
             if type(value) in [typing_extensions._UnpackAlias, _GenericAlias]:
                 return str(value)
+            raise e
+
+    original_stringify_signature = autodoc.stringify_signature
+
+    def stringify_signature(sig, *args, **kwargs):
+        try:
+            return original_stringify_signature(sig, *args, **kwargs)
+        except AttributeError as e:
+            if "typing_extensions.Unpack" in str(sig):
+                return str(sig)
+            raise e
 
     sys.modules["sphinx.util.typing"] = sphinx_typing
     sys.modules["sphinx.util.typing"].stringify = stringify
+    sys.modules["sphinx.ext.autodoc"] = autodoc
+    sys.modules["sphinx.ext.autodoc"].stringify_signature = stringify_signature
 
 
 # Add doc files from external repositories to be downloaded during build here
