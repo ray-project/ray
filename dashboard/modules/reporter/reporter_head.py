@@ -6,7 +6,7 @@ import pstats
 import aiohttp.web
 from typing import Tuple
 import time
-
+import re
 
 import ray
 import ray._private.services
@@ -40,11 +40,23 @@ import cProfile
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "This task is running in a worker that is running multiple tasks. Please notice the info you see here is for the all the tasks in this worker.The task_id running on this task is: \n"
+EMOJI_WARNING = "&#x26A0;&#xFE0F;"
+WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "This task is running in a worker that is running multiple tasks. Please notice the info you see here is for the all the tasks in this worker.The task_id running on this task is: </br>"
+
 
 
 def get_warning_text(task_ids):
-    return WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids) + "\n"
+    return '<p style="color: #E37400;">{} {} </p> </br>'.format(
+        EMOJI_WARNING, WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids)
+    )
+
+def add_css_to_svg_with_regex(svg_string):
+    # Search for the opening <svg> tag and add the CSS styles as an attribute
+    modified_svg_string = re.sub(
+        r"<svg(.*?)>", r'<svg\1 style="width: 100%; height: 100%;">', svg_string
+    )
+
+    return modified_svg_string
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
@@ -359,7 +371,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         end_time = time.time()
         execution_time = end_time - start_time
-        logger.info(f'execution_time {type(execution_time)}: {execution_time}')
+        logger.info(f"execution_time {type(execution_time)}: {execution_time}")
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
@@ -395,15 +407,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         profiler_string = stream.getvalue()
         logger.info(f"profiler_string {type(profiler_string)}: {profiler_string}")
         return aiohttp.web.Response(
-            body=json.dumps(
-                {
-                    "content": reply.output,
-                    "warning": get_warning_text(task_ids_in_a_worker),
-                }
-                if len(task_ids_in_a_worker) > 1
-                else {"content": reply.output}
-            ),
-            headers={"Content-Type": "application/json"},
+            body=get_warning_text(task_ids_in_a_worker)
+            + add_css_to_svg_with_regex(reply.output)
+            if len(task_ids_in_a_worker) > 1
+            else add_css_to_svg_with_regex(reply.output),
+            headers={"Content-Type": "text/html"},
         )
 
     @routes.get("/worker/traceback")
