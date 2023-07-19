@@ -28,8 +28,8 @@ annotations() {
   "${ROOT_DIR}"/lint/check_api_annotations.py
 }
 
-semgrep() {
-  semgrep ci --config "${WORKSPACE_DIR}"/semgrep.yml
+run_semgrep() {
+  semgrep ci --config "${WORKSPACE_DIR}/semgrep.yml"
 }
 
 bazel_buildifier() {

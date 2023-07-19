@@ -10,6 +10,10 @@ Ray Data is a scalable data processing library for ML workloads. It provides fle
 
 .. image:: images/dataset.svg
 
+.. code-block:: python
+
+    "This should error!!"
+    
 ..
   https://docs.google.com/drawings/d/16AwJeBNR46_TsrkOmMbGaBK7u-OPsf_V8fHjU-d2PPQ/edit
 

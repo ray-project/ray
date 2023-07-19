@@ -38,7 +38,7 @@
 
 - label: "semgrep"
   commands:
-    - ./ci/v2/lint.sh semgrep
+    - ./ci/v2/lint.sh run_semgrep
 
 - label: "test script"
   commands:
