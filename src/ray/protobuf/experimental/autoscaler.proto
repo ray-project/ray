@@ -175,6 +175,8 @@ message ClusterResourceState {
   // There could be multiple constraints issued by different
   // jobs. Autoscaler to make sure all constraints are satisfied.
   repeated ClusterResourceConstraint cluster_resource_constraints = 6;
+  // The cluster session name.
+  string cluster_session_name = 7;
 }
 
 message GetClusterResourceStateReply {
