@@ -158,9 +158,6 @@ def mock_sphinx_typing_stringify():
             if type(value) in [typing_extensions._UnpackAlias, _GenericAlias]:
                 return str(value)
 
-            breakpoint()
-            raise
-
     sys.modules["sphinx.util.typing"] = sphinx_typing
     sys.modules["sphinx.util.typing"].stringify = stringify
 
