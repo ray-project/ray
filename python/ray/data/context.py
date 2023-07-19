@@ -2,6 +2,7 @@ import os
 import threading
 from typing import TYPE_CHECKING, Optional
 
+import ray
 from ray._private.ray_constants import env_integer
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
@@ -217,12 +218,10 @@ class DataContext:
         If the context has not yet been created in this process, it will be
         initialized with default settings.
         """
-        from ray.data._internal.execution.interfaces import ExecutionOptions
 
         global _default_context
 
         with _context_lock:
-
             if _default_context is None:
                 _default_context = DataContext(
                     block_splitting_enabled=DEFAULT_BLOCK_SPLITTING_ENABLED,
@@ -257,7 +256,7 @@ class DataContext:
                     enable_auto_log_stats=DEFAULT_AUTO_LOG_STATS,
                     trace_allocations=DEFAULT_TRACE_ALLOCATIONS,
                     optimizer_enabled=DEFAULT_OPTIMIZER_ENABLED,
-                    execution_options=ExecutionOptions(),
+                    execution_options=ray.data.ExecutionOptions(),
                     use_ray_tqdm=DEFAULT_USE_RAY_TQDM,
                     use_legacy_iter_batches=DEFAULT_USE_LEGACY_ITER_BATCHES,
                     enable_progress_bars=DEFAULT_ENABLE_PROGRESS_BARS,
