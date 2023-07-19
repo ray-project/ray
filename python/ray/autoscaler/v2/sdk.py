@@ -51,6 +51,14 @@ def get_cluster_status(
 ) -> ClusterStatus:
     """
     Get the cluster status from the autoscaler.
+
+    Args:
+        gcs_address: The GCS address to query. If not specified, will use the
+            GCS address from the runtime context.
+        timeout: Timeout in seconds for the request to be timeout
+
+    Returns:
+        A ClusterStatus object.
     """
     req_time = time.time()
     str_reply = get_gcs_client(gcs_address).get_cluster_status(timeout_s=timeout)
