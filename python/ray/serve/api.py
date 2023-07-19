@@ -464,8 +464,10 @@ def run(
             "or a static `BuiltApplication` returned by `serve.build`."
         )
         if isinstance(target, DAGNode):
-            msg += " If you are using the DAG API, you must bind the DAG node to a "
-            "deployment like: `app = Deployment.bind(my_dag_output)`. "
+            msg += (
+                " If you are using the DAG API, you must bind the DAG node to a "
+                "deployment like: `app = Deployment.bind(my_dag_output)`. "
+            )
         raise TypeError(msg)
 
     parameter_group = []
@@ -491,6 +493,7 @@ def run(
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,
             "docs_path": deployment._docs_path,
+            "ingress": deployment._name == ingress._name,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_application(
@@ -535,9 +538,14 @@ def build(target: Application, name: str = None) -> BuiltApplication:
             "importable to run the app after building."
         )
 
+    # If application is built using pipeline_build, ingress deployment
+    # is the last deployment since Ray DAG traversal is done bottom-up.
+    deployments = pipeline_build(target._get_internal_dag_node(), name)
+    ingress = deployments[-1].name
+
     # TODO(edoakes): this should accept host and port, but we don't
     # currently support them in the REST API.
-    return BuiltApplication(pipeline_build(target._get_internal_dag_node(), name))
+    return BuiltApplication(deployments, ingress)
 
 
 @PublicAPI(stability="alpha")
@@ -718,3 +726,32 @@ def get_multiplexed_model_id() -> str:
     """
     _request_context = ray.serve.context._serve_request_context.get()
     return _request_context.multiplexed_model_id
+
+
+@PublicAPI(stability="alpha")
+def get_app_handle(
+    name: str, sync: Optional[bool] = None
+) -> Optional[RayServeSyncHandle]:
+    """Get a handle to the application's ingress deployment by name.
+
+    This handle will send requests to the deployment across application
+    versions if an upgrade occurs, so the ingress deployment must handle
+    interface compatibility.
+
+    When called from within a deployment `sync` will default to `False`,
+    returning an `AsyncDeploymentHandle`.
+
+    When called from outside a deployment `sync` will default to `True`,
+    returning a `SyncDeploymentHandle`.
+    """
+
+    client = get_global_client()
+    ingress = ray.get(client._controller.get_ingress_deployment.remote(name))
+
+    internal_replica_context = get_internal_replica_context()
+    if sync is None:
+        # If sync is unspecified, default to async within a deployment
+        # and default to sync outside a deployment
+        sync = internal_replica_context is None
+
+    return client.get_handle(ingress, sync=sync)

@@ -123,6 +123,7 @@ class ApplicationState:
         self._endpoint_state = endpoint_state
         self._route_prefix = None
         self._docs_path = None
+        self._ingress_deployment = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -166,15 +167,15 @@ class ApplicationState:
         return self._deployment_timestamp
 
     @property
-    def build_app_obj_ref(self) -> Optional[ObjectRef]:
-        return self._build_app_obj_ref
-
-    @property
     def target_deployments(self) -> List[str]:
         """List of target deployment names in application."""
         if self._target_state.deployment_infos is None:
             return []
         return list(self._target_state.deployment_infos.keys())
+
+    @property
+    def ingress_deployment(self) -> str:
+        return self._ingress_deployment
 
     def recover_target_state_from_checkpoint(
         self, checkpoint_data: ApplicationTargetState
@@ -311,10 +312,12 @@ class ApplicationState:
         """
 
         for params in deployment_params:
-            if params["docs_path"] is not None:
-                self._docs_path = params["docs_path"]
             params["deployment_name"] = params.pop("name")
             params["app_name"] = self._name
+            if params["docs_path"] is not None:
+                self._docs_path = params["docs_path"]
+            if params["ingress"]:
+                self._ingress_deployment = params["deployment_name"]
 
         deployment_infos = {
             params["deployment_name"]: deploy_args_to_deployment_info(**params)
@@ -772,6 +775,9 @@ class ApplicationStateManager:
 
     def get_route_prefix(self, name: str) -> Optional[str]:
         return self._application_states[name].route_prefix
+
+    def get_ingress_deployment(self, name: str) -> Optional[str]:
+        return self._application_states[name].ingress_deployment
 
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
