@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-Connectors (Alpha)
+Connectors (Beta)
 ==================
 
 Connector are components that handle transformations on inputs and outputs of a given RL policy, with the goal of improving

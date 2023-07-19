@@ -3144,6 +3144,32 @@ py_test(
 )
 
 py_test(
+    name = "examples/catalog/custom_action_distribution",
+    main = "examples/catalog/custom_action_distribution.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/catalog/custom_action_distribution.py"],
+)
+
+
+py_test(
+    name = "examples/catalog/mobilenet_v2_encoder",
+    main = "examples/catalog/mobilenet_v2_encoder.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/catalog/mobilenet_v2_encoder.py"],
+)
+
+
+py_test(
+    name = "examples/rl_module/mobilenet_rlm",
+    main = "examples/rl_module/mobilenet_rlm.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/rl_module/mobilenet_rlm.py"],
+)
+
+py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["team:rllib", "exclusive", "examples"],
