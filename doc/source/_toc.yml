@@ -57,7 +57,6 @@ parts:
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
-              - file: ray-air/examples/opt_deepspeed_batch_inference
               - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
@@ -265,6 +264,7 @@ parts:
             sections:
               - file: serve/production-guide/config
               - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/docker
               - file: serve/production-guide/fault-tolerance
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices

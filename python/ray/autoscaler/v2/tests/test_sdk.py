@@ -11,7 +11,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
-from ray.autoscaler.v2.sdk import request_cluster_resources
+from ray.autoscaler.v2.sdk import _get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import get_cluster_resource_state
 from ray.core.generated.experimental import autoscaler_pb2_grpc
 from ray.core.generated.experimental.autoscaler_pb2 import (
@@ -94,6 +94,35 @@ def assert_node_states(state: ClusterResourceState, expected_nodes: List[NodeSta
             assert sorted(actual_node.dynamic_labels) == sorted(expected_node.labels)
 
 
+@dataclass
+class GangResourceRequest:
+    # Resource bundles.
+    bundles: List[dict]
+    # List of detail information about the request
+    details: List[str]
+
+
+def assert_gang_requests(
+    state: ClusterResourceState, expected: List[GangResourceRequest]
+):
+    """
+    Assert a GetClusterResourceStateReply has gang requests that
+    matches with the expected requests.
+    """
+    assert len(state.pending_gang_resource_requests) == len(expected)
+
+    # Sort all the requests by request's details
+    requests = sorted(
+        state.pending_gang_resource_requests, key=lambda request: request.details
+    )
+    expected = sorted(expected, key=lambda request: "".join(request.details))
+
+    for actual_request, expected_request in zip(requests, expected):
+        # Assert the detail contains the expected details
+        for detail_str in expected_request.details:
+            assert detail_str in actual_request.details
+
+
 def test_request_cluster_resources_basic(shutdown_only):
     ray.init(num_cpus=1)
     stub = _autoscaler_state_service_stub()
@@ -114,6 +143,66 @@ def test_request_cluster_resources_basic(shutdown_only):
     def verify():
         state = get_cluster_resource_state(stub)
         assert_cluster_resource_constraints(state, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+        return True
+
+    wait_for_condition(verify)
+
+
+def test_node_info_basic(shutdown_only, monkeypatch):
+    with monkeypatch.context() as m:
+        m.setenv("RAY_CLOUD_INSTANCE_ID", "instance-id")
+        m.setenv("RAY_NODE_TYPE_NAME", "node-type-name")
+        m.setenv("RAY_CLOUD_INSTANCE_TYPE_NAME", "instance-type-name")
+
+        ctx = ray.init(num_cpus=1)
+        ip = ctx.address_info["node_ip_address"]
+
+        stub = _autoscaler_state_service_stub()
+
+        def verify():
+            state = get_cluster_resource_state(stub)
+
+            assert len(state.node_states) == 1
+            node = state.node_states[0]
+
+            assert node.instance_id == "instance-id"
+            assert node.ray_node_type_name == "node-type-name"
+            assert node.node_ip_address == ip
+            assert node.instance_type_name == "instance-type-name"
+
+            assert (
+                state.cluster_session_name
+                == ray._private.worker.global_worker.node.session_name
+            )
+            return True
+
+        wait_for_condition(verify)
+
+
+def test_pg_pending_gang_requests_basic(ray_start_cluster):
+    ray.init(num_cpus=1)
+
+    # Create a pg that's pending.
+    pg = ray.util.placement_group([{"CPU": 1}] * 3, strategy="STRICT_SPREAD")
+    try:
+        ray.get(pg.ready(), timeout=2)
+    except TimeoutError:
+        pass
+
+    pg_id = pg.id.hex()
+
+    stub = _autoscaler_state_service_stub()
+
+    def verify():
+        state = get_cluster_resource_state(stub)
+        assert_gang_requests(
+            state,
+            [
+                GangResourceRequest(
+                    [{"CPU": 1}] * 3, details=[pg_id, "STRICT_SPREAD", "PENDING"]
+                )
+            ],
+        )
         return True
 
     wait_for_condition(verify)
@@ -232,6 +321,23 @@ def test_node_state_lifecycle_basic(ray_start_cluster):
         return True
 
     wait_for_condition(verify_cluster_no_node)
+
+
+def test_get_cluster_status(shutdown_only):
+    # This test is to make sure the grpc stub is working.
+    # TODO(rickyx): Add e2e tests for the autoscaler state service in a separate PR
+    # to validate the data content.
+
+    ray.init(num_cpus=1)
+
+    def verify():
+        reply = _get_cluster_status()
+        assert reply.autoscaling_state is not None
+        assert reply.cluster_resource_state is not None
+        assert len(reply.cluster_resource_state.node_states) == 1
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

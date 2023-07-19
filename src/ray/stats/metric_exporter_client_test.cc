@@ -159,16 +159,18 @@ TEST_F(MetricExporterClientTest, decorator_test) {
 TEST_F(MetricExporterClientTest, exporter_client_caculation_test) {
   const stats::TagKeyType tag1 = stats::TagKeyType::Register("k1");
   const stats::TagKeyType tag2 = stats::TagKeyType::Register("k2");
-  static stats::Count random_counter("ray.random.counter", "", "", {tag1, tag2});
-  static stats::Gauge random_gauge("ray.random.gauge", "", "", {tag1, tag2});
-  static stats::Sum random_sum("ray.random.sum", "", "", {tag1, tag2});
+  static stats::Count random_counter(
+      "ray.random.counter", "", "", {tag1.name(), tag2.name()});
+  static stats::Gauge random_gauge(
+      "ray.random.gauge", "", "", {tag1.name(), tag2.name()});
+  static stats::Sum random_sum("ray.random.sum", "", "", {tag1.name(), tag2.name()});
 
   std::vector<double> hist_vector;
   for (int i = 0; i < 50; i++) {
     hist_vector.push_back((double)(i * 10.0));
   }
   static stats::Histogram random_hist(
-      "ray.random.hist", "", "", hist_vector, {tag1, tag2});
+      "ray.random.hist", "", "", hist_vector, {tag1.name(), tag2.name()});
   for (size_t i = 0; i < 500; ++i) {
     random_counter.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});
     random_gauge.Record(i, {{tag1, std::to_string(i)}, {tag2, std::to_string(i * 2)}});

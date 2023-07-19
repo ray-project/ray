@@ -172,7 +172,8 @@ class Dataset:
 
     Datasets are distributed pipelines that produce ``ObjectRef[Block]`` outputs,
     where each block holds data in Arrow format, representing a shard of the overall
-    data collection. The block also determines the unit of parallelism.
+    data collection. The block also determines the unit of parallelism. For more
+    details, see :ref:`Ray Data Internals <dataset_concept>`.
 
     Datasets can be created in multiple ways: from synthetic data via ``range_*()``
     APIs, from existing memory data via ``from_*()`` APIs (this creates a subclass
@@ -182,20 +183,25 @@ class Dataset:
     via the ``write_*()`` APIs.
 
     Examples:
-        >>> import ray
-        >>> # Create dataset from synthetic data.
-        >>> ds = ray.data.range(1000)
-        >>> # Create dataset from in-memory data.
-        >>> ds = ray.data.from_items(
-        ...     [{"col1": i, "col2": i * 2} for i in range(1000)])
-        >>> # Create dataset from external storage system.
-        >>> ds = ray.data.read_parquet("s3://bucket/path") # doctest: +SKIP
-        >>> # Save dataset back to external storage system.
-        >>> ds.write_csv("s3://bucket/output") # doctest: +SKIP
+        .. testcode::
+            :skipif: True
+
+            import ray
+            # Create dataset from synthetic data.
+            ds = ray.data.range(1000)
+            # Create dataset from in-memory data.
+            ds = ray.data.from_items(
+                [{"col1": i, "col2": i * 2} for i in range(1000)]
+            )
+            # Create dataset from external storage system.
+            ds = ray.data.read_parquet("s3://bucket/path")
+            # Save dataset back to external storage system.
+            ds.write_csv("s3://bucket/output")
 
     Dataset has two kinds of operations: transformation, which takes in Dataset
     and outputs a new Dataset (e.g. :py:meth:`.map_batches()`); and consumption,
-    which produces values (not Datatream) as output (e.g. :py:meth:`.iter_batches()`).
+    which produces values (not a data stream) as output
+    (e.g. :meth:`.iter_batches()`).
 
     Dataset transformations are lazy, with execution of the transformations being
     triggered by downstream consumption.
@@ -1743,21 +1749,21 @@ class Dataset:
             in a machine learning dataset:
 
             >>> import ray
-            >>> ds = ray.data.read_csv("example://iris.csv")
-            >>> ds.unique("variety")
-            ['Setosa', 'Versicolor', 'Virginica']
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> ds.unique("target")
+            [0, 1, 2]
 
             One common use case is to convert the class labels
             into integers for training and inference:
 
-            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> classes = {0: 'Setosa', 1: 'Versicolor', 2: 'Virginica'}
             >>> def preprocessor(df, classes):
-            ...     df["variety"] = df["variety"].map(classes)
+            ...     df["variety"] = df["target"].map(classes)
             ...     return df
             >>> train_ds = ds.map_batches(
             ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
-            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
-            [{'sepal.length': 4.3, ..., 'variety': 0}]
+            >>> train_ds.sort("sepal length (cm)").take(1)  # Sort to make it deterministic
+            [{'sepal length (cm)': 4.3, ..., 'variety': 'Setosa'}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1766,7 +1772,7 @@ class Dataset:
 
         Returns:
             A list with unique elements in the given column.
-        """
+        """  # noqa: E501
         ds = self.groupby(column).count().select_columns([column])
         return [item[column] for item in ds.take_all()]
 
@@ -2780,7 +2786,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         encoder: Optional[Union[bool, str, callable, list]] = True,
     ) -> None:
-        """Writes the dataset to WebDataset files.
+        """Writes the dataset to `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
 
         The `TFRecord <https://www.tensorflow.org/tutorials/load_data/tfrecord>`_
         files will contain
@@ -2796,7 +2802,7 @@ class Dataset:
         To control the number of files, use :meth:`Dataset.repartition`.
 
         Unless a custom block path provider is given, the format of the output
-        files is {uuid}_{block_idx}.tfrecords, where ``uuid`` is a unique id
+        files is ``{uuid}_{block_idx}.tfrecords``, where ``uuid`` is a unique id
         for the dataset.
 
         Examples:
@@ -2819,10 +2825,10 @@ class Dataset:
                 directories in the destination path. Does nothing if all directories
                 already exist. Defaults to ``True``.
             arrow_open_stream_args: kwargs passed to
-                pyarrow.fs.FileSystem.open_output_stream
-            block_path_provider: BlockWritePathProvider implementation to
-                write each dataset block to a custom output path.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                ``pyarrow.fs.FileSystem.open_output_stream``
+            block_path_provider: :class:`~ray.data.datasource.BlockWritePathProvider`
+                implementation to write each dataset block to a custom output path.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
 
         """
 
@@ -2992,7 +2998,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **write_args,
     ) -> None:
-        """Writes the dataset to a custom datasource.
+        """Writes the dataset to a custom :class:`~ray.data.Datasource`.
 
         For an example of how to use this method, see
         :ref:`Implementing a Custom Datasource <custom_datasources>`.
@@ -3000,10 +3006,10 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            datasource: The datasource to write to.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
-            write_args: Additional write args to pass to the datasource.
-        """
+            datasource: The :class:`~ray.data.Datasource` to write to.
+            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            write_args: Additional write args to pass to the :class:`~ray.data.Datasource`.
+        """  # noqa: E501
         if ray_remote_args is None:
             ray_remote_args = {}
         path = write_args.get("path", None)
@@ -3377,14 +3383,16 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "torch.utils.data.IterableDataset":
-        """Return a Torch IterableDataset over this dataset.
+        """Return a
+        `Torch IterableDataset <https://pytorch.org/docs/stable/data.html#torch.utils.data.IterableDataset>`_
+        over this :class:`~ray.data.Dataset`.
 
         This is only supported for datasets convertible to Arrow records.
 
         It is recommended to use the returned ``IterableDataset`` directly
         instead of passing it into a torch ``DataLoader``.
 
-        Each element in IterableDataset is a tuple consisting of 2
+        Each element in ``IterableDataset`` is a tuple consisting of 2
         elements. The first item contains the feature tensor(s), and the
         second item is the label tensor. Those can take on different
         forms, depending on the specified arguments.
@@ -3466,8 +3474,8 @@ class Dataset:
                 (N, ). Defaults to True.
 
         Returns:
-            A torch IterableDataset.
-        """
+            A `Torch IterableDataset`_.
+        """  # noqa: E501
 
         return self.iterator().to_torch(
             label_column=label_column,
@@ -3498,11 +3506,12 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> "tf.data.Dataset":
-        """Return a TF Dataset over this dataset.
+        """Return a `TensorFlow Dataset <https://www.tensorflow.org/api_docs/python/tf/data/Dataset/>`_
+        over this :class:`~ray.data.Dataset`.
 
         .. warning::
-            If your dataset contains ragged tensors, this method errors. To prevent
-            errors, :ref:`resize your tensors <transforming_tensors>`.
+            If your :class:`~ray.data.Dataset` contains ragged tensors, this method errors.
+            To prevent errors, :ref:`resize your tensors <transforming_tensors>`.
 
         Examples:
             >>> import ray
@@ -3565,7 +3574,7 @@ class Dataset:
                 to fetch the objects to the local node, format the batches, and apply
                 the collate_fn. Defaults to 1. You can revert back to the old
                 prefetching behavior that uses `prefetch_blocks` by setting
-                `use_legacy_iter_batches` to True in the datasetContext.
+                `use_legacy_iter_batches` to True in the :class:`~ray.data.DataContext`.
             batch_size: Record batch size. Defaults to 1.
             drop_last: Set to True to drop the last incomplete batch,
                 if the dataset size is not divisible by the batch size. If
@@ -3582,13 +3591,12 @@ class Dataset:
             local_shuffle_seed: The seed to use for the local random shuffle.
 
         Returns:
-            A ``tf.data.Dataset`` that yields inputs and targets.
+            A `TensorFlow Dataset`_ that yields inputs and targets.
 
         .. seealso::
 
             :meth:`~ray.data.Dataset.iter_tf_batches`
                 Call this method if you need more flexibility.
-
         """  # noqa: E501
 
         return self.iterator().to_tf(
@@ -3613,8 +3621,10 @@ class Dataset:
             Tuple[Any],
             None,
         ] = None,
+        verify_meta: bool = True,
     ) -> "dask.DataFrame":
-        """Convert this dataset into a Dask DataFrame.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Dask DataFrame <https://docs.dask.org/en/stable/generated/dask.dataframe.DataFrame.html#dask.dataframe.DataFrame>`_.
 
         This is only supported for datasets convertible to Arrow records.
 
@@ -3624,7 +3634,7 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            meta: An empty pandas DataFrame or Series that matches the dtypes and column
+            meta: An empty `pandas DataFrame`_ or `Series`_ that matches the dtypes and column
                 names of the stream. This metadata is necessary for many algorithms in
                 dask dataframe to work. For ease of use, some alternative inputs are
                 also available. Instead of a DataFrame, a dict of ``{name: dtype}`` or
@@ -3633,10 +3643,15 @@ class Dataset:
                 tuple of ``(name, dtype)`` can be used.
                 By default, this is inferred from the underlying Dataset schema,
                 with this argument supplying an optional override.
+            verify_meta: If True, Dask will check that the partitions have consistent
+                metadata. Defaults to True.
 
         Returns:
-            A Dask DataFrame created from this dataset.
-        """
+            A `Dask DataFrame`_ created from this dataset.
+
+        .. _pandas DataFrame: https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html
+        .. _Series: https://pandas.pydata.org/docs/reference/api/pandas.Series.html
+        """  # noqa: E501
         import dask
         import dask.dataframe as dd
         import pandas as pd
@@ -3702,18 +3717,20 @@ class Dataset:
         ddf = dd.from_delayed(
             [block_to_df(block) for block in self.get_internal_block_refs()],
             meta=meta,
+            verify_meta=verify_meta,
         )
         return ddf
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_mars(self) -> "mars.DataFrame":
-        """Convert this dataset into a MARS dataframe.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Mars DataFrame <https://mars-project.readthedocs.io/en/latest/reference/dataframe/index.html>`_.
 
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A MARS dataframe created from this dataset.
-        """
+            A `Mars DataFrame`_ created from this dataset.
+        """  # noqa: E501
         import pandas as pd
         import pyarrow as pa
         from mars.dataframe.datasource.read_raydataset import DataFrameReadRayDataset
@@ -3739,24 +3756,25 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_modin(self) -> "modin.DataFrame":
-        """Convert this dataset into a Modin dataframe.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Modin DataFrame <https://modin.readthedocs.io/en/stable/flow/modin/pandas/dataframe.html>`_.
 
         This works by first converting this dataset into a distributed set of
-        pandas dataframes (using :meth:`Dataset.to_pandas_refs`). Please see caveats
-        there. Then the individual dataframes are used to create the modin
-        DataFrame using
+        Pandas DataFrames (using :meth:`Dataset.to_pandas_refs`).
+        See caveats there. Then the individual DataFrames are used to
+        create the Modin DataFrame using
         ``modin.distributed.dataframe.pandas.partitions.from_partitions()``.
 
         This is only supported for datasets convertible to Arrow records.
         This function induces a copy of the data. For zero-copy access to the
-        underlying data, consider using :meth:`Dataset.to_arrow` or
+        underlying data, consider using :meth:`.to_arrow_refs` or
         :meth:`.get_internal_block_refs`.
 
         Time complexity: O(dataset size / parallelism)
 
         Returns:
-            A Modin dataframe created from this dataset.
-        """
+            A `Modin DataFrame`_ created from this dataset.
+        """  # noqa: E501
 
         from modin.distributed.dataframe.pandas.partitions import from_partitions
 
@@ -3765,13 +3783,19 @@ class Dataset:
 
     @ConsumptionAPI(pattern="Time complexity:")
     def to_spark(self, spark: "pyspark.sql.SparkSession") -> "pyspark.sql.DataFrame":
-        """Convert this dataset into a Spark dataframe.
+        """Convert this :class:`~ray.data.Dataset` into a
+        `Spark DataFrame <https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.DataFrame.html>`_.
 
         Time complexity: O(dataset size / parallelism)
 
+        Args:
+            spark: A `SparkSession`_, which must be created by RayDP (Spark-on-Ray).
+
         Returns:
-            A Spark dataframe created from this dataset.
-        """
+            A `Spark DataFrame`_ created from this dataset.
+
+        .. _SparkSession: https://spark.apache.org/docs/3.1.1/api/python/reference/api/pyspark.sql.SparkSession.html
+        """  # noqa: E501
         import raydp
 
         schema = self.schema()
@@ -3782,12 +3806,11 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
+    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+        """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
-        This method errors if the number of rows exceeds the
-        provided ``limit``. You can use :meth:`.limit` on the dataset
-        beforehand to truncate the dataset manually.
+        This method errors if the number of rows exceeds the provided ``limit``.
+        To truncate the dataset beforehand, call :meth:`.limit`.
 
         Examples:
             >>> import ray
@@ -3801,24 +3824,25 @@ class Dataset:
         Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return. An error is
-                raised if the dataset has more rows than this limit.
+            limit: The maximum number of rows to return. An error is
+                raised if the dataset has more rows than this limit. Defaults to
+                ``None``, which means no limit.
 
         Returns:
             A pandas DataFrame created from this dataset, containing a limited
-            number of records.
+            number of rows.
 
         Raises:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
             ``limit``.
         """
         count = self.count()
-        if count > limit:
+        if limit is not None and count > limit:
             raise ValueError(
                 f"the dataset has more than the given limit of {limit} "
-                f"records: {count}. If you are sure that a DataFrame with "
-                f"{count} rows will fit in local memory, use "
-                f"ds.to_pandas(limit={count})."
+                f"rows: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, set ds.to_pandas(limit=None) "
+                "to disable limits."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
@@ -4409,9 +4433,9 @@ class Dataset:
             >>> import ray
             >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
             False
-            >>> ray.data.read_csv("example://iris.csv").has_serializable_lineage()
+            >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
-        """
+        """  # noqa: E501
         return self._plan.has_lazy_input()
 
     @DeveloperAPI
@@ -4437,7 +4461,7 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.read_csv("example://iris.csv")
+                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
                 serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
@@ -4445,14 +4469,14 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=...,
+                   num_blocks=1,
                    num_rows=150,
                    schema={
-                      sepal.length: double,
-                      sepal.width: double,
-                      petal.length: double,
-                      petal.width: double,
-                      variety: string
+                      sepal length (cm): double,
+                      sepal width (cm): double,
+                      petal length (cm): double,
+                      petal width (cm): double,
+                      target: int64
                    }
                 )
 
@@ -4520,7 +4544,7 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.read_csv("example://iris.csv")
+                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
                 serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
@@ -4528,14 +4552,14 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=...,
+                   num_blocks=1,
                    num_rows=150,
                    schema={
-                      sepal.length: double,
-                      sepal.width: double,
-                      petal.length: double,
-                      petal.width: double,
-                      variety: string
+                      sepal length (cm): double,
+                      sepal width (cm): double,
+                      petal length (cm): double,
+                      petal width (cm): double,
+                      target: int64
                    }
                 )
 

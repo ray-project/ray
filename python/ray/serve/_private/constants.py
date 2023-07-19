@@ -1,5 +1,4 @@
 import os
-from enum import Enum
 
 #: Used for debugging to turn on DEBUG-level logs
 DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
@@ -148,11 +147,6 @@ RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 # Minimum duration to wait until broadcasting model IDs.
 PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
-
-
-class ServeHandleType(str, Enum):
-    SYNC = "SYNC"
-    ASYNC = "ASYNC"
 
 
 # Deprecation message for V1 migrations.
