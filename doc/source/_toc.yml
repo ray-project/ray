@@ -287,7 +287,6 @@ parts:
             sections:
               - file: ray-air/computer-vision
               - file: ray-air/deployment
-              - file: ray-air/experimental-features
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/opt_deepspeed_batch_inference

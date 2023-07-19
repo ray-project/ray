@@ -1,7 +1,7 @@
 .. _air:
 
-ML Platform with Ray AIR
-========================
+Ray AI Runtime (AIR)
+====================
 
 .. tip::
 
