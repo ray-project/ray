@@ -1,9 +1,5 @@
-import logging
-
 import datasets
 import pytest
-
-import mock
 
 import ray
 from ray.tests.conftest import *  # noqa
@@ -12,14 +8,10 @@ from ray.tests.conftest import *  # noqa
 def test_huggingface(ray_start_regular_shared):
     data = datasets.load_dataset("tweet_eval", "emotion")
 
-    # Check that DatasetDict is not directly supported, and
-    # the appropriate error is logged.
+    # Check that DatasetDict is not directly supported.
     assert isinstance(data, datasets.DatasetDict)
-    logger = logging.getLogger("ray.data.read_api")
-    with mock.patch.object(logger, "error") as mock_error:
+    with pytest.raises(TypeError, match="You provided a Hugging Face DatasetDict"):
         ray.data.from_huggingface(data)
-        log_msg = mock_error.call_args.args[0]
-        assert "You provided a Hugging Face DatasetDict" in log_msg
 
     ray_datasets = {
         "train": ray.data.from_huggingface(data["train"]),

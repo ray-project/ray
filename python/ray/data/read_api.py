@@ -2114,9 +2114,9 @@ def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
         return ray_ds
     elif isinstance(dataset, datasets.DatasetDict):
         available_keys = list(dataset.keys())
-        logger.error(
+        raise TypeError(
             "You provided a Hugging Face DatasetDict which contains multiple "
-            "datasets, but `from_huggingface` now only accepts a siingle Hugging Face "
+            "datasets, but `from_huggingface` now only accepts a single Hugging Face "
             "Dataset. To convert just a single Hugging Face Dataset to a "
             "Ray Dataset, specify a split. For example, "
             "`ray.data.from_huggingface(my_dataset_dictionary"
