@@ -1,5 +1,7 @@
 #!/bin/bash
 
+aws s3 sync s3://air-cuj-imagenet-1gb ~/imagenet-1gb
+
 for filename in `ls $INPUT_DIR`; do
     class_dir=$(echo $filename | awk '{split($0, array, "_"); print array[1]}')
     img_path=$(echo $filename | awk '{split($0, array, "_"); print array[2]}')

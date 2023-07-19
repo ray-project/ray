@@ -10,8 +10,7 @@ SHUFFLE_BUFFER_SIZE=0
 DATA_DIR=/home/ray/data
 SHARD_URL_PREFIX=https://air-example-data.s3.us-west-2.amazonaws.com/air-benchmarks
 
-# First epoch is for warmup, report results from second.
-NUM_EPOCHS=${NUM_EPOCHS:-"2"}
+NUM_EPOCHS=${NUM_EPOCHS:-"1"}
 
 run() {
     NUM_FILES=$((NUM_IMAGES_PER_EPOCH / NUM_IMAGES_PER_FILE))
@@ -31,33 +30,9 @@ run() {
         --train-sleep-time-ms 0 \
         --data-root $DATA_DIR \
         --use-ray-data 2>&1 | tee -a out
-    sleep 5
-    time python resnet50_ray_air.py \
-        --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
-        --num-epochs $NUM_EPOCHS \
-        --batch-size $BATCH_SIZE \
-        --shuffle-buffer-size $SHUFFLE_BUFFER_SIZE \
-        --num-images-per-epoch $NUM_IMAGES_PER_EPOCH \
-        --train-sleep-time-ms 0 \
-        --data-root $DATA_DIR \
-        --use-tf-data 2>&1 | tee -a out
-    sleep 5
 }
 
-# Test num_images_per_file x num_images_per_epoch dimensions to check that we
-# are not sensitive to file size.
-NUM_IMAGES_PER_FILE=32
-NUM_IMAGES_PER_EPOCH=512
-run
-
-NUM_IMAGES_PER_FILE=512
-NUM_IMAGES_PER_EPOCH=512
-run
-
-NUM_IMAGES_PER_FILE=32
-NUM_IMAGES_PER_EPOCH=8192
-run
-
-NUM_IMAGES_PER_FILE=512
-NUM_IMAGES_PER_EPOCH=8192
+# Many files to make sure we don't OOM.
+NUM_IMAGES_PER_FILE=8192
+NUM_IMAGES_PER_EPOCH=$(( 8192 * 10 ))
 run
