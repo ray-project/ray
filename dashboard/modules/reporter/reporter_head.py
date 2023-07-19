@@ -44,11 +44,11 @@ EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "This task is running in a worker that is running multiple tasks. Please notice the info you see here is for the all the tasks in this worker.The task_id running on this task is: </br>"
 
 
-
 def get_warning_text(task_ids):
     return '<p style="color: #E37400;">{} {} </p> </br>'.format(
         EMOJI_WARNING, WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids)
     )
+
 
 def add_css_to_svg_with_regex(svg_string):
     # Search for the opening <svg> tag and add the CSS styles as an attribute
@@ -276,14 +276,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         logger.info(
             "Sending stack trace request to {}:{} with native={}".format(
-                req.query.get("ip"), pid, native
+                ip, pid, native
             )
         )
         reporter_stub = self._stubs[ip]
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
-
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
         (
@@ -303,9 +302,10 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         logger.info("Returning stack trace, size {}".format(len(reply.output)))
 
         return aiohttp.web.Response(
-            text=get_warning_text(task_ids_in_a_worker) + reply.output
+            body=get_warning_text(task_ids_in_a_worker) + reply.output
             if len(task_ids_in_a_worker) > 1
-            else reply.output
+            else reply.output,
+            headers={"Content-Type": "text/html"},
         )
 
     @routes.get("/task/cpu_profile")
@@ -338,8 +338,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
+
+        start_time = time.time()
         pid, ip, state, _ = await self.get_worker_details_for_task(
             task_id, attempt_number
+        )
+        end_time = time.time()
+        execution_time = end_time - start_time
+        logger.info(
+            f"get_worker_details_for_task execution_time {type(execution_time)}: {execution_time}"
         )
 
         try:
@@ -371,7 +378,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         end_time = time.time()
         execution_time = end_time - start_time
-        logger.info(f"execution_time {type(execution_time)}: {execution_time}")
+        logger.info(
+            f"CpuProfilingRequest execution_time {type(execution_time)}: {execution_time}"
+        )
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
@@ -406,11 +415,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Get the profiling results from the stream
         profiler_string = stream.getvalue()
         logger.info(f"profiler_string {type(profiler_string)}: {profiler_string}")
+        # return aiohttp.web.Response(
+        #     body=get_warning_text(task_ids_in_a_worker)
+        #     + add_css_to_svg_with_regex(reply.output)
+        #     if len(task_ids_in_a_worker) > 1
+        #     else add_css_to_svg_with_regex(reply.output),
+        #     headers={"Content-Type": "text/html"},
+        # )
         return aiohttp.web.Response(
-            body=get_warning_text(task_ids_in_a_worker)
-            + add_css_to_svg_with_regex(reply.output)
-            if len(task_ids_in_a_worker) > 1
-            else add_css_to_svg_with_regex(reply.output),
+            body="OK",
             headers={"Content-Type": "text/html"},
         )
 
