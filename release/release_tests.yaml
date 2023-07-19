@@ -977,7 +977,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py && serve run app:entrypoint --non-blocking && python query.py
 
   variations:
       - __suffix__: aws
