@@ -16,7 +16,8 @@ torchmetrics==0.9.3
 torchtext==0.14.0
 torchvision==0.14.0
 torch-scatter==2.1.0
-torch-sparse==0.6.16
+torch-sparse==0.6.15
+
 torch-cluster==1.6.0
 torch-spline-conv==1.2.1
 torch-geometric==2.1.0
