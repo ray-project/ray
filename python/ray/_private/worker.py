@@ -2833,10 +2833,11 @@ def _mode(worker=global_worker):
     return worker.mode
 
 
-def _make_remote(function_or_class, options, actor_class: bool = False):
+def _make_remote(function_or_class, options):
     if not function_or_class.__module__:
         function_or_class.__module__ = "global"
 
+    actor_class: bool = options.pop("actor_class", False)
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
         if actor_class:
             raise TypeError(
@@ -3193,7 +3194,7 @@ def remote(
 
 @PublicAPI
 def remote(
-    *args, actor_class: bool = False, **kwargs
+    *args, **kwargs
 ) -> Union[ray.remote_function.RemoteFunction, ray.actor.ActorClass]:
     """Defines a remote function or an actor class.
 
@@ -3400,6 +3401,6 @@ def remote(
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         # This is the case where the decorator is just @ray.remote.
         # "args[0]" is the class or function under the decorator.
-        return _make_remote(args[0], {}, actor_class=actor_class)
+        return _make_remote(args[0], {})
     assert len(args) == 0 and len(kwargs) > 0, ray_option_utils.remote_args_error_string
-    return functools.partial(_make_remote, options=kwargs, actor_class=actor_class)
+    return functools.partial(_make_remote, options=kwargs)
