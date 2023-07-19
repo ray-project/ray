@@ -32,8 +32,11 @@ class BatchPredictor:
         self, checkpoint: Checkpoint, predictor_cls: Type[Predictor], **predictor_kwargs
     ):
         warnings.warn(
-            "`BatchPredictor` is deprecated. Use `Dataset.map_batches`  instead. To "
-            "learn more, see http://batchinference.io.",
+            "`BatchPredictor` is deprecated from Ray 2.6. Use `Dataset.map_batches` "
+            "instead for offline batch inference. For a migration guide, see "
+            "https://github.com/ray-project/ray/issues/37489. "
+            "To learn more about batch inference with Ray Data, see "
+            "http://batchinference.io.",
             DeprecationWarning,
         )
         self._checkpoint = checkpoint
