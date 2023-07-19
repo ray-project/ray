@@ -281,7 +281,7 @@ parts:
           - file: rllib/package_ref/index
 
       - file: ray-air/getting-started
-        title: "ML Platform with Ray"
+        title: "Ray AIR"
         sections:
           - file: ray-air/user-guides
             sections:
