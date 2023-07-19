@@ -1011,13 +1011,19 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
-            for option in ["custom_model", "custom_model_config"]:
-                if self.model[option] is not None:
-                    raise ValueError(
-                        f"Cannot use `{option}` option with RLModule API."
-                        f"`{option}` is part of the ModelV2 API and Policy API, "
-                        f"which are not compatible with the RLModule API."
-                    )
+            if self.model["custom_model"] is not None:
+                raise ValueError(
+                    "Cannot use `custom_model` option with RLModule API."
+                    "`custom_model` is part of the ModelV2 API and Policy API, "
+                    "which are not compatible with the RLModule API."
+                )
+
+            if self.model["custom_model_config"] != {}:
+                raise ValueError(
+                    "Cannot use `custom_model_config` option with RLModule API."
+                    "`custom_model_config` is part of the ModelV2 API and Policy API, "
+                    "which are not compatible with the RLModule API."
+                )
 
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
