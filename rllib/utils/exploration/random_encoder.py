@@ -6,7 +6,7 @@ from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.from_config import from_config
@@ -114,6 +114,7 @@ def compute_states_entropy(
     return dist.argsort(axis=-1)[:, :k_nn][:, -1].astype(np.float32)
 
 
+@PublicAPI
 class RE3(Exploration):
     """Random Encoder for Efficient Exploration.
 

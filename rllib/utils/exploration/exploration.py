@@ -5,7 +5,7 @@ from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.models.action_dist import ActionDistribution
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import DeveloperAPI, PublicAPI
 from ray.rllib.utils.framework import try_import_torch, TensorType
 from ray.rllib.utils.typing import LocalOptimizer, AlgorithmConfigDict
 
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
 _, nn = try_import_torch()
 
 
+@PublicAPI
 class Exploration:
     """Implements an exploration strategy for Policies.
 

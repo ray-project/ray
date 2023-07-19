@@ -1,7 +1,7 @@
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.exploration.exploration import Exploration
 from ray.rllib.utils.framework import (
     TensorType,
@@ -11,6 +11,7 @@ from ray.rllib.utils.framework import (
 tf1, tf, tfv = try_import_tf()
 
 
+@PublicAPI
 class UpperConfidenceBound(Exploration):
     @override(Exploration)
     def get_exploration_action(
