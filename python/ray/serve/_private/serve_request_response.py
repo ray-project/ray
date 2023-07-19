@@ -92,4 +92,3 @@ class ServeResponse:
     ):
         self.status_code = status_code
         self.response = response
-
