@@ -36,9 +36,9 @@
   commands:
     - ./ci/v2/lint.sh copyright
 
-- label: "code block python"
+- label: "semgrep"
   commands:
-    - ./ci/v2/lint.sh code_block_python
+    - ./ci/v2/lint.sh semgrep
 
 - label: "test script"
   commands:

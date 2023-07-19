@@ -28,7 +28,7 @@ annotations() {
   "${ROOT_DIR}"/lint/check_api_annotations.py
 }
 
-code_block_python() {
+semgrep() {
   semgrep ci --config "${WORKSPACE_DIR}"/semgrep.yml
 }
 
