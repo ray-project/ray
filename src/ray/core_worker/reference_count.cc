@@ -554,13 +554,19 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 }
 
 void ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
+  size_t owned_objs = 0;
   absl::MutexLock lock(&mutex_);
+  if(!std::filesystem::exists(prefix)) {
+    std::filesystem::create_directories(prefix);
+  }
   for (auto &[obj_id, meta] : object_id_refs_) {
     if (meta.owned_by_us && meta.pinned_at_raylet_id) {
-      std::ofstream out(prefix / obj_id.Hex());
+      ++owned_objs;
+      std::ofstream out(prefix / obj_id.Hex(), std::ios::out | std::ios::trunc);
       out << meta.pinned_at_raylet_id->Hex() << std::endl;
     }
   }
+  RAY_LOG(INFO) << "Dump owner info into " << prefix << ", num="<< owned_objs;
 }
 
 bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {

@@ -774,6 +774,11 @@ void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
   local_object_manager_.DumpPrimaryCopies(p);
   auto all_workers = worker_pool_.GetAllRegisteredWorkers(/* filter_dead_worker */ true,
                                                           /*filter_io_workers*/ true);
+  for (auto driver :
+       worker_pool_.GetAllRegisteredDrivers(/* filter_dead_driver */ true)) {
+    all_workers.push_back(driver);
+  }
+
   if (all_workers.empty()) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
     return;

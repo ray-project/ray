@@ -3162,6 +3162,7 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
 void CoreWorker::HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest request,
                                              rpc::ExportObjectOwnershipReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
+  RAY_LOG(INFO) << "HandleExportObjectOwnership";
   reference_counter_->DumpOwnerInfo(options_.session_dir + "/drain_object_meta");
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
