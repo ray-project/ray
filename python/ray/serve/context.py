@@ -42,7 +42,7 @@ class MultiplexedModelState:
             return True
 
         now = time.time()
-        for model, timestamp in self.loaded_models.iteritems():
+        for model, timestamp in self.loaded_models.items():
             if now - timestamp > MIN_LOAD_TIME:
                 return True
 
