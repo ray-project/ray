@@ -25,6 +25,7 @@ _global_client: ServeControllerClient = None
 
 class MultiplexedModelState:
     def __init__(self):
+        self.loading = False
         self.loaded_models: Dict[str, int] = {}
 
     def mark_load(self, model_id: str):
@@ -38,6 +39,11 @@ class MultiplexedModelState:
         MAX_MODELS = 2  # TODO don't hardcode
         MIN_LOAD_TIME = 10.0
 
+        if self.loading:
+            logger.info("Rejecting, currently loading")
+            print("Rejecting, currently loading")
+            return False
+
         if len(self.loaded_models) < MAX_MODELS:
             return True
 
@@ -46,6 +52,8 @@ class MultiplexedModelState:
             if now - timestamp > MIN_LOAD_TIME:
                 return True
 
+        logger.info("Rejecting due to duty cycle")
+        print("Rejecting due to duty cycle")
         return False
 
 

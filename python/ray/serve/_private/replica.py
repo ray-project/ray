@@ -220,6 +220,7 @@ def create_replica_wrapper(name: str):
 
             ctx = ray.serve.context.get_internal_replica_context()
             can_load = ctx.multiplexed_model_state.can_load_new_models()
+            logger.info(f"Can load {can_load}")
             return self.replica.get_num_pending_and_running_requests(), can_load
 
         @ray.method(num_returns=2)

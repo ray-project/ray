@@ -95,6 +95,7 @@ class _ModelMultiplexWrapper:
 
         # Push the model IDs to the controller periodically.
         run_background_task(self._push_model_ids())
+        self.loading = False
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the user-constructed model object.
@@ -105,6 +106,10 @@ class _ModelMultiplexWrapper:
         Returns:
             The user-constructed model object.
         """
+        context = get_internal_replica_context().multiplexed_model_state
+        while context.loading:
+            await asyncio.sleep(10)
+        context.loading = True
 
         if type(model_id) != str:
             raise TypeError("The model ID must be a string.")
@@ -139,9 +144,10 @@ class _ModelMultiplexWrapper:
                 self.models[model_id] = await self._func(model_id)
             else:
                 self.models[model_id] = await self._func(self.self_arg, model_id)
-            context = get_internal_replica_context()
-            context.multiplexed_model_state.mark_load(model_id)
+            context.mark_load(model_id)
             self.model_load_latency_s.set(time.time() - load_start_time)
+            logger.info(f"Done loading model '{model_id}'.")
+        context.loading = False
         return self.models[model_id]
 
     async def unload_model(self) -> None:
