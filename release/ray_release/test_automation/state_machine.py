@@ -106,16 +106,12 @@ class TestStateMachine:
             self._create_github_issue()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.PASSING):
             self._close_github_issue()
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
-        elif change == (TestState.FAILING, TestState.PASSING):
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
         elif change == (TestState.PASSING, TestState.FAILING):
             self._trigger_bisect()
         elif change == (TestState.CONSITENTLY_FAILING, TestState.JAILED):
             self._jail_test()
         elif change == (TestState.JAILED, TestState.PASSING):
             self._close_github_issue()
-            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
 
     def _state_hook(self, state: TestState) -> None:
         """
@@ -125,6 +121,9 @@ class TestStateMachine:
         """
         if state == TestState.JAILED:
             self._keep_github_issue_open()
+        if state == TestState.PASSING:
+            self.test.pop(Test.KEY_BISECT_BUILD_NUMBER, None)
+            self.test.pop(Test.KEY_BISECT_BLAMED_COMMIT, None)
 
     def _jail_test(self) -> None:
         """
