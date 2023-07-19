@@ -35,7 +35,7 @@ from ray.core.generated.autoscaler_pb2 import (
     NodeStatus,
     ResourceRequest,
 )
-from ray.experimental.internal_kv import _internal_kv_get
+from ray.experimental.internal_kv import _internal_kv_get, _internal_kv_initialized
 
 
 def _count_by(data: Any, key: str) -> Dict[str, int]:
@@ -511,6 +511,9 @@ class ClusterStatusParser:
         return pending_nodes
 
 
+_is_autoscaler_v2_cached = None
+
+
 def is_autoscaler_v2() -> bool:
     """
     Check if the autoscaler is v2 from reading GCS internal KV.
@@ -523,9 +526,34 @@ def is_autoscaler_v2() -> bool:
     """
 
     # See src/ray/common/constants.h for the definition of this key.
-    return (
+    global _is_autoscaler_v2_cached
+    if _is_autoscaler_v2_cached is not None:
+        return _is_autoscaler_v2_cached
+
+    if not _internal_kv_initialized():
+        raise Exception(
+            "GCS address could not be resolved (e.g. ray.init() not called)"
+        )
+
+    _is_autoscaler_v2_cached = (
         _internal_kv_get(
             AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
         )
         == b"1"
     )
+    return _is_autoscaler_v2_cached
+
+
+def get_total_resources(usages: List[ResourceUsage]) -> Dict[str, float]:
+    """Returns a map of resource name to total resource."""
+    return {r.resource_name: r.total for r in usages}
+
+
+def get_available_resources(usages: List[ResourceUsage]) -> Dict[str, float]:
+    """Returns a map of resource name to available resource."""
+    return {r.resource_name: r.total - r.used for r in usages}
+
+
+def get_used_resources(usages: List[ResourceUsage]) -> Dict[str, float]:
+    """Returns a map of resource name to used resource."""
+    return {r.resource_name: r.used for r in usages}

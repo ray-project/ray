@@ -2686,6 +2686,9 @@ genrule(
         # https://github.com/ray-project/ray/issues/31358
         sed -i -E 's/from opencensus.proto.metrics.v1 import/from . import/' "$${files[@]}"
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
+        # TODO(rickyx): Remove this experimental path rewrite once we move autoscaler proto out
+        # of experimental.
+        sed -i -E 's/from ..experimental/from ./' "python/ray/core/generated/autoscaler_pb2_grpc.py"
         echo "$${PWD}" > $@
     """,
     local = 1,
