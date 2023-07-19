@@ -811,7 +811,7 @@ class TuneReporterBase(ProgressReporter):
     def __init__(
         self,
         verbosity: AirVerbosity,
-        num_samples: int,
+        num_samples: int = 0,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
@@ -1101,9 +1101,5 @@ class TrainReporter(ProgressReporter):
     ):
         self._last_heartbeat_time = time.time()
         super().on_trial_result(
-            iteration=iteration,
-            trials=trials,
-            trial=trial,
-            result=result,
-            **info
+            iteration=iteration, trials=trials, trial=trial, result=result, **info
         )
