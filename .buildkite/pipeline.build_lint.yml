@@ -36,9 +36,9 @@
   commands:
     - ./ci/v2/lint.sh copyright
 
-- label: "code blocks"
+- label: "code block python"
   commands:
-    - ./ci/v2/lint.sh code_blocks
+    - ./ci/v2/lint.sh code_block_python
 
 - label: "test script"
   commands:
