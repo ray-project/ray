@@ -1,7 +1,7 @@
 .. _observability-getting-started:
 
-Getting Started
-===============
+Ray Dashboard
+=============
 
 Ray provides a web-based dashboard for monitoring and debugging Ray applications.
 The visual representation of the system state, allows users to track the performance
@@ -38,7 +38,12 @@ When you start a single-node Ray Cluster on your laptop, access the dashboard wi
     context = ray.init()
     print(context.dashboard_url)
 
+..
+    This test output is flaky. If Ray isn't completely shutdown, the port can be
+    "8266" instead of "8265".
+
 .. testoutput::
+    :options: +MOCK
 
    127.0.0.1:8265
 

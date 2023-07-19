@@ -7,16 +7,16 @@ from ray._private.thirdparty.tabulate.tabulate import tabulate
 
 import ray
 from ray import tune
-from ray.air import session
 from ray.air.checkpoint import Checkpoint
 from ray.air._internal.checkpointing import add_preprocessor_to_checkpoint
 from ray.air.config import DatasetConfig, RunConfig, ScalingConfig, CheckpointConfig
 from ray.air.constants import MODEL_KEY, PREPROCESSOR_KEY, LAZY_CHECKPOINT_MARKER_FILE
 from ray.air._internal.checkpoint_manager import _TrackedCheckpoint
 from ray.train import BackendConfig, TrainingIterator
+from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.checkpoint import TuneCheckpointManager
-from ray.train.data_config import DataConfig, _LegacyDataConfigWrapper
+from ray.train._internal.data_config import DataConfig, _LegacyDataConfigWrapper
 from ray.train._internal.utils import construct_train_func
 from ray.train.constants import TRAIN_DATASET_KEY, WILDCARD_KEY
 from ray.train.trainer import BaseTrainer, GenDataset
@@ -68,12 +68,12 @@ class DataParallelTrainer(BaseTrainer):
     The ``train_loop_per_worker`` function is expected to take in either 0 or 1
     arguments:
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             ...
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker(config: Dict):
             ...
@@ -91,7 +91,7 @@ class DataParallelTrainer(BaseTrainer):
     Inside the ``train_loop_per_worker`` function, you can use any of the
     :ref:`Ray AIR session methods <air-session-ref>`.
 
-    .. code-block:: python
+    .. testcode::
 
         def train_loop_per_worker():
             # Report intermediate results for callbacks or logging and
@@ -120,23 +120,33 @@ class DataParallelTrainer(BaseTrainer):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
 
         import ray
         from ray.air import session
+        from ray.air.config import ScalingConfig
+        from ray.train.data_parallel_trainer import DataParallelTrainer
 
         def train_loop_for_worker():
             dataset_shard_for_this_worker = session.get_dataset_shard("train")
 
-            assert len(dataset_shard_for_this_worker) == 1
+            # 3 items for 3 workers, each worker gets 1 item
+            batches = list(dataset_shard_for_this_worker.iter_batches(batch_size=1))
+            assert len(batches) == 1
 
         train_dataset = ray.data.from_items([1, 2, 3])
-        assert len(train_dataset) == 3
+        assert train_dataset.count() == 3
         trainer = DataParallelTrainer(
-            ray.air.config.ScalingConfig(num_workers=3),
+            train_loop_for_worker,
+            scaling_config=ScalingConfig(num_workers=3),
             datasets={"train": train_dataset},
         )
         result = trainer.fit()
+
+    .. testoutput::
+            :hide:
+
+            ...
 
     **How do I develop on top of DataParallelTrainer?**
 
@@ -159,7 +169,7 @@ class DataParallelTrainer(BaseTrainer):
 
     For 1, you can set a predefined training loop in __init__
 
-    .. code-block:: python
+    .. testcode::
 
         from ray.train.data_parallel_trainer import DataParallelTrainer
 
@@ -172,7 +182,7 @@ class DataParallelTrainer(BaseTrainer):
     For 2, you can implement the ``ray.train.Backend`` and ``ray.train.BackendConfig``
     interfaces.
 
-    .. code-block:: python
+    .. testcode::
 
         from dataclasses import dataclass
         from ray.train.backend import Backend, BackendConfig
@@ -468,7 +478,14 @@ class DataParallelTrainer(BaseTrainer):
                 logger.debug(
                     f"Deleting the stale lazy checkpoint marker file: {marker_file}."
                 )
-                marker_file.unlink()
+                # Multiple workers on the same node may delete this file at the
+                # same time. Return if the marker file has been deleted.
+                # TODO(ml-team): replace this try-except block with `missing_ok=True`
+                # after we completely drop py37 support.
+                try:
+                    marker_file.unlink()
+                except FileNotFoundError:
+                    return
 
         # Start the remote actors.
         backend_executor.start(initialization_hook=clear_lazy_checkpoint_marker)

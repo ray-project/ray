@@ -50,7 +50,7 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
+        .. button-link:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms
 
             [Blog] How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
 
@@ -58,9 +58,9 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-link:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
+        .. button-link:: https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
 
-            [Blog] How OpenAI Uses Ray to Train Tools like ChatGPT
+            [Article] How OpenAI Uses Ray to Train Tools like ChatGPT
 
     .. grid-item-card::
         :img-top: /images/ray_logo.png
@@ -94,6 +94,14 @@ Learn more about how Ray scales LLMs and generative AI with the following resour
 
             [Example] GPT-J-6B Serving with Ray AIR
 
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-link:: https://github.com/ray-project/aviary/
+
+            [Intermediate Example] Aviary toolkit serving live traffic for LLMs
+
 
 .. _ref-use-cases-batch-infer:
 
@@ -118,6 +126,22 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         :img-top: /images/ray_logo.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
+        .. button-ref:: /data/batch_inference
+
+            [Guide] Batch Prediction using Ray Data
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: batch_inference_examples
+
+            [Example] Batch Inference Examples
+
+    .. grid-item-card::
+        :img-top: /images/ray_logo.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
         .. button-link:: https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker
 
             [Blog] Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker
@@ -137,30 +161,6 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
         .. button-link:: https://www.anyscale.com/blog/turbocharge-langchain-now-guide-to-20x-faster-embedding
 
             [Blog] Using Ray Data to parallelize LangChain inference
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: /data/batch_inference
-
-            [Guide] Batch Prediction using Ray Data
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: /data/examples/nyc_taxi_basic_processing
-
-            [Example] Batch Inference on NYC taxi data using Ray Data
-
-    .. grid-item-card::
-        :img-top: /images/ray_logo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: /data/examples/ocr_example
-
-            [Example] Batch OCR processing using Ray Data
 
 
 

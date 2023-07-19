@@ -4,6 +4,7 @@ py_library(
   name = "conftest",
   srcs = glob(["**/conftest.py"]),
   visibility = [
+    "//dashboard:__pkg__",
     "//python/ray/tests:__subpackages__",
     "//python/ray/autoscaler/v2:__pkg__",
     "//python/ray/dashboard:__pkg__",
@@ -60,6 +61,7 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
+    "test_node_label_scheduling_strategy.py",
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
@@ -198,7 +200,9 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_minimal_install.py",
     "test_numba.py",
+    "test_runtime_env_agent.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
@@ -218,7 +222,7 @@ py_test_module_list(
     "test_gcs_ha_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "ray_ha", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 

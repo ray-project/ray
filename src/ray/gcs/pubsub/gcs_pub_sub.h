@@ -187,11 +187,6 @@ class RAY_EXPORT PythonGcsSubscriber {
   /// Polls for new log messages.
   Status PollLogs(std::string *key_id, int64_t timeout_ms, rpc::LogBatch *data);
 
-  /// Polls for new function key messages.
-  Status PollFunctionKey(std::string *key_id,
-                         int64_t timeout_ms,
-                         rpc::PythonFunction *data);
-
   /// Polls for actor messages.
   Status PollActor(std::string *key_id, int64_t timeout_ms, rpc::ActorTableData *data);
 

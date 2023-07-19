@@ -4,6 +4,9 @@ from typing import Dict, List, Optional
 import pkg_resources
 
 import ray._private.ray_constants as ray_constants
+from ray._private.utils import (
+    validate_node_labels,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +99,7 @@ class RayParams:
         raylet_socket_name: If provided, it will specify the socket path
             used by the raylet process.
         temp_dir: If provided, it will specify the root temporary
-            directory for the Ray process.
+            directory for the Ray process. Must be an absolute path.
         storage: Specify a URI for persistent cluster-wide storage. This storage path
             must be accessible by all nodes of the cluster, otherwise an error will be
             raised.
@@ -427,6 +430,11 @@ class RayParams:
                 "Using ray with numpy < 1.16.0 will result in slow "
                 "serialization. Upgrade numpy if using with ray."
             )
+
+        if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
+            raise ValueError("temp_dir must be absolute path or None.")
+
+        validate_node_labels(self.labels)
 
     def _format_ports(self, pre_selected_ports):
         """Format the pre-selected ports information to be more human-readable."""

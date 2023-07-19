@@ -1,20 +1,26 @@
-from typing import List
+from typing import List, Optional
 
 import ray
-import ray._private.ray_constants as ray_constants
-from ray.core.generated.experimental import autoscaler_pb2, autoscaler_pb2_grpc
+from ray._raylet import GcsClient
+from ray.core.generated.experimental.autoscaler_pb2 import GetClusterStatusReply
+
+DEFAULT_RPC_TIMEOUT_S = 10
 
 
-def _autoscaler_state_service_stub():
-    """Get the grpc stub for the autoscaler state service"""
-    gcs_address = ray.get_runtime_context().gcs_address
-    gcs_channel = ray._private.utils.init_grpc_channel(
-        gcs_address, ray_constants.GLOBAL_GRPC_OPTIONS
+def get_gcs_client(gcs_address: Optional[str] = None):
+    """Get the GCS client."""
+    if gcs_address is None:
+        gcs_address = ray.get_runtime_context().gcs_address
+    assert gcs_address is not None, (
+        "GCS address should have been detected if getting from runtime context"
+        "or passed in explicitly."
     )
-    return autoscaler_pb2_grpc.AutoscalerStateServiceStub(gcs_channel)
+    return GcsClient(address=gcs_address)
 
 
-def request_cluster_resources(to_request: List[dict], timeout: int = 10):
+def request_cluster_resources(
+    to_request: List[dict], timeout: int = DEFAULT_RPC_TIMEOUT_S
+):
     """Request resources from the autoscaler.
 
     This will add a cluster resource constraint to GCS. GCS will asynchronously
@@ -34,18 +40,20 @@ def request_cluster_resources(to_request: List[dict], timeout: int = 10):
         timeout: Timeout in seconds for the request to be timeout
 
     """
+    get_gcs_client().request_cluster_resource_constraint(to_request, timeout_s=timeout)
 
-    # NOTE: We could also use a GCS python client. However, current GCS rpc client
-    # expects GcsStatus as part of the reply, which is a protocol internal to Ray.
-    # So we use the rpc stub directly to avoid that dependency.
-    stub = _autoscaler_state_service_stub()
-    min_bundles = [
-        autoscaler_pb2.ResourceRequest(resources_bundle=bundle) for bundle in to_request
-    ]
-    request = autoscaler_pb2.RequestClusterResourceConstraintRequest(
-        cluster_resource_constraint=autoscaler_pb2.ClusterResourceConstraint(
-            min_bundles=min_bundles
-        )
-    )
 
-    stub.RequestClusterResourceConstraint(request, timeout=timeout)
+def _get_cluster_status(
+    gcs_address: Optional[str] = None, timeout: int = DEFAULT_RPC_TIMEOUT_S
+) -> GetClusterStatusReply:
+    """
+    Get the cluster status from the autoscaler.
+
+    TODO(rickyx): Parse it into a ClusterStatus object.
+    """
+
+    str_reply = get_gcs_client(gcs_address).get_cluster_status(timeout_s=timeout)
+    reply = GetClusterStatusReply()
+    reply.ParseFromString(str_reply)
+
+    return reply

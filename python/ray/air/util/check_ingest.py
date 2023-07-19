@@ -13,7 +13,7 @@ from ray.data import Dataset, DataIterator, Preprocessor
 from ray.data.preprocessors import BatchMapper, Chain
 from ray.train._internal.dataset_spec import DataParallelIngestSpec
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.data_config import DataConfig
+from ray.train import DataConfig
 from ray.util.annotations import DeveloperAPI
 
 
@@ -93,6 +93,9 @@ class DummyTrainer(DataParallelTrainer):
                         )
                     elif isinstance(batch, np.ndarray):
                         bytes_read += batch.nbytes
+                    elif isinstance(batch, dict):
+                        for arr in batch.values():
+                            bytes_read += arr.nbytes
                     else:
                         # NOTE: This isn't recursive and will just return the size of
                         # the object pointers if list of non-primitive types.
