@@ -2,7 +2,7 @@ from typing import Iterable, Iterator, Optional
 
 from .execution_options import ExecutionOptions
 from .physical_operator import PhysicalOperator
-from .ref_bundles import RefBundle
+from .ref_bundle import RefBundle
 from ray.data._internal.stats import DatasetStats
 
 

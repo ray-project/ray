@@ -1,7 +1,7 @@
 from typing import Callable, Dict, List, Optional
 
 import ray
-from .ref_bundles import RefBundle
+from .ref_bundle import RefBundle
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
