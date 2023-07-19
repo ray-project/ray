@@ -419,7 +419,7 @@ def online_predict_tensorflow(checkpoint):
     response = requests.get("http://placekitten.com/200/300")
     image = Image.open(BytesIO(response.content))
 
-    payload = {"image": {"array": np.array(image).tolist(), "dtype": "float32"}}
+    payload = {"image": {"array": [np.array(image).tolist()], "dtype": "float32"}}
     response = requests.post("http://localhost:8000/", json=payload)
     predictions = response.json()
     # __tensorflow_online_predict_stop__
