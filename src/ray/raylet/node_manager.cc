@@ -767,8 +767,8 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
-                              rpc::DrainObjectStoreReply* reply,
-                              rpc::SendReplyCallback send_reply_callback) {
+                                         rpc::DrainObjectStoreReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(INFO) << "Received DrainObjectStore request";
   auto p = std::filesystem::path(initial_config_.session_dir + "/drain_object_store");
   local_object_manager_.DumpPrimaryCopies(p);
@@ -790,27 +790,27 @@ void NodeManager::HandleDrainObjectStore(rpc::DrainObjectStoreRequest request,
     all_dead = false;
 
     worker->rpc_client()->ExportObjectOwnership(
-        rpc::ExportObjectOwnershipRequest(), [num_workers, rpc_replied,
-                                               send_reply_callback](const ray::Status &status,
-                                                                    const rpc::ExportObjectOwnershipReply &r) {
+        rpc::ExportObjectOwnershipRequest(),
+        [num_workers, rpc_replied, send_reply_callback](
+            const ray::Status &status, const rpc::ExportObjectOwnershipReply &r) {
           *rpc_replied += 1;
           if (!status.ok()) {
-            RAY_LOG(ERROR) << "Failed to send ExportObjectOwnership request: " << status.ToString();
+            RAY_LOG(ERROR) << "Failed to send ExportObjectOwnership request: "
+                           << status.ToString();
           }
           if (*rpc_replied == num_workers) {
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
   }
-  if(all_dead) {
+  if (all_dead) {
     send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 
-void NodeManager::HandleGetTasksInfo(
-    rpc::GetTasksInfoRequest request,
-    rpc::GetTasksInfoReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+void NodeManager::HandleGetTasksInfo(rpc::GetTasksInfoRequest request,
+                                     rpc::GetTasksInfoReply *reply,
+                                     rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Received a HandleGetTasksInfo request";
   auto total = std::make_shared<int>(0);
   auto count = std::make_shared<int>(0);

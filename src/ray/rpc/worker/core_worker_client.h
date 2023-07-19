@@ -186,9 +186,9 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void DeleteObjects(const DeleteObjectsRequest &request,
                              const ClientCallback<DeleteObjectsReply> &callback) {}
 
-
-  virtual void ExportObjectOwnership(const ExportObjectOwnershipRequest &request,
-                                     const ClientCallback<ExportObjectOwnershipReply> &callback) {}
+  virtual void ExportObjectOwnership(
+      const ExportObjectOwnershipRequest &request,
+      const ClientCallback<ExportObjectOwnershipReply> &callback) {}
 
   virtual void SpillObjects(const SpillObjectsRequest &request,
                             const ClientCallback<SpillObjectsReply> &callback) {}
