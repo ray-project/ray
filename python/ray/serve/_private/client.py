@@ -94,16 +94,22 @@ class ServeControllerClient:
     def __reduce__(self):
         raise RayServeException(("Ray Serve client cannot be serialized."))
 
+    def shutdown_cached_handles(self):
+        """Shuts down all cached handles.
+
+        Remove the reference to the cached handles so that they can be
+        garbage collected.
+        """
+        for cache_key in list(self.handle_cache):
+            del self.handle_cache[cache_key]
+
     def shutdown(self, timeout_s: float = 30.0) -> None:
         """Completely shut down the connected Serve instance.
 
         Shuts down all processes and deletes all state associated with the
         instance.
         """
-
-        # Shut down handles
-        for k in list(self.handle_cache):
-            del self.handle_cache[k]
+        self.shutdown_cached_handles()
 
         if ray.is_initialized() and not self._shutdown:
             try:
