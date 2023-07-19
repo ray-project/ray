@@ -2184,6 +2184,7 @@ def test_list_get_nodes(ray_start_cluster):
                 if node["node_name"] == "head_node"
                 else not node["is_head_node"]
             )
+            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
 
         # Check with legacy API
         check_nodes = ray.nodes()
