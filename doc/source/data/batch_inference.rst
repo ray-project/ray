@@ -471,6 +471,7 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 .. testcode::
     
     from typing import Dict
+    import pandas as pd
     import numpy as np
     import xgboost
 
@@ -484,10 +485,8 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
             xgboost_checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
             self.model = xgboost_checkpoint.get_model()
         
-        def __call__(self, data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-            # Stack all the features into a single Numpy array.
-            features = np.stack(list(data.values()), axis=1)
-            dmatrix = xgboost.DMatrix(features)
+        def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
+            dmatrix = xgboost.DMatrix(data)
             return {"predictions": self.model.predict(dmatrix)}
     
     
@@ -498,6 +497,7 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
     predictions = test_dataset.map_batches(
         XGBoostPredictor, 
         compute=scale,
+        batch_format="pandas",
         # Pass in the Checkpoint to the XGBoostPredictor constructor.
         fn_constructor_kwargs={"checkpoint": checkpoint}
     )
@@ -506,4 +506,4 @@ The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
 .. testoutput::
     :options: +MOCK
 
-    {'predictions': 0.7394368052482605}
+    {'predictions': 0.9969483017921448}
