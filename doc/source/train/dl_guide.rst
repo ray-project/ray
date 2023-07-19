@@ -466,7 +466,7 @@ is shared with Ray Tune.
 
 .. _train-checkpointing:
 
-Ray Train also provides a way to save :ref:`Checkpoints <air-checkpoints-doc>` during the training process. This is
+Ray Train also provides a way to save :ref:`Checkpoints <checkpoint-api-ref>` during the training process. This is
 useful for:
 
 1. :ref:`Integration with Ray Tune <train-tune>` to use certain Ray Tune
@@ -519,7 +519,7 @@ The following figure shows how these two sessions look like in a Data Parallel t
 Saving checkpoints
 ++++++++++++++++++
 
-:ref:`Checkpoints <air-checkpoints-doc>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 

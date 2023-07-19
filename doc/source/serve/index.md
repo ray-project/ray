@@ -216,7 +216,7 @@ micro-batching component to improve throughput.
 
 ## Learn More
 
-Check out {ref}`getting-started` and {ref}`serve-key-concepts`,
+Check out {ref}`serve-getting-started` and {ref}`serve-key-concepts`,
 or head over to the {doc}`tutorials/index` to get started building your Ray Serve applications.
 
 
@@ -231,10 +231,10 @@ or head over to the {doc}`tutorials/index` to get started building your Ray Serv
         **Getting Started**
         ^^^
         
-        Start with our quick start tutorials for :ref:`deploying a single model locally <getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-application>` .
+        Start with our quick start tutorials for :ref:`deploying a single model locally <serve-getting-started>` and how to :ref:`convert an existing model into a Ray Serve deployment <converting-to-ray-serve-application>` .
         
         +++
-        .. button-ref:: getting-started
+        .. button-ref:: serve-getting-started
             :color: primary
             :outline:
             :expand:

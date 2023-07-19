@@ -43,7 +43,6 @@ There are three categories of built-in Trainers:
         and executes single-worker training steps. Refer to the following guides for more details:
 
         - :ref:`Deep learning user guide <train-dl-guide>`
-        - :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
 
     .. tab-item:: Tree-Based Trainers
 
@@ -57,8 +56,6 @@ There are three categories of built-in Trainers:
         automatically.
 
         - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
-        - :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
-
 
     .. tab-item:: Other Trainers
 
@@ -67,8 +64,6 @@ There are three categories of built-in Trainers:
         - :class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>` for NLP
         - :class:`RLTrainer <ray.train.rl.RLTrainer>` for reinforcement learning
         - :class:`SklearnTrainer <ray.train.sklearn.sklearn_trainer.SklearnTrainer>` for (non-distributed) training of sklearn models.
-
-        - :ref:`Other trainers in the Ray AIR documentation <air-trainers-other>`
 
 .. _train-key-concepts-config:
 

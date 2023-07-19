@@ -25,7 +25,7 @@ Predictors are a class that loads models from `Checkpoint` to perform inference.
 Predictors are used by `BatchPredictor` and `PredictorDeployment` to do large-scale scoring or online inference.
 
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition.
-Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <air-checkpoints-doc>` user guide for more details.
+Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <checkpoint-api-ref>` user guide for more details.
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
