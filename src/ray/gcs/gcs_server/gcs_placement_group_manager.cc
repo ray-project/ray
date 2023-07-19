@@ -454,6 +454,11 @@ void GcsPlacementGroupManager::HandleRemovePlacementGroup(
                            RAY_LOG(INFO)
                                << "Placement group of an id, " << placement_group_id
                                << " is removed successfully.";
+                         } else {
+                           RAY_LOG(WARNING)
+                               << "Failed to remove the placement group "
+                               << placement_group_id
+                               << " due to a RPC failure, status:" << status.ToString();
                          }
                          GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
                        });
@@ -815,8 +820,16 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenJobDead(
     }
   }
 
-  for (const auto &group : groups_to_remove) {
-    RemovePlacementGroup(group, [](Status status) {});
+  for (const auto &placement_group_id : groups_to_remove) {
+    RemovePlacementGroup(placement_group_id, [placement_group_id](Status status) {
+      if (status.ok()) {
+        RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
+                      << " is successfully removed because the job died.";
+      } else {
+        RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
+                         << " upon a job died, status:" << status.ToString();
+      }
+    });
   }
 }
 
@@ -835,8 +848,16 @@ void GcsPlacementGroupManager::CleanPlacementGroupIfNeededWhenActorDead(
     }
   }
 
-  for (const auto &group : groups_to_remove) {
-    RemovePlacementGroup(group, [](Status status) {});
+  for (const auto &placement_group_id : groups_to_remove) {
+    RemovePlacementGroup(placement_group_id, [placement_group_id](Status status) {
+      if (status.ok()) {
+        RAY_LOG(INFO) << "Placement group of an id, " << placement_group_id
+                      << " is successfully removed because the creator actor died.";
+      } else {
+        RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
+                         << " upon an actor death, status:" << status.ToString();
+      }
+    });
   }
 }
 
@@ -884,6 +905,8 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   absl::flat_hash_map<NodeID, std::vector<rpc::Bundle>> node_to_bundles;
   absl::flat_hash_map<PlacementGroupID, std::vector<std::shared_ptr<BundleSpecification>>>
       group_to_bundles;
+  std::vector<PlacementGroupID> groups_to_remove;
+  const auto &jobs = gcs_init_data.Jobs();
   for (auto &item : gcs_init_data.PlacementGroups()) {
     auto placement_group =
         std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_);
@@ -892,11 +915,6 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
       if (!placement_group->GetName().empty()) {
         named_placement_groups_[placement_group->GetRayNamespace()].emplace(
             placement_group->GetName(), placement_group->GetPlacementGroupID());
-      }
-
-      if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
-          item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        AddToPendingQueue(std::move(placement_group));
       }
 
       if (item.second.state() == rpc::PlacementGroupTableData::CREATED ||
@@ -911,6 +929,21 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
           }
         }
       }
+
+      auto job_iter = jobs.find(placement_group->GetCreatorJobId());
+      auto is_job_dead = (job_iter == jobs.end() || job_iter->second.is_dead());
+      if (is_job_dead) {
+        placement_group->MarkCreatorJobDead();
+        if (placement_group->IsPlacementGroupLifetimeDone()) {
+          groups_to_remove.push_back(placement_group->GetPlacementGroupID());
+          continue;
+        }
+      }
+
+      if (item.second.state() == rpc::PlacementGroupTableData::PENDING ||
+          item.second.state() == rpc::PlacementGroupTableData::RESCHEDULING) {
+        AddToPendingQueue(std::move(placement_group));
+      }
     }
   }
 
@@ -918,6 +951,19 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   gcs_placement_group_scheduler_->ReleaseUnusedBundles(node_to_bundles);
   gcs_placement_group_scheduler_->Initialize(group_to_bundles);
 
+  for (const auto &placement_group_id : groups_to_remove) {
+    RemovePlacementGroup(placement_group_id, [placement_group_id](Status status) {
+      if (status.ok()) {
+        RAY_LOG(INFO)
+            << "Placement group of an id, " << placement_group_id
+            << " is successfully removed because the job died during the placement "
+               "group manager initialization.";
+      } else {
+        RAY_LOG(WARNING) << "Failed to remove the placement group " << placement_group_id
+                         << " upon GCS restart, status:" << status.ToString();
+      }
+    });
+  }
   SchedulePendingPlacementGroups();
 }
 
