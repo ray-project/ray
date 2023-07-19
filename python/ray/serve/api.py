@@ -50,7 +50,7 @@ from ray.serve._private.utils import (
     get_random_letters,
     extract_self_if_method_call,
 )
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ServeInstanceDetails, ServeStatusSchema
 
 from ray.serve._private import api as _private_api
 
@@ -722,10 +722,10 @@ def get_multiplexed_model_id() -> str:
 
 
 @PublicAPI(stability="alpha")
-def status() -> List[Dict]:
+def status() -> List[ServeStatusSchema]:
     """Get statuses of all active applications on the cluster.
 
-    Each dictionary in the list matches the format of ServeStatusSchema,
+    Each item in the list is a pydantic ServeStatusSchema model,
     which includes the application status, all deployment statuses,
     status messages, etc. If Serve hasn't been started on the cluster
     yet, this returns an empty list.
@@ -739,12 +739,13 @@ def status() -> List[Dict]:
             app = MyDeployment.bind()
             serve.run(app)
             status = serve.status()
-            assert status[0]["app_status"]["status"] == "RUNNING"
+            assert status[0].app_status.status == "RUNNING"
     """
 
-    try:
-        client = get_global_client()
-        details = ServeInstanceDetails(**client.get_serve_details())
-        return [app.get_status_dict() for app in details.applications.values()]
-    except RayServeException:
+    client = get_global_client(raise_if_no_controller_running=True)
+    if client is None:
+        # Serve has not started yet
         return []
+
+    details = ServeInstanceDetails(**client.get_serve_details())
+    return [app.get_status() for app in details.applications.values()]

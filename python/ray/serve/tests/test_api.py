@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 from typing import Dict, Optional
 
 from fastapi import FastAPI
@@ -916,10 +917,10 @@ def test_status_basic(serve_instance):
 
     status = serve.status()
     assert len(status) == 2
-    assert {d["name"] for d in status[0]["deployment_statuses"]} == expected_dep_1
-    assert {d["name"] for d in status[1]["deployment_statuses"]} == expected_dep_2
-    assert all(d["status"] == "HEALTHY" for d in status[0]["deployment_statuses"])
-    assert all(d["status"] == "HEALTHY" for d in status[1]["deployment_statuses"])
+    assert {d.name for d in status[0].deployment_statuses} == expected_dep_1
+    assert {d.name for d in status[1].deployment_statuses} == expected_dep_2
+    assert all(d.status == "HEALTHY" for d in status[0].deployment_statuses)
+    assert all(d.status == "HEALTHY" for d in status[1].deployment_statuses)
 
 
 def test_status_constructor_error(serve_instance):
@@ -938,13 +939,16 @@ def test_status_constructor_error(serve_instance):
         status = serve.status()[0]
         error_substr = "ZeroDivisionError: division by zero"
         return (
-            status["app_status"]["status"] == "DEPLOY_FAILED"
-            and error_substr in status["deployment_statuses"][0]["message"]
+            status.app_status.status == "DEPLOY_FAILED"
+            and error_substr in status.deployment_statuses[0].message
         )
 
     wait_for_condition(check_for_failed_deployment)
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="Runtime env support experimental on windows"
+)
 def test_status_package_unavailable_in_controller(serve_instance):
     """Test that exceptions raised from packages that are installed on deployment actors
     but not on controller is serialized and surfaced properly in serve.status().
@@ -969,8 +973,8 @@ def test_status_package_unavailable_in_controller(serve_instance):
     def check_for_failed_deployment():
         status = serve.status()[0]
         return (
-            status["app_status"]["status"] == "DEPLOY_FAILED"
-            and "some_wrong_url" in status["deployment_statuses"][0]["message"]
+            status.app_status.status == "DEPLOY_FAILED"
+            and "some_wrong_url" in status.deployment_statuses[0].message
         )
 
     wait_for_condition(check_for_failed_deployment, timeout=15)
