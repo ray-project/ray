@@ -98,6 +98,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
+  gcs_server_config.session_name = session_name;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
 
   // Destroy the GCS server on a SIGTERM. The pointer to main_service is

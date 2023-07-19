@@ -58,6 +58,7 @@ struct GcsServerConfig {
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
+  std::string session_name;
 };
 
 class GcsNodeManager;

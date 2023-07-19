@@ -27,7 +27,8 @@ class GcsPlacementGroupManager;
 
 class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(const ClusterResourceManager &cluster_resource_manager,
+  GcsAutoscalerStateManager(const std::string &session_name,
+                            const ClusterResourceManager &cluster_resource_manager,
                             const GcsResourceManager &gcs_resource_manager,
                             const GcsNodeManager &gcs_node_manager,
                             const GcsPlacementGroupManager &gcs_placement_group_manager);
@@ -108,6 +109,9 @@ class GcsAutoscalerStateManager : public rpc::AutoscalerStateHandler {
   /// See rpc::autoscaler::ClusterResourceState::cluster_resource_constraints for
   /// more details. This is requested through autoscaler SDK for request_resources().
   void GetClusterResourceConstraints(rpc::autoscaler::ClusterResourceState *state);
+
+  // Ray cluster session name.
+  const std::string session_name_ = "";
 
   /// Cluster resources manager that provides cluster resources information.
   const ClusterResourceManager &cluster_resource_manager_;

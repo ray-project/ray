@@ -170,6 +170,10 @@ def test_node_info_basic(shutdown_only, monkeypatch):
             assert node.node_ip_address == ip
             assert node.instance_type_name == "instance-type-name"
 
+            assert (
+                state.cluster_session_name
+                == ray._private.worker.global_worker.node.session_name
+            )
             return True
 
         wait_for_condition(verify)
