@@ -128,7 +128,7 @@ class XGBoostService:
         data = pd.DataFrame.from_dict(await request.json())
         return self.predictor.predict(data)
 
-serve.run(XGBoostService.bind(checkpoint))
+serve.run(XGBoostService.bind(result.checkpoint))
 # __air_deploy_end__
 
 # __air_inference_start__
