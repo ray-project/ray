@@ -85,6 +85,7 @@ BLACKLISTED_KEYS = {
     "trial_id",
     "experiment_tag",
     "should_checkpoint",
+    "_report_on",  # LIGHTNING_REPORT_STAGE_KEY
 }
 
 VALID_SUMMARY_TYPES = {
