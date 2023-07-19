@@ -60,9 +60,7 @@ from ray.serve._private.logging_utils import (
 
 from ray.serve._private.serve_request_response import (
     ASGIServeRequest,
-    ASGIServeResponse,
     GRPCServeRequest,
-    GRPCServeResponse,
     ServeRequest,
     ServeResponse,
 )
@@ -509,13 +507,13 @@ class GenericProxy:
             except asyncio.CancelledError:
                 # Here because the client disconnected, we will return a custom
                 # error code for metric tracking.
-                return ASGIServeResponse(status_code=DISCONNECT_ERROR_CODE)
+                return ServeResponse(status_code=DISCONNECT_ERROR_CODE)
             except RayTaskError as e:
                 error_message = f"Unexpected error, traceback: {e}."
                 await Response(error_message, status_code=500).send(
                     serve_request.scope, serve_request.receive, serve_request.send
                 )
-                return ASGIServeResponse(status_code="500")
+                return ServeResponse(status_code="500")
             except RayActorError:
                 logger.info(
                     "Request failed due to replica failure. There are "
@@ -536,16 +534,16 @@ class GenericProxy:
             await Response(error_message, status_code=500).send(
                 serve_request.scope, serve_request.receive, serve_request.send
             )
-            return ASGIServeResponse(status_code="500")
+            return ServeResponse(status_code="500")
 
         if isinstance(result, (starlette.responses.Response, RawASGIResponse)):
             await result(serve_request.scope, serve_request.receive, serve_request.send)
-            return ASGIServeResponse(status_code=str(result.status_code))
+            return ServeResponse(status_code=str(result.status_code))
         else:
             await Response(result).send(
                 serve_request.scope, serve_request.receive, serve_request.send
             )
-            return ASGIServeResponse(status_code="200")
+            return ServeResponse(status_code="200")
 
     async def _assign_request_with_timeout(
         self,
@@ -823,7 +821,7 @@ class GRPCProxy(GenericProxy):
         )
         print("_consume_generator, response", response)
 
-        return GRPCServeResponse(status_code="200", response=response)
+        return ServeResponse(status_code="200", response=response)
 
     async def send_request_to_replica_streaming(
         self,
@@ -864,7 +862,7 @@ class GRPCProxy(GenericProxy):
         except Exception as e:
             print("in HTTPProxy#send_request_to_replica_streaming exception!!", e)
             logger.exception(e)
-            return GRPCServeResponse(status_code="500")
+            return ServeResponse(status_code="500")
 
 
 class HTTPProxy(GenericProxy):
@@ -1019,13 +1017,13 @@ class HTTPProxy(GenericProxy):
                         "cancelling the request.",
                         extra={"log_to_stderr": False},
                     )
-                    return ASGIServeResponse(status_code=DISCONNECT_ERROR_CODE)
+                    return ServeResponse(status_code=DISCONNECT_ERROR_CODE)
             except TimeoutError:
                 logger.warning(
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while waiting for assignment."
                 )
-                return ASGIServeResponse(status_code=TIMEOUT_ERROR_CODE)
+                return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
             try:
                 status_code = await self._consume_and_send_asgi_message_generator(
@@ -1042,7 +1040,7 @@ class HTTPProxy(GenericProxy):
                     f"Request {request_id} timed out after "
                     f"{self.request_timeout_s}s while executing."
                 )
-                return ASGIServeResponse(status_code=TIMEOUT_ERROR_CODE)
+                return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
         except Exception as e:
             print("in HTTPProxy#send_request_to_replica_streaming exception!!", e)
@@ -1064,7 +1062,7 @@ class HTTPProxy(GenericProxy):
 
             del self.asgi_receive_queues[request_id]
 
-        return ASGIServeResponse(status_code=status_code)
+        return ServeResponse(status_code=status_code)
 
 
 class RequestIdMiddleware:

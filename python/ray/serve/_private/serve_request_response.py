@@ -87,17 +87,9 @@ class GRPCServeRequest(ServeRequest):
 
 
 class ServeResponse:
-    def __init__(self, status_code: str):
-        self.status_code = status_code
-
-
-class ASGIServeResponse(ServeRequest):
-    pass
-
-
-class GRPCServeResponse(ServeResponse):
     def __init__(
         self, status_code: str, response: Optional[serve_pb2.RayServeResponse] = None
     ):
-        super().__init__(status_code)
+        self.status_code = status_code
         self.response = response
+
