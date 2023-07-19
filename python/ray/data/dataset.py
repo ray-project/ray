@@ -3155,7 +3155,7 @@ class Dataset:
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
-        """Return a local batched iterator over the dataset.
+        """Return a batched iterator over the dataset.
 
         Examples:
             >>> import ray
@@ -3220,7 +3220,7 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> Iterator["TorchTensorBatchType"]:
-        """Return a local batched iterator of Torch Tensors over the dataset.
+        """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator will yield single-tensor batches if the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
@@ -3301,7 +3301,7 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return a local batched iterator of TensorFlow Tensors over the dataset.
+        """Return a batched iterator of TensorFlow Tensors over the dataset.
 
         This iterator will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
