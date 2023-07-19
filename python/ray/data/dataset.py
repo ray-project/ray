@@ -1749,21 +1749,21 @@ class Dataset:
             in a machine learning dataset:
 
             >>> import ray
-            >>> ds = ray.data.read_csv("example://iris.csv")
-            >>> ds.unique("variety")
-            ['Setosa', 'Versicolor', 'Virginica']
+            >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
+            >>> ds.unique("target")
+            [0, 1, 2]
 
             One common use case is to convert the class labels
             into integers for training and inference:
 
-            >>> classes = {label: i for i, label in enumerate(ds.unique("variety"))}
+            >>> classes = {0: 'Setosa', 1: 'Versicolor', 2: 'Virginica'}
             >>> def preprocessor(df, classes):
-            ...     df["variety"] = df["variety"].map(classes)
+            ...     df["variety"] = df["target"].map(classes)
             ...     return df
             >>> train_ds = ds.map_batches(
             ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
-            >>> train_ds.sort("sepal.length").take(1)  # Sort to make it deterministic
-            [{'sepal.length': 4.3, ..., 'variety': 0}]
+            >>> train_ds.sort("sepal length (cm)").take(1)  # Sort to make it deterministic
+            [{'sepal length (cm)': 4.3, ..., 'variety': 'Setosa'}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
@@ -1772,7 +1772,7 @@ class Dataset:
 
         Returns:
             A list with unique elements in the given column.
-        """
+        """  # noqa: E501
         ds = self.groupby(column).count().select_columns([column])
         return [item[column] for item in ds.take_all()]
 
@@ -3806,12 +3806,11 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
+    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+        """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
-        This method errors if the number of rows exceeds the
-        provided ``limit``. You can use :meth:`.limit` on the dataset
-        beforehand to truncate the dataset manually.
+        This method errors if the number of rows exceeds the provided ``limit``.
+        To truncate the dataset beforehand, call :meth:`.limit`.
 
         Examples:
             >>> import ray
@@ -3825,24 +3824,25 @@ class Dataset:
         Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return. An error is
-                raised if the dataset has more rows than this limit.
+            limit: The maximum number of rows to return. An error is
+                raised if the dataset has more rows than this limit. Defaults to
+                ``None``, which means no limit.
 
         Returns:
             A pandas DataFrame created from this dataset, containing a limited
-            number of records.
+            number of rows.
 
         Raises:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
             ``limit``.
         """
         count = self.count()
-        if count > limit:
+        if limit is not None and count > limit:
             raise ValueError(
                 f"the dataset has more than the given limit of {limit} "
-                f"records: {count}. If you are sure that a DataFrame with "
-                f"{count} rows will fit in local memory, use "
-                f"ds.to_pandas(limit={count})."
+                f"rows: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, set ds.to_pandas(limit=None) "
+                "to disable limits."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()
@@ -4433,9 +4433,9 @@ class Dataset:
             >>> import ray
             >>> ray.data.from_items(list(range(10))).has_serializable_lineage()
             False
-            >>> ray.data.read_csv("example://iris.csv").has_serializable_lineage()
+            >>> ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv").has_serializable_lineage()
             True
-        """
+        """  # noqa: E501
         return self._plan.has_lazy_input()
 
     @DeveloperAPI
@@ -4461,7 +4461,7 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.read_csv("example://iris.csv")
+                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
                 serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
@@ -4469,14 +4469,14 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=...,
+                   num_blocks=1,
                    num_rows=150,
                    schema={
-                      sepal.length: double,
-                      sepal.width: double,
-                      petal.length: double,
-                      petal.width: double,
-                      variety: string
+                      sepal length (cm): double,
+                      sepal width (cm): double,
+                      petal length (cm): double,
+                      petal width (cm): double,
+                      target: int64
                    }
                 )
 
@@ -4544,7 +4544,7 @@ class Dataset:
 
                 import ray
 
-                ds = ray.data.read_csv("example://iris.csv")
+                ds = ray.data.read_csv("s3://anonymous@ray-example-data/iris.csv")
                 serialized_ds = ds.serialize_lineage()
                 ds = ray.data.Dataset.deserialize_lineage(serialized_ds)
                 print(ds)
@@ -4552,14 +4552,14 @@ class Dataset:
             .. testoutput::
 
                 Dataset(
-                   num_blocks=...,
+                   num_blocks=1,
                    num_rows=150,
                    schema={
-                      sepal.length: double,
-                      sepal.width: double,
-                      petal.length: double,
-                      petal.width: double,
-                      variety: string
+                      sepal length (cm): double,
+                      sepal width (cm): double,
+                      petal length (cm): double,
+                      petal width (cm): double,
+                      target: int64
                    }
                 )
 

@@ -264,6 +264,7 @@ parts:
             sections:
               - file: serve/production-guide/config
               - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/docker
               - file: serve/production-guide/fault-tolerance
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
