@@ -80,7 +80,11 @@ class HTTPEventProvider:
         handle_event = ...
         workflow.run_aync(handle_event.bind(event_node))
 
-        On a separate python process, it sends an event to the HTTPEventProvider.
+    On a separate python process, it sends an event to the HTTPEventProvider:
+
+    .. testcode::
+        :skipif: True
+
         import requests
         resp = requests.post('http://127.0.0.1:8000/event/send_event/{workflow_id}',
             json={'event_key':'my_key','event_payload':'testMessage'})
