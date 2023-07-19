@@ -511,9 +511,6 @@ class ClusterStatusParser:
         return pending_nodes
 
 
-_is_autoscaler_v2_cached = None
-
-
 def is_autoscaler_v2() -> bool:
     """
     Check if the autoscaler is v2 from reading GCS internal KV.
@@ -526,19 +523,15 @@ def is_autoscaler_v2() -> bool:
     """
 
     # See src/ray/common/constants.h for the definition of this key.
-    global _is_autoscaler_v2_cached
-    if _is_autoscaler_v2_cached is not None:
-        return _is_autoscaler_v2_cached
 
     if not _internal_kv_initialized():
         raise Exception(
             "GCS address could not be resolved (e.g. ray.init() not called)"
         )
 
-    _is_autoscaler_v2_cached = (
+    return (
         _internal_kv_get(
             AUTOSCALER_V2_ENABLED_KEY.encode(), namespace=AUTOSCALER_NAMESPACE.encode()
         )
         == b"1"
     )
-    return _is_autoscaler_v2_cached
