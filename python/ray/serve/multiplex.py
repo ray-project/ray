@@ -122,6 +122,10 @@ class _ModelMultiplexWrapper:
         else:
             while context.loading:
                 await asyncio.sleep(10)
+
+            if model_id in self.models:
+                return self.models[model_id]  # Someone else loaded me since.
+
             context.loading = True
 
             # If the number of models per replica is specified, check if the number of
