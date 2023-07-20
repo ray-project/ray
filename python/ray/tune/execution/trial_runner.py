@@ -47,7 +47,7 @@ from ray.tune.result import (
 from ray.tune.schedulers import FIFOScheduler, TrialScheduler
 from ray.tune.stopper import NoopStopper, Stopper
 from ray.tune.search import BasicVariantGenerator, SearchAlgorithm
-from ray.tune.syncer import SyncConfig
+from ray.tune.syncer import _HeadNodeSyncDeprecationWarning, SyncConfig
 from ray.tune.experiment import Trial
 from ray.tune.utils import warn_if_slow, flatten_dict
 from ray.tune.utils.log import Verbosity, has_verbosity
@@ -953,12 +953,15 @@ class _TuneControllerBase:
             self._checkpoint_manager.on_trial_checkpoint(trial)
             if trial.checkpoint.storage_mode != CheckpointStorage.MEMORY:
                 self._mark_trial_to_checkpoint(trial)
-        except Exception:
+        except Exception as e:
+            if (
+                isinstance(e, _HeadNodeSyncDeprecationWarning)
+                or self._fail_fast == TrialRunner.RAISE
+            ):
+                raise e
             logger.exception(
                 "Trial %s: Error handling checkpoint %s", trial, checkpoint_value
             )
-            if self._fail_fast == TrialRunner.RAISE:
-                raise
 
         trial.saving_to = None
         decision = self._cached_trial_decisions.pop(trial.trial_id, None)
