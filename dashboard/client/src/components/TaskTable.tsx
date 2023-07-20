@@ -76,7 +76,7 @@ const TaskTable = ({
           faiure.
           <br /> Stack Trace: Get a stacktrace of the worker process where the
           task is running.
-          <br />- CPU Flame Graph: Get a flame graph for the next 5 seconds of
+          <br />- CPU Flame Graph: Get a flame graph of the next 5 seconds of
           the worker process where the task is running.
         </Typography>
       ),
@@ -350,11 +350,13 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
           <TaskCpuProfilingLink
             taskId={task?.task_id}
             attemptNumber={task?.attempt_number}
+            nodeId={task?.node_id}
           />
           <br />
           <TaskCpuStackTraceLink
             taskId={task?.task_id}
             attemptNumber={task?.attempt_number}
+            nodeId={task?.node_id}
           />
         </React.Fragment>
       )}

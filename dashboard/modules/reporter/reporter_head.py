@@ -6,6 +6,7 @@ import pstats
 import aiohttp.web
 from typing import Tuple
 import time
+import re
 
 
 import ray
@@ -40,11 +41,23 @@ import cProfile
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
-WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "This task is running in a worker that is running multiple tasks. Please notice the info you see here is for the all the tasks in this worker.The task_id running on this task is: \n"
+EMOJI_WARNING = "&#x26A0;&#xFE0F;"
+WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "Warning: This task is running in a worker process that is running multiple tasks. The information that follows may come from any of these tasks:"
 
 
 def get_warning_text(task_ids):
-    return WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids) + "\n"
+    return '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+        EMOJI_WARNING, WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids)
+    )
+
+
+def add_css_to_svg_with_regex(svg_string):
+    # Search for the opening <svg> tag and add the CSS styles as an attribute
+    modified_svg_string = re.sub(
+        r"<svg(.*?)>", r'<svg\1 style="width: 100%; height: 100%;">', svg_string
+    )
+
+    return modified_svg_string
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
@@ -154,7 +167,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             attempt_number (int): The attempt number of the task.
 
         Returns:
-            tuple: A tuple containing the worker's PID (process ID), IP address and state and the task's IDs for this task
+            tuple: A tuple containing the worker's PID (process ID), IP address and state and the task's IDs for this task.
         """
         option = ListApiOptions(
             filters=[
@@ -168,14 +181,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         result = await self._state_api.list_tasks(option=option)
         tasks = result.result
         if not tasks:
-            return None, None, None, None
+            return None, None, None
 
         pid = tasks[0]["worker_pid"]
 
         node_id = tasks[0]["node_id"]
-        ip = DataSource.node_id_to_ip[node_id]
 
         state = tasks[0].get("state")
+        if state != "RUNNING":
+            raise ValueError(
+                f"The task attempt is not running: the current state is {state}."
+            )
 
         worker_id = tasks[0]["worker_id"]
         worker_option = ListApiOptions(
@@ -197,38 +213,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 for task in tasks_in_a_worker
                 if task and "task_id" in task
             ]
-        logger.info(
-            f"task_ids_in_a_worker {type(task_ids_in_a_worker)}: {task_ids_in_a_worker}"
-        )
 
-        return pid, ip, state, task_ids_in_a_worker
-
-    def validate_work_details(self, pid: int, ip: str, state: str):
-        """
-        Args:
-            pid (int):  The process ID.
-            ip (str): The IP address.
-            state (str): The current state of the task attempt.
-
-        Raises:
-            ValueError: If the PID or IP is None, indicating that the information could not be fetched.
-            ValueError: If the task attempt is not in the "RUNNING" state.
-        """
-        if not pid or not ip:
-            raise ValueError(
-                f"pid or ip is None, could not fetch the info you need: pid = {pid}, ip = {ip}"
-            )
-
-        if state != "RUNNING":
-            raise ValueError(
-                f"The task attempt is not running: the current state is {state}."
-            )
+        return pid, task_ids_in_a_worker
 
     @routes.get("/task/traceback")
     async def get_task_traceback(self, req) -> aiohttp.web.Response:
         """
         Retrieves the traceback information for a specific task.
-        To notice, we have one worker to work on one task at a time or one worker to work on multiple async tasks.
+        Note that one worker process works on one task at a time or one worker works on multiple async tasks.
 
         Args:
             req (aiohttp.web.Request): The HTTP request object.
@@ -247,15 +239,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
             raise ValueError("task's attempt number is required")
+        if "node_id" not in req.query:
+            raise ValueError("node_id is required")
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-        pid, ip, state, _ = await self.get_worker_details_for_task(
-            task_id, attempt_number
-        )
+        node_id = req.query.get("node_id")
+
+        ip = DataSource.node_id_to_ip[node_id]
 
         try:
-            self.validate_work_details(pid, ip, state)
+            pid, _ = await self.get_worker_details_for_task(task_id, attempt_number)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -264,7 +258,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         logger.info(
             "Sending stack trace request to {}:{} with native={}".format(
-                req.query.get("ip"), pid, native
+                ip, pid, native
             )
         )
         reporter_stub = self._stubs[ip]
@@ -274,15 +268,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
-        (
-            new_pid,
-            new_ip,
-            new_state,
-            task_ids_in_a_worker,
-        ) = await self.get_worker_details_for_task(task_id, attempt_number)
-
         try:
-            self.validate_work_details(new_pid, new_ip, new_state)
+            _,
+            task_ids_in_a_worker = await self.get_worker_details_for_task(
+                task_id, attempt_number
+            )
+
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
         if not reply.success:
@@ -291,7 +282,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         logger.info("Returning stack trace, size {}".format(len(reply.output)))
 
         return aiohttp.web.Response(
-            text=get_warning_text(task_ids_in_a_worker) + reply.output
+            text=WARNING_FOR_MULTI_TASK_IN_A_WORKER
+            + str(task_ids_in_a_worker)
+            + reply.output
             if len(task_ids_in_a_worker) > 1
             else reply.output
         )
@@ -300,7 +293,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
     async def get_task_cpu_profile(self, req) -> aiohttp.web.Response:
         """
         Retrieves the CPU profile for a specific task.
-        To notice, we have one worker to work on one task at a time or one worker to work on multiple async tasks.
+        Note that one worker process works on one task at a time or one worker works on multiple async tasks.
 
         Args:
             req (aiohttp.web.Request): The HTTP request object.
@@ -316,22 +309,24 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
         """
-        profiler = cProfile.Profile()
-        profiler.enable()
-
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
             raise ValueError("task's attempt number is required")
+        if "node_id" not in req.query:
+            raise ValueError("node_id is required")
 
         task_id = req.query.get("task_id")
         attempt_number = req.query.get("attempt_number")
-        pid, ip, state, _ = await self.get_worker_details_for_task(
-            task_id, attempt_number
-        )
+        node_id = req.query.get("node_id")
+
+        ip = DataSource.node_id_to_ip[node_id]
 
         try:
-            self.validate_work_details(pid, ip, state)
+            (
+                pid,
+                _,
+            ) = await self.get_worker_details_for_task(task_id, attempt_number)
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -359,19 +354,16 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         end_time = time.time()
         execution_time = end_time - start_time
-        logger.info(f'execution_time {type(execution_time)}: {execution_time}')
+        logger.info(f"execution_time {type(execution_time)}: {execution_time}")
 
         ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
-        (
-            new_pid,
-            new_ip,
-            new_state,
-            task_ids_in_a_worker,
-        ) = await self.get_worker_details_for_task(task_id, attempt_number)
-
         try:
-            self.validate_work_details(new_pid, new_ip, new_state)
+            _,
+            task_ids_in_a_worker = await self.get_worker_details_for_task(
+                task_id, attempt_number
+            )
+
         except ValueError as e:
             raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
@@ -379,31 +371,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             return aiohttp.web.HTTPInternalServerError(text=reply.output)
 
         logger.info("Returning profiling response, size {}".format(len(reply.output)))
-        profiler.disable()
-        logger.info("ssssss")
-        stream = io.StringIO()
 
-        # Create a Stats object from the profiler results
-        stats = pstats.Stats(profiler, stream=stream)
-        stats.strip_dirs()
-        stats.sort_stats("cumulative")
-
-        # Print the profiling results to the stream
-        stats.print_stats()
-
-        # Get the profiling results from the stream
-        profiler_string = stream.getvalue()
-        logger.info(f"profiler_string {type(profiler_string)}: {profiler_string}")
         return aiohttp.web.Response(
-            body=json.dumps(
-                {
-                    "content": reply.output,
-                    "warning": get_warning_text(task_ids_in_a_worker),
-                }
-                if len(task_ids_in_a_worker) > 1
-                else {"content": reply.output}
-            ),
-            headers={"Content-Type": "application/json"},
+            body=get_warning_text(task_ids_in_a_worker)
+            + add_css_to_svg_with_regex(reply.output)
+            if len(task_ids_in_a_worker) > 1
+            else add_css_to_svg_with_regex(reply.output),
+            headers={"Content-Type": "text/html"},
         )
 
     @routes.get("/worker/traceback")

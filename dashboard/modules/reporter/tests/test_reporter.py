@@ -706,8 +706,7 @@ TASK = {
 
 def test_get_task_traceback():
     """
-    Verify we throw an error for non-running task.
-
+    Verify that we throw an error for a non-running task.
     """
     context = ray.init()
     dashboard_url = f"http://{context['webui_url']}"
@@ -733,8 +732,7 @@ def test_get_task_traceback():
 
 def test_get_cpu_profile():
     """
-    Verify we throw an error for non-running task.
-
+    Verify that we throw an error for a non-running task.
     """
     context = ray.init()
     dashboard_url = f"http://{context['webui_url']}"

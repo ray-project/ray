@@ -231,11 +231,13 @@ const TaskPageContents = ({
                     <TaskCpuProfilingLink
                       taskId={task_id}
                       attemptNumber={attempt_number}
+                      nodeId={node_id}
                     />
                     <br />
                     <TaskCpuStackTraceLink
                       taskId={task_id}
                       attemptNumber={attempt_number}
+                      nodeId={node_id}
                     />
                   </React.Fragment>
                 ),
