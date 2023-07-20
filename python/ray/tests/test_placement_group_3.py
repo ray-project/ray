@@ -589,9 +589,10 @@ def test_placement_group_gpu_unique_assigned(ray_start_cluster, connect_to_clien
     assert len(gpu_ids_res) == 4
 
 
-def test_placement_group_status_no_bundle_demand(ray_start_cluster):
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_placement_group_status_no_bundle_demand(ray_start_cluster, enable_v2):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
+    cluster.add_node(num_cpus=4, _system_config={"enable_autoscaler_v2": enable_v2})
     ray.init(address=cluster.address)
 
     @ray.remote
@@ -618,10 +619,11 @@ def test_placement_group_status_no_bundle_demand(ray_start_cluster):
     assert demand_output["demand"] == "(no resource demands)"
 
 
-def test_placement_group_status(ray_start_cluster):
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_placement_group_status(ray_start_cluster, enable_v2):
     cluster = ray_start_cluster
-    cluster.add_node(num_cpus=4)
-    ray.init(address=cluster.address)
+    cluster.add_node(num_cpus=4, _system_config={"enable_autoscaler_v2": enable_v2})
+    ray.init(cluster.address)
 
     @ray.remote(num_cpus=1)
     class A:

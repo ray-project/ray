@@ -141,7 +141,9 @@ class ResourceDemandSummary:
 @dataclass
 class Stats:
     # How long it took to get the GCS request.
-    gcs_request_time_s: Optional[float] = None
+    # This is required when initializing the Stats since it should be calculated before
+    # the request was made.
+    gcs_request_time_s: float
     # How long it took to get all live instances from node provider.
     none_terminated_node_request_time_s: Optional[float] = None
     # How long for autoscaler to process the scaling decision.
