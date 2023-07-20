@@ -37,6 +37,12 @@ def _gen_cluster_status_reply(data: Dict):
     ],
 )
 def test_is_autoscaler_v2_enabled(shutdown_only, monkeypatch, env_val, enabled):
+    def reset_autoscaler_v2_enabled_cache():
+        import ray.autoscaler.v2.utils as u
+
+        u.cached_is_autoscaler_v2 = None
+
+    reset_autoscaler_v2_enabled_cache()
     with monkeypatch.context() as m:
         m.setenv("RAY_enable_autoscaler_v2", env_val)
         ray.init()
