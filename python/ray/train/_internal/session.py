@@ -601,6 +601,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     Example:
         .. testcode::
 
+            import tensorflow as tf
+
+            from ray.air import session
             from ray.air.checkpoint import Checkpoint
             from ray.air.config import ScalingConfig
             from ray.train.tensorflow import TensorflowTrainer

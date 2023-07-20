@@ -24,6 +24,7 @@ doctest(
         "_internal/session.py",
         "context.py"
     ],
+    size = "large",
     tags = ["team:ml"],
     gpu = True
 )
