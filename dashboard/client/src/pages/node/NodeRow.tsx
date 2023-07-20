@@ -10,7 +10,7 @@ import React, { useState } from "react";
 import { RiArrowDownSLine, RiArrowRightSLine } from "react-icons/ri";
 import { Link } from "react-router-dom";
 import useSWR from "swr";
-import { CodeDialogButton } from "../../common/CodeDialogButton";
+import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
 import rowStyles from "../../common/RowStyles";
@@ -159,15 +159,18 @@ export const NodeRow = ({
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
       <TableCell align="center">
-        <CodeDialogButton title={"Logical Resource"} code="">
+        {/* <CodeDialogButton title={"Logical Resource"} code="">
           {logicalResource}
-        </CodeDialogButton>
+        </CodeDialogButton> */}
 
-        {/* {message ? (
-          <CodeDialogButtonWithPreview title="Message details" code={message} />
+        {cluster_status ? (
+          <CodeDialogButtonWithPreview
+            title="Logical Resource"
+            code={{ CPU: "1.0/8.0" }}
+          />
         ) : (
           "-"
-        )} */}
+        )}
       </TableCell>
     </TableRow>
   );
