@@ -201,10 +201,8 @@ class LongestPrefixRouter:
 
         return None
 
-    def get_route_from_target(
-        self, target: str
-    ) -> Optional[Tuple[str, RayServeHandle]]:
-        """Return the target endpoint to match for the route.
+    def match_target(self, target: str) -> Optional[Tuple[str, RayServeHandle]]:
+        """Return the route and handle from the target.
 
         Args:
             target: the target to match against endpoint.
@@ -212,7 +210,7 @@ class LongestPrefixRouter:
         Returns:
             (route, handle) if found, else None.
         """
-        print("get_route_from_target, target", target)
+        print("match_target, target", target)
         for route, endpoint_and_app_name in self.route_info.items():
             endpoint, app_name = endpoint_and_app_name
             print("app_name", app_name, "endpoint", endpoint)
@@ -278,14 +276,14 @@ class GenericProxy:
             call_in_event_loop=get_or_create_event_loop(),
         )
         self.request_counter = metrics.Counter(
-            "serve_num_http_requests",
-            description="The number of HTTP requests processed.",
+            f"serve_num_{self.proxy_name.lower()}_requests",
+            description=f"The number of {self.proxy_name} requests processed.",
             tag_keys=("route", "method", "application", "status_code"),
         )
 
         self.request_error_counter = metrics.Counter(
-            "serve_num_http_error_requests",
-            description="The number of non-200 HTTP responses.",
+            f"serve_num_{self.proxy_name.lower()}_error_requests",
+            description=f"The number of non-200 {self.proxy_name} responses.",
             tag_keys=(
                 "route",
                 "error_code",
@@ -294,9 +292,10 @@ class GenericProxy:
         )
 
         self.deployment_request_error_counter = metrics.Counter(
-            "serve_num_deployment_http_error_requests",
+            f"serve_num_deployment_{self.proxy_name.lower()}_error_requests",
             description=(
-                "The number of non-200 HTTP responses returned by each deployment."
+                f"The number of non-200 {self.proxy_name} responses returned by "
+                "each deployment."
             ),
             tag_keys=(
                 "deployment",
@@ -307,10 +306,10 @@ class GenericProxy:
             ),
         )
         self.processing_latency_tracker = metrics.Histogram(
-            "serve_http_request_latency_ms",
+            f"serve_{self.proxy_name.lower()}_request_latency_ms",
             description=(
-                "The end-to-end latency of HTTP requests "
-                "(measured from the Serve HTTP proxy)."
+                f"The end-to-end latency of {self.proxy_name} requests "
+                f"(measured from the Serve {self.proxy_name} proxy)."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=(
@@ -599,6 +598,14 @@ class GenericProxy:
         return get_random_letters(10)
 
     async def proxy_request(self, serve_request: ServeRequest) -> ServeResponse:
+        """Wrapper for proxy request.
+
+        This method wraps the request input into ServeRequest object and output
+        response into ServeResponse object to be used commonly by both HTTP and
+        GRPC proxies. It also handles the routing, including `/-/routes` and
+        `/-/healthz`, ongoing request counter and keep alive object, and metrics
+        counters.
+        """
         assert serve_request.request_type in {"http", "websocket", "grpc"}
 
         method = serve_request.method
@@ -753,6 +760,14 @@ class GenericProxy:
 
         return serve_response
 
+    @property
+    def proxy_name(self) -> str:
+        """Proxy name used for metrics.
+
+        Each proxy needs to implement its own logic for setting up the proxy name.
+        """
+        raise NotImplementedError
+
     def setup_request_context_and_handle(
         self,
         app_name: str,
@@ -760,6 +775,11 @@ class GenericProxy:
         route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
+        """Setup the request context and handle for the request.
+
+        Each proxy needs to implement its own logic for setting up the request context
+        and handle.
+        """
         raise NotImplementedError
 
     async def send_request_to_replica_streaming(
@@ -768,6 +788,11 @@ class GenericProxy:
         handle: RayServeHandle,
         serve_request: ServeRequest,
     ) -> ServeResponse:
+        """Send the request to the replica and handle streaming response.
+
+        Each proxy needs to implement its own logic for sending the request and
+        handling the streaming response.
+        """
         raise NotImplementedError
 
 
@@ -782,7 +807,15 @@ class GRPCProxy(GenericProxy):
     >>> ) # doctest: +SKIP
     """
 
-    async def Predict(self, request: serve_pb2.RayServeRequest, context):
+    async def Predict(
+        self, request: serve_pb2.RayServeRequest, context
+    ) -> serve_pb2.RayServeResponse:
+        """Entry point of the gRPC proxy.
+
+        This method is called by the gRPC server when a request is received. It
+        wraps the request in a ServeRequest object and calls proxy_request. The return
+        value is protobuf RayServeResponse object.
+        """
         print("in grpc proxy, Predict called!!")
         print("request", request)
         print("context.invocation_metadata()", context.invocation_metadata())
@@ -790,13 +823,17 @@ class GRPCProxy(GenericProxy):
         print("context.peer()", context.peer())
 
         app_name = request.application
-        route_path, handle = self.prefix_router.get_route_from_target(app_name)
+        route_path, handle = self.prefix_router.match_target(app_name)
         print("route_path", route_path)
 
         serve_request = GRPCServeRequest(request=request, route_path=route_path)
         serve_response = await self.proxy_request(serve_request=serve_request)
         print("Predict, serve_response", serve_response)
         return serve_response.response
+
+    @property
+    def proxy_name(self) -> str:
+        return "GRPC"
 
     def setup_request_context_and_handle(
         self,
@@ -901,6 +938,10 @@ class HTTPProxy(GenericProxy):
         """
         serve_request = ASGIServeRequest(scope=scope, receive=receive, send=send)
         await self.proxy_request(serve_request=serve_request)
+
+    @property
+    def proxy_name(self) -> str:
+        return "HTTP"
 
     def setup_request_context_and_handle(
         self,
@@ -1162,7 +1203,9 @@ class HTTPProxyActor:
         self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            self.wrapped_http_proxy = middleware.cls(self.wrapped_http_proxy, **middleware.options)
+            self.wrapped_http_proxy = middleware.cls(
+                self.wrapped_http_proxy, **middleware.options
+            )
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
