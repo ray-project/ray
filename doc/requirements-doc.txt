@@ -43,7 +43,7 @@ git+https://github.com/ray-project/xgboost_ray@master#egg=xgboost_ray
 git+https://github.com/ray-project/lightgbm_ray@main#lightgbm_ray
 
 # Syntax highlighting
-Pygments==2.13.0
+Pygments==2.15.0
 
 # Sphinx
 sphinx==4.3.2
