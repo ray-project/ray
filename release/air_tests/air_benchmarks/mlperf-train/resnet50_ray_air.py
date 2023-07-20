@@ -177,7 +177,10 @@ def train_loop_for_worker(config):
                 if i % 10 == 0:
                     print("Step", i)
 
-            assert num_rows_read == config["num_images_per_epoch"], (num_rows_read, config["num_images_per_epoch"])
+            assert num_rows_read == config["num_images_per_epoch"], (
+                num_rows_read,
+                config["num_images_per_epoch"],
+            )
 
         epoch_time_s = time.perf_counter() - epoch_start_time_s
         epoch_times.append(epoch_time_s)
