@@ -278,18 +278,27 @@ def test_air_integrations_reconfigure(serve_instance):
     uri = f"file://{path}/test_uri"
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
-    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
+    @serve.deployment
+    class AdderService:
+        def __init__(self, checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        def reconfigure(self, config):
+            self.predictor = AdderPredictor.from_checkpoint(
+                Checkpoint.from_dict(config["checkpoint"]))
+
+        async def __call__(self, data):
+            return self.predictor.predict(data)
+
     additional_config = {
         "checkpoint": {"increment": 5},
-        "predictor_cls": "ray.serve.tests.test_air_integrations.AdderPredictor",
     }
 
     with InputNode() as dag_input:
-        m1 = PredictorDeployment.options(user_config=additional_config).bind(
-            predictor_cls=predictor_cls,
-            checkpoint=uri,
+        m1 = AdderService.options(user_config=additional_config).bind(
+            checkpoint=Checkpoint.from_uri(uri),
         )
-        dag = m1.predict.bind(dag_input)
+        dag = m1.__call__.bind(dag_input)
     deployments = build(Ingress.bind(dag))
     for d in deployments:
         d.deploy()
