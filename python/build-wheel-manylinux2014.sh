@@ -7,12 +7,15 @@ if [[ ! -e /usr/bin/nproc ]]; then
   chmod +x /usr/bin/nproc
 fi
 
+export RAY_INSTALL_JAVA="${RAY_INSTALL_JAVA:-0}"
+
 NODE_VERSION="14"
 
-YUM_PKGS=(
-  unzip zip sudo openssl xz
-  java-1.8.0-openjdk java-1.8.0-openjdk-devel maven
-)
+YUM_PKGS=(unzip zip sudo openssl xz)
+
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  YUM_PKGS+=(java-1.8.0-openjdk java-1.8.0-openjdk-devel maven)
+fi
 
 if [[ "${HOSTTYPE-}" == "x86_64" ]]; then
   YMB_PKGS+=(
@@ -24,12 +27,15 @@ fi
 
 yum install -y "${YUM_PKGS[@]}"
 
-java -version
-JAVA_BIN="$(readlink -f "$(command -v java)")"
-echo "java_bin path ${JAVA_BIN}"
-export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  java -version
+  JAVA_BIN="$(readlink -f "$(command -v java)")"
+  echo "java_bin path ${JAVA_BIN}"
+  export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
+fi
 
-# /ray/ci/env/install-bazel.sh
+/ray/ci/env/install-bazel.sh
+echo "build --incompatible_linkopts_to_linklibs" >> /root/.bazelrc
 
 # Install and use the latest version of Node.js in order to build the dashboard.
 set +x
@@ -55,13 +61,8 @@ git config --global --add safe.directory /ray
 
 echo "--- Build java parts"
 
-JAVA_BIN="$(readlink -f "$(command -v java)")"
-echo "java_bin path ${JAVA_BIN}"
-export JAVA_HOME="${JAVA_BIN%jre/bin/java}"
-
-if [[ "${RAY_INSTALL_JAVA:-0}" == "1" ]]; then
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
   bazel build //java:ray_java_pkg
-  unset RAY_INSTALL_JAVA
 fi
 
 echo "--- Build dashboard frontend"
@@ -99,8 +100,9 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
   # The -f flag is passed twice to also run git clean in the arrow subdirectory.
   # The -d flag removes directories. The -x flag ignores the .gitignore file,
   # and the -e flag ensures that we don't remove the .whl directory, the
-  # dashboard directory and jars directory.
-  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars
+  # dashboard directory and jars directory, as well as the compiled
+  # dependency constraints.
+  git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e dashboard/client -e python/ray/jars -e python/requirements_compiled.txt
 
   (
     cd python
@@ -115,12 +117,15 @@ for PYTHON_NUMPY in "${PYTHON_NUMPYS[@]}" ; do
       exit 1
     fi
 
+    # When building the wheel, we always set RAY_INSTALL_JAVA=0 because we
+    # have already built the Java code above.
+
     # build ray wheel
-    PATH="/opt/python/${PYTHON}/bin:$PATH" \
+    PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
     "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # build ray-cpp wheel
-    PATH="/opt/python/${PYTHON}/bin:$PATH" \
+    PATH="/opt/python/${PYTHON}/bin:$PATH" RAY_INSTALL_JAVA=0 \
     RAY_INSTALL_CPP=1 "/opt/python/${PYTHON}/bin/python" setup.py -q bdist_wheel
 
     # In the future, run auditwheel here.
@@ -140,9 +145,11 @@ for path in .whl/*.whl; do
 done
 
 # Clean the build output so later operations is on a clean directory.
-git clean -f -f -x -d -e .whl -e python/ray/dashboard/client
+git clean -f -f -x -d -e .whl -e python/ray/dashboard/client -e python/requirements_compiled.txt
 
-echo "--- Build JAR"
-if [[ "${BUILD_JAR-}" == "1" ]]; then
-  ./java/build-jar-multiplatform.sh linux
+if [[ "${RAY_INSTALL_JAVA}" == "1" ]]; then
+  if [[ "${BUILD_JAR-}" == "1" ]]; then
+    echo "--- Build JAR"
+    ./java/build-jar-multiplatform.sh linux
+  fi
 fi
