@@ -73,7 +73,9 @@ from ray._private.ray_logging import (
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
-from ray._private.runtime_env.setup_hook import upload_worker_setup_hook_if_needed
+from ray._private.runtime_env.setup_hook import (
+    upload_worker_process_setup_hook_if_needed,
+)
 from ray._private.storage import _load_class
 from ray._private.utils import get_ray_doc_version
 from ray.exceptions import ObjectStoreFullError, RayError, RaySystemError, RayTaskError
@@ -2170,7 +2172,7 @@ def connect(
         runtime_env = upload_working_dir_if_needed(
             runtime_env, scratch_dir, logger=logger
         )
-        runtime_env = upload_worker_setup_hook_if_needed(
+        runtime_env = upload_worker_process_setup_hook_if_needed(
             runtime_env,
             worker,
         )
@@ -3094,22 +3096,31 @@ def remote(
     dynamically modified with the same arguments as above using
     ``.options()`` as follows:
 
-    >>> @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
-    ... def f():
-    ...     return 1, 2
-    >>>
-    >>> f_with_2_gpus = f.options(num_gpus=2) # doctest: +SKIP
-    >>> object_ref = f_with_2_gpus.remote() # doctest: +SKIP
-    >>> assert ray.get(object_ref) == (1, 2) # doctest: +SKIP
+    .. testcode::
+        :hide:
 
-    >>> @ray.remote(num_cpus=2, resources={"CustomResource": 1})
-    ... class Foo:
-    ...     def method(self):
-    ...         return 1
-    >>>
-    >>> Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
-    >>> foo_actor = Foo_with_no_resources.remote()
-    >>> assert ray.get(foo_actor.method.remote()) == 1
+        ray.shutdown()
+
+        ray.init(num_cpus=5, num_gpus=5)
+
+    .. testcode::
+
+        @ray.remote(num_gpus=1, max_calls=1, num_returns=2)
+        def f():
+            return 1, 2
+
+        f_with_2_gpus = f.options(num_gpus=2)
+        object_refs = f_with_2_gpus.remote()
+        assert ray.get(object_refs) == [1, 2]
+
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
+        class Foo:
+            def method(self):
+                return 1
+
+        Foo_with_no_resources = Foo.options(num_cpus=1, resources=None)
+        foo_actor = Foo_with_no_resources.remote()
+        assert ray.get(foo_actor.method.remote()) == 1
 
 
     A remote actor will be terminated when all actor handle to it
