@@ -11,6 +11,7 @@ from typing import Dict, Tuple
 import argparse
 import numpy as np
 import os
+from collections import defaultdict
 
 import ray
 from ray import air, tune
@@ -50,6 +51,7 @@ class MyCallbacks(DefaultCallbacks):
         )
         print("episode {} (env-idx={}) started.".format(episode.episode_id, env_index))
         episode.user_data["pole_angles"] = []
+	episode.user_data["info"] = defaultdict(list)
         episode.hist_data["pole_angles"] = []
 
     def on_episode_step(
@@ -71,6 +73,8 @@ class MyCallbacks(DefaultCallbacks):
         raw_angle = abs(episode.last_raw_obs_for()[2])
         assert pole_angle == raw_angle
         episode.user_data["pole_angles"].append(pole_angle)
+	for field, val in episode.last_info_for().items():
+	    episode.user_data["info"][field].append(val)
 
     def on_episode_end(
         self,
