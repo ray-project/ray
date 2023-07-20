@@ -894,10 +894,13 @@ void NodeManager::QueryAllWorkerStates(
   // Query all workers.
   auto rpc_replied = std::make_shared<size_t>(0);
   auto num_workers = all_workers.size();
+  bool all_dead = true;
   for (const auto &worker : all_workers) {
     if (worker->IsDead()) {
+      *rpc_replied += 1;
       continue;
     }
+    all_dead = false;
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(include_memory_info);
@@ -921,6 +924,9 @@ void NodeManager::QueryAllWorkerStates(
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
+  }
+  if (all_dead) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 
