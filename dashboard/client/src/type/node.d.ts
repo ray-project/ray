@@ -36,6 +36,23 @@ export type NodeDetail = {
   cmdline: string[];
   state: string;
   logUrl: string;
+  logicalResource?: LogicalResource;
+};
+
+type NodeLogicalResourceMap = {
+  [nodeId: string]: LogicalResource;
+};
+
+type LogicalResource = {
+  CPU: string;
+  memory: string;
+  object_store_memory: string;
+};
+
+export type NodeLogicalResourceRsp = {
+  data: NodeLogicalResourceMap;
+  result: boolean;
+  msg: string;
 };
 
 export type NodeListRsp = {

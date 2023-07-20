@@ -18,12 +18,13 @@ import { formatResourcesStatus } from "../../components/AutoscalerStatusCards";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
-import { NodeDetail } from "../../type/node";
+import { LogicalResource, NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { useRayStatus } from "../job/hook/useClusterStatus";
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
+import { useNodeLogicalResourceMap } from "./hook/useNodeLogicalResourceMap";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -290,6 +291,10 @@ type NodeRowsProps = {
    * Whether the row should start expanded. By default, this is false.
    */
   startExpanded?: boolean;
+  /**
+   * Logical Resource of a node
+   */
+  logicalResource?: LogicalResource;
 };
 
 /**
@@ -301,6 +306,7 @@ export const NodeRows = ({
   startExpanded = false,
 }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
+  const { nodeLogicalResourceMap } = useNodeLogicalResourceMap();
 
   const { data } = useSWR(
     ["getNodeDetail", node.raylet.nodeId],
@@ -335,6 +341,7 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
+        logicalResource={nodeLogicalResourceMap[node.raylet.nodeId] ?? {}}
       />
       {isExpanded &&
         workers.map((worker) => (
