@@ -2343,7 +2343,12 @@ cdef class GcsClient:
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
-        self.cluster_id = CClusterID.Nil() if cluster_id is None else CClusterID.FromHex(cluster_id)
+        cdef c_string c_cluster_id
+        if cluster_id is None:
+            self.cluster_id = CClusterID.Nil()
+        else:
+            c_cluster_id = cluster_id
+            self.cluster_id = CClusterID.FromHex(c_cluster_id)
         self._connect()
 
     def _connect(self, timeout=None):
