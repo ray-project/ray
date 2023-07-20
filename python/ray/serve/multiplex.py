@@ -17,7 +17,6 @@ from ray.serve.context import (
 )
 from ray.serve._private.common import MultiplexedReplicaInfo
 from ray.serve import metrics
-from ray._private.utils import get_or_create_event_loop
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

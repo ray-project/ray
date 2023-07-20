@@ -396,6 +396,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             candidates = self._multiplexed_model_id_to_replica_ids[model_id].difference(
                 blacklist_replica_ids
             )
+            if len(candidates) > 0:
+                return candidates
         if fallback:
             # Sort the replicas based on the number of models they are serving.
             # Choose the replica with the least number of models.
