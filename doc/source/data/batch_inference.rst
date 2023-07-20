@@ -418,3 +418,92 @@ Suppose your cluster has 4 nodes, each with 16 CPUs. To limit to at most
         compute=ray.data.ActorPoolStrategy(size=12)
         )
     predictions.show(limit=1)
+
+
+Using models from Ray Train
+---------------------------
+
+Models that have been trained with :ref:`Ray Train <train-docs>` can then be used for batch inference with :ref:`Ray Data <data>` via the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` that is returned by :ref:`Ray Train <train-docs>`.
+
+**Step 1:** Train a model with :ref:`Ray Train <train-docs>`.
+
+.. testcode::
+
+    import ray
+    from ray.train.xgboost import XGBoostTrainer
+    from ray.air.config import ScalingConfig
+
+    dataset = ray.data.read_csv("s3://anonymous@air-example-data/breast_cancer.csv")
+    train_dataset, valid_dataset = dataset.train_test_split(test_size=0.3)
+
+    trainer = XGBoostTrainer(
+        scaling_config=ScalingConfig(
+            num_workers=2,
+            use_gpu=False,
+        ),
+        label_column="target",
+        num_boost_round=20,
+        params={
+            "objective": "binary:logistic",
+            "eval_metric": ["logloss", "error"],
+        },
+        datasets={"train": train_dataset, "valid": valid_dataset},
+    )
+    result = trainer.fit()
+
+.. testoutput::
+    :hide:
+
+    ...
+
+**Step 2:** Extract the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` from the training :class:`Result <ray.air.Result>`.
+
+.. testcode::
+
+    checkpoint = result.checkpoint
+
+**Step 3:** Use Ray Data for batch inference. To load in the model from the :class:`Checkpoint <ray.air.checkpoint.Checkpoint>` inside the Python class, use one of the :ref:`framework-specific Checkpoint classes <train-framework-catalog>`.
+
+In this case, we use the :class:`XGBoostCheckpoint <ray.train.xgboost.XGBoostCheckpoint>` to load the model.
+
+The rest of the logic looks the same as in the `Quickstart <#quickstart>`_.
+
+.. testcode::
+    
+    from typing import Dict
+    import pandas as pd
+    import numpy as np
+    import xgboost
+
+    from ray.air import Checkpoint
+    from ray.train.xgboost import XGBoostCheckpoint
+
+    test_dataset = valid_dataset.drop_columns(["target"])
+
+    class XGBoostPredictor:
+        def __init__(self, checkpoint: Checkpoint):
+            xgboost_checkpoint = XGBoostCheckpoint.from_checkpoint(checkpoint)
+            self.model = xgboost_checkpoint.get_model()
+        
+        def __call__(self, data: pd.DataFrame) -> Dict[str, np.ndarray]:
+            dmatrix = xgboost.DMatrix(data)
+            return {"predictions": self.model.predict(dmatrix)}
+    
+    
+    # Use 2 parallel actors for inference. Each actor predicts on a
+    # different partition of data.
+    scale = ray.data.ActorPoolStrategy(size=2)
+    # Map the Predictor over the Dataset to get predictions.
+    predictions = test_dataset.map_batches(
+        XGBoostPredictor, 
+        compute=scale,
+        batch_format="pandas",
+        # Pass in the Checkpoint to the XGBoostPredictor constructor.
+        fn_constructor_kwargs={"checkpoint": checkpoint}
+    )
+    predictions.show(limit=1)
+
+.. testoutput::
+    :options: +MOCK
+
+    {'predictions': 0.9969483017921448}
