@@ -606,7 +606,8 @@ class ProgressReporter(Callback):
         """
         self._verbosity = verbosity
         self._start_time = time.time()
-        self._last_heartbeat_time = 0
+        self._last_heartbeat_time = float("-inf")
+        self._start_time = time.time()
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
 
@@ -810,7 +811,7 @@ class TuneReporterBase(ProgressReporter):
     def __init__(
         self,
         verbosity: AirVerbosity,
-        num_samples: int,
+        num_samples: int = 0,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
@@ -1089,3 +1090,16 @@ class TrainReporter(ProgressReporter):
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
         print(self._get_heartbeat(trials, force_full_output=force))
+
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List[Trial],
+        trial: Trial,
+        result: Dict,
+        **info,
+    ):
+        self._last_heartbeat_time = time.time()
+        super().on_trial_result(
+            iteration=iteration, trials=trials, trial=trial, result=result, **info
+        )
