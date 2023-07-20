@@ -388,7 +388,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
     def _get_candidate_replica_ids_for_matched_model_ids(
-        self, model_id: str, blacklist_replica_ids: Set[str], fallback = False
+        self, model_id: str, blacklist_replica_ids: Set[str], fallback=False
     ) -> Set[str]:
         candidates = set()
 
@@ -467,8 +467,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         break
                     await asyncio.sleep(0.01)
                 if not candidate_replica_ids:
-                    candidate_replica_ids = self._get_candidate_replica_ids_for_matched_model_ids(
-                        request_metadata.multiplexed_model_id, replica_ids_attempted, fallback=True
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_matched_model_ids(
+                            request_metadata.multiplexed_model_id,
+                            replica_ids_attempted,
+                            fallback=True,
+                        )
                     )
 
             if not candidate_replica_ids:

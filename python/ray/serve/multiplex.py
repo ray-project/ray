@@ -147,13 +147,9 @@ class _ModelMultiplexWrapper:
                 self.models_load_counter.inc()
                 load_start_time = time.time()
                 if self.self_arg is None:
-                    self.models[
-                        model_id
-                    ] = await self._func(model_id)
+                    self.models[model_id] = await self._func(model_id)
                 else:
-                    self.models[
-                        model_id
-                    ] = await self._func(self.self_arg, model_id)
+                    self.models[model_id] = await self._func(self.self_arg, model_id)
                 self._push_multiplexed_replica_info = True
                 self._model_load_tasks.discard(model_id)
                 self.model_load_latency_s.set(time.time() - load_start_time)
