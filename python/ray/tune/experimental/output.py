@@ -86,6 +86,7 @@ BLACKLISTED_KEYS = {
     "trial_id",
     "experiment_tag",
     "should_checkpoint",
+    "_report_on",  # LIGHTNING_REPORT_STAGE_KEY
 }
 
 VALID_SUMMARY_TYPES = {
@@ -615,6 +616,8 @@ class ProgressReporter(Callback):
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
 
+        self._in_block = None
+
     @property
     def verbosity(self) -> AirVerbosity:
         return self._verbosity
@@ -626,6 +629,19 @@ class ProgressReporter(Callback):
     ):
         self._start_time = start_time
 
+    def _start_block(self, indicator: Any):
+        if self._in_block != indicator:
+            self._end_block()
+        self._in_block = indicator
+
+    def _end_block(self):
+        if self._in_block:
+            print("")
+        self._in_block = None
+
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        self._end_block()
+
     def experiment_started(
         self,
         experiment_name: str,
@@ -636,6 +652,7 @@ class ProgressReporter(Callback):
         tensorboard_path: Optional[str] = None,
         **kwargs,
     ):
+        self._start_block("exp_start")
         print(f"\nView detailed results here: {experiment_path}")
 
         if tensorboard_path:
@@ -643,8 +660,6 @@ class ProgressReporter(Callback):
                 f"To visualize your results with TensorBoard, run: "
                 f"`tensorboard --logdir {tensorboard_path}`"
             )
-
-        print("")
 
     @property
     def _time_heartbeat_str(self):
@@ -697,6 +712,7 @@ class ProgressReporter(Callback):
     ):
         if self.verbosity < self._intermediate_result_verbosity:
             return
+        self._start_block(f"trial_{trial}_result_{result[TRAINING_ITERATION]}")
         curr_time_str, running_time_str = _get_time_str(self._start_time, time.time())
         print(
             f"{self._addressing_tmpl.format(trial)} "
@@ -704,7 +720,6 @@ class ProgressReporter(Callback):
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial, result)
-        print("")
 
     def on_trial_complete(
         self, iteration: int, trials: List[Trial], trial: Trial, **info
@@ -715,13 +730,14 @@ class ProgressReporter(Callback):
         finished_iter = 0
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             finished_iter = trial.last_result[TRAINING_ITERATION]
+
+        self._start_block(f"trial_{trial}_complete")
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"completed after {finished_iter} iterations "
             f"at {curr_time_str}. Total running time: " + running_time_str
         )
         self._print_result(trial)
-        print("")
 
     def on_checkpoint(
         self,
@@ -737,18 +753,20 @@ class ProgressReporter(Callback):
         saved_iter = "?"
         if trial.last_result and TRAINING_ITERATION in trial.last_result:
             saved_iter = trial.last_result[TRAINING_ITERATION]
+
+        self._start_block(f"trial_{trial}_result_{saved_iter}")
         print(
             f"{self._addressing_tmpl.format(trial)} "
             f"saved a checkpoint for iteration {saved_iter} "
             f"at: {checkpoint.dir_or_data}"
         )
-        print("")
 
     def on_trial_start(self, iteration: int, trials: List[Trial], trial: Trial, **info):
         if self.verbosity < self._start_end_verbosity:
             return
         has_config = bool(trial.config)
 
+        self._start_block(f"trial_{trial}_start")
         if has_config:
             print(
                 f"{self._addressing_tmpl.format(trial)} " f"started with configuration:"
@@ -759,7 +777,6 @@ class ProgressReporter(Callback):
                 f"{self._addressing_tmpl.format(trial)} "
                 f"started without custom configuration."
             )
-        print("")
 
 
 def _detect_reporter(
@@ -930,6 +947,7 @@ class TuneTerminalReporter(TuneReporterBase):
             trials, *sys_args, force_full_output=force
         )
 
+        self._start_block("heartbeat")
         for s in heartbeat_strs:
             print(s)
         # now print the table using Tabulate
@@ -951,12 +969,12 @@ class TuneTerminalReporter(TuneReporterBase):
         )
         if more_infos:
             print(", ".join(more_infos))
-        print()
 
         trials_with_error = _get_trials_with_error(trials)
         if not trials_with_error:
             return
 
+        self._start_block("status_errored")
         print(f"Number of errored trials: {len(trials_with_error)}")
         fail_header = ["Trial name", "# failures", "error file"]
         fail_table_data = [
@@ -978,7 +996,6 @@ class TuneTerminalReporter(TuneReporterBase):
         )
         if any(trial.status == Trial.TERMINATED for trial in trials_with_error):
             print("* The trial terminated successfully after retrying.")
-        print()
 
 
 class TuneRichReporter(TuneReporterBase):

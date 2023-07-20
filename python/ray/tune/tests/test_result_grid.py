@@ -226,9 +226,11 @@ def test_result_repr(ray_start_2_cpus):
     result = result_grid[0]
 
     from ray.tune.result import AUTO_RESULT_KEYS
+    from ray.tune.experimental.output import BLACKLISTED_KEYS
 
     representation = result.__repr__()
     assert not any(key in representation for key in AUTO_RESULT_KEYS)
+    assert not any(key in representation for key in BLACKLISTED_KEYS)
 
 
 def test_result_grid_repr():
