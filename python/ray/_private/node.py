@@ -416,20 +416,22 @@ class Node:
         try_to_create_directory(self._runtime_env_dir)
 
     def _get_node_labels(self):
-        def merge_labels(env_dict, params_dict):
+        def merge_labels(env_override_dict, params_dict):
             """Merges two dictionaries, picking from the
             first in the event of a conflict. Also emit a warning on every
             conflict.
             """
 
             result = params_dict.copy()
-            result.update(env_dict)
+            result.update(env_override_dict)
 
-            for key in set(env_dict.keys()).intersection(set(params_dict.keys())):
-                if params_dict[key] != env_dict[key]:
+            for key in set(env_override_dict.keys()).intersection(
+                set(params_dict.keys())
+            ):
+                if params_dict[key] != env_override_dict[key]:
                     logger.warning(
                         "Autoscaler is overriding your label:"
-                        f"{key}: {params_dict[key]} with {env_dict[key]}."
+                        f"{key}: {params_dict[key]} to {key}: {env_override_dict[key]}."
                     )
             return result
 
@@ -441,11 +443,9 @@ class Node:
             except Exception:
                 logger.exception(f"Failed to load {env_string}")
                 raise
-            logger.debug(f"Autoscaler overriding labels: {env_labels}.")
+            logger.info(f"Autoscaler overriding labels: {env_labels}.")
 
-        return merge_labels(
-            env_labels, self._ray_params.labels if self._ray_params.labels else {}
-        )
+        return merge_labels(env_labels, self._ray_params.labels or {})
 
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
