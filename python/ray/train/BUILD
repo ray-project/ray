@@ -9,7 +9,8 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
-            "_internal/session.py"
+            "_internal/session.py",
+            "context.py"
         ]
     ),
     size = "large",
@@ -20,7 +21,8 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
-        "_internal/session.py"
+        "_internal/session.py",
+        "context.py"
     ],
     tags = ["team:ml"],
     gpu = True
