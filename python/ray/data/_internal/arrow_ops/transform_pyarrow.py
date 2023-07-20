@@ -23,7 +23,6 @@ def take_table(
     """
 
     import pyarrow
-
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
@@ -49,7 +48,6 @@ def unify_schemas(
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas."""
     import pyarrow as pa
-
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,
@@ -123,6 +121,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
+    import pyarrow
     from ray.data.extensions import ArrowTensorType, ArrowVariableShapedTensorType
 
     # Single flat list of chunks across all chunked arrays.
@@ -256,6 +255,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 def concat_and_sort(
     blocks: List["pyarrow.Table"], key: "SortKeyT", descending: bool
 ) -> "pyarrow.Table":
+    import pyarrow
     ret = concat(blocks)
     indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
     return take_table(ret, indices)
@@ -267,6 +267,7 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
 
     This will create a new table by combining the chunks the input table has.
     """
+    import pyarrow
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
