@@ -16,7 +16,6 @@ from ray.serve.generated.serve_pb2 import (
     StatusOverview as StatusOverviewProto,
 )
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
-from google.protobuf.any_pb2 import Any as ProtoAny
 
 EndpointTag = str
 ReplicaTag = str
@@ -394,6 +393,7 @@ class MultiplexedReplicaInfo:
     model_ids: List[str]
 
 
+# TODO (genesu): maybe merge these two classes
 @dataclass
 class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
@@ -406,5 +406,5 @@ class StreamingHTTPRequest:
 class StreamingGRPCRequest:
     """Sent from the GRPC proxy to replicas on the streaming codepath."""
 
-    pickled_grpc_user_request: ProtoAny
+    pickled_grpc_user_request: bytes
     http_proxy_handle: ActorHandle

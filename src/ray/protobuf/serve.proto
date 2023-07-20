@@ -242,10 +242,13 @@ service PredictAPIsService {
 
 message TestIn {
   string name = 1;
+  string foo = 2;
+  int64 num = 3;
 }
 
 message TestOut {
   string greeting = 1;
+  int64 num_x2 = 2;
 }
 
 message UserRequest {

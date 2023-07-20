@@ -736,7 +736,7 @@ class RayServeReplica:
     ) -> bytes:
         print("in call_user_method_with_grpc_serialization", request_metadata, request)
         print("request.pickled_grpc_user_request", request.pickled_grpc_user_request)
-        user_request = pickle.loads(request.pickled_grpc_user_request)
+        user_request = request.pickled_grpc_user_request
         print("user_request", user_request)
 
         runner_method = self.get_runner_method(request_metadata)
@@ -752,9 +752,7 @@ class RayServeReplica:
         method_to_call = sync_to_async(runner_method)
 
         result = await method_to_call(user_request)
-        serialized_result = result.SerializeToString()
-        print("call_user_method!!!", serialized_result)
-        return serialized_result
+        return result
 
     async def call_user_method(
         self,

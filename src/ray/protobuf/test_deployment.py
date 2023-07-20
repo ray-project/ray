@@ -1,6 +1,5 @@
 import time
 
-from google.protobuf.any_pb2 import Any
 from starlette.requests import Request
 
 from ray import serve
@@ -9,18 +8,16 @@ from ray.serve.generated import serve_pb2
 
 @serve.deployment
 class GrpcDeployment:
-    def __call__(self, any_input: Any):
-        # Everything done here can be transparently performed in the Serve replica
-        # (assuming they use type annotations for the input type).
-
-        # TODO: this packing and unpaking would go into replica
+    def __call__(self, my_input: bytes) -> bytes:
         request = serve_pb2.TestIn()
-        any_input.Unpack(request)
-        # output = self.call(request)
-        output = serve_pb2.TestOut(greeting=f"Hello {request.name}")
-        any_output = Any()
-        any_output.Pack(output)
-        return any_output
+        request.ParseFromString(my_input)
+        greeting = f"Hello {request.name} from {request.foo}"
+        num_x2 = request.num * 2
+        output = serve_pb2.TestOut(
+            greeting=greeting,
+            num_x2=num_x2,
+        )
+        return output.SerializeToString()
 
 
 g = GrpcDeployment.options(name="test-name").bind()

@@ -6,8 +6,6 @@ from typing import List, Optional, Tuple
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.generated import serve_pb2
 
-from google.protobuf.any_pb2 import Any as ProtoAny
-
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

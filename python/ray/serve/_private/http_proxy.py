@@ -69,7 +69,6 @@ from ray.serve._private.utils import (
     call_function_from_import_path,
     get_random_letters,
 )
-from google.protobuf.any_pb2 import Any as ProtoAny
 
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -570,7 +569,7 @@ class GenericProxy:
         if isinstance(serve_request, GRPCServeRequest):
             assignment_task = handle.remote(
                 StreamingGRPCRequest(
-                    pickled_grpc_user_request=pickle.dumps(serve_request.user_request),
+                    pickled_grpc_user_request=serve_request.user_request,
                     http_proxy_handle=self.self_actor_handle,
                 )
             )
@@ -835,11 +834,8 @@ class GRPCProxy(GenericProxy):
         # TODO (genesu): Non-streaming request only has one result. Make this work
         #  with streaming results as well.
         print("_consume_generator, obj_ref_generator", obj_ref_generator)
-        result = await next(obj_ref_generator)
-        print("_consume_generator, result", result)
-        user_response = ProtoAny()
-        user_response.ParseFromString(result)
-        print("_consume_generator, deserialized_result", user_response)
+        user_response = await next(obj_ref_generator)
+        print("_consume_generator, result", user_response)
         response = serve_pb2.RayServeResponse(
             user_response=user_response,
             request_id=request_id,
