@@ -1319,7 +1319,10 @@ async def test_api_manager_list_runtime_envs(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     data_source_client.get_all_registered_runtime_env_agent_ids = MagicMock()
     data_source_client.get_all_registered_runtime_env_agent_ids.return_value = [
-        "1", "2", "3"]
+        "1",
+        "2",
+        "3",
+    ]
 
     data_source_client.get_runtime_envs_info = AsyncMock()
     data_source_client.get_runtime_envs_info.side_effect = [
