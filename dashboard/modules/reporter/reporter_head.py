@@ -39,7 +39,7 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
-WARNING_FOR_MULTI_TASK_IN_A_WORKER: str = "Warning: This task is running in a worker process that is running multiple tasks. The information that follows may come from any of these tasks:"
+WARNING_FOR_MULTI_TASK_IN_A_WORKER = "Warning: This task is running in a worker process that is running multiple tasks. The information that follows may come from any of these tasks:"
 
 
 def get_warning_text_in_html(task_ids: List[str]) -> str:
@@ -71,7 +71,12 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         temp_dir = dashboard_head.temp_dir
         self.service_discovery = PrometheusServiceDiscoveryWriter(gcs_address, temp_dir)
         self._gcs_aio_client = dashboard_head.gcs_aio_client
-        self.set_up_state_api()
+        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
+        self._state_api_data_source_client = StateDataSourceClient(
+            gcs_channel, self._dashboard_head.gcs_aio_client
+        )
+        # Set up the state API in order to fetch task information.
+        self._state_api = StateAPIManager(self._state_api_data_source_client)
 
     async def _update_stubs(self, change):
         if change.old:
@@ -171,16 +176,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 if task and "task_id" in task
             ]
         return task_ids_in_a_worker
-
-    def set_up_state_api(self):
-        """
-        Set up the state API in order to fetch task information.
-        """
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._state_api_data_source_client = StateDataSourceClient(
-            gcs_channel, self._dashboard_head.gcs_aio_client
-        )
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
 
     async def get_worker_details_for_task(
         self, task_id: str, attempt_number: int
