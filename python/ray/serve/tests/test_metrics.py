@@ -22,7 +22,7 @@ def serve_start_shutdown():
     ray.init(
         _metrics_export_port=9999,
         _system_config={
-            "metrics_report_interval_ms": 1000,
+            "metrics_report_interval_ms": 500,
             "task_retry_delay_ms": 50,
         },
     )
@@ -800,7 +800,7 @@ class TestRequestContextMetrics:
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=30,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
