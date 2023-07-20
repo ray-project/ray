@@ -1,3 +1,4 @@
+import argparse
 import sys
 from typing import (
     Any,
@@ -462,6 +463,10 @@ def _render_table_item(
     key: str, item: Any, prefix: str = ""
 ) -> Iterable[Tuple[str, str]]:
     key = prefix + key
+
+    if isinstance(item, argparse.Namespace):
+        item = item.__dict__
+
     if isinstance(item, float):
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
@@ -470,7 +475,6 @@ def _render_table_item(
         flattened = flatten_dict(item)
         for k, v in sorted(flattened.items()):
             yield key + "/" + str(k), _max_len(v)
-
     else:
         yield key, _max_len(item, 20)
 
@@ -607,7 +611,8 @@ class ProgressReporter(Callback):
         """
         self._verbosity = verbosity
         self._start_time = time.time()
-        self._last_heartbeat_time = 0
+        self._last_heartbeat_time = float("-inf")
+        self._start_time = time.time()
         self._progress_metrics = progress_metrics
         self._trial_last_printed_results = {}
 
@@ -849,7 +854,7 @@ class TuneReporterBase(ProgressReporter):
     def __init__(
         self,
         verbosity: AirVerbosity,
-        num_samples: int,
+        num_samples: int = 0,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         config: Optional[Dict] = None,
@@ -1132,3 +1137,16 @@ class TrainReporter(ProgressReporter):
 
     def _print_heartbeat(self, trials, *args, force: bool = False):
         print(self._get_heartbeat(trials, force_full_output=force))
+
+    def on_trial_result(
+        self,
+        iteration: int,
+        trials: List[Trial],
+        trial: Trial,
+        result: Dict,
+        **info,
+    ):
+        self._last_heartbeat_time = time.time()
+        super().on_trial_result(
+            iteration=iteration, trials=trials, trial=trial, result=result, **info
+        )
