@@ -199,7 +199,7 @@ class TestCatalog(unittest.TestCase):
                 view_requirements=None,
             )
 
-            model_config = catalog.get_encoder_config(
+            model_config = catalog._get_encoder_config(
                 observation_space=input_space, model_config_dict=model_config_dict
             )
             self.assertEqual(type(model_config), model_config_type)
@@ -328,7 +328,7 @@ class TestCatalog(unittest.TestCase):
                 if framework == "tf2":
                     framework = "tf2"
 
-                dist_cls = catalog.get_dist_cls_from_action_space(
+                dist_cls = catalog._get_dist_cls_from_action_space(
                     action_space=action_space,
                     framework=framework,
                 )
@@ -450,9 +450,9 @@ class TestCatalog(unittest.TestCase):
                 }
 
         class MyCustomCatalog(PPOCatalog):
-            def __post_init__(self):
+            def _determine_components(self):
                 self._action_dist_class_fn = functools.partial(
-                    self.get_dist_cls_from_action_space, action_space=self.action_space
+                    self._get_dist_cls_from_action_space, action_space=self.action_space
                 )
                 self.latent_dims = (10,)
                 self.encoder_config = MyCostumTorchEncoderConfig(

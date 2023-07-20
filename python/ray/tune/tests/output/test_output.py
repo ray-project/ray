@@ -1,4 +1,5 @@
 import argparse
+
 from unittest import mock
 
 import pytest
