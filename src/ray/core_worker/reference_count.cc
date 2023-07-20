@@ -556,7 +556,7 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
 void ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
   size_t owned_objs = 0;
   absl::MutexLock lock(&mutex_);
-  if(!std::filesystem::exists(prefix)) {
+  if (!std::filesystem::exists(prefix)) {
     std::filesystem::create_directories(prefix);
   }
   for (auto &[obj_id, meta] : object_id_refs_) {
@@ -566,7 +566,7 @@ void ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
       out << meta.pinned_at_raylet_id->Hex() << std::endl;
     }
   }
-  RAY_LOG(INFO) << "Dump owner info into " << prefix << ", num="<< owned_objs;
+  RAY_LOG(INFO) << "Dump owner info into " << prefix << ", num=" << owned_objs;
 }
 
 bool ReferenceCounter::HasOwner(const ObjectID &object_id) const {
