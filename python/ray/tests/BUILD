@@ -228,6 +228,7 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler_e2e.py",
     "test_monitor_service.py",
   ],
   size = "medium",
@@ -241,7 +242,6 @@ py_test_module_list(
     "test_batch_node_provider_integration.py",
     "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
-    "test_autoscaler_e2e.py",
     "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
