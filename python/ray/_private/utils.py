@@ -1942,13 +1942,11 @@ def parse_node_labels_json(
             if not isinstance(value, str):
                 raise ValueError(f'The value of the "{key}" is not string type')
     except Exception as e:
-        cli_logger.error(
-            "`{}` is not a valid JSON string, detail error:{}",
+        cli_logger.abort(
+            "`{}` is not a valid JSON string, detail error:{}"
+            "Valid values look like this: `{}`",
             cf.bold(f"{command_arg}={labels_json}"),
             str(e),
-        )
-        cli_logger.abort(
-            "Valid values look like this: `{}`",
             cf.bold(f'{command_arg}=\'{{"gpu_type": "A100", "region": "us"}}\''),
         )
     return labels
@@ -1960,7 +1958,7 @@ def validate_node_labels(labels: Dict[str, str]):
     for key in labels.keys():
         if key.startswith(ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX):
             raise ValueError(
-                f"Custom label keys cannot start with the prefix "
-                f"{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}. "
+                f"Custom label keys `{key}` cannot start with the prefix "
+                f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
             )
