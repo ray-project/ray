@@ -44,6 +44,10 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
+# Sync with src/ray/common/constants.h
+AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
+AUTOSCALER_NAMESPACE = "__autoscaler"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless

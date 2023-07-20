@@ -1961,7 +1961,7 @@ def status(address: str, redis_password: str, verbose: bool):
     error = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_ERROR
     )
-    print(debug_status(status, error, verbose=verbose))
+    print(debug_status(status, error, verbose=verbose, address=address))
 
 
 @cli.command(hidden=True)
