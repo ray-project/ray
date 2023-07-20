@@ -2707,7 +2707,8 @@ genrule(
         sed -i -E 's/from opencensus.proto.resource.v1 import/from . import/' "$${files[@]}"
         # TODO(rickyx): Remove this experimental path rewrite once we move autoscaler proto out
         # of experimental.
-        sed -i -E 's/from ..experimental/from ./' "python/ray/core/generated/autoscaler_pb2_grpc.py"
+        autoscale_files=(`ls python/ray/core/generated/autoscaler_pb2*.py`)
+        sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,
