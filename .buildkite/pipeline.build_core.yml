@@ -1,0 +1,14 @@
+#ci:group=:book: core tests (civ2)
+
+- label: ":python: (small & client)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - bash ./ci/ci.sh prepare_docker
+    - ./ci/env/env_info.sh
+    - pip install ray[client]
+    - bazel test --config=ci $(./ci/run/bazel_export_options) 
+      --test_tag_filters=client_tests,small_size_python_tests,-civ1
+      -- python/ray/tests/...
