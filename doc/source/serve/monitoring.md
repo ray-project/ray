@@ -143,7 +143,7 @@ You can set a custom request ID by setting `RAY_SERVE_REQUEST_ID` in each reques
 ```{literalinclude} doc_code/monitoring/request_id.py
 :language: python
 ```
-In the log, you can see 123-234 is the request ID, and the request ID is also included in the response.
+Request ID `123-234` is printed in the http proxy log file and deployment log file, and the request ID is also included in the response.
 
 HTTP proxy log file:
 ```
