@@ -7,6 +7,14 @@ import grpc
 import aiohttp.web
 
 import ray._private.utils
+from ray.autoscaler._private.autoscaler import AutoscalerSummary
+from ray.autoscaler._private.node_provider_availability_tracker import (
+    NodeAvailabilitySummary,
+)
+from ray.autoscaler._private.util import (
+    LoadMetricsSummary,
+    get_per_node_breakdown_as_dict,
+)
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -75,6 +83,18 @@ def node_stats_to_dict(message):
         return result
     finally:
         message.core_workers_stats.extend(core_workers_stats)
+
+
+def combine_data(node_list, node_logical_resource):
+    for node in node_list["data"]["summary"]:
+        node_id = node["nodeId"]
+        if node_id in node_logical_resource:
+            resource_info = node_logical_resource[node_id]
+            node_summary = node["raylet"].setdefault("summary", {})
+            node_summary.update(resource_info)
+    logger.info(f"node_list {type(node_list)}: {node_list}")
+
+    return node_list
 
 
 class NodeHead(dashboard_utils.DashboardHeadModule):
@@ -235,6 +255,97 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             **self.get_internal_states(),
         )
 
+    async def get_nodes_logical_resource(self):
+        (status, error) = await asyncio.gather(
+            *[
+                self._gcs_aio_client.internal_kv_get(
+                    key.encode(),
+                    namespace=None,
+                    timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+                )
+                for key in [
+                    ray_constants.DEBUG_AUTOSCALING_STATUS_LEGACY,
+                    ray_constants.DEBUG_AUTOSCALING_ERROR,
+                ]
+            ]
+        )
+        if error:
+            return {}
+
+        status_dict = json.loads(status)
+
+        lm_summary_dict = status_dict.get("load_metrics_report")
+        if lm_summary_dict:
+            lm_summary = LoadMetricsSummary(**lm_summary_dict)
+
+        autoscaler_summary_dict = status_dict.get("autoscaler_report")
+        node_availability_summary_dict = autoscaler_summary_dict.pop(
+            "node_availability_summary", {}
+        )
+        node_availability_summary = NodeAvailabilitySummary.from_fields(
+            **node_availability_summary_dict
+        )
+        autoscaler_summary = AutoscalerSummary(
+            node_availability_summary=node_availability_summary,
+            **autoscaler_summary_dict,
+        )
+
+        node_logical_resource = get_per_node_breakdown_as_dict(
+            lm_summary, autoscaler_summary.node_type_mapping, verbose=True
+        )
+        return node_logical_resource
+
+    @routes.get("/nodes/logical_resource")
+    @dashboard_optional_utils.aiohttp_cache
+    async def get_all_nodes_logical_resource(self, req) -> aiohttp.web.Response:
+        (status, error) = await asyncio.gather(
+            *[
+                self._gcs_aio_client.internal_kv_get(
+                    key.encode(),
+                    namespace=None,
+                    timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+                )
+                for key in [
+                    ray_constants.DEBUG_AUTOSCALING_STATUS,
+                    ray_constants.DEBUG_AUTOSCALING_ERROR,
+                ]
+            ]
+        )
+
+        status_dict = json.loads(status)
+
+        lm_summary_dict = status_dict.get("load_metrics_report")
+        if lm_summary_dict:
+            lm_summary = LoadMetricsSummary(**lm_summary_dict)
+
+        autoscaler_summary_dict = status_dict.get("autoscaler_report")
+        node_availability_summary_dict = autoscaler_summary_dict.pop(
+            "node_availability_summary", {}
+        )
+        node_availability_summary = NodeAvailabilitySummary.from_fields(
+            **node_availability_summary_dict
+        )
+        autoscaler_summary = AutoscalerSummary(
+            node_availability_summary=node_availability_summary,
+            **autoscaler_summary_dict,
+        )
+
+        node_logical_resource = get_per_node_breakdown_as_dict(
+            lm_summary, autoscaler_summary.node_type_mapping, verbose=True
+        )
+        logger.info(
+            f"node_logical_resource {type(node_logical_resource)}: {node_logical_resource}"
+        )
+
+        if node_logical_resource:
+            return dashboard_optional_utils.rest_response(
+                success=True,
+                message="Got the logical resource info for all clusters",
+                data=node_logical_resource,
+            )
+        else:
+            return aiohttp.web.HTTPInternalServerError(text=error)
+
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_nodes(self, req) -> aiohttp.web.Response:
@@ -242,7 +353,9 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         if view == "summary":
             all_node_summary = await DataOrganizer.get_all_node_summary()
             return dashboard_optional_utils.rest_response(
-                success=True, message="Node summary fetched.", summary=all_node_summary
+                success=True,
+                message="Node summary fetched.",
+                summary=all_node_summary,
             )
         elif view is not None and view.lower() == "hostNameList".lower():
             alive_hostnames = set()
