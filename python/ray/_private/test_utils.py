@@ -24,7 +24,6 @@ from dataclasses import dataclass
 import requests
 from ray._raylet import Config
 
-import grpc
 import numpy as np
 import psutil  # We must import psutil after ray because we bundle it with ray.
 from ray._private import (
@@ -32,7 +31,6 @@ from ray._private import (
 )
 from ray._private.worker import RayContext
 import yaml
-from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.gcs_utils as gcs_utils
@@ -45,9 +43,7 @@ from ray._raylet import GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
     gcs_pb2,
     node_manager_pb2,
-    node_manager_pb2_grpc,
     gcs_service_pb2,
-    gcs_service_pb2_grpc,
 )
 from ray.util.queue import Empty, Queue, _QueueActor
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy

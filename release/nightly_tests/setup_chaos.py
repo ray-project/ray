@@ -1,7 +1,7 @@
 import argparse
 import ray
 
-from ray._private.test_utils import get_and_run_node_killer
+from ray._private.test_grpc_utils import get_and_run_node_killer
 
 
 def parse_script_args():

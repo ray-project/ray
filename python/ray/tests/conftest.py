@@ -25,7 +25,6 @@ from ray._private.runtime_env.pip import PipProcessor
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
-    get_and_run_node_killer,
     init_error_pubsub,
     init_log_pubsub,
     setup_tls,
@@ -37,7 +36,7 @@ from ray._private.test_utils import (
     find_available_port,
     wait_for_condition,
 )
-from ray.cluster_utils import AutoscalingCluster, Cluster, cluster_not_supported
+from ray.cluster_utils import Cluster, cluster_not_supported
 
 logger = logging.getLogger(__name__)
 
@@ -866,53 +865,6 @@ def unstable_spilling_config(request, tmp_path):
 def slow_spilling_config(request, tmp_path):
     yield create_object_spilling_config(request, tmp_path)
 
-
-def _ray_start_chaos_cluster(request):
-    param = getattr(request, "param", {})
-    kill_interval = param.pop("kill_interval", None)
-    config = param.pop("_system_config", {})
-    config.update(
-        {
-            "task_retry_delay_ms": 100,
-        }
-    )
-    # Config of workers that are re-started.
-    head_resources = param.pop("head_resources")
-    worker_node_types = param.pop("worker_node_types")
-    cluster = AutoscalingCluster(
-        head_resources,
-        worker_node_types,
-        idle_timeout_minutes=10,  # Don't take down nodes.
-        **param,
-    )
-    cluster.start(_system_config=config)
-    ray.init("auto")
-    nodes = ray.nodes()
-    assert len(nodes) == 1
-
-    if kill_interval is not None:
-        node_killer = get_and_run_node_killer(kill_interval)
-
-    yield cluster
-
-    if kill_interval is not None:
-        ray.get(node_killer.stop_run.remote())
-        killed = ray.get(node_killer.get_total_killed_nodes.remote())
-        assert len(killed) > 0
-        died = {node["NodeID"] for node in ray.nodes() if not node["Alive"]}
-        assert died.issubset(
-            killed
-        ), f"Raylets {died - killed} that we did not kill crashed"
-
-    ray.shutdown()
-    cluster.shutdown()
-
-
-@pytest.fixture
-def ray_start_chaos_cluster(request):
-    """Returns the cluster and chaos thread."""
-    for x in _ray_start_chaos_cluster(request):
-        yield x
 
 
 # Set scope to "class" to force this to run before start_cluster, whose scope

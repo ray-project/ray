@@ -5,6 +5,8 @@ from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
     wait_for_condition,
+)
+from ray._private.test_grpc_utils import (
     get_resource_usage,
 )
 import pytest

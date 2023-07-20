@@ -20,6 +20,8 @@ from ray._private.test_utils import (
     init_error_pubsub,
     run_string_as_driver,
     wait_for_condition,
+)
+from ray._private.test_grpc_utils import (
     kill_raylet,
 )
 from ray.cluster_utils import Cluster, cluster_not_supported

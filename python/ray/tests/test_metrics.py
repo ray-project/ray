@@ -9,6 +9,8 @@ import ray
 from ray._private.test_utils import (
     wait_for_condition,
     wait_until_succeeded_without_exception,
+)
+from ray._private.test_grpc_utils import (
     get_node_stats,
 )
 from ray.core.generated import common_pb2

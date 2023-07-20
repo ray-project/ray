@@ -209,6 +209,7 @@ py_test_module_list(
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_utils.py",
+    "test_grpc_utils.py",
     "test_widgets.py",
     "test_node_labels.py",
   ],
