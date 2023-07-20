@@ -483,7 +483,7 @@ Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
   rpc::autoscaler::GetClusterStatusRequest request;
   rpc::autoscaler::GetClusterStatusReply reply;
   grpc::ClientContext context;
-  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+  PrepareContext(context, timeout_ms);
 
   grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
 
@@ -509,7 +509,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
   rpc::autoscaler::DrainNodeReply reply;
 
   grpc::ClientContext context;
-  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+  PrepareContext(context, timeout_ms);
 
   grpc::Status status = autoscaler_stub_->DrainNode(&context, request, &reply);
 
