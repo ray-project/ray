@@ -12,10 +12,10 @@ from ray._private.test_utils import (
     convert_actor_state,
     generate_system_config_map,
     is_placement_group_removed,
-    kill_actor_and_wait_for_failure,
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._private.test_grpc_utils import kill_actor_and_wait_for_failure
 from ray.autoscaler._private.commands import debug_status
 from ray.exceptions import RaySystemError
 from ray.util.client.ray_client_helpers import connect_to_client_or_not

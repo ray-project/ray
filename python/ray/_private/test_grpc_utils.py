@@ -11,6 +11,10 @@ from grpc._channel import _InactiveRpcError
 
 import ray
 import ray._private.ray_constants as ray_constants
+import ray._private.gcs_utils as gcs_utils
+from ray._private.test_utils import (
+    convert_actor_state,
+)
 from ray.core.generated import (
     node_manager_pb2,
     node_manager_pb2_grpc,
@@ -241,3 +245,19 @@ def ray_start_chaos_cluster(request):
     """Returns the cluster and chaos thread."""
     for x in _ray_start_chaos_cluster(request):
         yield x
+
+
+def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
+    actor_id = actor._actor_id.hex()
+    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
+    ray.kill(actor)
+    start = time.time()
+    while time.time() - start <= timeout:
+        actor_status = ray._private.state.actors(actor_id)
+        if (
+            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
+            or actor_status["NumRestarts"] > current_num_restarts
+        ):
+            return
+        time.sleep(retry_interval_ms / 1000.0)
+    raise RuntimeError("It took too much time to kill an actor: {}".format(actor_id))

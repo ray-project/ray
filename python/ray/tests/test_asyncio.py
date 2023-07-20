@@ -10,10 +10,10 @@ import pytest
 import ray
 from ray._private.test_utils import (
     SignalActor,
-    kill_actor_and_wait_for_failure,
     wait_for_condition,
     wait_for_pid_to_exit,
 )
+from ray._private.test_grpc_utils import kill_actor_and_wait_for_failure
 
 
 def test_asyncio_actor(ray_start_regular_shared):

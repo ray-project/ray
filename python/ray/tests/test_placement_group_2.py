@@ -11,11 +11,11 @@ from ray._private.test_utils import (
     generate_system_config_map,
     get_error_message,
     get_other_nodes,
-    kill_actor_and_wait_for_failure,
     placement_group_assert_no_leak,
     run_string_as_driver,
     wait_for_condition,
 )
+from ray._private.test_grpc_utils import kill_actor_and_wait_for_failure
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy

@@ -33,7 +33,6 @@ from ray._private.worker import RayContext
 import yaml
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
@@ -508,22 +507,6 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
         f"Cluster is up: {curr_nodes}/{num_nodes} nodes online after "
         f"{passed:.0f} seconds"
     )
-
-
-def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
-    actor_id = actor._actor_id.hex()
-    current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
-    ray.kill(actor)
-    start = time.time()
-    while time.time() - start <= timeout:
-        actor_status = ray._private.state.actors(actor_id)
-        if (
-            actor_status["State"] == convert_actor_state(gcs_utils.ActorTableData.DEAD)
-            or actor_status["NumRestarts"] > current_num_restarts
-        ):
-            return
-        time.sleep(retry_interval_ms / 1000.0)
-    raise RuntimeError("It took too much time to kill an actor: {}".format(actor_id))
 
 
 def wait_for_condition(
