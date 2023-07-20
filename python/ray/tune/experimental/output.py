@@ -1,3 +1,4 @@
+import argparse
 import sys
 from typing import (
     Any,
@@ -461,6 +462,10 @@ def _render_table_item(
     key: str, item: Any, prefix: str = ""
 ) -> Iterable[Tuple[str, str]]:
     key = prefix + key
+
+    if isinstance(item, argparse.Namespace):
+        item = item.__dict__
+
     if isinstance(item, float):
         # tabulate does not work well with mixed-type columns, so we format
         # numbers ourselves.
@@ -469,7 +474,6 @@ def _render_table_item(
         flattened = flatten_dict(item)
         for k, v in sorted(flattened.items()):
             yield key + "/" + str(k), _max_len(v)
-
     else:
         yield key, _max_len(item, 20)
 
