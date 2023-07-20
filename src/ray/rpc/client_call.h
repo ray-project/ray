@@ -194,7 +194,7 @@ class ClientCallManager {
                              const ClusterID &cluster_id = ClusterID::Nil(),
                              int num_threads = 1,
                              int64_t call_timeout_ms = -1)
-      : cluster_id_(ClusterID::Nil()),
+      : cluster_id_(cluster_id),
         main_service_(main_service),
         num_threads_(num_threads),
         shutdown_(false),
@@ -249,7 +249,7 @@ class ClientCallManager {
     }
 
     auto call = std::make_shared<ClientCallImpl<Reply>>(
-        callback, cluster_id_.load(), std::move(stats_handle), method_timeout_ms);
+        callback, cluster_id_, std::move(stats_handle), method_timeout_ms);
     // Send request.
     // Find the next completion queue to wait for response.
     call->response_reader_ = (stub.*prepare_async_function)(
@@ -265,14 +265,6 @@ class ClientCallManager {
     auto tag = new ClientCallTag(call);
     call->response_reader_->Finish(&call->reply_, &call->status_, (void *)tag);
     return call;
-  }
-
-  void SetClusterId(const ClusterID &cluster_id) {
-    auto old_id = cluster_id_.exchange(ClusterID::Nil());
-    if (!old_id.IsNil() && (old_id != cluster_id)) {
-      RAY_LOG(FATAL) << "Expected cluster ID to be Nil or " << cluster_id << ", but got"
-                     << old_id;
-    }
   }
 
   /// Get the main service of this rpc.
@@ -328,7 +320,7 @@ class ClientCallManager {
 
   /// UUID of the cluster. Potential race between creating a ClientCall object
   /// and setting the cluster ID.
-  SafeClusterID cluster_id_;
+  ClusterID cluster_id_;
 
   /// The main event loop, to which the callback functions will be posted.
   instrumented_io_context &main_service_;

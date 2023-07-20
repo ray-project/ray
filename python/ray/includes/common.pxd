@@ -336,7 +336,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CPythonGcsClient(const CGcsClientOptions &options)
 
         CRayStatus Connect(
-            CClusterID &cluster_id,
+            const CClusterID &cluster_id,
             int64_t timeout_ms)
         CRayStatus InternalKVGet(
             const c_string &ns, const c_string &key,
@@ -369,6 +369,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
+        CClusterID GetClusterId()
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(
