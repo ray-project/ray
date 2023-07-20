@@ -2,12 +2,15 @@ import logging
 import os
 import sys
 import unittest.mock
+from unittest.mock import patch
 
 import pytest
 
 import ray
 from ray._private.ray_constants import RAY_OVERRIDE_DASHBOARD_URL, DEFAULT_RESOURCES
+from ray.air.util.node import _get_node_id_from_node_ip
 import ray._private.services
+from ray._private.services import get_node_ip_address
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray._private.test_utils import (
     get_current_unused_port,
@@ -15,6 +18,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.util.client.ray_client_helpers import ray_start_client_server
+from ray.util.state import list_nodes
 
 
 def test_ray_init_context(shutdown_only):
@@ -330,6 +334,32 @@ def test_temp_dir_must_be_absolute(shutdown_only):
     # This test fails with a relative path _temp_dir.
     with pytest.raises(ValueError):
         ray.init(_temp_dir="relative_path")
+
+
+def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluster):
+    """Simulate the ray is started with node-ip-address (privately assigned IP).
+    
+    At this time, the driver should automatically use the node-ip-address given
+    to ray start.
+    """
+    with patch("ray._private.ray_constants.ENABLE_RAY_CLUSTER") as enable_cluster_constant:
+        # Without this, it will always use localhost (for MacOS and Windows).
+        enable_cluster_constant.return_value = True
+        ray_start_ip = get_node_ip_address()
+
+        with patch("ray._private.services.node_ip_address_from_perspective") as mocked_node_ip_address: # noqa
+            # Mock the node_ip_address_from_perspective will return the
+            # IP that's not assigned to ray start.
+            mocked_node_ip_address.return_value = "134.31.31.31"
+            cluster = ray_start_cluster
+            cluster.add_node(node_ip_address=ray_start_ip)
+            print(get_node_ip_address())
+            print(ray_start_ip)
+
+            # If the IP is not correctly configured, it will hang.
+            ray.init(address=cluster.address)
+            assert (_get_node_id_from_node_ip(get_node_ip_address()).hex()
+                    == ray.get_runtime_context().node_id)
 
 
 if __name__ == "__main__":

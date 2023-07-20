@@ -14,11 +14,13 @@ import socket
 import subprocess
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
-from typing import List, Optional, IO, AnyStr
+from typing import List, Optional, IO, AnyStr, Dict
 
 # Import psutil after ray so the packaged version is used.
 import psutil
+from filelock import FileLock
 
 # Ray modules
 import ray
@@ -645,6 +647,38 @@ def node_ip_address_from_perspective(address: str):
         s.close()
 
     return node_ip_address
+
+
+# def record_node_ip(node_ip_address: str, session_dir_path: str, unique_id: str):
+#     file_path = os.path.join(session_dir_path, "node_ip_address.json")
+
+#     # Maps a Node.unique_id to a dict that maps port names to port numbers.
+#     ip_by_node: Dict[str, str] = defaultdict(str)
+
+#     with FileLock(file_path + ".lock"):
+#         if not os.path.exists(file_path):
+#             with open(file_path, "w") as f:
+#                 json.dump({}, f)
+
+#         with open(file_path, "r") as f:
+#             ports_by_node.update(json.load(f))
+
+#         if (
+#             self.unique_id in ports_by_node
+#             and port_name in ports_by_node[self.unique_id]
+#         ):
+#             # The port has already been cached at this node, so use it.
+#             port = int(ports_by_node[self.unique_id][port_name])
+#         else:
+#             # Pick a new port to use and cache it at this node.
+#             port = default_port or self._get_unused_port(
+#                 set(ports_by_node[self.unique_id].values())
+#             )
+#             ports_by_node[self.unique_id][port_name] = port
+#             with open(file_path, "w") as f:
+#                 json.dump(ports_by_node, f)
+
+#     return port
 
 
 def get_node_ip_address(address="8.8.8.8:53"):
