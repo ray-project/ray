@@ -22,26 +22,18 @@ run() {
         --shard-url "$SHARD_URL_PREFIX/single-image-repeated-$NUM_IMAGES_PER_FILE-times" \
         --output-directory $DATA_DIR
     
-    time python resnet50_ray_air.py \
-        --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
-        --num-epochs "$NUM_EPOCHS" \
-        --batch-size "$BATCH_SIZE" \
-        --shuffle-buffer-size "$SHUFFLE_BUFFER_SIZE" \
-        --num-images-per-epoch "$NUM_IMAGES_PER_EPOCH" \
-        --train-sleep-time-ms 0 \
-        --data-root "$DATA_DIR" \
-        --use-ray-data 2>&1 | tee -a out
-    sleep 5
-    time python resnet50_ray_air.py \
-        --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
-        --num-epochs "$NUM_EPOCHS" \
-        --batch-size "$BATCH_SIZE" \
-        --shuffle-buffer-size "$SHUFFLE_BUFFER_SIZE" \
-        --num-images-per-epoch "$NUM_IMAGES_PER_EPOCH" \
-        --train-sleep-time-ms 0 \
-        --data-root "$DATA_DIR" \
-        --use-tf-data 2>&1 | tee -a out
-    sleep 5
+    for arg in "--use-ray-data" "--use-tf-data"; do
+        time python resnet50_ray_air.py \
+            --num-images-per-input-file "$NUM_IMAGES_PER_FILE" \
+            --num-epochs "$NUM_EPOCHS" \
+            --batch-size "$BATCH_SIZE" \
+            --shuffle-buffer-size "$SHUFFLE_BUFFER_SIZE" \
+            --num-images-per-epoch "$NUM_IMAGES_PER_EPOCH" \
+            --train-sleep-time-ms 0 \
+            --data-root "$DATA_DIR" \
+            "$arg" 2>&1 | tee -a out
+        sleep 5
+    done
 }
 
 # Test num_images_per_file x num_images_per_epoch dimensions to check that we
