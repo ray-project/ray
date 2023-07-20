@@ -97,6 +97,12 @@ def tf_crop_and_flip(image_buffer, num_channels=3):
     )
     # Flip to add a little more random distortion in.
     image_buffer = tf.image.random_flip_left_right(image_buffer)
+    image_buffer = tf.compat.v1.image.resize(
+        image_buffer,
+        [DEFAULT_IMAGE_SIZE, DEFAULT_IMAGE_SIZE],
+        method=tf.image.ResizeMethod.BILINEAR,
+        align_corners=False,
+    )
     return image_buffer
 
 
