@@ -470,6 +470,7 @@ def run(
 
     parameter_group = []
 
+    app_code_version = get_random_letters()
     for deployment in deployments:
         # Overwrite route prefix
         if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
@@ -486,7 +487,7 @@ def run(
             "init_kwargs": deployment.init_kwargs,
             "ray_actor_options": deployment._ray_actor_options,
             "config": deployment._config,
-            "version": deployment._version or get_random_letters(),
+            "version": app_code_version,
             "route_prefix": deployment.route_prefix,
             "url": deployment.url,
             "is_driver_deployment": deployment._is_driver_deployment,

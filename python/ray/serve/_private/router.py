@@ -385,6 +385,27 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
+    def _filter_replicas_code_version(self, replica_ids: Set[str]) -> Set[str]:
+        internal_replica_context = ray.serve.context.get_internal_replica_context()
+        if (
+            internal_replica_context is None
+            or internal_replica_context.replica_tag is None
+        ):
+            return replica_ids
+
+        current_replica_suffix = internal_replica_context.replica_tag.split("#")[1]
+        current_replica_version = current_replica_suffix.split("-")[0]
+
+        filtered = set()
+        for id in replica_ids:
+            target_replica_suffix = id.split("#")[1]
+            target_replica_version = target_replica_suffix.split("-")[0]
+
+            if target_replica_version == current_replica_version:
+                filtered.add(id)
+
+        return filtered
+
     def _get_candidate_replica_ids(
         self,
         blacklist_replica_ids: Set[str],
@@ -403,10 +424,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             candidates = self._multiplexed_model_id_to_replica_ids[
                 request_metadata.multiplexed_model_id
             ].difference(blacklist_replica_ids)
+            # Filter by replica code version if calling inside a deployment
+            candidates = self._filter_replicas_code_version(candidates)
             if len(candidates) > 0:
                 return candidates
 
-        return self._replica_id_set.difference(blacklist_replica_ids)
+        # Filter by replica code version if calling inside a deployment
+        candidates = self._replica_id_set.difference(blacklist_replica_ids)
+        return self._filter_replicas_code_version(candidates)
+        return candidates
 
     async def choose_two_replicas_with_backoff(
         self,
@@ -445,6 +471,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             chosen_ids = random.sample(
                 candidate_replica_ids, k=min(2, len(candidate_replica_ids))
             )
+            print("chosen_ids", chosen_ids)
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
             # If another iteration occurrs, the chosen replicas did not accept the

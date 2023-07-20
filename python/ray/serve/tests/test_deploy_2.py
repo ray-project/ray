@@ -1,3 +1,4 @@
+import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 import functools
 import os
@@ -14,6 +15,7 @@ from ray import serve
 from pydantic import ValidationError
 from ray.serve.drivers import DAGDriver
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.utils import check_obj_ref_ready_nowait
 
 
 class TestGetDeployment:
@@ -425,6 +427,62 @@ def test_deploy_application_unhealthy(serve_instance):
             == ApplicationStatus.UNHEALTHY
         )
         time.sleep(0.1)
+
+
+def test_communication_during_upgrade(serve_instance):
+    """When upgrading an application, deployments with different code versions
+    should not communicate with each other.
+    """
+
+    @serve.deployment(graceful_shutdown_timeout_s=10)
+    class SignalDeployment:
+        def __init__(self):
+            self.ready_event = asyncio.Event()
+
+        async def __call__(self, val):
+            return val + 1
+
+        async def block(self):
+            await self.ready_event.wait()
+
+    @serve.deployment
+    class Driver:
+        def __init__(self, handle):
+            self.handle = handle
+
+        async def __call__(self, val):
+            ref = await self.handle.remote(val)
+            return f"The answer is {await ref}"
+
+        async def pid(self):
+            return os.getpid()
+
+        async def block_downstream(self):
+            self.handle.block.remote()
+
+    handle = serve.run(Driver.bind(SignalDeployment.bind()))
+    driver_pid = ray.get(handle.pid.remote())
+    assert ray.get(handle.remote(6)) == "The answer is 7"
+
+    # Block before upgrade
+    ray.get(handle.block_downstream.remote())
+    assert ray.get(handle.remote(6)) == "The answer is 7"
+    handle = serve.run(Driver.bind(SignalDeployment.bind()), _blocking=False)
+
+    # Wait for the Driver replica to be teared down and a new one to come up
+    wait_for_condition(lambda: ray.get(handle.pid.remote()) != driver_pid)
+    # Send a request to the new Driver replica
+    ref = handle.remote(6)
+
+    # The ref should be blocked because Driver should refuse to send request
+    # to the outdated SignalDeployment replica
+    for _ in range(10):
+        assert not check_obj_ref_ready_nowait(ref)
+        time.sleep(0.1)
+
+    # Now just wait for SignalDeployment replica to be force-killed and for
+    # the request to be fulfilled
+    assert ray.get(ref) == "The answer is 7"
 
 
 if __name__ == "__main__":

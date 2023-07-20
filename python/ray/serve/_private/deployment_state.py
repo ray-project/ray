@@ -1588,13 +1588,15 @@ class DeploymentState:
                     f"to deployment {self._name}."
                 )
                 for _ in range(to_add):
-                    replica_name = ReplicaName(self._name, get_random_letters())
+                    version = self._target_state.version
+                    suffix = version.code_version[:6] + "-" + get_random_letters()
+                    replica_name = ReplicaName(self._name, suffix)
                     new_deployment_replica = DeploymentReplica(
                         self._controller_name,
                         self._detached,
                         replica_name.replica_tag,
                         replica_name.deployment_tag,
-                        self._target_state.version,
+                        version,
                     )
                     upscale.append(
                         new_deployment_replica.start(self._target_state.info)
@@ -2040,13 +2042,15 @@ class DriverDeploymentState(DeploymentState):
         upscale = []
         num_existing_replicas = self._replicas.count()
         for _ in range(self._target_state.num_replicas - num_existing_replicas):
-            replica_name = ReplicaName(self._name, get_random_letters())
+            version = self._target_state.version
+            suffix = version.code_version[:6] + "-" + get_random_letters()
+            replica_name = ReplicaName(self._name, suffix)
             new_deployment_replica = DeploymentReplica(
                 self._controller_name,
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
-                self._target_state.version,
+                version,
             )
             upscale.append(new_deployment_replica.start(self._target_state.info))
 
