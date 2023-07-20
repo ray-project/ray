@@ -231,32 +231,6 @@ def test_batching(serve_instance):
         assert resp == {"value": 42, "batch_size": 2}
 
 
-class TakeArrayReturnDataFramePredictor(Predictor):
-    def __init__(self, increment: int) -> None:
-        self.increment = increment
-
-    @classmethod
-    def from_checkpoint(
-        cls, checkpoint: Checkpoint
-    ) -> "TakeArrayReturnDataFramePredictor":
-        return cls(checkpoint.to_dict()["increment"])
-
-    def predict(self, data: np.ndarray) -> DataBatchType:
-        return pd.DataFrame(data + self.increment, columns=["col_a", "col_b"])
-
-
-def test_mixed_input_output_type_with_batching(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=TakeArrayReturnDataFramePredictor,
-        checkpoint=Checkpoint.from_dict({"increment": 2}),
-        batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
-    )
-
-    refs = [send_request.remote(json={"array": [40, 45]}) for _ in range(2)]
-    for resp in ray.get(refs):
-        assert resp == [{"col_a": 42.0, "col_b": 47.0}]
-
-
 app = FastAPI()
 
 
@@ -276,14 +250,19 @@ def test_air_integrations_in_pipeline(serve_instance):
     uri = f"file://{path}/test_uri"
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
-    predictor_cls = "ray.serve.tests.test_air_integrations.AdderPredictor"
+    @serve.deployment
+    class AdderService:
+        def __init__(self, checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, data):
+            return self.predictor.predict(data)
 
     with InputNode() as dag_input:
-        m1 = PredictorDeployment.bind(
-            predictor_cls=predictor_cls,
-            checkpoint=uri,
+        m1 = AdderService.bind(
+            checkpoint=Checkpoint.from_uri(uri),
         )
-        dag = m1.predict.bind(dag_input)
+        dag = m1.__call__.bind(dag_input)
     deployments = build(Ingress.bind(dag))
     for d in deployments:
         d.deploy()
