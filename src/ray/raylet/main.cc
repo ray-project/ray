@@ -156,10 +156,9 @@ int main(int argc, char *argv[]) {
   const bool is_head_node = FLAGS_head;
   const std::string labels_json_str = FLAGS_labels;
 
-  ray::ClusterID cluster_id = ray::ClusterID::Nil();
-  if (FLAGS_cluster_id != "") {
-    cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
-  }
+  RAY_CHECK(FLAGS_cluster_id != "") << "Expected cluster ID.";
+  ray::ClusterID cluster_id = ray::ClusterID::FromHex(FLAGS_cluster_id);
+  RAY_LOG(INFO) << "Setting cluster ID to: " << cluster_id;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
