@@ -3285,7 +3285,7 @@ def remote(
         object_refs = f_with_2_gpus.remote()
         assert ray.get(object_refs) == [1, 2]
 
-        @ray.remote(actor_class=True, num_cpus=2, resources={"CustomResource": 1})
+        @ray.remote(num_cpus=2, resources={"CustomResource": 1})
         class Foo:
             def method(self):
                 return 1
