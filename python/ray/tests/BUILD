@@ -61,6 +61,7 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
+    "test_node_label_scheduling_strategy.py",
     "test_protobuf_compatibility.py"
   ],
   size = "medium",
@@ -221,7 +222,7 @@ py_test_module_list(
     "test_gcs_ha_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "ray_ha", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
