@@ -182,6 +182,8 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id, int64_t timeout_ms)
       } else if (!status.IsGrpcError()) {
         return HandleGcsError(reply.status());
       } else {
+        grpc::ClientContext context;
+        PrepareContext(context, timeout_ms);
         status = GrpcStatusToRayStatus(
             node_info_stub_->GetClusterId(&context, request, &reply));
       }
@@ -191,7 +193,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id, int64_t timeout_ms)
     RAY_LOG(INFO) << "Client initialized with provided cluster ID: " << cluster_id_;
   }
 
-  RAY_CHECK(!cluster_id.IsNil()) << "Unexpected nil cluster ID.";
+  RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
   return Status::OK();
 }
 
