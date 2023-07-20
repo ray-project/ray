@@ -630,7 +630,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
             :hide:
 
             ...
-            
+
     Args:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
@@ -838,7 +838,7 @@ def get_local_rank() -> int:
     .. testcode::
 
         import torch
-        
+
         import ray
         from ray.air import session
         from ray.air.config import ScalingConfig
