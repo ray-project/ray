@@ -7,6 +7,7 @@ import logging
 import math
 import pickle
 import random
+import time
 from typing import (
     Any,
     AsyncGenerator,
@@ -34,6 +35,7 @@ from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -385,27 +387,25 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
+    def _get_candidate_replica_ids_for_matched_model_ids(
+        self, model_id: str, blacklist_replica_ids: Set[str]
+    ) -> Set[str]:
+        candidates = set()
+        if model_id in self._multiplexed_model_id_to_replica_ids:
+            candidates = self._multiplexed_model_id_to_replica_ids[model_id].difference(
+                blacklist_replica_ids
+            )
+        return candidates
+
     def _get_candidate_replica_ids(
         self,
         blacklist_replica_ids: Set[str],
-        request_metadata: Optional[RequestMetadata] = None,
     ) -> Set[str]:
         """Get candidates from the current replica set excluding the blacklist.
 
         If a model ID is present in request_metadata, any replicas that have it are
         prioritized.
         """
-        if (
-            request_metadata is not None
-            and request_metadata.multiplexed_model_id
-            in self._multiplexed_model_id_to_replica_ids
-        ):
-            candidates = self._multiplexed_model_id_to_replica_ids[
-                request_metadata.multiplexed_model_id
-            ].difference(blacklist_replica_ids)
-            if len(candidates) > 0:
-                return candidates
-
         return self._replica_id_set.difference(blacklist_replica_ids)
 
     async def choose_two_replicas_with_backoff(
@@ -436,12 +436,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Got replicas for deployment {self._deployment_name}, waking up.",
                     extra={"log_to_stderr": False},
                 )
+            candidate_replica_ids = set()
+            if request_metadata is not None and request_metadata.multiplexed_model_id:
+                start = time.time()
+                while (
+                    time.time() - start
+                    < RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+                ):
+                    candidate_replica_ids = (
+                        self._get_candidate_replica_ids_for_matched_model_ids(
+                            request_metadata.multiplexed_model_id, replica_ids_attempted
+                        )
+                    )
+                    if candidate_replica_ids:
+                        break
+                    await asyncio.sleep(0.01)
 
-            # Get candidates to sample from; this will exclude replicas used in a
-            # previous iteration until all replicas have been tried.
-            candidate_replica_ids = self._get_candidate_replica_ids(
-                replica_ids_attempted, request_metadata
-            )
+            if not candidate_replica_ids:
+                # Get candidates to sample from; this will exclude replicas used in a
+                # previous iteration until all replicas have been tried.
+                candidate_replica_ids = self._get_candidate_replica_ids(
+                    replica_ids_attempted
+                )
             chosen_ids = random.sample(
                 candidate_replica_ids, k=min(2, len(candidate_replica_ids))
             )
@@ -452,7 +468,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             replica_ids_attempted.update(chosen_ids)
             if replica_ids_attempted.issuperset(self._replica_id_set):
                 replica_ids_attempted.clear()
-
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 

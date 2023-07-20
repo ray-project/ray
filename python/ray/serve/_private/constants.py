@@ -219,3 +219,8 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 # Serve gauge metric set period.
 RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+
+# The time for router waiting for maching multiplexed model id with replica.
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "0")
+)
