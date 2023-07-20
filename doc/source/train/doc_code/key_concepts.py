@@ -106,8 +106,6 @@ run_config = RunConfig(
     # The experiment results will be saved to: storage_path/name
     storage_path="~/ray_results",
     # storage_path="s3://my_bucket/tune_results",
-    # Low training verbosity.
-    verbose=1,
     # Custom and built-in callbacks
     callbacks=[WandbLoggerCallback()],
     # Stopping criteria
