@@ -2892,7 +2892,7 @@
 
   run:
     timeout: 86400
-    script: python workloads/pytorch_pbt_failure.py
+    script: TEST_STORAGE_PATH="/mnt/cluster_storage" python workloads/pytorch_pbt_failure.py
     long_running: true
 
   smoke_test:

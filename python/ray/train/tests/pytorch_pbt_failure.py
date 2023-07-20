@@ -1,4 +1,5 @@
 import argparse
+import os
 import sys
 
 import numpy as np
@@ -71,6 +72,7 @@ tuner = Tuner(
         stop={"training_iteration": 1} if args.smoke_test else None,
         failure_config=FailureConfig(max_failures=-1),
         callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
+        storage_path=os.environ.get("TEST_STORAGE_PATH", "~/ray_results"),
     ),
 )
 
