@@ -1,10 +1,17 @@
+#!/usr/bin/env python3
+"""
+Download or generate a fake TF dataset from images.
+"""
+
 from typing import Union, Iterable, Tuple, Optional
 import os
 import requests
 import shutil
 import sys
-import tensorflow.compat.v1 as tf
 import time
+
+import tensorflow.compat.v1 as tf
+from streaming import MDSWriter
 
 import ray
 
@@ -143,7 +150,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--max-images-per-file",
-        default=256,
+        default=32,
         type=int,
     )
 
