@@ -80,7 +80,7 @@ def create_ray_dataset(path):
     df = pd.DataFrame.from_dict(dataset)
     return ray.data.from_pandas(df)
 
-def evaluate(model, eval_dataset_len, eval_dataloader, accelerator):
+def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize):
     model.eval()
     losses = []
     for step, batch in enumerate(eval_dataloader):
@@ -88,7 +88,7 @@ def evaluate(model, eval_dataset_len, eval_dataloader, accelerator):
             outputs = model(**batch)
 
         loss = outputs.loss
-        losses.append(accelerator.gather(loss.repeat(EVAL_BATCH_SIZE)))
+        losses.append(accelerator.gather(loss.repeat(bsize)))
 
     losses = torch.cat(losses)
     losses = losses[: eval_dataset_len]
@@ -100,9 +100,6 @@ def evaluate(model, eval_dataset_len, eval_dataloader, accelerator):
     return perplexity, eval_loss
 
 def training_function(kwargs: dict):
-    os.environ["RANK"] = str(session.get_world_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
     os.environ["OMP_NUM_THREADS"] = str(
         session.get_trial_resources().bundles[-1].get("CPU", 1)
     )
@@ -113,10 +110,6 @@ def training_function(kwargs: dict):
     args = argparse.Namespace(**kwargs["args"])
     special_tokens = kwargs.get("special_tokens", [])
     model_id = config["model_name"]
-    output_dir = config["output_dir"]
-
-    if not Path(output_dir).exists():
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # Sample hyper-parameters for learning rate, batch size, seed and a few other HPs
     lr = config["lr"]
@@ -310,7 +303,7 @@ def training_function(kwargs: dict):
                     {
                         "epoch": epoch,
                         "step": step,
-                        "train_loss": loss_sum.item() / train_ds_len,
+                        "train_loss": loss.item(),
                         "eval_loss": None,
                         "perplexity": None,
                         "number of iterations": step + 1,
@@ -331,7 +324,11 @@ def training_function(kwargs: dict):
         )
         
         perplex, eloss = evaluate(
-            model, valid_ds_len, valid_dataloader, accelerator
+            model, 
+            valid_ds_len, 
+            valid_dataloader, 
+            accelerator, 
+            bsize=config["eval_batch_size"]
         )
         accelerator.print("Eval result loss", eloss)
         accelerator.print("Eval perplex", perplex)
@@ -346,9 +343,9 @@ def training_function(kwargs: dict):
             {
                 "epoch": epoch,
                 "iteration": step,
-                "train_loss": loss_sum.item() / train_ds_len,
-                "eval_loss": eloss.item() / train_ds_len,
-                "perplexity": perplex / valid_ds_len,
+                "train_loss": loss_sum.item() / (step + 1),
+                "eval_loss": eloss.item(),
+                "perplexity": perplex,
                 "number of iterations": step + 1,
                 "Train time per epoch": e_epoch - s_epoch,
                 "Eval time per epoch": eval_e_epoch - eval_s_epoch,

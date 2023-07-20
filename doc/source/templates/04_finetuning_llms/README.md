@@ -53,6 +53,6 @@ This script was tested across three model sizes on the following cluster configu
 
 | Model Size | HF Model ID                     | Batch size per device | Instance Type  | GPUs         |
 |------------|--------------------------------|------------------------|----------------|--------------|
-| 7B         | `meta-llama/Llama-2-7b-chat-hf`   | 16         | 16x `g5.xlarge` | 8x A10G (24G) |
+| 7B         | `meta-llama/Llama-2-7b-chat-hf`   | 16         | 16x `g5.xlarge` | 16x A10G (24G) |
 | 13B        | `meta-llama/Llama-2-13b-chat-hf`  | 16         | 4x `g5.24xlarge`| 32x A10G (24G)|
 | 70B        | `meta-llama/Llama-2-70b-chat-hf`   | 4          | 4x `g5.24xlarge`| 32x A10G (24G)|
