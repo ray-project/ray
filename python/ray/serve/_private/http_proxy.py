@@ -47,6 +47,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_GRPC_PORT,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
@@ -569,8 +570,8 @@ class GenericProxy:
         if isinstance(serve_request, GRPCServeRequest):
             assignment_task = handle.remote(
                 StreamingGRPCRequest(
-                    pickled_grpc_user_request=serve_request.user_request,
-                    http_proxy_handle=self.self_actor_handle,
+                    grpc_user_request=serve_request.user_request,
+                    grpc_proxy_handle=self.self_actor_handle,
                 )
             )
 
@@ -1137,14 +1138,13 @@ class HTTPProxyActor:
 
         self.host = host
         self.port = port
-        self.grpc_port = self.port + 1
+        self.grpc_port = DEFAULT_GRPC_PORT
         self.root_path = root_path
-        self.server = grpc.aio.server()
 
-        self.setup_complete = asyncio.Event()
+        self.http_setup_complete = asyncio.Event()
         self.grpc_setup_complete = asyncio.Event()
 
-        self.app = HTTPProxy(
+        self.http_proxy = HTTPProxy(
             controller_name=controller_name,
             node_id=node_id,
             request_timeout_s=(
@@ -1159,14 +1159,16 @@ class HTTPProxyActor:
             ),
         )
 
-        self.wrapped_app = self.app
+        self.wrapped_http_proxy = self.http_proxy
 
         for middleware in http_middlewares:
-            self.wrapped_app = middleware.cls(self.wrapped_app, **middleware.options)
+            self.wrapped_http_proxy = middleware.cls(self.wrapped_http_proxy, **middleware.options)
 
         # Start running the HTTP server on the event loop.
         # This task should be running forever. We track it in case of failure.
-        self.running_task = get_or_create_event_loop().create_task(self.run())
+        self.running_task_http = get_or_create_event_loop().create_task(
+            self.run_http_server()
+        )
 
         # Right now just always start the GRPC server on the side. We can decide if we
         # want to make this configurable later.
@@ -1175,30 +1177,41 @@ class HTTPProxyActor:
         )
 
     async def ready(self):
-        """Returns when HTTP proxy is ready to serve traffic.
-        Or throw exception when it is not able to serve traffic.
+        """Returns when both HTTP and GRPC proxies are ready to serve traffic.
+        Or throw exception when either proxy is not able to serve traffic.
         """
-        # TODO (genesu): ensure both HTTP and GRPC servers are ready.
-        setup_task = get_or_create_event_loop().create_task(self.setup_complete.wait())
+        setup_task_http = get_or_create_event_loop().create_task(
+            self.http_setup_complete.wait()
+        )
         setup_task_grpc = get_or_create_event_loop().create_task(
             self.grpc_setup_complete.wait()
         )
-        waiting_tasks = [
+
+        waiting_tasks_http = [
             # Either the HTTP setup has completed.
-            # The event is set inside self.run.
-            setup_task,
+            # The event is set inside self.run_http_server.
+            setup_task_http,
+            # Or self.run_http_server errored.
+            self.running_task_http,
+        ]
+        done_set_http, _ = await asyncio.wait(
+            waiting_tasks_http,
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        waiting_tasks_grpc = [
+            # Either the GRPC setup has completed.
+            # The event is set inside self.run_grpc_server.
             setup_task_grpc,
-            # Or self.run errored.
-            self.running_task,
+            # Or self.run_grpc_server errored.
             self.running_task_grpc,
         ]
-        done_set, _ = await asyncio.wait(
-            waiting_tasks,
+        done_set_grpc, _ = await asyncio.wait(
+            waiting_tasks_grpc,
             return_when=asyncio.FIRST_COMPLETED,
         )
 
         # Return metadata, or re-throw the exception from self.running_task.
-        if self.setup_complete.is_set():
+        if self.http_setup_complete.is_set() and self.grpc_setup_complete.is_set():
             # NOTE(zcin): We need to convert the metadata to a json string because
             # of cross-language scenarios. Java can't deserialize a Python tuple.
             return json.dumps(
@@ -1207,15 +1220,18 @@ class HTTPProxyActor:
                     get_component_logger_file_path(),
                 ]
             )
-
-        return await done_set.pop()
+        elif not self.http_setup_complete.is_set():
+            return await done_set_http.pop()
+        else:
+            return await done_set_grpc.pop()
 
     async def block_until_endpoint_exists(
         self, endpoint: EndpointTag, timeout_s: float
     ):
-        await self.app.block_until_endpoint_exists(endpoint, timeout_s)
+        await self.http_proxy.block_until_endpoint_exists(endpoint, timeout_s)
+        await self.grpc_proxy.block_until_endpoint_exists(endpoint, timeout_s)
 
-    async def run(self):
+    async def run_http_server(self):
         sock = socket.socket()
         if SOCKET_REUSE_PORT_ENABLED:
             set_socket_reuse_port(sock)
@@ -1232,7 +1248,7 @@ class HTTPProxyActor:
         # class because we want to run the server as a coroutine. The only
         # alternative is to call uvicorn.run which is blocking.
         config = uvicorn.Config(
-            self.wrapped_app,
+            self.wrapped_http_proxy,
             host=self.host,
             port=self.port,
             root_path=self.root_path,
@@ -1251,7 +1267,7 @@ class HTTPProxyActor:
             f"listening on port {self.port}"
         )
 
-        self.setup_complete.set()
+        self.http_setup_complete.set()
         await server.serve(sockets=[sock])
 
     async def run_grpc_server(self):
@@ -1276,4 +1292,4 @@ class HTTPProxyActor:
         pass
 
     async def receive_asgi_messages(self, request_id: str) -> bytes:
-        return pickle.dumps(await self.app.receive_asgi_messages(request_id))
+        return pickle.dumps(await self.http_proxy.receive_asgi_messages(request_id))

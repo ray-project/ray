@@ -393,7 +393,6 @@ class MultiplexedReplicaInfo:
     model_ids: List[str]
 
 
-# TODO (genesu): maybe merge these two classes
 @dataclass
 class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
@@ -406,5 +405,5 @@ class StreamingHTTPRequest:
 class StreamingGRPCRequest:
     """Sent from the GRPC proxy to replicas on the streaming codepath."""
 
-    pickled_grpc_user_request: bytes
-    http_proxy_handle: ActorHandle
+    grpc_user_request: bytes
+    grpc_proxy_handle: ActorHandle

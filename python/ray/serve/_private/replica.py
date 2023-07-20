@@ -253,7 +253,7 @@ def create_replica_wrapper(name: str):
             self,
             request_metadata: RequestMetadata,
             request: StreamingGRPCRequest,
-        ) -> AsyncGenerator[Message, None]:
+        ) -> AsyncGenerator[Any, None]:
             """Handle an grpc request and stream grpc messages to the caller."""
             print("_handle_grpc_request_generator, request", request, request_metadata)
             result = await self.replica.call_user_method_with_grpc_serialization(
@@ -735,8 +735,8 @@ class RayServeReplica:
         self, request_metadata, request
     ) -> bytes:
         print("in call_user_method_with_grpc_serialization", request_metadata, request)
-        print("request.pickled_grpc_user_request", request.pickled_grpc_user_request)
-        user_request = request.pickled_grpc_user_request
+        print("request.grpc_user_request", request.grpc_user_request)
+        user_request = request.grpc_user_request
         print("user_request", user_request)
 
         runner_method = self.get_runner_method(request_metadata)

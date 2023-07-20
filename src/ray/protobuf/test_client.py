@@ -2,7 +2,7 @@ import grpc
 
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
-channel = grpc.insecure_channel("localhost:8001")
+channel = grpc.insecure_channel("localhost:9000")
 stub = serve_pb2_grpc.RayServeServiceStub(channel)
 
 test_in = serve_pb2.TestIn(
