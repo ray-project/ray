@@ -188,7 +188,7 @@ higher==0.2.1
 hjson==3.1.0
 hpbandster==0.7.4
 httpcore==0.15.0
-httplib2==0.20.4
+httplib2==0.22.0
 httptools==0.6.0
 httpx==0.24.1
 huggingface-hub==0.16.4
@@ -202,7 +202,7 @@ importlib-metadata==4.10.0
 importlib-resources==6.0.0
 iniconfig==2.0.0
 ipykernel==6.24.0
-ipython==8.14.0
+ipython==8.12.2
 ipython-genutils==0.2.0
 ipywidgets==7.7.5
 isodate==0.6.1
@@ -441,7 +441,7 @@ s3fs==2023.5.0 ; python_version >= "3.8"
 s3transfer==0.6.1
 safetensors==0.3.1
 sarif-om==1.0.4
-scikit-image==0.19.3
+scikit-image==0.21.0
 scikit-learn==1.0.2 ; python_version < "3.11"
 scikit-optimize==0.9.0
 scipy==1.10.1
