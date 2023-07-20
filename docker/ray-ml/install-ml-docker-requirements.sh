@@ -33,7 +33,6 @@ pip --no-cache-dir install -U \
            -r tune-test-requirements.txt \
            -r ray-docker-requirements.txt
 
-
 # Remove any device-specific constraints from requirements_compiled.txt.
 # E.g.: torch-scatter==2.1.1+pt20cpu or torchvision==0.15.2+cpu
 # These are replaced with gpu-specific requirements in dl-gpu-requirements.txt.
