@@ -26,8 +26,6 @@ from tf_utils import (
     build_tf_dataset,
 )
 
-from pytorch_utils import build_torch_dataset
-
 from metric_utils import (
     determine_if_memory_monitor_is_enabled_in_latest_session,
     get_ray_spilled_and_restored_mb,
@@ -113,7 +111,8 @@ def train_loop_for_worker(config):
     #     assert dataset_shard is None
     #     logger.info("Building torch.DataLoader...")
     #     # TODO(swang): pass in shuffle buffer size.
-    #     # NOTE(swang): There is no way to .limit() the number of images read for torch.
+    #     # NOTE(swang): There is no way to .limit() the number of images read
+    #     # for torch.
     #     torch_dataset = build_torch_dataset(
     #         config["data_root"],
     #         config["batch_size"],
@@ -153,7 +152,9 @@ def train_loop_for_worker(config):
         elif config["data_loader"] == RAY_DATA:
             assert dataset_shard is not None
             tf_dataset = dataset_shard.to_tf(
-                feature_columns="image", label_columns="label", batch_size=config["batch_size"]
+                feature_columns="image",
+                label_columns="label",
+                batch_size=config["batch_size"],
             )
         elif config["data_loader"] == SYNTHETIC:
             tf_dataset = build_synthetic_tf_dataset(
@@ -206,17 +207,21 @@ def train_loop_for_worker(config):
 
 
 def crop_and_flip_image_batch(image_batch):
-    transform = torchvision.transforms.Compose([
-        torchvision.transforms.RandomResizedCrop(
-            size=DEFAULT_IMAGE_SIZE,
-            scale=(0.05, 1.0),
-            ratio=(0.75, 1.33),
-        ),
-        torchvision.transforms.RandomHorizontalFlip(),
-    ])
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.RandomResizedCrop(
+                size=DEFAULT_IMAGE_SIZE,
+                scale=(0.05, 1.0),
+                ratio=(0.75, 1.33),
+            ),
+            torchvision.transforms.RandomHorizontalFlip(),
+        ]
+    )
     batch_size, height, width, channels = image_batch["image"].shape
     tensor_shape = (batch_size, channels, height, width)
-    image_batch["image"] = transform(torch.Tensor(image_batch["image"].reshape(tensor_shape)))
+    image_batch["image"] = transform(
+        torch.Tensor(image_batch["image"].reshape(tensor_shape))
+    )
     return image_batch
 
 
@@ -290,24 +295,30 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
 
 
 def build_dataset(
-    data_root, num_images_per_epoch, num_images_per_input_file, batch_size, read_from_images=True
+    data_root,
+    num_images_per_epoch,
+    num_images_per_input_file,
+    batch_size,
+    read_from_images=True,
 ):
     if read_from_images:
         ds = ray.data.read_images(
-                data_root,
-                # Use the same partitioning required by torch dataloader.
-                # root_dir
-                #   class_name1
-                #     XXX.jpg
-                #   class_name2
-                #     YYY.jpg
-                partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data")
-            )
-        
+            data_root,
+            # Use the same partitioning required by torch dataloader.
+            # root_dir
+            #   class_name1
+            #     XXX.jpg
+            #   class_name2
+            #     YYY.jpg
+            partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data"),
+        )
+
         classes = {label: i for i, label in enumerate(ds.unique("label"))}
+
         def convert_class_to_idx(df, classes):
             df["label"] = df["label"].map(classes).astype("float32")
             return df
+
         ds = ds.map_batches(
             convert_class_to_idx,
             fn_kwargs={"classes": classes},
