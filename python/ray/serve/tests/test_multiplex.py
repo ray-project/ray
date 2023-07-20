@@ -2,6 +2,7 @@ import pytest
 from typing import List
 import os
 import requests
+import time
 
 import ray
 from ray._private.test_utils import (
@@ -415,6 +416,54 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
 
     handle = serve.run(Upstream.bind(Downstream.bind()))
     assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
+
+
+async def test_concurrent_load_models(serve_instance):
+    """Test concurrent load models"""
+
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Model:
+        @serve.multiplexed(max_num_models_per_replica=2)
+        async def get_model(self, tag):
+            await signal.wait.remote()
+            return tag
+
+        async def __call__(self, request):
+            tag = serve.get_multiplexed_model_id()
+            await self.get_model(tag)
+            return (tag, os.getpid())
+
+    handle = serve.run(Model.bind())
+
+    @ray.remote
+    def send_request(model_id):
+        headers = {SERVE_MULTIPLEXED_MODEL_ID: model_id}
+        resp = requests.get("http://localhost:8000", headers=headers)
+        return resp.status_code
+
+    send_request.remote("1")
+    # second request for model1 will hit the cache
+    send_request.remote("1")
+    send_request.remote("2")
+    send_request.remote("3")
+    for i in range(10):
+        if ray.get(signal.cur_num_waiters.remote()) > 0:
+            break
+        time.sleep(0.1)
+    assert ray.get(signal.cur_num_waiters.remote()) == 1
+    signal.send.remote()
+    for i in range(10):
+        if ray.get(signal.cur_num_waiters.remote()) > 1:
+            break
+        time.sleep(0.1)
+    # model2 is loaded & model3 is loaded
+    assert ray.get(signal.cur_num_waiters.remote()) == 3
+
+    # model1 is evicted
+    wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="2")
+    wait_for_condition(check_model_id_in_replicas, handle=handle, model_id="3")
 
 
 if __name__ == "__main__":

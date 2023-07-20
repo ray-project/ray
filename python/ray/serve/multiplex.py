@@ -2,6 +2,7 @@ import asyncio
 from collections import OrderedDict
 import inspect
 import logging
+import threading
 import time
 from typing import Any, Callable
 
@@ -15,7 +16,6 @@ from ray.serve.context import (
     get_internal_replica_context,
 )
 from ray.serve._private.common import MultiplexedReplicaInfo
-from ray._private.utils import run_background_task
 from ray.serve import metrics
 
 
@@ -90,8 +90,14 @@ class _ModelMultiplexWrapper:
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
 
+        # Model cache lock
+        self._model_cache_lock = asyncio.Lock()
+
+        self._model_ids_pusher_thread_stop: bool = False
         # Push the model IDs to the controller periodically.
-        run_background_task(self._push_model_ids())
+        self._model_ids_pusher_thread = threading.Thread(target=self._push_model_ids)
+        self._model_ids_pusher_thread.setDaemon(True)
+        self._model_ids_pusher_thread.start()
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the user-constructed model object.
@@ -110,34 +116,40 @@ class _ModelMultiplexWrapper:
             raise ValueError("The model ID cannot be empty.")
 
         self.num_models.set(len(self.models))
-
         if model_id in self.models:
             # Move the model to the end of the OrderedDict to ensure LRU caching.
             model = self.models.pop(model_id)
             self.models[model_id] = model
+            return self.models[model_id]
         else:
-            # If the number of models per replica is specified, check if the number of
-            # models on the current replica has reached the limit.
-            if (
-                self.max_num_models_per_replica > 0
-                and len(self.models) >= self.max_num_models_per_replica
-            ):
-                # Unload the least recently used model.
-                self.models_unload_counter.inc()
-                unload_start_time = time.time()
-                await self.unload_model()
-                self.model_unload_latency_s.set(time.time() - unload_start_time)
-            # Load the model.
-            logger.info(f"Loading model '{model_id}'.")
-            self.models_load_counter.inc()
-            load_start_time = time.time()
-            if self.self_arg is None:
-                self.models[model_id] = await self._func(model_id)
-            else:
-                self.models[model_id] = await self._func(self.self_arg, model_id)
-            self._push_multiplexed_replica_info = True
-            self.model_load_latency_s.set(time.time() - load_start_time)
-        return self.models[model_id]
+            async with self._model_cache_lock:
+                # Check if the model has been loaded by another request.
+                if model_id in self.models:
+                    return self.models[model_id]
+
+                # If the number of models per replica is specified, check if
+                # the number of models on the current replica has reached the limit.
+                if (
+                    self.max_num_models_per_replica > 0
+                    and len(self.models) >= self.max_num_models_per_replica
+                ):
+                    # Unload the least recently used model.
+                    self.models_unload_counter.inc()
+                    unload_start_time = time.time()
+                    await self.unload_model()
+                    self.model_unload_latency_s.set(time.time() - unload_start_time)
+
+                # Load the model.
+                logger.info(f"Loading model '{model_id}'.")
+                self.models_load_counter.inc()
+                load_start_time = time.time()
+                self._push_multiplexed_replica_info = True
+                if self.self_arg is None:
+                    self.models[model_id] = await self._func(model_id)
+                else:
+                    self.models[model_id] = await self._func(self.self_arg, model_id)
+                self.model_load_latency_s.set(time.time() - load_start_time)
+                return self.models[model_id]
 
     async def unload_model(self) -> None:
         """Unload the least recently used model."""
@@ -153,15 +165,19 @@ class _ModelMultiplexWrapper:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
 
-    async def _push_model_ids(self):
+    def _push_model_ids(self):
         """Push the multiplexed replica info to the controller."""
 
         while True:
             try:
+                if self._model_ids_pusher_thread_stop:
+                    break
                 if self._push_multiplexed_replica_info:
                     get_global_client().record_multiplexed_replica_info(
                         MultiplexedReplicaInfo(
-                            self._deployment_name, self._replica_tag, self.models.keys()
+                            self._deployment_name,
+                            self._replica_tag,
+                            list(self.models.keys()),
                         )
                     )
                     self._push_multiplexed_replica_info = False
@@ -170,4 +186,10 @@ class _ModelMultiplexWrapper:
                     "Failed to push the multiplexed replica info "
                     f"to the controller. Error: {e}"
                 )
-            await asyncio.sleep(PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S)
+            time.sleep(PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S)
+
+    def __del__(self):
+        while len(self.models) > 0:
+            asyncio.run(self.unload_model())
+        self._model_ids_pusher_thread_stop = True
+        self._model_ids_pusher_thread.join()
