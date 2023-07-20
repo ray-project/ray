@@ -303,7 +303,9 @@ class FakeMultiNodeProvider(NodeProvider):
     def set_node_tags(self, node_id, tags):
         raise AssertionError("Readonly node provider cannot be updated")
 
-    def create_node_with_resources(self, node_config, tags, count, resources):
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels
+    ):
         with self.lock:
             node_type = tags[TAG_RAY_USER_NODE_TYPE]
             next_id = self._next_hex_node_id()
@@ -315,6 +317,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 num_gpus=resources.pop("GPU", 0),
                 object_store_memory=resources.pop("object_store_memory", None),
                 resources=resources,
+                labels=labels,
                 redis_address="{}:6379".format(
                     ray._private.services.get_node_ip_address()
                 ),
@@ -324,6 +327,7 @@ class FakeMultiNodeProvider(NodeProvider):
                 env_vars={
                     "RAY_OVERRIDE_NODE_ID_FOR_TESTING": next_id,
                     ray_constants.RESOURCES_ENVIRONMENT_VARIABLE: json.dumps(resources),
+                    ray_constants.LABELS_ENVIRONMENT_VARIABLE: json.dumps(labels),
                 },
             )
             node = ray._private.node.Node(
@@ -622,7 +626,9 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         assert node_id in self._nodes
         self._nodes[node_id]["tags"].update(tags)
 
-    def create_node_with_resources(self, node_config, tags, count, resources):
+    def create_node_with_resources_and_labels(
+        self, node_config, tags, count, resources, labels
+    ):
         with self.lock:
             is_head = tags[TAG_RAY_NODE_KIND] == NODE_KIND_HEAD
 
@@ -644,7 +650,9 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         self, node_config: Dict[str, Any], tags: Dict[str, str], count: int
     ) -> Optional[Dict[str, Any]]:
         resources = self._head_resources
-        return self.create_node_with_resources(node_config, tags, count, resources)
+        return self.create_node_with_resources_and_labels(
+            node_config, tags, count, resources, {}
+        )
 
     def _terminate_node(self, node):
         self._update_docker_compose_config()
