@@ -194,8 +194,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         Returns:
             Tuple[Optional[int], Optional[str]]: A tuple containing the worker's PID (process ID),
-            IP address, and state, and the task's IDs for this task. If no matching task is found,
-            the tuple will contain None for both PID and worker ID.
+            and worker's ID.
 
         Raises:
             ValueError: If the task attempt is not running
