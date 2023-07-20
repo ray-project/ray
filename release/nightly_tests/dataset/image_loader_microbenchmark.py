@@ -19,7 +19,7 @@ def iterate(dataset, label, metrics):
     it = iter(dataset)
     num_rows = 0
     for batch in it:
-        num_rows += len(batch)
+        num_rows += len(batch[0])
     end = time.time()
     print(label, end - start, "epoch", i)
 

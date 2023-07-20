@@ -1,8 +1,3 @@
-#!/usr/bin/env python3
-"""
-Download or generate a fake TF dataset from images.
-"""
-
 from typing import Union, Iterable, Tuple, Optional
 import os
 import requests
@@ -79,30 +74,47 @@ def _bytes_feature(value: Union[bytes, str]) -> tf.train.Feature:
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def preprocess_images(data_root, tf_data_root, max_images_per_file):
+def preprocess_tfdata(data_root, tf_data_root, max_images_per_file):
     examples = []
     num_shards = 0
     output_filename = os.path.join(tf_data_root, f"data-{num_shards}.tfrecord")
-    for subdir in os.listdir(data_root):
-        for image_path in os.listdir(os.path.join(data_root, subdir)):
-            print(image_path)
-            example = create_single_example(os.path.join(data_root, subdir, image_path)).SerializeToString()
-            examples.append(example)
+    for image_path in os.listdir(data_root):
+        example = create_single_example(os.path.join(data_root, image_path)).SerializeToString()
+        examples.append(example)
 
-            if len(examples) >= max_images_per_file:
-                output_filename = os.path.join(tf_data_root, f"data-{num_shards}.tfrecord")
-                with tf.python_io.TFRecordWriter(output_filename) as writer:
-                    for example in examples:
-                        writer.write(example)
-                print(f"Done writing {output_filename}", file=sys.stderr)
-                examples = []
-                num_shards += 1
+        if len(examples) >= max_images_per_file:
+            output_filename = os.path.join(tf_data_root, f"data-{num_shards}.tfrecord")
+            with tf.python_io.TFRecordWriter(output_filename) as writer:
+                for example in examples:
+                    writer.write(example)
+            print(f"Done writing {output_filename}", file=sys.stderr)
+            examples = []
+            num_shards += 1
 
     output_filename = os.path.join(tf_data_root, f"data-{num_shards}.tfrecord")
     with tf.python_io.TFRecordWriter(output_filename) as writer:
         for example in examples:
             writer.write(example)
     print(f"Done writing {output_filename}", file=sys.stderr)
+
+
+def preprocess_mosaic(input_dir, output_dir):
+    ds = ray.data.read_images(input_dir)
+    it = ds.iter_rows()
+
+    columns = {"image": "jpeg", "label": "int"}
+    # If reading from local disk, should turn off compression and use
+    # streaming.LocalDataset.
+    # If uploading to S3, turn on compression (e.g., compression="snappy") and
+    # streaming.StreamingDataset.
+    with MDSWriter(out=output_dir, columns=columns, compression=None) as out:
+        for i, img in enumerate(it):
+            out.write({
+                "image": PIL.Image.fromarray(img["image"]),
+                "label": 0,
+            })
+            if i % 10 == 0:
+                print(f"Wrote {i} images.")
 
 
 if __name__ == "__main__":
@@ -114,6 +126,12 @@ if __name__ == "__main__":
     parser.add_argument(
         "--data-root",
         default="/tmp/imagenet-1gb-data",
+        type=str,
+        help='Directory path with TFRecords. Filenames should start with "train".',
+    )
+    parser.add_argument(
+        "--mosaic-data-root",
+        default="/tmp/mosaicml-data",
         type=str,
         help='Directory path with TFRecords. Filenames should start with "train".',
     )
@@ -133,4 +151,5 @@ if __name__ == "__main__":
 
     ray.init()
 
-    preprocess_images(args.data_root, args.tf_data_root, args.max_images_per_file)
+    preprocess_mosaic(args.data_root, args.tf_data_root)
+    preprocess_tfdata(args.data_root, args.tf_data_root, args.max_images_per_file)

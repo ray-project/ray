@@ -9,7 +9,7 @@ import pandas as pd
 import json
 
 import ray
-from streaming import LocalDataset, MDSWriter
+from streaming import LocalDataset
 
 
 DEFAULT_IMAGE_SIZE = 224
@@ -18,12 +18,15 @@ DEFAULT_IMAGE_SIZE = 224
 # This is the size of dog.jpg in s3://air-cuj-imagenet-1gb.
 FULL_IMAGE_SIZE = (1213, 1546)
 
-def iterate(dataset, label, metrics):
+def iterate(dataset, label, batch_size, metrics):
     start = time.time()
     it = iter(dataset)
     num_rows = 0
     for batch in it:
-        num_rows += len(batch)
+        # NOTE(swang): This will be slightly off if batch_size does not divide
+        # evenly into number of images but should be okay for large enough
+        # datasets.
+        num_rows += batch_size
     end = time.time()
     print(label, end - start, "epoch", i)
 
@@ -44,25 +47,6 @@ class MosaicDataset(LocalDataset):
         image = obj['image']
         label = obj['label']
         return self.transforms(image), label
-
-
-def preprocess_mosaic(input_dir, output_dir):
-    ds = ray.data.read_images(input_dir)
-    it = ds.iter_rows()
-
-    columns = {"image": "jpeg", "label": "int"}
-    # If reading from local disk, should turn off compression and use
-    # streaming.LocalDataset.
-    # If uploading to S3, turn on compression (e.g., compression="snappy") and
-    # streaming.StreamingDataset.
-    with MDSWriter(out=output_dir, columns=columns, compression=None) as out:
-        for i, img in enumerate(it):
-            out.write({
-                "image": PIL.Image.fromarray(img["image"]),
-                "label": 0,
-            })
-            if i % 10 == 0:
-                print(f"Wrote {i} images.")
 
 
 def parse_and_decode_tfrecord(example_serialized):
@@ -224,7 +208,6 @@ if __name__ == "__main__":
     metrics = {}
 
     # MosaicML streaming.
-    preprocess_mosaic(args.data_root, args.mosaic_data_root)
     transform = torchvision.transforms.Compose(
         [
             torchvision.transforms.RandomResizedCrop(
@@ -237,19 +220,19 @@ if __name__ == "__main__":
     )
     mosaic_ds = MosaicDataset(args.mosaic_data_root, transforms=transform)
     num_workers = os.cpu_count()
-    mosaic_dl = torch.utils.data.DataLoader(mosaic_ds, batch_size=32, num_workers=num_workers)
+    mosaic_dl = torch.utils.data.DataLoader(mosaic_ds, batch_size=args.batch_size, num_workers=num_workers)
     for i in range(args.num_epochs):
-        iterate(mosaic_dl, "mosaic", metrics)
+        iterate(mosaic_dl, "mosaic", args.batch_size, metrics)
 
     # Tf.data.
     tf_ds = build_tf_dataset(args.tf_data_root, args.batch_size)
     for i in range(args.num_epochs):
-        iterate(tf_ds, "tf.data", metrics)
+        iterate(tf_ds, "tf.data", args.batch_size, metrics)
 
     # ray.data.
     ray_ds = build_ray_dataset(args.tf_data_root, args.batch_size)
     for i in range(args.num_epochs):
-        iterate(ray_ds.iter_batches(batch_size=args.batch_size), "ray_tfrecords", metrics)
+        iterate(ray_ds.iter_batches(batch_size=args.batch_size), "ray_tfrecords", args.batch_size, metrics)
 
     metrics_list = []
     for label, tput in metrics.items():
