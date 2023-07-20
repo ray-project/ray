@@ -1,10 +1,5 @@
 from typing import TYPE_CHECKING, List, Union
 
-try:
-    import pyarrow
-except ImportError:
-    pyarrow = None
-
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
 
@@ -26,6 +21,9 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
+
+    import pyarrow
+
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
