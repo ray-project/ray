@@ -983,7 +983,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + actor._ray_actor_id.hex(),
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
-    for line in streamed_string.split("\n")[-(LINES + 1):]:
+    for line in streamed_string.split("\n")[-(LINES + 1) :]:
         assert line in file_response
 
     # Test query by pid & node_ip instead of actor id.
@@ -995,7 +995,7 @@ def test_logs_stream_and_tail(ray_start_with_dashboard):
         + f"&pid={pid}",
     ).content.decode("utf-8")
     # NOTE: Prefix 1 indicates the stream has succeeded.
-    for line in streamed_string.split("\n")[-(LINES + 1):]:
+    for line in streamed_string.split("\n")[-(LINES + 1) :]:
         assert line in file_response
 
 
