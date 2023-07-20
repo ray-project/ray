@@ -10,7 +10,10 @@ def test_huggingface(ray_start_regular_shared):
 
     # Check that DatasetDict is not directly supported.
     assert isinstance(data, datasets.DatasetDict)
-    with pytest.raises(TypeError, match="You provided a Hugging Face DatasetDict"):
+    with pytest.raises(
+        DeprecationWarning,
+        match="You provided a Hugging Face DatasetDict",
+    ):
         ray.data.from_huggingface(data)
 
     ray_datasets = {
