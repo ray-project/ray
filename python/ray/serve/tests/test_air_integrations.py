@@ -159,44 +159,76 @@ def send_request(**requests_kargs):
 
 
 def test_simple_adder(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderService:
+        def __init__(self, checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, request):
+            data = await request.json()
+            return self.predictor.predict(np.array(data["array"]))
+
+    AdderService.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
-    assert resp == {"value": [42], "batch_size": 1}
+    assert resp == [{"value": 42, "batch_size": 1}]
 
 
 def test_predictor_kwargs(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderService:
+        def __init__(self, checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        async def __call__(self, request):
+            data = await request.json()
+            return self.predictor.predict(np.array(data["array"]), override_increment=100)
+
+    AdderService.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
-        predict_kwargs={"override_increment": 100},
     )
+
     resp = ray.get(send_request.remote(json={"array": [40]}))
-    assert resp == {"value": [140], "batch_size": 1}
+    assert resp == [{"value": 140, "batch_size": 1}]
 
 
 def test_predictor_from_checkpoint_kwargs(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderService:
+        def __init__(self, checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint, do_double=True)
+
+        async def __call__(self, request):
+            data = await request.json()
+            return self.predictor.predict(np.array(data["array"]))
+
+    AdderService.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
-        do_double=True,
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
-    assert resp == {"value": [84], "batch_size": 1}
+    assert resp == [{"value": 84, "batch_size": 1}]
 
 
 def test_batching(serve_instance):
-    PredictorDeployment.options(name="Adder").deploy(
-        predictor_cls=AdderPredictor,
+    @serve.deployment
+    class AdderService:
+        def __init__(self, checkpoint):
+            self.predictor = AdderPredictor.from_checkpoint(checkpoint)
+
+        @serve.batch(max_batch_size=2, batch_wait_timeout_s=1000)
+        async def __call__(self, requests):
+            items = [await request.json() for request in requests]
+            batch = np.concatenate([np.array(item["array"]) for item in items])
+            return self.predictor.predict(batch)
+
+    AdderService.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
-        batching_params=dict(max_batch_size=2, batch_wait_timeout_s=1000),
     )
 
     refs = [send_request.remote(json={"array": [40]}) for _ in range(2)]
     for resp in ray.get(refs):
-        assert resp == {"value": [42], "batch_size": 2}
+        assert resp == {"value": 42, "batch_size": 2}
 
 
 class TakeArrayReturnDataFramePredictor(Predictor):
