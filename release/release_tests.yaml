@@ -133,7 +133,7 @@
   
   run:
     timeout: 500
-    script: python workloads/gpu_batch_prediction.py --data-directory=10G-image-data-synethic-raw --data-format raw
+    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synethic-raw --data-format raw
 
   alert: default
 
@@ -163,7 +163,7 @@
   
   run:
     timeout: 500
-    script: python workloads/gpu_batch_prediction.py --data-directory=10G-image-data-synethic-raw-parquet --data-format parquet
+    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synethic-raw-parquet --data-format parquet
 
   alert: default
 
@@ -194,7 +194,7 @@
 
   run:
     timeout: 500
-    script: python workloads/gpu_batch_prediction.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
         num_nodes: 4
@@ -230,7 +230,7 @@
 
   run:
     timeout: 500
-    script: python workloads/gpu_batch_prediction.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
         num_nodes: 4
@@ -264,7 +264,7 @@
 
   run:
     timeout: 2000
-    script: python workloads/gpu_batch_prediction.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+    script: python workloads/gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
       num_nodes: 20

@@ -33,8 +33,11 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
     # Largest batch that can fit on a T4.
     BATCH_SIZE = 1000
 
-    model = resnet50(weights=ResNet50_Weights)
+    weights = ResNet50_Weights.DEFAULT
+    model = resnet50(weights=weights)
     model_ref = ray.put(model)
+
+    transform = weights.transforms
 
     start_time = time.time()
 
@@ -47,27 +50,11 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
             data_url += "/8cc8856e16c343829ef320fef4b353b1_000000.parquet"
         ds = ray.data.read_parquet(data_url)
 
-    def to_tensor(batch: np.ndarray) -> torch.Tensor:
-        tensor = torch.as_tensor(batch, dtype=torch.float)
-        # (B, H, W, C) -> (B, C, H, W)
-        tensor = tensor.permute(0, 3, 1, 2).contiguous()
-        # [0., 255.] -> [0., 1.]
-        tensor = tensor.div(255)
-        return tensor
-
+    # Preprocess the images using standard preprocessing
     def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        preprocess = transforms.Compose(
-            [
-                transforms.Resize(256),
-                transforms.CenterCrop(224),
-                transforms.Normalize(
-                    mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]
-                ),
-            ]
-        )
-        torch_tensor = to_tensor(image_batch["image"])
-        preprocessed_images = preprocess(torch_tensor).numpy()
-        return {"image": preprocessed_images}
+        tensor_batch = torch.as_tensor(image_batch, dtype=torch.float)
+        transformed_batch = transform(tensor_batch).numpy()
+        return {"image": transformed_batch}
 
     class Predictor:
         def __init__(self, model):
@@ -78,7 +65,7 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
         def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             with torch.inference_mode():
                 output = self.model(torch.as_tensor(batch["image"], device="cuda"))
-                return output.cpu().numpy()
+                return {"predictions": output.cpu().numpy()}
 
     start_time_without_metadata_fetching = time.time()
     ds = ds.map_batches(preprocess)
@@ -121,7 +108,7 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
             "perf_metric_type": "LATENCY",
         },
         {
-            "perf_metric_name": "throughout_images_s",
+            "perf_metric_name": "throughput_images_s",
             "perf_metric_value": throughput,
             "perf_metric_type": "THROUGHPUT",
         },
@@ -131,7 +118,7 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
             "perf_metric_type": "LATENCY",
         },
         {
-            "perf_metric_name": "throughout_images_s_w/o_metadata_fetch",
+            "perf_metric_name": "throughput_images_s_w/o_metadata_fetch",
             "perf_metric_value": throughput_without_metadata_fetch,
             "perf_metric_type": "THROUGHPUT",
         },
