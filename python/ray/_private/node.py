@@ -33,7 +33,6 @@ from ray._private.utils import open_log, try_to_create_directory, try_to_symlink
 # using logging.basicConfig in its entry/init points.
 logger = logging.getLogger(__name__)
 
-
 class Node:
     """An encapsulation of the Ray processes on a single node.
 
@@ -237,7 +236,6 @@ class Node:
             ):
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
-                print("node.py line 240")
                 node_info = ray._private.services.get_node_to_connect_for_driver(
                     self.gcs_address,
                     self._raylet_ip_address,
@@ -246,7 +244,6 @@ class Node:
                 self._raylet_socket_name = node_info.raylet_socket_name
                 self._ray_params.node_manager_port = node_info.node_manager_port
         else:
-            print("line 249 {}".format(self._ray_params.plasma_store_socket_name))
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
                 self._ray_params.plasma_store_socket_name, default_prefix="plasma_store"
@@ -254,15 +251,6 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
-
-
-
-        print("line 258, {}".format(self._plasma_store_socket_name))
-        folder_path = '/tmp/ray/' + self._session_name + '/sockets/'
-        print(folder_path)
-        file_list = os.listdir(folder_path)
-        for file_name in file_list:
-            print(file_name)
 
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
@@ -294,17 +282,32 @@ class Node:
         if not connect_only:
             self._ray_params.update_pre_selected_port()
 
-        self._plugin_name = ray_params.plugin_name
-        self._plugin_path = ray_params.plugin_path
-        self._plugin_params = ray_params.plugin_params
+        print(self.head, connect_only)
+        
+        env_plugin_name = os.environ.get(ray_constants.RAY_PLUGIN_NAME)
+        if env_plugin_name is not None and env_plugin_name != "":
+            self._plugin_name = env_plugin_name
+        else:
+            self._plugin_name = ray_params.plugin_name if ray_params.plugin_name else "default"
+            os.environ[ray_constants.RAY_PLUGIN_NAME] = self._plugin_name
 
-        # If it is a head node, configure plugin manager
-        if head:
+
+        env_plugin_path = os.environ.get(ray_constants.RAY_PLUGIN_PATH)
+        if env_plugin_path is not None and env_plugin_path != "":
+            self._plugin_path = env_plugin_path
+        else:
+            self._plugin_path = ray_params.plugin_path if ray_params.plugin_path else ""
+            os.environ[ray_constants.RAY_PLUGIN_PATH] = self._plugin_path
+
+
+        env_plugin_params_str = os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_STR)
+        if env_plugin_params_str is not None and env_plugin_params_str != "":
+            self._plugin_params_str = env_plugin_params_str
+        else:
+            self._plugin_params = ray_params.plugin_params
             self._plugin_params['store_socket_name'] = self._plasma_store_socket_name
             self._plugin_params['huge_pages'] = ray_params.huge_pages
             self._plugin_params['temp_dir'] = self._temp_dir
-            print("if head: before start_head_processes")
-            print(self._plugin_params)
 
         # Start processes.
         if head:
@@ -314,15 +317,10 @@ class Node:
             self.start_ray_processes()
             # we should update the address info after the node has been started
             try:
-                print("line 298, before wait_fore_node {} {}".format(self._plasma_store_socket_name, self.gcs_address))
                 ray._private.services.wait_for_node(
                     self.gcs_address,
                     self._plasma_store_socket_name,
                 )
-                print("line 308 right after wait_for_node")
-                file_list = os.listdir(folder_path)
-                for file_name in file_list:
-                    print(file_name)
             except TimeoutError as te:
                 raise Exception(
                     "The current node timed out during startup. This "
@@ -335,11 +333,6 @@ class Node:
             )
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info.node_manager_port
-
-        print("line 325")
-        file_list = os.listdir(folder_path)
-        for file_name in file_list:
-            print(file_name)
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -832,7 +825,6 @@ class Node:
         """
         result = socket_path
         is_mac = sys.platform.startswith("darwin")
-        print("entering _prepare_socket_file")
         if sys.platform == "win32":
             if socket_path is None:
                 result = f"tcp://{self._localhost}" f":{self._get_unused_port()}"
@@ -1037,7 +1029,6 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        print("Entering node.start_raylet()")
         stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
         process_info = ray._private.services.start_raylet(
             self.redis_address,
@@ -1084,7 +1075,6 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
         )
-        print("Finishing node.start_raylet()")
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
 
@@ -1256,15 +1246,18 @@ class Node:
             huge_pages=self._ray_params.huge_pages,
         )
 
-        if self.head:
+        env_plugin_params_str = os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_STR)
+        if env_plugin_params_str is None or env_plugin_params_str == "":
             self._plugin_params["object_store_memory"] = object_store_memory
             self._plugin_params["plasma_directory"] = plasma_directory
-            print("In _private.node.py start_ray_processes")
-            print(self._plugin_params)
+            self._plugin_params_str = json.dumps(self._plugin_params)
+            os.environ[ray_constants.RAY_PLUGIN_PARAMS_STR] = self._plugin_params_str
+
+        print("In _private.node.py start_ray_processes")
 
         self.start_raylet(plasma_directory, object_store_memory, self._plugin_name, 
                                                                  self._plugin_path,  
-                                                                 json.dumps(self._plugin_params))
+                                                                 self._plugin_params_str)
         if self._ray_params.include_log_monitor:
             self.start_log_monitor()
 

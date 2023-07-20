@@ -287,6 +287,9 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_string driver_name
         c_string stdout_file
         c_string stderr_file
+        c_string plugin_name
+        c_string plugin_path
+        c_string plugin_params
         (CRayStatus(
             const CAddress &caller_address,
             CTaskType task_type,
@@ -352,3 +355,4 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         @staticmethod
         void RunTaskExecutionLoop()
+

@@ -1733,6 +1733,7 @@ cdef class CoreWorker:
                   JobID job_id, GcsClientOptions gcs_options, log_dir,
                   node_ip_address, node_manager_port, raylet_ip_address,
                   local_mode, driver_name, stdout_file, stderr_file,
+                  plugin_name, plugin_path, plugin_params,
                   serialized_job_config, metrics_agent_port, runtime_env_hash,
                   startup_token, session_name, entrypoint,
                   worker_launch_time_ms, worker_launched_time_ms):
@@ -1769,6 +1770,9 @@ cdef class CoreWorker:
         options.driver_name = driver_name
         options.stdout_file = stdout_file
         options.stderr_file = stderr_file
+        options.plugin_name = plugin_name
+        options.plugin_path = plugin_path
+        options.plugin_params = plugin_params
         options.task_execution_callback = task_execution_handler
         options.check_signals = check_signals
         options.gc_collect = gc_collect
@@ -3047,3 +3051,4 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 def del_key_from_storage(host, port, password, use_ssl, key):
     return RedisDelKeySync(host, port, password, use_ssl, key)
+

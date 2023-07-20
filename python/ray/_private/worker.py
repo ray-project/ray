@@ -1527,6 +1527,7 @@ def init(
             ray_params=ray_params,
         )
     else:
+        print("Worker.py connect only")
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
             raise ValueError(
@@ -1579,7 +1580,7 @@ def init(
                 "_node_name cannot be configured when connecting to "
                 "an existing cluster."
             )
-
+        
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
@@ -2202,14 +2203,6 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
-    print("session_name {}".format(session_name))
-    print("Launching ray core worker Executing here")
-    print("worker.py creating CoreWorker, plasma_store_socket_name: {}".format(node.plasma_store_socket_name))
-    folder_path = '/tmp/ray/' + session_name + '/sockets/'
-    print(folder_path)
-    file_list = os.listdir(folder_path)
-    for file_name in file_list:
-        print(file_name)
     
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
@@ -2225,6 +2218,9 @@ def connect(
         driver_name,
         log_stdout_file_path,
         log_stderr_file_path,
+        node._plugin_name,
+        node._plugin_path,
+        node._plugin_params_str,
         serialized_job_config,
         node.metrics_agent_port,
         runtime_env_hash,
@@ -2234,8 +2230,6 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
-
-    print("worker.py -- Right after creating core worker")
 
     # Notify raylet that the core worker is ready.
     worker.core_worker.notify_raylet()

@@ -1,4 +1,4 @@
-"""Ray constants used in the Python code."""
+f"""Ray constants used in the Python code."""
 
 import logging
 import os
@@ -425,3 +425,7 @@ RAY_ALLOWED_CACHED_PORTS = {
 }
 
 RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
+
+RAY_PLUGIN_NAME = "RAY_PLUGIN_NAME"
+RAY_PLUGIN_PATH = "RAY_PLUGIN_PATH"
+RAY_PLUGIN_PARAMS_STR = "RAY_PLUGIN_PARAMS_STR"

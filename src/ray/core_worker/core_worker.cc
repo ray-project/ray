@@ -117,8 +117,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_) {
-  RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
-
+  //RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
+  RAY_LOG(INFO) << "Constructing CoreWorker, worker_id: " << worker_id;
+  RAY_LOG(INFO) << options_.worker_type;
+  RAY_LOG(INFO) << options_.plugin_name;
+  RAY_LOG(INFO) << options_.plugin_params;
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -302,9 +305,12 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
   };
   RAY_CHECK_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, nullptr));
-
+ 
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
+      options_.plugin_name,
+      options_.plugin_path,
+      options_.plugin_params,
       local_raylet_client_,
       reference_counter_,
       options_.check_signals,
@@ -3954,3 +3960,4 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
 
 }  // namespace core
 }  // namespace ray
+

@@ -105,7 +105,9 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   }
 
   RAY_LOG(INFO) << "Constructing CoreWorkerProcess. pid: " << getpid();
-
+  RAY_LOG(INFO) << options_.worker_type;
+  RAY_LOG(INFO) << options_.plugin_params;
+ 
   // NOTE(kfstorm): any initialization depending on RayConfig must happen after this line.
   InitializeSystemConfig();
 
@@ -291,3 +293,4 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
 
 }  // namespace core
 }  // namespace ray
+

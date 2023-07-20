@@ -90,6 +90,9 @@ class CoreWorkerPlasmaStoreProvider {
  public:
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
+      const std::string &plugin_name, 
+      const std::string &plugin_path,
+      const std::string &plugin_params,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
       const std::shared_ptr<ReferenceCounter> reference_counter,
       std::function<Status()> check_signals,
@@ -221,8 +224,8 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
-  plasma::PlasmaClient store_client_;
-  ///std::shared_ptr<plasma::ObjectStoreClientInterface> store_client_;
+  //plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::ObjectStoreClientInterface> store_client_;
   /// Used to look up a plasma object's owner.
   const std::shared_ptr<ReferenceCounter> reference_counter_;
   std::function<Status()> check_signals_;

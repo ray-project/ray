@@ -71,6 +71,9 @@ struct CoreWorkerOptions {
         driver_name(""),
         stdout_file(""),
         stderr_file(""),
+        plugin_name(""),
+        plugin_path(""),
+        plugin_params(""),
         task_execution_callback(nullptr),
         check_signals(nullptr),
         gc_collect(nullptr),
@@ -124,6 +127,10 @@ struct CoreWorkerOptions {
   std::string stdout_file;
   /// The stderr file of this process.
   std::string stderr_file;
+
+  std::string plugin_name;
+  std::string plugin_path;
+  std::string plugin_params;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;
   /// The callback to be called when shutting down a `CoreWorker` instance.
@@ -191,3 +198,4 @@ struct CoreWorkerOptions {
 };
 }  // namespace core
 }  // namespace ray
+
