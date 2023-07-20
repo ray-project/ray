@@ -274,7 +274,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
 
-        ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
+        ## Call the API again to make sure task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
         try:
             (_, worker_id) = await self.get_worker_details_for_task(
@@ -357,7 +357,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             )
         )
 
-        ## Get the new pid and ip again to check if the task is still running and the worker is still working on the task
+        ## Call the API again to make sure task is still running and the worker is still working on the task
         ## Since there is a task scheduling strategy that a worker may run different tasks at different time
         try:
             (_, worker_id) = await self.get_worker_details_for_task(
