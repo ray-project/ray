@@ -112,9 +112,28 @@ def try_reload_log_state(provider_config: Dict[str, Any], log_state: dict) -> No
         return reload_log_state(log_state)
 
 
-def debug_status(status, error, verbose: bool = False) -> str:
-    """Return a debug string for the autoscaler."""
-    if status:
+def debug_status(status, error, verbose: bool = False, address: str = None) -> str:
+    """
+    Return a debug string for the autoscaler.
+
+    Args:
+        status: The autoscaler status string for v1
+        error: The autoscaler error string for v1
+        verbose: Whether to print verbose information.
+        address: The address of the cluster (gcs address).
+
+    Returns:
+        str: A debug string for the cluster's status.
+    """
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
+        from ray.autoscaler.v2.sdk import get_cluster_status
+        from ray.autoscaler.v2.utils import ClusterStatusFormatter
+
+        cluster_status = get_cluster_status(address)
+        status = ClusterStatusFormatter.format(cluster_status, verbose=verbose)
+    elif status:
         status = status.decode("utf-8")
         status_dict = json.loads(status)
         lm_summary_dict = status_dict.get("load_metrics_report")
@@ -188,7 +207,9 @@ def request_resources(
         AUTOSCALER_RESOURCE_REQUEST_CHANNEL, json.dumps(to_request), overwrite=True
     )
 
-    if ray._config.enable_autoscaler_v2():
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
         from ray.autoscaler.v2.sdk import request_cluster_resources
 
         request_cluster_resources(to_request)
