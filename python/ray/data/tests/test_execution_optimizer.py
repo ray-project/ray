@@ -1222,8 +1222,11 @@ def test_from_huggingface_e2e(ray_start_regular_shared, enable_optimizer):
 
     data = datasets.load_dataset("tweet_eval", "emotion")
     assert isinstance(data, datasets.DatasetDict)
-    ray_datasets = ray.data.from_huggingface(data)
-    assert isinstance(ray_datasets, dict)
+    ray_datasets = {
+        "train": ray.data.from_huggingface(data["train"]),
+        "validation": ray.data.from_huggingface(data["validation"]),
+        "test": ray.data.from_huggingface(data["test"]),
+    }
 
     for ds_key, ds in ray_datasets.items():
         assert isinstance(ds, ray.data.Dataset)
