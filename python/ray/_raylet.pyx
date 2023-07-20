@@ -2351,6 +2351,10 @@ cdef class GcsClient:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         with nogil:
             status = self.inner.get().Connect(self.cluster_id, timeout_ms)
+
+        if self.cluster_id.IsNil():
+            self.cluster_id = self.inner.get().GetClusterId()
+            assert not self.cluster_id.IsNil()
         check_status(status)
 
     def get_cluster_id(self):

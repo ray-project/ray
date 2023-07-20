@@ -81,7 +81,8 @@ void GcsSubscriberClient::PubsubCommandBatch(
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service) {
+Status GcsClient::Connect(instrumented_io_context &io_service,
+                          const ClusterID &cluster_id) {
   // Connect to gcs service.
   client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service, cluster_id);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
@@ -153,10 +154,19 @@ Status HandleGcsError(rpc::GcsStatus status) {
 }
 }  // namespace
 
-Status PythonGcsClient::Connect(ClusterID &cluster_id, int64_t timeout_ms) {
+Status PythonGcsClient::Connect(const ClusterID &cluster_id, int64_t timeout_ms) {
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
+  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
+  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
+  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
+  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
+
   if (cluster_id.IsNil()) {
     RAY_LOG(INFO) << "Retrieving cluster ID from GCS server.";
-    grpc::ClientContext &&context = PrepareContext(timeout_ms);
+    grpc::ClientContext context;
+    PrepareContext(context, timeout_ms);
 
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;
@@ -165,9 +175,8 @@ Status PythonGcsClient::Connect(ClusterID &cluster_id, int64_t timeout_ms) {
         GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
     while (!status.IsTimedOut()) {
       if (status.ok()) {
-        cluster_id = ClusterID::FromBinary(reply.cluster_id());
-        RAY_CHECK(!cluster_id.IsNil());
-        cluster_id_ = cluster_id;
+        cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
+        RAY_CHECK(!cluster_id_.IsNil());
         RAY_LOG(INFO) << "Received cluster ID from GCS server: " << cluster_id_;
         break;
       } else if (!status.IsGrpcError()) {
@@ -183,13 +192,6 @@ Status PythonGcsClient::Connect(ClusterID &cluster_id, int64_t timeout_ms) {
   }
 
   RAY_CHECK(!cluster_id.IsNil()) << "Unexpected nil cluster ID.";
-  channel_ =
-      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
-  kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
-  runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
-  node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
-  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -221,7 +223,8 @@ Status PythonGcsClient::InternalKVGet(const std::string &ns,
                                       const std::string &key,
                                       int64_t timeout_ms,
                                       std::string &value) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::InternalKVGetRequest request;
   request.set_namespace_(ns);
@@ -247,7 +250,8 @@ Status PythonGcsClient::InternalKVMultiGet(
     const std::vector<std::string> &keys,
     int64_t timeout_ms,
     std::unordered_map<std::string, std::string> &result) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::InternalKVMultiGetRequest request;
   request.set_namespace_(ns);
@@ -278,7 +282,8 @@ Status PythonGcsClient::InternalKVPut(const std::string &ns,
                                       bool overwrite,
                                       int64_t timeout_ms,
                                       int &added_num) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::InternalKVPutRequest request;
   request.set_namespace_(ns);
@@ -304,7 +309,8 @@ Status PythonGcsClient::InternalKVDel(const std::string &ns,
                                       bool del_by_prefix,
                                       int64_t timeout_ms,
                                       int &deleted_num) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::InternalKVDelRequest request;
   request.set_namespace_(ns);
@@ -328,7 +334,8 @@ Status PythonGcsClient::InternalKVKeys(const std::string &ns,
                                        const std::string &prefix,
                                        int64_t timeout_ms,
                                        std::vector<std::string> &results) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::InternalKVKeysRequest request;
   request.set_namespace_(ns);
@@ -351,7 +358,8 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
                                          const std::string &key,
                                          int64_t timeout_ms,
                                          bool &exists) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::InternalKVExistsRequest request;
   request.set_namespace_(ns);
@@ -373,7 +381,8 @@ Status PythonGcsClient::InternalKVExists(const std::string &ns,
 Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
                                          int expiration_s,
                                          int64_t timeout_ms) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::PinRuntimeEnvURIRequest request;
   request.set_uri(uri);
@@ -400,7 +409,8 @@ Status PythonGcsClient::PinRuntimeEnvUri(const std::string &uri,
 
 Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
                                        std::vector<rpc::GcsNodeInfo> &result) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::GetAllNodeInfoRequest request;
   rpc::GetAllNodeInfoReply reply;
@@ -419,7 +429,8 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
 
 Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
                                       std::vector<rpc::JobTableData> &result) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::GetAllJobInfoRequest request;
   rpc::GetAllJobInfoReply reply;
@@ -440,7 +451,8 @@ Status PythonGcsClient::RequestClusterResourceConstraint(
     int64_t timeout_ms,
     const std::vector<std::unordered_map<std::string, double>> &bundles,
     const std::vector<int64_t> &count_array) {
-  grpc::ClientContext &&context = PrepareContext(timeout_ms);
+  grpc::ClientContext context;
+  PrepareContext(context, timeout_ms);
 
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;

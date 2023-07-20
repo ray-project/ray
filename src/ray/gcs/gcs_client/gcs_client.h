@@ -84,7 +84,8 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
   /// \param instrumented_io_context IO execution service.
   ///
   /// \return Status
-  virtual Status Connect(instrumented_io_context &io_service);
+  virtual Status Connect(instrumented_io_context &io_service,
+                         const ClusterID &cluster_id = ClusterID::Nil());
 
   /// Disconnect with GCS Service. Non-thread safe.
   virtual void Disconnect();
@@ -191,7 +192,7 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
 class RAY_EXPORT PythonGcsClient {
  public:
   explicit PythonGcsClient(const GcsClientOptions &options);
-  Status Connect(ClusterID &cluster_id, int64_t timeout_ms = -1);
+  Status Connect(const ClusterID &cluster_id, int64_t timeout_ms);
 
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
                     int64_t timeout_ms,
@@ -241,9 +242,10 @@ class RAY_EXPORT PythonGcsClient {
                    int64_t timeout_ms,
                    bool &is_accepted);
 
+  ClusterID GetClusterId() const { return cluster_id_; }
+
  private:
-  inline grpc::ClientContext &&PrepareContext(int64_t timeout_ms) {
-    grpc::ClientContext context;
+  void PrepareContext(grpc::ClientContext &context, int64_t timeout_ms) {
     if (timeout_ms != -1) {
       context.set_deadline(std::chrono::system_clock::now() +
                            std::chrono::milliseconds(timeout_ms));
@@ -251,7 +253,6 @@ class RAY_EXPORT PythonGcsClient {
     if (!cluster_id_.IsNil()) {
       context.AddMetadata(kClusterIdKey, cluster_id_.Hex());
     }
-    return std::move(context);
   }
 
   ClusterID cluster_id_;

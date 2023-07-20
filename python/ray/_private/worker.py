@@ -463,7 +463,6 @@ class Worker:
         # different drivers that connect to the same Serve instance.
         # See https://github.com/ray-project/ray/pull/35070.
         self._filter_logs_by_job = True
-        self.cluster_id = None
 
     @property
     def connected(self):
