@@ -2474,7 +2474,7 @@ except Exception as e:
 
 
 def main():
-    return cli()
+    return cli(standalone_mode=False)
 
 
 if __name__ == "__main__":
