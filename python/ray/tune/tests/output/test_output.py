@@ -1,3 +1,5 @@
+import argparse
+
 from unittest import mock
 
 import pytest
@@ -285,6 +287,19 @@ def test_result_include():
     assert data == [
         ["y", 20],
         ["z/m", 4],
+    ]
+
+
+def test_config_argparse():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--bool-val", action="store_true", default=True)
+    parser.add_argument("--foo", default="bar")
+    args = parser.parse_args([])
+
+    data = _get_dict_as_table_data({"parsed_args": args})
+    assert data == [
+        ["parsed_args/bool_val", True],
+        ["parsed_args/foo", "bar"],
     ]
 
 
