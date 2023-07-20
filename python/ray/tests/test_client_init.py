@@ -16,6 +16,14 @@ from ray.cluster_utils import cluster_not_supported
 import ray
 
 
+@pytest.fixture
+def init_and_serve():
+    server_handle, _ = ray_client_server.init_and_serve("localhost:50051")
+    yield server_handle
+    ray_client_server.shutdown_with_server(server_handle.grpc_server)
+    time.sleep(2)
+
+
 @ray.remote
 def hello_world():
     c1 = complex_task.remote(random.randint(1, 10))
