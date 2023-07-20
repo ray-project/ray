@@ -146,7 +146,7 @@ RAY_GCS_RPC_TIMEOUT_S = 3.0
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 # Minimum duration to wait until broadcasting model IDs.
-PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 0.1
 
 
 # Deprecation message for V1 migrations.

@@ -4,7 +4,7 @@ import inspect
 import logging
 import threading
 import time
-from typing import Any, Callable, Dict, List
+from typing import Any, Callable, List, Set
 
 from ray._private.async_compat import sync_to_async
 from ray.serve._private.constants import (
@@ -93,7 +93,7 @@ class _ModelMultiplexWrapper:
 
         # Model cache lock
         self._model_cache_lock = asyncio.Lock()
-        self._model_load_tasks: Dict[str, asyncio.Task] = dict()
+        self._model_load_tasks: Set[str] = set()
         self._model_ids_pusher_thread_stop: bool = False
         # Push the model IDs to the controller periodically.
         self._model_ids_pusher_thread = threading.Thread(target=self._push_model_ids)
@@ -123,6 +123,8 @@ class _ModelMultiplexWrapper:
             self.models[model_id] = model
             return self.models[model_id]
         else:
+            self._push_multiplexed_replica_info = True
+            self._model_load_tasks.add(model_id)
             async with self._model_cache_lock:
                 # Check if the model has been loaded by another request.
                 if model_id in self.models:
@@ -145,18 +147,15 @@ class _ModelMultiplexWrapper:
                 self.models_load_counter.inc()
                 load_start_time = time.time()
                 if self.self_arg is None:
-                    self._model_load_tasks[
+                    self.models[
                         model_id
-                    ] = get_or_create_event_loop().create_task(self._func(model_id))
+                    ] = await self._func(model_id)
                 else:
-                    self._model_load_tasks[
+                    self.models[
                         model_id
-                    ] = get_or_create_event_loop().create_task(
-                        self._func(self.self_arg, model_id)
-                    )
+                    ] = await self._func(self.self_arg, model_id)
                 self._push_multiplexed_replica_info = True
-                self.models[model_id] = await self._model_load_tasks[model_id]
-                self._model_load_tasks.pop(model_id)
+                self._model_load_tasks.discard(model_id)
                 self.model_load_latency_s.set(time.time() - load_start_time)
                 return self.models[model_id]
 
@@ -176,8 +175,9 @@ class _ModelMultiplexWrapper:
 
     def _get_model_ids(self) -> List[str]:
         """Get the model IDs of the models loaded & loading on the current replica."""
-        models_list = list(self.models.keys()) + list(self._model_load_tasks.keys())
-        return list(set(models_list))
+        models_list = set(self.models.keys())
+        models_list.update(self._model_load_tasks)
+        return list(models_list)
 
     def _push_model_ids(self):
         """Push the multiplexed replica info to the controller."""

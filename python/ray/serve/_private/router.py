@@ -388,13 +388,28 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
     def _get_candidate_replica_ids_for_matched_model_ids(
-        self, model_id: str, blacklist_replica_ids: Set[str]
+        self, model_id: str, blacklist_replica_ids: Set[str], fallback = False
     ) -> Set[str]:
         candidates = set()
+
         if model_id in self._multiplexed_model_id_to_replica_ids:
             candidates = self._multiplexed_model_id_to_replica_ids[model_id].difference(
                 blacklist_replica_ids
             )
+        if fallback:
+            # Sort the replicas based on the number of models they are serving.
+            # Choose the replica with the least number of models.
+            sorted_replicas = sorted(
+                self._replicas.values(),
+                key=lambda x: len(x.multiplexed_model_ids),
+            )
+            least_num_models = len(sorted_replicas[0].multiplexed_model_ids)
+            for replica in sorted_replicas:
+                if replica.replica_id not in blacklist_replica_ids:
+                    if len(replica.multiplexed_model_ids) == least_num_models:
+                        candidates.add(replica.replica_id)
+                    else:
+                        break
         return candidates
 
     def _get_candidate_replica_ids(
@@ -451,6 +466,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     if candidate_replica_ids:
                         break
                     await asyncio.sleep(0.01)
+                if not candidate_replica_ids:
+                    candidate_replica_ids = self._get_candidate_replica_ids_for_matched_model_ids(
+                        request_metadata.multiplexed_model_id, replica_ids_attempted, fallback=True
+                    )
 
             if not candidate_replica_ids:
                 # Get candidates to sample from; this will exclude replicas used in a
