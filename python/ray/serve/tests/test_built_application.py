@@ -1,9 +1,12 @@
 import pytest
 import sys
+from typing import List
 
 import ray
 from ray import serve
+from ray.serve import Deployment
 from ray.serve.built_application import BuiltApplication
+from ray.serve.context import get_global_client
 from ray._private.test_utils import wait_for_condition
 
 
@@ -58,7 +61,7 @@ class TestServeRun:
             return "D reached"
 
     def deploy_and_check_responses(
-        self, deployments, responses, blocking=True, client=None
+        self, deployments: List[Deployment], responses, blocking=True, client=None
     ):
         """
         Helper function that deploys the list of deployments, calls them with
@@ -75,13 +78,14 @@ class TestServeRun:
             )
 
         def check_all_deployed():
-            try:
-                for deployment, response in zip(deployments, responses):
-                    if ray.get(deployment.get_handle().remote()) != response:
-                        return False
-            except Exception:
-                return False
-
+            for i in range(len(deployments)):
+                # for deployment, response in zip(deployments, responses):
+                client = get_global_client()
+                if (
+                    ray.get(client.get_handle(deployments[i].name, f"app{i}").remote())
+                    != responses[i]
+                ):
+                    return False
             return True
 
         if blocking:
@@ -256,8 +260,10 @@ class TestServeRun:
         self.deploy_and_check_responses(deployments, responses)
 
         # Check that non-default decorated values were overwritten
-        assert serve.get_deployment("decorated_func").max_concurrent_queries != 17
-        assert serve.get_deployment("decorated_clss").max_concurrent_queries != 17
+        info, _ = serve_instance.get_deployment_info("decorated_func", "app0")
+        assert info.deployment_config.max_concurrent_queries != 17
+        info, _ = serve_instance.get_deployment_info("decorated_clss", "app1")
+        assert info.deployment_config.max_concurrent_queries != 17
 
 
 # Decorated function with non-default max_concurrent queries

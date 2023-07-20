@@ -30,12 +30,6 @@ DEFAULT_GRPC_PORT = 9000
 #: Default Serve application name
 SERVE_DEFAULT_APP_NAME = "default"
 
-#: Separator between app name and deployment name when we prepend
-#: the app name to each deployment name. This prepending is currently
-#: used to manage deployments from different applications holding the
-#: same names.
-DEPLOYMENT_NAME_PREFIX_SEPARATOR = "_"
-
 #: Max concurrency
 ASYNC_CONCURRENCY = int(1e6)
 

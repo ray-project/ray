@@ -193,20 +193,22 @@ def test_single_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app_f",
+        "ServeReplica:f",
     }
 
     def check_alive():
         actors = list_actors(
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
-        return {actor["class_name"] for actor in actors} == actor_names
+        assert {actor["class_name"] for actor in actors} == actor_names
+        return True
 
     def check_dead():
         actors = list_actors(
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
-        return len(actors) == 0
+        assert len(actors) == 0
+        return True
 
     wait_for_condition(check_alive)
     serve.shutdown()
@@ -232,21 +234,22 @@ def test_multi_app_shutdown_actors(ray_shutdown):
     actor_names = {
         "ServeController",
         "HTTPProxyActor",
-        "ServeReplica:app1_f",
-        "ServeReplica:app2_f",
+        "ServeReplica:f",
     }
 
     def check_alive():
         actors = list_actors(
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
-        return {actor["class_name"] for actor in actors} == actor_names
+        assert {actor["class_name"] for actor in actors} == actor_names
+        return True
 
     def check_dead():
         actors = list_actors(
             filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")]
         )
-        return len(actors) == 0
+        assert len(actors) == 0
+        return True
 
     wait_for_condition(check_alive)
     serve.shutdown()
@@ -534,7 +537,7 @@ def test_http_root_path(ray_shutdown):
     # check advertized routes are prefixed correctly
     resp = requests.get(f"http://127.0.0.1:{port}{root_path}/-/routes")
     assert resp.status_code == 200
-    assert resp.json() == {"/hello": "hello"}
+    assert resp.json() == {"/hello": ["default", "hello"]}
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
@@ -754,7 +757,8 @@ def test_snapshot_always_written_to_internal_kv(
 
     # Make sure /api/snapshot return non-empty deployment status.
     def verify_snapshot():
-        return get_deployment_snapshot() != {}
+        assert get_deployment_snapshot() != {}
+        return True
 
     wait_for_condition(verify_snapshot)
 

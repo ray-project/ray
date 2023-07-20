@@ -25,11 +25,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve._private.constants import (
-    CONTROL_LOOP_PERIOD_S,
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S
 from ray.serve.controller import ServeController
 from ray.serve.schema import ServeDeploySchema
 import ray.util.state as state_api
@@ -120,7 +116,7 @@ class TestCalculateDesiredNumReplicas:
 
 
 def get_deployment_status(controller, name) -> DeploymentStatus:
-    ref = ray.get(controller.get_deployment_status.remote(f"default_{name}"))
+    ref = ray.get(controller.get_deployment_status.remote(name))
     info = DeploymentStatusInfo.from_proto(DeploymentStatusInfoProto.FromString(ref))
     return info.status
 
@@ -128,7 +124,7 @@ def get_deployment_status(controller, name) -> DeploymentStatus:
 def get_running_replicas(controller: ServeController, name: str) -> List:
     """Get the replicas currently running for given deployment"""
     replicas = ray.get(
-        controller._dump_replica_states_for_testing.remote(f"default_{name}")
+        controller._dump_replica_states_for_testing.remote(name, "default")
     )
     running_replicas = replicas.get([ReplicaState.RUNNING])
     return running_replicas
@@ -185,19 +181,17 @@ def test_assert_no_replicas_deprovisioned():
 
 
 def get_deployment_start_time(controller: ServeController, name: str):
-    """Return start time for given deployment"""
+    """Return start time for deployment in application 'default'."""
     deployment_route_list = DeploymentRouteList.FromString(
         ray.get(controller.list_deployments.remote())
     )
-    deployments = {
-        deployment_route.deployment_info.name: (
-            DeploymentInfo.from_proto(deployment_route.deployment_info),
-            deployment_route.route if deployment_route.route != "" else None,
-        )
-        for deployment_route in deployment_route_list.deployment_routes
-    }
-    deployment_info, _route_prefix = deployments[f"default_{name}"]
-    return deployment_info.start_time_ms
+    for deployment in deployment_route_list.deployment_routes:
+        if (
+            deployment.deployment_info.app_name == "default"
+            and deployment.deployment_info.name == name
+            and deployment.route != ""
+        ):
+            return DeploymentInfo.from_proto(deployment.deployment_info).start_time_ms
 
 
 @pytest.mark.parametrize("min_replicas", [1, 2])
@@ -960,7 +954,7 @@ def test_e2e_raise_min_replicas(serve_instance):
 
     assert check_autoscale_num_replicas(controller, "A") == 0
 
-    handle = serve.get_deployment("default_A").get_handle()
+    handle = serve.get_deployment_handle("A", "default")
     [handle.remote() for _ in range(1)]
     print("Issued one request.")
 
@@ -1023,12 +1017,7 @@ def test_e2e_initial_replicas(serve_instance):
     # f should start with initial_replicas (2) deployments
     actors = state_api.list_actors(
         filters=[
-            (
-                "class_name",
-                "=",
-                f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
-            ),
+            ("class_name", "=", "ServeReplica:f"),
             ("state", "=", "ALIVE"),
         ]
     )
@@ -1039,12 +1028,7 @@ def test_e2e_initial_replicas(serve_instance):
     def check_one_replica():
         actors = state_api.list_actors(
             filters=[
-                (
-                    "class_name",
-                    "=",
-                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f",
-                ),
+                ("class_name", "=", "ServeReplica:f"),
                 ("state", "=", "ALIVE"),
             ]
         )
@@ -1084,8 +1068,7 @@ def test_e2e_preserve_prev_replicas(serve_instance):
                 (
                     "class_name",
                     "=",
-                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
+                    "ServeReplica:scaler",
                 ),
                 ("state", "=", "ALIVE"),
             ]
@@ -1109,23 +1092,13 @@ def test_e2e_preserve_prev_replicas(serve_instance):
     def check_num_replicas(live: int, dead: int):
         live_actors = state_api.list_actors(
             filters=[
-                (
-                    "class_name",
-                    "=",
-                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
-                ),
+                ("class_name", "=", "ServeReplica:scaler"),
                 ("state", "=", "ALIVE"),
             ]
         )
         dead_actors = state_api.list_actors(
             filters=[
-                (
-                    "class_name",
-                    "=",
-                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}scaler",
-                ),
+                ("class_name", "=", "ServeReplica:scaler"),
                 ("state", "=", "DEAD"),
             ]
         )
@@ -1217,12 +1190,7 @@ app = g.bind()
     def check_num_replicas(num: int):
         actors = state_api.list_actors(
             filters=[
-                (
-                    "class_name",
-                    "=",
-                    f"ServeReplica:{SERVE_DEFAULT_APP_NAME}"
-                    f"{DEPLOYMENT_NAME_PREFIX_SEPARATOR}g",
-                ),
+                ("class_name", "=", "ServeReplica:g"),
                 ("state", "=", "ALIVE"),
             ]
         )

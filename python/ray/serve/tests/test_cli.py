@@ -21,11 +21,10 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     MULTI_APP_MIGRATION_MESSAGE,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 
 
-def assert_deployments_live(names: List[str]):
+def assert_deployments_live(names: List[str], app_name: str = SERVE_DEFAULT_APP_NAME):
     """Checks if all deployments named in names have at least 1 living replica."""
 
     running_actor_names = [actor["name"] for actor in list_actors()]
@@ -33,7 +32,7 @@ def assert_deployments_live(names: List[str]):
     all_deployments_live, nonliving_deployment = True, ""
     for deployment_name in names:
         for actor_name in running_actor_names:
-            if deployment_name in actor_name:
+            if deployment_name in actor_name and app_name in actor_name:
                 break
         else:
             all_deployments_live, nonliving_deployment = False, deployment_name
@@ -98,11 +97,11 @@ def test_deploy_basic(ray_start_stop):
         print("Deployments are reachable over HTTP.")
 
         deployment_names = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
+            "DAGDriver",
+            "create_order",
+            "Router",
+            "Multiplier",
+            "Adder",
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -127,10 +126,10 @@ def test_deploy_basic(ray_start_stop):
         print("Deployments are reachable over HTTP.")
 
         deployment_names = [
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Add",
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Subtract",
+            "DAGDriver",
+            "Router",
+            "Add",
+            "Subtract",
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -231,19 +230,15 @@ def test_deploy_multi_app(ray_start_stop):
         )
         print('Application "app2" is reachable over HTTP.')
 
-        deployment_names = [
-            "app1_DAGDriver",
-            "app1_create_order",
-            "app1_Router",
-            "app1_Multiplier",
-            "app1_Adder",
-            "app2_DAGDriver",
-            "app2_create_order",
-            "app2_Router",
-            "app2_Multiplier",
-            "app2_Adder",
+        pizza_deployment_names = [
+            "DAGDriver",
+            "create_order",
+            "Router",
+            "Multiplier",
+            "Adder",
         ]
-        assert_deployments_live(deployment_names)
+        assert_deployments_live(pizza_deployment_names, "app1")
+        assert_deployments_live(pizza_deployment_names, "app2")
         print("All deployments are live.\n")
 
         print("Deploying pizza world config.")
@@ -270,16 +265,8 @@ def test_deploy_multi_app(ray_start_stop):
         )
         print('Application "app2" is reachable over HTTP.')
 
-        deployment_names = [
-            "app1_BasicDriver",
-            "app1_f",
-            "app2_DAGDriver",
-            "app2_create_order",
-            "app2_Router",
-            "app2_Multiplier",
-            "app2_Adder",
-        ]
-        assert_deployments_live(deployment_names)
+        assert_deployments_live(["f", "BasicDriver"], "app1")
+        assert_deployments_live(pizza_deployment_names, "app2")
         print("All deployments are live.\n")
 
     ray.shutdown()
@@ -468,7 +455,7 @@ def test_cli_without_config_deploy(ray_start_stop):
         return (
             "No config has been deployed" in info_response.decode("utf-8")
             and fetched_status["status"] == "RUNNING"
-            and fetched_status["deployments"]["default_fn"]["status"] == "HEALTHY"
+            and fetched_status["deployments"]["fn"]["status"] == "HEALTHY"
         )
 
     wait_for_condition(check_cli)
@@ -564,11 +551,11 @@ def test_status_basic(ray_start_stop):
     default_app = serve_status["applications"]["default"]
 
     expected_deployments = {
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}DAGDriver",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Multiplier",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Adder",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}Router",
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}create_order",
+        "DAGDriver",
+        "Multiplier",
+        "Adder",
+        "Router",
+        "create_order",
     }
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
@@ -681,7 +668,7 @@ def test_status_constructor_error(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"]["default"]
         assert status["status"] == "DEPLOY_FAILED"
-        assert "ZeroDivisionError" in status["deployments"]["default_A"]["message"]
+        assert "ZeroDivisionError" in status["deployments"]["A"]["message"]
         return True
 
     wait_for_condition(check_for_failed_deployment)
@@ -705,10 +692,7 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"]["default"]
         assert status["status"] == "DEPLOY_FAILED"
-        assert (
-            "some_wrong_url"
-            in status["deployments"]["default_TestDeployment"]["message"]
-        )
+        assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
     wait_for_condition(check_for_failed_deployment, timeout=15)

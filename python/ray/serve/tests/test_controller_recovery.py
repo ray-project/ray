@@ -12,7 +12,7 @@ from ray.util.state import list_actors
 
 
 from ray import serve
-from ray.serve._private.common import ApplicationStatus, ReplicaState
+from ray.serve._private.common import ApplicationStatus, ReplicaState, DeploymentID
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_PROXY_NAME,
@@ -46,10 +46,11 @@ def test_recover_start_from_replica_actor_names(serve_instance):
     # Assert 2 replicas are running in deployment deployment after partially
     # successful deploy() call with transient error
     deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
-    assert len(deployment_dict["app_recover_start_from_replica_actor_names"]) == 2
+    deployment_id = DeploymentID("app", "recover_start_from_replica_actor_names")
+    assert len(deployment_dict[deployment_id]) == 2
 
     replica_version_hash = None
-    for replica in deployment_dict["app_recover_start_from_replica_actor_names"]:
+    for replica in deployment_dict[deployment_id]:
         ref = replica.actor_handle._get_metadata.remote()
         _, version = ray.get(ref)
         if replica_version_hash is None:
@@ -120,7 +121,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     @ray.remote(num_cpus=0)
     def call(block=False):
-        handle = serve.get_deployment(f"app_{name}").get_handle()
+        handle = serve.get_deployment_handle(name, "app")
         ret = ray.get(handle.handler.remote(block))
 
         return ret.split("|")[0], ret.split("|")[1]
@@ -238,7 +239,7 @@ def test_controller_recover_initializing_actor(serve_instance):
                 print(actor)
                 return actor["name"], actor["pid"]
 
-    actor_tag, _ = get_actor_info(f"app_{V1.name}")
+    actor_tag, _ = get_actor_info(f"app#{V1.name}")
     _, controller1_pid = get_actor_info(SERVE_CONTROLLER_NAME)
     ray.kill(serve.context._global_client._controller, no_restart=False)
     # wait for controller is alive again
@@ -249,7 +250,7 @@ def test_controller_recover_initializing_actor(serve_instance):
     ray.get(signal.send.remote())
     client._wait_for_application_running("app")
     # Make sure the actor before controller dead is staying alive.
-    assert actor_tag == get_actor_info(f"app_{V1.name}")[0]
+    assert actor_tag == get_actor_info(f"app#{V1.name}")[0]
 
 
 def test_replica_deletion_after_controller_recover(serve_instance):
@@ -270,7 +271,7 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     def check_replica(replica_state=None):
         try:
             replicas = ray.get(
-                controller._dump_replica_states_for_testing.remote("app_V1")
+                controller._dump_replica_states_for_testing.remote("V1", "app")
             )
         except RayTaskError as ex:
             # Deployment is not existed any more.
@@ -327,27 +328,24 @@ def test_recover_deleting_application(serve_instance):
 
     def application_deleting():
         # Confirm application is in deleting state
-        app_status = serve_instance.get_serve_status()
-        if app_status.app_status.status != "DELETING":
-            return False
+        assert serve_instance.get_serve_status().app_status.status == "DELETING"
 
         # Confirm deployment is in updating state
         status = serve_instance.get_all_deployment_statuses()[0]
-        if not (status.name == "default_A" and status.status == "UPDATING"):
-            return False
+        assert status.name == "A" and status.status == "UPDATING"
 
         # Confirm replica is stopping
         replicas = ray.get(
             serve_instance._controller._dump_replica_states_for_testing.remote(
-                "default_A"
+                "A", "default"
             )
         )
-        if replicas.count(states=[ReplicaState.STOPPING]) != 1:
-            return False
+        assert replicas.count(states=[ReplicaState.STOPPING]) == 1
 
         # Confirm delete task is still blocked
         finished, pending = ray.wait([delete_ref], timeout=0)
-        return pending and not finished
+        assert pending and not finished
+        return True
 
     def check_deleted():
         deployment_statuses = serve_instance.get_all_deployment_statuses()
@@ -389,7 +387,9 @@ def test_recover_deleting_application(serve_instance):
     # Since we've confirmed the replica is in a stopping state, we can grab
     # the reference to the in-progress graceful shutdown task
     replicas = ray.get(
-        serve_instance._controller._dump_replica_states_for_testing.remote("default_A")
+        serve_instance._controller._dump_replica_states_for_testing.remote(
+            "A", "default"
+        )
     )
     graceful_shutdown_ref = replicas.get()[0]._actor._graceful_shutdown_ref
 

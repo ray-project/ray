@@ -7,10 +7,8 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition, SignalActor
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def request_with_retries(endpoint, timeout=30):
@@ -111,13 +109,13 @@ def test_http_proxy_failure(serve_instance):
 
 
 def _get_worker_handles(deployment):
-    deployment_name = (
-        f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{deployment}"
-    )
     controller = serve.context._global_client._controller
     deployment_dict = ray.get(controller._all_running_replicas.remote())
 
-    return [replica.actor_handle for replica in deployment_dict[deployment_name]]
+    return [
+        replica.actor_handle
+        for replica in deployment_dict[DeploymentID(SERVE_DEFAULT_APP_NAME, deployment)]
+    ]
 
 
 # Test that a worker dying unexpectedly causes it to restart and continue

@@ -367,7 +367,7 @@ class Deployment:
     def _delete(self):
         """Delete this deployment."""
 
-        return get_global_client().delete_deployments([self._name])
+        return get_global_client().delete_deployments([(self._name, "default")])
 
     @guarded_deprecation_warning(instructions=MIGRATION_MESSAGE)
     @Deprecated(message=MIGRATION_MESSAGE)

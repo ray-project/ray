@@ -12,11 +12,7 @@ from ray.serve.context import get_global_client
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
 from ray.serve._private.router import PowerOfTwoChoicesReplicaScheduler
-from ray.serve._private.constants import (
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-    SERVE_DEFAULT_APP_NAME,
-)
+from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
 def test_handle_options():
@@ -136,10 +132,7 @@ def test_sync_handle_in_thread(serve_instance):
     handle = serve.run(f.bind())
 
     def thread_get_handle(deploy):
-        deployment_name = (
-            f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}{deploy._name}"
-        )
-        handle = get_global_client().get_handle(deployment_name, sync=True)
+        handle = get_global_client().get_handle(deploy._name, sync=True)
         return handle
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:

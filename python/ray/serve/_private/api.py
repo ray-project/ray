@@ -80,10 +80,10 @@ def list_deployments() -> Dict[str, Deployment]:
     infos = get_global_client().list_deployments()
 
     deployments = {}
-    for name, (deployment_info, route_prefix) in infos.items():
-        deployments[name] = Deployment(
+    for id, (deployment_info, route_prefix) in infos.items():
+        deployments[id.name] = Deployment(
             deployment_info.replica_config.deployment_def,
-            name,
+            id.name,
             deployment_info.deployment_config,
             version=deployment_info.version,
             init_args=deployment_info.replica_config.init_args,

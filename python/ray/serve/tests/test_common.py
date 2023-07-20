@@ -19,17 +19,18 @@ from ray.serve.generated.serve_pb2 import (
 
 
 def test_replica_tag_formatting():
+    app_name = "app1"
     deployment_tag = "DeploymentA"
     replica_suffix = get_random_letters()
 
-    replica_name = ReplicaName(deployment_tag, replica_suffix)
-    assert replica_name.replica_tag == f"{deployment_tag}#{replica_suffix}"
-    assert str(replica_name) == f"{deployment_tag}#{replica_suffix}"
+    replica_name = ReplicaName(app_name, deployment_tag, replica_suffix)
+    assert replica_name.replica_tag == f"{app_name}#{deployment_tag}#{replica_suffix}"
+    assert str(replica_name) == f"{app_name}#{deployment_tag}#{replica_suffix}"
 
 
 def test_replica_name_from_str():
     replica_suffix = get_random_letters()
-    actor_name = f"{ReplicaName.prefix}DeploymentA#{replica_suffix}"
+    actor_name = f"{ReplicaName.prefix}app1#DeploymentA#{replica_suffix}"
 
     replica_name = ReplicaName.from_str(actor_name)
     assert (
@@ -42,12 +43,12 @@ def test_replica_name_from_str():
 def test_invalid_name_from_str():
     replica_suffix = get_random_letters()
 
-    replica_tag = f"DeploymentA##{replica_suffix}"
+    replica_tag = f"app1#DeploymentA##{replica_suffix}"
     with pytest.raises(AssertionError):
         ReplicaName.from_str(replica_tag)
 
     # No prefix
-    replica_tag = f"DeploymentA#{replica_suffix}"
+    replica_tag = f"app1#DeploymentA#{replica_suffix}"
     with pytest.raises(AssertionError):
         ReplicaName.from_str(replica_tag)
 

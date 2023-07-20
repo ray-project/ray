@@ -81,7 +81,8 @@ def serve_instance(_shared_serve_instance):
     # Clear all applications to avoid naming & route_prefix collisions.
     _shared_serve_instance.delete_all_apps()
     # Clear all state between tests to avoid naming collisions.
-    _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
+    all_deployments = _shared_serve_instance.list_deployments().keys()
+    _shared_serve_instance.delete_deployments(all_deployments)
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
 

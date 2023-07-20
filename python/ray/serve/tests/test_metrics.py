@@ -106,7 +106,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
         "serve_replica_processing_queries", timeout=5
     )
     assert len(processing_requests) == 1
-    assert processing_requests[0]["deployment"] == "app1_A"
+    assert processing_requests[0]["deployment"] == "A"
     assert processing_requests[0]["application"] == "app1"
     print("serve_replica_processing_queries exists.")
 
@@ -114,7 +114,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown):
         "serve_replica_pending_queries", timeout=5
     )
     assert len(pending_requests) == 1
-    assert pending_requests[0]["deployment"] == "app1_A"
+    assert pending_requests[0]["deployment"] == "A"
     assert pending_requests[0]["application"] == "app1"
     print("serve_replica_pending_queries exists.")
 
@@ -215,8 +215,8 @@ def test_http_metrics(serve_start_shutdown):
             elif "serve_num_deployment_http_error_requests" in metrics:
                 # deployment A should have error count 2
                 if do_assert:
-                    assert 'deployment="app_A"' in metrics and "2.0" in metrics
-                if 'deployment="app_A"' not in metrics or "2.0" not in metrics:
+                    assert 'deployment="app#A"' in metrics and "2.0" in metrics
+                if 'deployment="app#A"' not in metrics or "2.0" not in metrics:
                     return False
         return True
 
@@ -267,7 +267,7 @@ def test_http_metrics_fields(serve_start_shutdown):
         "serve_num_deployment_http_error_requests"
     )
     assert len(num_deployment_errors) == 1
-    assert num_deployment_errors[0]["deployment"] == "app_f"
+    assert num_deployment_errors[0]["deployment"] == "app#f"
     assert num_deployment_errors[0]["error_code"] == "500"
     assert num_deployment_errors[0]["method"] == "GET"
     assert num_deployment_errors[0]["application"] == "app"
@@ -371,14 +371,14 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_deployment_request_counter")
     assert len(num_requests) == 2
-    expected_output = {"route": "/f", "deployment": "app1_f", "application": "app1"}
+    expected_output = {"route": "/f", "deployment": "f", "application": "app1"}
     verify_metrics(num_requests[0], expected_output)
 
     start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
     assert len(start_metrics) == 2
-    expected_output = {"deployment": "app1_f", "application": "app1"}
+    expected_output = {"deployment": "f", "application": "app1"}
     verify_metrics(start_metrics[0], expected_output)
-    expected_output = {"deployment": "app2_g", "application": "app2"}
+    expected_output = {"deployment": "g", "application": "app2"}
     verify_metrics(start_metrics[1], expected_output)
 
     # Latency metrics
@@ -396,8 +396,8 @@ def test_replica_metrics_fields(serve_start_shutdown):
         latency_metrics = get_metric_dictionaries(metric_name)
         print(f"checking metric {metric_name}, {latency_metrics}")
         assert len(latency_metrics) == 2
-        expected_output1 = {"deployment": "app1_f", "application": "app1"}
-        expected_output2 = {"deployment": "app2_g", "application": "app2"}
+        expected_output1 = {"deployment": "f", "application": "app1"}
+        expected_output2 = {"deployment": "g", "application": "app2"}
         verify_metrics(latency_metrics[0], expected_output1)
         verify_metrics(latency_metrics[1], expected_output2)
 
@@ -405,8 +405,8 @@ def test_replica_metrics_fields(serve_start_shutdown):
         lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
     )
     processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
-    expected_output1 = {"deployment": "app1_f", "application": "app1"}
-    expected_output2 = {"deployment": "app2_g", "application": "app2"}
+    expected_output1 = {"deployment": "f", "application": "app1"}
+    expected_output2 = {"deployment": "g", "application": "app2"}
     verify_metrics(processing_queries[0], expected_output1)
     verify_metrics(processing_queries[1], expected_output2)
 
@@ -422,15 +422,15 @@ def test_replica_metrics_fields(serve_start_shutdown):
     )
     err_requests = get_metric_dictionaries("serve_deployment_error_counter")
     assert len(err_requests) == 1
-    expected_output = {"route": "/h", "deployment": "app3_h", "application": "app3"}
+    expected_output = {"route": "/h", "deployment": "h", "application": "app3"}
     verify_metrics(err_requests[0], expected_output)
 
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
     assert len(health_metrics) == 3
     expected_outputs = [
-        {"deployment": "app1_f", "application": "app1"},
-        {"deployment": "app2_g", "application": "app2"},
-        {"deployment": "app3_h", "application": "app3"},
+        {"deployment": "f", "application": "app1"},
+        {"deployment": "g", "application": "app2"},
+        {"deployment": "h", "application": "app3"},
     ]
     for i in range(len(health_metrics)):
         verify_metrics(health_metrics[i], expected_outputs[i])
@@ -522,14 +522,12 @@ class TestRequestContextMetrics:
 
         # Check replica qps & latency
         wait_for_route_and_name(
-            "serve_deployment_request_counter", "app1_f", "app1", "/app1"
+            "serve_deployment_request_counter", "f", "app1", "/app1"
         )
         wait_for_route_and_name(
-            "serve_deployment_request_counter", "app2_g", "app2", "/app2"
+            "serve_deployment_request_counter", "g", "app2", "/app2"
         )
-        wait_for_route_and_name(
-            "serve_deployment_error_counter", "app3_h", "app3", "/app3"
-        )
+        wait_for_route_and_name("serve_deployment_error_counter", "h", "app3", "/app3")
 
         # Check http proxy qps & latency
         for metric_name in [
@@ -551,12 +549,12 @@ class TestRequestContextMetrics:
             metrics_route, metrics_app_name = self._generate_metrics_summary(
                 get_metric_dictionaries(metric_name)
             )
-            assert metrics_route["app1_f"] == {"/app1"}
-            assert metrics_route["app2_g"] == {"/app2"}
-            assert metrics_route["app3_h"] == {"/app3"}
-            assert metrics_app_name["app1_f"] == "app1"
-            assert metrics_app_name["app2_g"] == "app2"
-            assert metrics_app_name["app3_h"] == "app3"
+            assert metrics_route["f"] == {"/app1"}, f"Metric {metric_name} incorrect"
+            assert metrics_route["g"] == {"/app2"}
+            assert metrics_route["h"] == {"/app3"}
+            assert metrics_app_name["f"] == "app1"
+            assert metrics_app_name["g"] == "app2"
+            assert metrics_app_name["h"] == "app3"
 
     def test_request_context_pass_for_handle_passing(self, serve_start_shutdown):
         """Test handle passing contexts between replicas"""
@@ -609,12 +607,12 @@ class TestRequestContextMetrics:
         ) = self._generate_metrics_summary(
             get_metric_dictionaries("serve_deployment_request_counter")
         )
-        assert requests_metrics_route["app_G"] == {"/api", "/api2"}
-        assert requests_metrics_route["app_g1"] == {"/api"}
-        assert requests_metrics_route["app_g2"] == {"/api2"}
-        assert requests_metrics_app_name["app_G"] == "app"
-        assert requests_metrics_app_name["app_g1"] == "app"
-        assert requests_metrics_app_name["app_g2"] == "app"
+        assert requests_metrics_route["G"] == {"/api", "/api2"}
+        assert requests_metrics_route["g1"] == {"/api"}
+        assert requests_metrics_route["g2"] == {"/api2"}
+        assert requests_metrics_app_name["G"] == "app"
+        assert requests_metrics_app_name["g1"] == "app"
+        assert requests_metrics_app_name["g2"] == "app"
 
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
@@ -960,7 +958,7 @@ def test_actor_summary(serve_instance):
     actors = state_api.list_actors(filters=[("state", "=", "ALIVE")])
     class_names = {actor["class_name"] for actor in actors}
     assert class_names.issuperset(
-        {"ServeController", "HTTPProxyActor", "ServeReplica:app_f"}
+        {"ServeController", "HTTPProxyActor", "ServeReplica:f"}
     )
 
 
@@ -995,6 +993,7 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
     wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout)
 
     metrics = requests.get("http://127.0.0.1:9999").text
+    print("metrics", metrics)
 
     metric_dicts = []
     for line in metrics.split("\n"):

@@ -70,7 +70,9 @@ def test_simple_single_class(serve_instance):
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert len(deployments) == 1
@@ -92,7 +94,9 @@ async def test_func_class_with_class_method_dag(serve_instance):
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     serve_executor_root_dag = serve_root_dag.apply_recursive(
@@ -116,7 +120,9 @@ def test_multi_instantiation_class_deployment_in_init_args(serve_instance):
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -138,7 +144,9 @@ def test_shared_deployment_handle(serve_instance):
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -161,7 +169,9 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     print(f"Serve DAG: \n{serve_root_dag}")
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
@@ -172,9 +182,11 @@ def test_multi_instantiation_class_nested_deployment_arg(serve_instance):
     init_arg_handle = combine_deployment.init_args[0]
     assert isinstance(init_arg_handle, RayServeHandle)
     assert init_arg_handle.deployment_name == "Model"
+    assert init_arg_handle.app_name == "default"
     init_kwarg_handle = combine_deployment.init_kwargs["m2"][NESTED_HANDLE_KEY]
     assert isinstance(init_kwarg_handle, RayServeHandle)
     assert init_kwarg_handle.deployment_name == "Model_1"
+    assert init_kwarg_handle.app_name == "default"
 
     for deployment in deployments:
         deployment.deploy()
@@ -189,7 +201,9 @@ def test_get_pipeline_input_node():
     ray_dag = combine.bind(1, 2)
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     with pytest.raises(
         AssertionError, match="There should be one and only one InputNode"
@@ -207,7 +221,9 @@ def test_get_pipeline_input_node():
     ):
         with _DAGNodeNameGenerator() as node_name_generator:
             serve_dag = ray_dag.apply_recursive(
-                lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+                lambda node: transform_ray_dag_to_serve_dag(
+                    node, node_name_generator, "default"
+                )
             )
         get_pipeline_input_node(serve_dag)
 
@@ -216,7 +232,9 @@ def test_unique_name_reset_upon_build(serve_instance):
     ray_dag, _ = get_multi_instantiation_class_deployment_in_init_args_dag()
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     assert deployments[0].name == "Model"
@@ -224,7 +242,9 @@ def test_unique_name_reset_upon_build(serve_instance):
 
     with _DAGNodeNameGenerator() as node_name_generator:
         serve_root_dag = ray_dag.apply_recursive(
-            lambda node: transform_ray_dag_to_serve_dag(node, node_name_generator)
+            lambda node: transform_ray_dag_to_serve_dag(
+                node, node_name_generator, "default"
+            )
         )
     deployments = extract_deployments_from_serve_dag(serve_root_dag)
     # Assert we don't keep increasing suffix id between build() calls

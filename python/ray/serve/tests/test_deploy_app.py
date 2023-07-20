@@ -20,11 +20,15 @@ from ray._private.test_utils import (
 )
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus, ReplicaState
+from ray.serve._private.common import (
+    DeploymentID,
+    ApplicationStatus,
+    DeploymentStatus,
+    ReplicaState,
+)
 from ray.serve._private.constants import (
     SERVE_NAMESPACE,
     SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
 )
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -612,9 +616,7 @@ def test_deploy_multi_app_overwrite_apps2(client: ServeControllerClient):
             ]
         )
         for actor in actors:
-            assert (
-                "app1" not in actor["class_name"] and "app2" not in actor["class_name"]
-            )
+            assert "app1" not in actor["name"] and "app2" not in actor["name"]
         return True
 
     # Deployments from app1 and app2 should be deleted
@@ -708,10 +710,10 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             ray.get(client._controller._all_running_replicas.remote()).keys()
         )
         assert {
-            f"app1_{deployment}" for deployment in pizza_deployments
+            DeploymentID("app1", deployment) for deployment in pizza_deployments
         } == deployment_replicas
         assert {"HTTPProxyActor", "ServeController"}.union(
-            {f"ServeReplica:app1_{deployment}" for deployment in pizza_deployments}
+            {f"ServeReplica:{deployment}" for deployment in pizza_deployments}
         ) == actor_class_names
         return True
 
@@ -736,10 +738,10 @@ def test_deploy_multi_app_deployments_removed(client: ServeControllerClient):
             ray.get(client._controller._all_running_replicas.remote()).keys()
         )
         assert {
-            f"app1_{deployment}" for deployment in world_deployments
+            DeploymentID("app1", deployment) for deployment in world_deployments
         } == deployment_replicas
         assert {"HTTPProxyActor", "ServeController"}.union(
-            {f"ServeReplica:app1_{deployment}" for deployment in world_deployments}
+            {f"ServeReplica:{deployment}" for deployment in world_deployments}
         ) == actor_class_names
         return True
 
@@ -867,7 +869,6 @@ def test_update_config_user_config(client: ServeControllerClient):
 
 def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     """Check that replicas stay alive when graceful_shutdown_timeout_s is updated"""
-    name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.node",
         "deployments": [{"name": "f", "graceful_shutdown_timeout_s": 1000}],
@@ -876,7 +877,7 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     # Deploy first time
     client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
     wait_for_condition(partial(check_running, client), timeout=15)
-    handle = client.get_handle(name)
+    handle = client.get_handle("f")
 
     # Start off with signal ready, and send query
     ray.get(handle.send.remote())
@@ -905,7 +906,6 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
 def test_update_config_max_concurrent_queries(client: ServeControllerClient):
     """Check that replicas stay alive when max_concurrent_queries is updated."""
 
-    name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.node",
         "deployments": [{"name": "f", "max_concurrent_queries": 1000}],
@@ -919,7 +919,7 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
     assert len(all_replicas) == 1
     assert all_replicas[list(all_replicas.keys())[0]][0].max_concurrent_queries == 1000
 
-    handle = client.get_handle(name)
+    handle = client.get_handle("f")
 
     responses = ray.get([handle.remote() for _ in range(10)])
     pids1 = {response[0] for response in responses}
@@ -939,7 +939,6 @@ def test_update_config_max_concurrent_queries(client: ServeControllerClient):
 def test_update_config_health_check_period(client: ServeControllerClient):
     """Check that replicas stay alive when max_concurrent_queries is updated."""
 
-    name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
     config_template = {
         "import_path": "ray.serve.tests.test_config_files.pid.async_node",
         "deployments": [{"name": "f", "health_check_period_s": 100}],
@@ -949,7 +948,7 @@ def test_update_config_health_check_period(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
     wait_for_condition(partial(check_running, client), timeout=15)
 
-    handle = client.get_handle(name)
+    handle = client.get_handle("f")
     pid1 = ray.get(handle.remote())[0]
 
     # The health check counter shouldn't increase beyond any initial health checks
@@ -978,7 +977,6 @@ def test_update_config_health_check_period(client: ServeControllerClient):
 def test_update_config_health_check_timeout(client: ServeControllerClient):
     """Check that replicas stay alive when max_concurrent_queries is updated."""
 
-    name = f"{SERVE_DEFAULT_APP_NAME}{DEPLOYMENT_NAME_PREFIX_SEPARATOR}f"
     # Deploy with a very long initial health_check_timeout_s
     # Also set small health_check_period_s to make test run faster
     config_template = {
@@ -996,7 +994,7 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     client.deploy_apps(ServeApplicationSchema.parse_obj(config_template))
     wait_for_condition(partial(check_running, client), timeout=15)
 
-    handle = client.get_handle(name)
+    handle = client.get_handle("f")
     pid1 = ray.get(handle.remote())[0]
 
     # Redeploy with health check timeout reduced to 1 second
@@ -1013,7 +1011,7 @@ def test_update_config_health_check_timeout(client: ServeControllerClient):
     # Block in health check
     ray.get(handle.send.remote(clear=True, health_check=True))
     wait_for_condition(
-        lambda: client.get_serve_status().get_deployment_status(name).status
+        lambda: client.get_serve_status().get_deployment_status("f").status
         == DeploymentStatus.UNHEALTHY
     )
 

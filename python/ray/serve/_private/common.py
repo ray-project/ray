@@ -1,7 +1,7 @@
 from enum import Enum
 from dataclasses import dataclass, field, asdict
 import json
-from typing import Any, List, Dict, Optional
+from typing import Any, List, Dict, Optional, NamedTuple
 
 import ray
 from ray.actor import ActorHandle
@@ -17,7 +17,16 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve._private.autoscaling_policy import BasicAutoscalingPolicy
 
-EndpointTag = str
+
+class DeploymentID(NamedTuple):
+    app: Optional[str]
+    name: str
+
+    def __str__(self):
+        return f"{self.app}#{self.name}"
+
+
+EndpointTag = DeploymentID
 ReplicaTag = str
 NodeId = str
 Duration = float
@@ -315,16 +324,25 @@ class DeploymentInfo:
 
 @dataclass
 class ReplicaName:
+    app_name: str
     deployment_tag: str
     replica_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
     prefix: str = "SERVE_REPLICA::"
 
-    def __init__(self, deployment_tag: str, replica_suffix: str):
+    def __init__(self, app_name: str, deployment_tag: str, replica_suffix: str):
+        self.app_name = app_name
         self.deployment_tag = deployment_tag
         self.replica_suffix = replica_suffix
-        self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
+
+        self.replica_tag = self.delimiter.join(
+            [app_name, deployment_tag, replica_suffix]
+        )
+
+    @property
+    def deployment_id(self) -> DeploymentID:
+        return DeploymentID(self.app_name, self.deployment_tag)
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:
@@ -337,11 +355,13 @@ class ReplicaName:
         # can try to keep the internal name always hard coded with the prefix.
         replica_name = actor_name.replace(cls.prefix, "")
         parsed = replica_name.split(cls.delimiter)
-        assert len(parsed) == 2, (
+        assert len(parsed) == 3, (
             f"Given replica name {replica_name} didn't match pattern, please "
             f"ensure it has exactly two fields with delimiter {cls.delimiter}"
         )
-        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
+        return cls(
+            app_name=parsed[0], deployment_tag=parsed[1], replica_suffix=parsed[2]
+        )
 
     def __str__(self):
         return self.replica_tag
@@ -417,6 +437,7 @@ class ServeComponentType(str, Enum):
 
 @dataclass
 class MultiplexedReplicaInfo:
+    app_name: str
     deployment_name: str
     replica_tag: str
     model_ids: List[str]

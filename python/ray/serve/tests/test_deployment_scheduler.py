@@ -63,7 +63,7 @@ def test_spread_deployment_scheduling_policy_upscale(
         upscales={
             "deployment1": [
                 ReplicaSchedulingRequest(
-                    deployment_name="deployment1",
+                    deployment_id="deployment1",
                     replica_name="replica1",
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
@@ -76,7 +76,7 @@ def test_spread_deployment_scheduling_policy_upscale(
                     ),
                 ),
                 ReplicaSchedulingRequest(
-                    deployment_name="deployment1",
+                    deployment_id="deployment1",
                     replica_name="replica2",
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
@@ -145,7 +145,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=1
+                deployment_id="deployment1", num_to_stop=1
             )
         },
     )
@@ -158,7 +158,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         upscales={
             "deployment1": [
                 ReplicaSchedulingRequest(
-                    deployment_name="deployment1",
+                    deployment_id="deployment1",
                     replica_name="replica5",
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
@@ -175,7 +175,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=1
+                deployment_id="deployment1", num_to_stop=1
             )
         },
     )
@@ -188,7 +188,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=1
+                deployment_id="deployment1", num_to_stop=1
             )
         },
     )
@@ -201,7 +201,7 @@ def test_spread_deployment_scheduling_policy_downscale(ray_start_cluster):
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=2
+                deployment_id="deployment1", num_to_stop=2
             )
         },
     )
@@ -235,7 +235,7 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=1
+                deployment_id="deployment1", num_to_stop=1
             )
         },
     )
@@ -249,7 +249,7 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=1
+                deployment_id="deployment1", num_to_stop=1
             )
         },
     )
@@ -263,7 +263,7 @@ def test_spread_deployment_scheduling_policy_downscale_head_node(ray_start_clust
         upscales={},
         downscales={
             "deployment1": DeploymentDownscaleRequest(
-                deployment_name="deployment1", num_to_stop=1
+                deployment_id="deployment1", num_to_stop=1
             )
         },
     )
@@ -300,7 +300,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
         upscales={
             "deployment1": [
                 ReplicaSchedulingRequest(
-                    deployment_name="deployment1",
+                    deployment_id="deployment1",
                     replica_name="replica1",
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
@@ -309,7 +309,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
                     on_scheduled=on_scheduled,
                 ),
                 ReplicaSchedulingRequest(
-                    deployment_name="deployment1",
+                    deployment_id="deployment1",
                     replica_name="replica2",
                     actor_def=Replica,
                     actor_resources={"CPU": 1},
@@ -318,7 +318,7 @@ def test_driver_deployment_scheduling_policy_upscale(ray_start_cluster):
                     on_scheduled=on_scheduled,
                 ),
                 ReplicaSchedulingRequest(
-                    deployment_name="deployment1",
+                    deployment_id="deployment1",
                     replica_name="replica3",
                     actor_def=Replica,
                     actor_resources={"CPU": 1},

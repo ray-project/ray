@@ -20,6 +20,7 @@ class TestGetDeployment:
     # Test V1 API get_deployment()
     def get_deployment(self, name, use_list_api):
         if use_list_api:
+            print(serve.list_deployments())
             return serve.list_deployments()[name]
         else:
             return serve.get_deployment(name)

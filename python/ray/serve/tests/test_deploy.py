@@ -12,7 +12,6 @@ from ray._private.test_utils import SignalActor
 from ray import serve
 from ray.serve.exceptions import RayServeException
 from ray.serve._private.utils import get_random_letters
-from ray.serve.context import get_global_client
 
 
 @pytest.mark.parametrize("use_handle", [True, False])
@@ -211,7 +210,7 @@ def test_redeploy_single_replica(serve_instance, use_handle):
     @ray.remote
     def call(block=False):
         if use_handle:
-            handle = serve.get_deployment(f"app_{name}").get_handle()
+            handle = serve.get_deployment_handle(name, "app")
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
@@ -302,7 +301,7 @@ def test_redeploy_multiple_replicas(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call(block=False):
         if use_handle:
-            handle = serve.get_deployment(f"app_{name}").get_handle()
+            handle = serve.get_deployment_handle(name, "app")
             ret = ray.get(handle.handler.remote(block))
         else:
             ret = requests.get(
@@ -512,7 +511,7 @@ def test_redeploy_scale_down(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = get_global_client().get_handle(f"app_{name}", sync=True)
+            handle = serve.get_deployment_handle(name, "app")
             ret = ray.get(handle.remote())
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
@@ -563,7 +562,7 @@ def test_redeploy_scale_up(serve_instance, use_handle):
     @ray.remote(num_cpus=0)
     def call():
         if use_handle:
-            handle = get_global_client().get_handle(f"app_{name}", sync=True)
+            handle = serve.get_deployment_handle(name, "app")
             ret = ray.get(handle.remote())
         else:
             ret = requests.get(f"http://localhost:8000/{name}").text
