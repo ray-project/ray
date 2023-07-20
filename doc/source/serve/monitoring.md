@@ -143,8 +143,14 @@ You can set a custom request ID by setting `RAY_SERVE_REQUEST_ID` in each reques
 ```{literalinclude} doc_code/monitoring/request_id.py
 :language: python
 ```
-In the log, you can see 123-234 is the request ID, and the request ID is included in the response.
+In the log, you can see 123-234 is the request ID, and the request ID is also included in the response.
 
+HTTP proxy log file:
+```
+INFO 2023-07-20 13:47:54,221 http_proxy 127.0.0.1 123-234 / default http_proxy.py:538 - GET 200 8.9ms
+```
+
+Deployment log file:
 ```
 (ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
 ```
