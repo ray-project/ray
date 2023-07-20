@@ -35,7 +35,6 @@ import yaml
 from grpc._channel import _InactiveRpcError
 
 import ray
-import ray._private.gcs_utils as gcs_utils
 import ray._private.memory_monitor as memory_monitor
 import ray._private.services
 import ray._private.utils
@@ -515,6 +514,7 @@ def wait_for_num_nodes(num_nodes: int, timeout_s: int):
 
 
 def kill_actor_and_wait_for_failure(actor, timeout=10, retry_interval_ms=100):
+    import ray._private.gcs_utils as gcs_utils
     actor_id = actor._actor_id.hex()
     current_num_restarts = ray._private.state.actors(actor_id)["NumRestarts"]
     ray.kill(actor)
