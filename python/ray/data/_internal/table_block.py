@@ -127,7 +127,7 @@ class TableBlockBuilder(BlockBuilder):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
-        for table in self._tables[self._tables_size_cursor:]:
+        for table in self._tables[self._tables_size_cursor :]:
             self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
         self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
