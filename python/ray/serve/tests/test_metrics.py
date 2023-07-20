@@ -800,7 +800,7 @@ class TestRequestContextMetrics:
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=30,
+            timeout=20,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
