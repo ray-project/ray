@@ -170,12 +170,14 @@ def train_loop_for_worker(config):
         else:
             num_rows_read = 0
             for i, batch in enumerate(tf_dataset):
-                num_rows_read += len(batch)
+                num_rows_read += len(batch[0])
                 if i >= num_steps_per_epoch:
                     break
                 time.sleep(config["train_sleep_time_ms"] / 1000)
                 if i % 10 == 0:
                     print("Step", i)
+
+            assert num_rows_read == config["num_images_per_epoch"], (num_rows_read, config["num_images_per_epoch"])
 
         epoch_time_s = time.perf_counter() - epoch_start_time_s
         epoch_times.append(epoch_time_s)
@@ -202,8 +204,6 @@ def train_loop_for_worker(config):
         if config["data_loader"] == RAY_DATA:
             print_dataset_stats(dataset_shard)
             print("epoch time", epoch, epoch_time_s)
-
-        assert num_rows_read == config["num_images_per_epoch"]
 
 
 def crop_and_flip_image_batch(image_batch):
