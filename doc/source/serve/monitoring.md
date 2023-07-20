@@ -138,6 +138,17 @@ You can enable JSON-formatted logging in the Serve log file by setting the envir
 {"levelname": "INFO", "asctime": "2023-07-17 10:34:25,441", "deployment": "default_api", "replica": "default_api#bFDOnw", "request_id": "jLTczxOqme", "route": "/app1", "application": "default", "message": "replica.py:691 - __CALL__ OK 0.1ms"}
 ```
 
+### Set Request ID
+You can set a custom request ID by setting `RAY_SERVE_REQUEST_ID` in each request headers. For example
+```{literalinclude} doc_code/monitoring/request_id.py
+:language: python
+```
+In the log, you can see 123-234 is the request ID, and the request ID is included in the response.
+
+```
+(ServeReplica:default_Model pid=84006) INFO 2023-07-20 13:47:54,218 default_Model default_Model#yptKoo 123-234 / default replica.py:691 - __CALL__ OK 0.2ms
+```
+
 (serve-logging-loki)=
 ### Filtering logs with Loki
 
