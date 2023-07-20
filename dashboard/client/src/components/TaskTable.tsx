@@ -348,15 +348,15 @@ const TaskTableActions = ({ task }: TaskTableActionsProps) => {
         <React.Fragment>
           <br />
           <TaskCpuProfilingLink
-            taskId={task?.task_id}
-            attemptNumber={task?.attempt_number}
-            nodeId={task?.node_id}
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
           />
           <br />
           <TaskCpuStackTraceLink
-            taskId={task?.task_id}
-            attemptNumber={task?.attempt_number}
-            nodeId={task?.node_id}
+            taskId={task.task_id}
+            attemptNumber={task.attempt_number}
+            nodeId={task.node_id}
           />
         </React.Fragment>
       )}
