@@ -39,14 +39,10 @@ export type NodeDetail = {
   logicalResource?: LogicalResource;
 };
 
+// Example:
+// "27fcdbcd36f9227b88bf07d48769efb4471cb204adbfb4b077cd2bc7": "0.0/8.0 CPU\n  0B/25.75GiB memory\n  0B/12.88GiB object_store_memory"
 type NodeLogicalResourceMap = {
-  [nodeId: string]: LogicalResource;
-};
-
-type LogicalResource = {
-  CPU: string;
-  memory: string;
-  object_store_memory: string;
+  [nodeId: string]: str;
 };
 
 export type NodeLogicalResourceRsp = {

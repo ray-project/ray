@@ -14,17 +14,15 @@ import { CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
 import { API_REFRESH_INTERVAL_MS } from "../../common/constants";
 import { NodeLink } from "../../common/links";
 import rowStyles from "../../common/RowStyles";
-import { formatResourcesStatus } from "../../components/AutoscalerStatusCards";
 import PercentageBar from "../../components/PercentageBar";
 import { StatusChip } from "../../components/StatusChip";
 import { getNodeDetail } from "../../service/node";
-import { LogicalResource, NodeDetail } from "../../type/node";
+import { NodeDetail } from "../../type/node";
 import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
-import { useRayStatus } from "../job/hook/useClusterStatus";
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
-import { useNodeLogicalResourceMap } from "./hook/useNodeLogicalResourceMap";
+import { useNodeLogicalResourceMap } from "./hook/useNodeLogicalResource";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -37,6 +35,10 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
    * Click handler for when one clicks on the expand/unexpand button in this row.
    */
   onExpandButtonClick: () => void;
+  /**
+   * The logical resource of a node
+   */
+  logicalResource?: string;
 };
 
 /**
@@ -46,6 +48,7 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
 export const NodeRow = ({
   node,
   expanded,
+  logicalResource,
   onExpandButtonClick,
 }: NodeRowProps) => {
   const {
@@ -68,13 +71,7 @@ export const NodeRow = ({
    * Why do we use raylet.state instead of node.state in the following code?
    * Because in ray, raylet == node
    */
-  const { cluster_status } = useRayStatus();
-  console.log("cluster_status: ", cluster_status);
-  const logicalResource = cluster_status?.data
-    ? formatResourcesStatus(cluster_status.data?.clusterStatus)
-    : "";
 
-  console.log("logicalResource: ", logicalResource);
   return (
     <TableRow>
       <TableCell>
@@ -164,10 +161,10 @@ export const NodeRow = ({
           {logicalResource}
         </CodeDialogButton> */}
 
-        {cluster_status ? (
+        {logicalResource ? (
           <CodeDialogButtonWithPreview
             title="Logical Resource"
-            code={{ CPU: "1.0/8.0" }}
+            code={logicalResource}
           />
         ) : (
           "-"
@@ -291,10 +288,6 @@ type NodeRowsProps = {
    * Whether the row should start expanded. By default, this is false.
    */
   startExpanded?: boolean;
-  /**
-   * Logical Resource of a node
-   */
-  logicalResource?: LogicalResource;
 };
 
 /**
@@ -341,7 +334,11 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
-        logicalResource={nodeLogicalResourceMap[node.raylet.nodeId] ?? {}}
+        logicalResource={
+          nodeLogicalResourceMap
+            ? nodeLogicalResourceMap[node.raylet.nodeId]
+            : ""
+        }
       />
       {isExpanded &&
         workers.map((worker) => (
