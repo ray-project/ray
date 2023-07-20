@@ -63,7 +63,7 @@ class GRPCServeRequest(ServeRequest):
         self.route_path = route_path
 
     @property
-    def user_request(self) -> ProtoAny:
+    def user_request(self) -> bytes:
         return self.request.user_request
 
     @property
