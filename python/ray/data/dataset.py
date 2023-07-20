@@ -3222,21 +3222,35 @@ class Dataset:
     ) -> Iterator["TorchTensorBatchType"]:
         """Return a batched iterator of Torch Tensors over the dataset.
 
-        This iterator will yield single-tensor batches if the underlying dataset
-        consists of a single column; otherwise, it will yield a dictionary of
-        column-tensors. If looking for more flexibility in the tensor conversion (e.g.
-        casting dtypes) or the batch format, try use `.iter_batches` directly, which is
-        a lower-level API.
+        This iterator will will yield a dictionary of column-tensors. If looking for
+        more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
+        format, try using `.iter_batches` directly.
 
         Examples:
             >>> import ray
-            >>> for batch in ray.data.range( # doctest: +SKIP
+            >>> for batch in ray.data.range(
             ...     12,
-            ... ).iter_torch_batches(batch_size=4):
-            ...     print(batch.shape) # doctest: +SKIP
-            torch.Size([4, 1])
-            torch.Size([4, 1])
-            torch.Size([4, 1])
+            ... ).iterator().iter_torch_batches(batch_size=4):
+            ...     print(batch.shape)
+            {'id': tensor([ 0, 10,  1,  2])}
+            {'id': tensor([3, 4, 5, 6])}
+            {'id': tensor([ 8,  9, 11,  7])}
+
+            Use the ``collate_fn`` to customize how the tensor batch is created.
+            >>> from typing import Any, Dict
+            >>> import torch
+            >>> import numpy as np
+            >>> import ray
+            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
+            ...    return torch.stack(
+            ...     [torch.as_tensor(array) for array in batch.values()],
+            ...     axis=1
+            ...    )
+            >>> iterator = ray.data.from_items([{"col_1": 1, "col_2": 2}]).iterator()
+            >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
+                    print(batch)
+            tensor([[1, 2]])
+
 
         Time complexity: O(1)
 
@@ -3256,12 +3270,16 @@ class Dataset:
             device: The device on which the tensor should be placed; if ``None``, the
                 torch tensor is constructed on the CPU.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                Potential use cases include collating along a dimension other than the
-                first, padding sequences of various lengths, or generally handling
-                batches of different length tensors. If not provided, the default
-                collate function is used which simply converts the batch of numpy
-                arrays to a batch of PyTorch tensors. This API is still experimental
-                and is subject to change.
+                When this parameter is specified, the user should manually handle the
+                host to device data transfer outside of collate_fn.
+                This is useful for further processing the data after it has been
+                batched. Potential use cases include collating along a dimension other
+                than the first, padding sequences of various lengths, or generally
+                handling batches of different length tensors. If not provided, the
+                default collate function is used which simply converts the batch of
+                numpy arrays to a batch of PyTorch tensors. This API is still
+                experimental and is subject to change. This parameter cannot be used in
+                conjunction with ``dtypes`` or ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value will serve as the
