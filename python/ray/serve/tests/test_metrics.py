@@ -307,7 +307,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
     assert resp.text == '"123"'
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
+        lambda: len(get_metric_dictionaries("serve_num_http_requests", timeout=5)) == 2,
         timeout=40,
     )
     num_http_requests = get_metric_dictionaries("serve_num_http_requests")
@@ -328,7 +328,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
     verify_metrics_with_route(num_http_requests, expected_output)
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum")) == 2,
+        lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum", timeout=5)) == 2,
         timeout=40,
     )
     http_latency = get_metric_dictionaries("serve_num_http_requests")
@@ -363,7 +363,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
             assert metric[key] == expected_output[key]
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter", timeout=5)) == 2,
         timeout=40,
     )
 
@@ -382,7 +382,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries("serve_deployment_processing_latency_ms_count", timeout=5)
         )
         == 2,
         timeout=40,
@@ -415,7 +415,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
     serve.run(h.bind(), name="app3", route_prefix="/h")
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
+        lambda: len(get_metric_dictionaries("serve_deployment_error_counter", timeout=5)) == 1,
         timeout=40,
     )
     err_requests = get_metric_dictionaries("serve_deployment_error_counter")
@@ -491,7 +491,7 @@ class TestRequestContextMetrics:
 
         wait_for_condition(
             lambda: len(
-                get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
+                get_metric_dictionaries("serve_deployment_processing_latency_ms_sum", timeout=5)
             )
             == 3,
             timeout=40,
@@ -597,7 +597,7 @@ class TestRequestContextMetrics:
         # g2 deployment metrics:
         #   {xxx, route:/api2}
         wait_for_condition(
-            lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
+            lambda: len(get_metric_dictionaries("serve_deployment_request_counter", timeout=5))
             == 4,
             timeout=40,
         )
@@ -663,7 +663,7 @@ class TestRequestContextMetrics:
         resp = requests.get("http://127.0.0.1:8000/app")
         deployment_name, replica_tag = resp.json()
         wait_for_condition(
-            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
+            lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
             timeout=40,
         )
 
@@ -799,7 +799,7 @@ class TestRequestContextMetrics:
         resp = requests.get("http://127.0.0.1:8000/app")
         assert resp.text == "hello"
         wait_for_condition(
-            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
+            lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
             timeout=40,
         )
 
