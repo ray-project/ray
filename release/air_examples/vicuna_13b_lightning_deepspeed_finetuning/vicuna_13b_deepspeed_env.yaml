@@ -5,10 +5,10 @@ debian_packages:
 
 python:
   pip_packages:
-    - "datasets"
-    - "evaluate"
-    - "scikit-learn"
-    - "boto3"
+    - datasets==2.13.1
+    - evaluate==0.4.0
+    - scikit-learn==1.3.0
+    - boto3==1.28.5
     - myst-parser==0.15.2
     - myst-nb==0.13.1
     - jupytext==1.13.6

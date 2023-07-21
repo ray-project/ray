@@ -83,7 +83,6 @@ parts:
               - file: ray-air/examples/gptj_serving
               - file: ray-air/examples/dreambooth_finetuning
               - file: ray-air/examples/dolly_lightning_fsdp_finetuning
-              - file: ray-air/examples/vicuna_13b_lightning_deepspeed_finetune
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
@@ -143,6 +142,8 @@ parts:
                 title: "Torch Data Prefetching Benchmark"
               - file: train/examples/pytorch/pytorch_resnet_finetune
                 title: "PyTorch Finetuning ResNet Example"
+              - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+                title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
           - file: train/faq
           - file: train/api/api
 
