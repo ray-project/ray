@@ -1,3 +1,5 @@
+:orphan:
+
 .. _computer-vision:
 
 Computer Vision
