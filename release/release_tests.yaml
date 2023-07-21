@@ -6229,6 +6229,32 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
+- name: read_images_train_multi_node
+  group: data-tests
+  working_dir: air_tests
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    timeout: 600
+    script: python air_benchmarks/workloads/train_benchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: multi_node_benchmark_compute.yaml
+
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset

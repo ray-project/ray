@@ -3,14 +3,22 @@ from ray.air import session
 from ray.train.torch import TorchTrainer
 from ray.air.config import ScalingConfig
 
-
 import time
+import os
+import json
 
 import torch
 import torchvision
 
 DEFAULT_IMAGE_SIZE = 224
 
+# This benchmark does the following:
+# 1) Read images with ray.data.read_images()
+# 2) Apply preprocessing with map_batches()
+# 3) Train TorchTrainer on processed data
+# The resulting metrics are:
+# - ray.data+transform: Throughput of data ingest (steps 1+2 above)
+# - ray.torchtrainer.fit: Throughput of the final epoch in TorchTrainer.fit() (step 3 above)
 
 def iterate(dataset, label, metrics):
     start = time.time()
@@ -64,7 +72,7 @@ if __name__ == "__main__":
         "--data-root",
         default="s3://air-cuj-imagenet-1gb",
         type=str,
-        help='Directory path with TFRecords. Filenames should start with "train".',
+        help='Directory path with files.',
     )
     parser.add_argument(
         "--batch-size",
@@ -78,12 +86,25 @@ if __name__ == "__main__":
         type=int,
         help="Number of epochs to run. The throughput for the last epoch will be kept.",
     )
+    parser.add_argument(
+        "--num-workers",
+        default=2,
+        type=int,
+        help="Number of workers.",
+    )
     args = parser.parse_args()
 
     metrics = {}
-    ray_dataset = ray.data.read_images(args.data_root).map_batches(
-        crop_and_flip_image_batch
+    
+    ray_dataset = (
+        # 1) Read in data with read_images()
+        ray.data.read_images(args.data_root)
+        # 2) Preprocess data by applying transformation with map_batches()
+        .map_batches(
+            crop_and_flip_image_batch
+        )
     )
+    # Iterate over the dataset.
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
@@ -92,23 +113,51 @@ if __name__ == "__main__":
         )
 
     def train_loop_per_worker():
-        # Get an iterator to the dataset we passed in below.
         it = session.get_dataset_shard("train")
 
-        # Train for 10 epochs over the data. We'll use a shuffle buffer size
-        # of 10k elements, and prefetch up to 10 batches of size 128 each.
-        for _ in range(10):
+        for i in range(args.num_epochs):
+            num_rows = 0
+            start_t = time.time()
             for batch in it.iter_batches(
-                local_shuffle_buffer_size=10000, batch_size=128, prefetch_batches=10
+               batch_size=args.batch_size, prefetch_batches=10
             ):
-                pass
+                num_rows += len(batch)
+            end_t = time.time()
+            # Record throughput per epoch.
+            epoch_tput = num_rows / (end_t - start_t)
+            session.report({"tput": epoch_tput, "epoch": i})
 
-    start_t = time.time()
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
-        scaling_config=ScalingConfig(num_workers=2),
+        scaling_config=ScalingConfig(num_workers=args.num_workers),
         datasets={"train": ray_dataset},
     )
-    torch_trainer.fit()
-    end_t = time.time()
-    metrics["ray.torchtrainer.fit"] = end_t - start_t
+    result = torch_trainer.fit()
+
+    # Report the throughput of the last training epoch.
+    metrics["ray.TorchTrainer.fit"] = list(result.metrics_dataframe["tput"])[-1]
+
+    # Gather up collected metrics, and write to output JSON file.
+    metrics_list = []
+    for label, tput in metrics.items():
+        metrics_list.append(
+            {
+                "perf_metric_name": label,
+                "perf_metric_value": tput,
+                "perf_metric_type": "THROUGHPUT",
+            }
+        )
+    result_dict = {
+        "perf_metrics": metrics_list,
+        "success": 1,
+    }
+
+    test_output_json = os.environ.get(
+        "TEST_OUTPUT_JSON", "/tmp/train_torch_image_benchmark.json"
+    )
+
+    with open(test_output_json, "wt") as f:
+        json.dump(result_dict, f)
+
+    print(f"===> Finished benchmark, metrics written to {test_output_json}:")
+    print(metrics)
