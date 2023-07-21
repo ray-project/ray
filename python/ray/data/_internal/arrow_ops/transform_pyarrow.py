@@ -1,5 +1,10 @@
 from typing import TYPE_CHECKING, List, Union
 
+try:
+    import pyarrow
+except ImportError:
+    pyarrow = None
+
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
 
@@ -22,7 +27,6 @@ def take_table(
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
 
-    import pyarrow
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
@@ -121,7 +125,6 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
-    import pyarrow
     from ray.data.extensions import ArrowTensorType, ArrowVariableShapedTensorType
 
     # Single flat list of chunks across all chunked arrays.
@@ -255,7 +258,6 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 def concat_and_sort(
     blocks: List["pyarrow.Table"], key: "SortKeyT", descending: bool
 ) -> "pyarrow.Table":
-    import pyarrow
     ret = concat(blocks)
     indices = pyarrow.compute.sort_indices(ret, sort_keys=key)
     return take_table(ret, indices)
@@ -267,7 +269,6 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
 
     This will create a new table by combining the chunks the input table has.
     """
-    import pyarrow
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
