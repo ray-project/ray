@@ -32,7 +32,12 @@ if TYPE_CHECKING:
     import tensorflow as tf
     import torch
 
-    from ray.data.dataset import Schema, TensorFlowTensorBatchType
+    from ray.data.dataset import (
+        CollatedData,
+        Schema,
+        TensorFlowTensorBatchType,
+        TorchTensorBatchType,
+    )
 
 
 @PublicAPI(stability="beta")
@@ -92,7 +97,7 @@ class DataIterator(abc.ABC):
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
@@ -255,13 +260,13 @@ class DataIterator(abc.ABC):
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], Any]] = None,
+        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[Dict[str, "torch.Tensor"]]:
+    ) -> Iterator[TorchTensorBatchType]:
         """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator will will yield a dictionary of column-tensors. If looking for

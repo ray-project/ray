@@ -18,6 +18,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TypeVar,
     Union,
 )
 from uuid import uuid4
@@ -164,6 +165,9 @@ TensorflowFeatureTypeSpec = Union[
 ]
 
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
+
+CollatedData = TypeVar("CollatedData")
+TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
 
 
 @PublicAPI
@@ -3151,7 +3155,7 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -3213,13 +3217,13 @@ class Dataset:
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
         device: Optional[str] = None,
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], Any]] = None,
+        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator["TorchTensorBatchType"]:
+    ) -> Iterator[TorchTensorBatchType]:
         """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator will will yield a dictionary of column-tensors. If looking for
