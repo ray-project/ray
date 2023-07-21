@@ -10,6 +10,9 @@ import tree
 import pandas as pd
 from pathlib import Path
 import torch
+import torch.nn as nn
+from ray import tune
+import tqdm
 
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import DummyOptim, DummyScheduler, set_seed
@@ -33,6 +36,10 @@ OPTIM_EPS = 1e-8
 OPTIM_WEIGHT_DECAY = 0.
 
 MIRROR_LINK = "s3://llama-2-weights/"
+
+def get_number_of_params(model:nn.Module):
+    state_dict = model.state_dict()
+    return sum(p.numel() for p in state_dict.values())
 
 def collate_fn(batch, tokenizer, block_size, device):
     out_batch = tokenizer(
@@ -80,16 +87,19 @@ def create_ray_dataset(path):
     df = pd.DataFrame.from_dict(dataset)
     return ray.data.from_pandas(df)
 
-def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize):
+def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize, as_test: bool = False):
     model.eval()
     losses = []
-    for step, batch in enumerate(eval_dataloader):
+    for step, batch in tqdm.tqdm(enumerate(eval_dataloader)):
         with torch.no_grad():
             outputs = model(**batch)
 
         loss = outputs.loss
         losses.append(accelerator.gather(loss.repeat(bsize)))
-
+        
+        if as_test:
+            break
+        
     losses = torch.cat(losses)
     losses = losses[: eval_dataset_len]
     try:
@@ -98,6 +108,23 @@ def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize):
     except OverflowError:
         perplexity = float("inf")
     return perplexity, eval_loss
+
+
+def checkpoint_model(checkpoint_folder, ckpt_id, model, epoch, last_global_step, **kwargs):
+    """Utility function for checkpointing model + optimizer dictionaries
+    The main purpose for this is to be able to resume training from that instant again.
+    """
+    checkpoint_state_dict = {
+        "epoch": epoch,
+        "last_global_step": last_global_step,
+    }
+    # Add extra kwargs too
+    checkpoint_state_dict.update(kwargs)
+    
+    # In here model will be a DeepspeedEngine object
+    model.save_checkpoint(checkpoint_folder, ckpt_id, checkpoint_state_dict)
+    status_msg = f"checkpointing: checkpoint_folder={checkpoint_folder}, ckpt_id={ckpt_id}"
+    print(status_msg)
 
 def training_function(kwargs: dict):
     os.environ["OMP_NUM_THREADS"] = str(
@@ -118,56 +145,10 @@ def training_function(kwargs: dict):
     batch_size = int(config["batch_size"])
     gradient_accumulation_steps = int(config["gradient_accumulation_steps"])
 
-    deepspeed_config = {
-        "fp16": {
-            "enabled": False
-        },
-        "bf16": {
-            "enabled": True
-        },
-        "scheduler": {
-            "type": "WarmupLR",
-            "params": {
-                "warmup_min_lr": "auto",
-                "warmup_max_lr": "auto",
-                "warmup_num_steps": "auto"
-            }
-        },
-        "optimizer": {
-            "type": "AdamW",
-            "params": {
-            "lr": 1e-5,
-            "betas": [0.99, 0.999],
-            "eps": 1e-8,
-            "weight_decay": 1e-6
-            }
-        },
-        "zero_optimization": {
-            "stage": 3,
-            "offload_optimizer": {
-                "device": "cpu",
-                "pin_memory": False,
-            },
-            # "offload_param": {
-            #     "device": "cpu",
-            #     "pin_memory": True,
-            # },
-            "overlap_comm": True,
-            "contiguous_gradients": True,
-            "reduce_bucket_size": "auto",
-            "stage3_prefetch_bucket_size": "auto",
-            "stage3_param_persistence_threshold": "auto",
-            "gather_16bit_weights_on_model_save": True,
-            "round_robin_gradients": True,
-        },
-        "gradient_accumulation_steps": "auto",
-        "gradient_clipping": "auto",
-        "steps_per_print": 10,
-        "train_batch_size": "auto",
-        "train_micro_batch_size_per_gpu": batch_size,
-        "wall_clock_breakdown": False,
-    }
-    ds_plugin = DeepSpeedPlugin(hf_ds_config=deepspeed_config)
+
+    # Get deepspeed config to setup the batch size per device
+    ds_plugin = config["ds_plugin"]
+    ds_plugin.hf_ds_config.config["train_micro_batch_size_per_gpu"] = batch_size
 
     # Initialize accelerator
     accelerator = Accelerator(
@@ -193,11 +174,9 @@ def training_function(kwargs: dict):
         device=accelerator.device
     )
     
+    # Get the trial directory from Ray Train
+    # This will be local to every node (and will get synced to remote storage if provided.)
     ckpt_path = session.get_trial_dir()
-    if accelerator.is_main_process:
-        print("Saving tokenizer and config.")
-        tokenizer.save_pretrained(ckpt_path)
-
 
     pretrained_path = get_pretrained_path(model_id)    
     print(f"Loading model from {pretrained_path} ...")
@@ -206,6 +185,8 @@ def training_function(kwargs: dict):
         pretrained_path,
         trust_remote_code=True, 
         torch_dtype=torch.bfloat16,
+        # `use_cache=True` is incompatible with gradient checkpointing.
+        use_cache=False,
     )
     print(f"Done loading model in {time.time() - s} seconds.")
     model.resize_token_embeddings(len(tokenizer))    
@@ -255,7 +236,7 @@ def training_function(kwargs: dict):
     # Now we train the model
     if accelerator.is_main_process:
         print("Starting training ...")
-        print("number of batches on main process", train_ds_len // batch_size)
+        print("Number of batches on main process", train_ds_len // batch_size)
 
     avg_fwd_time, avg_bwd_time, avg_opt_step_time = 0, 0, 0
     for epoch in range(num_epochs):
@@ -268,7 +249,8 @@ def training_function(kwargs: dict):
             collate_fn=collate_partial,
         )
     
-        for step, batch in enumerate(train_dataloader):
+        for step, batch in tqdm.tqdm(enumerate(train_dataloader)):
+            
             # We could avoid this line since we set the accelerator with `device_placement=True`.
             with accelerator.accumulate(model):
                 s_fwd = time.time()
@@ -282,9 +264,6 @@ def training_function(kwargs: dict):
                 e_bwd = time.time()
                 avg_bwd_time += e_bwd - s_bwd
 
-                # if accelerator.sync_gradients:
-                #     accelerator.clip_grad_norm_(model.parameters(), 1.0)
-
                 s_opt_step = time.time()
                 optimizer.step()
                 lr_scheduler.step()
@@ -296,6 +275,9 @@ def training_function(kwargs: dict):
                 accelerator.print(
                     f"[epoch {epoch} step {step}] loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
                 )
+
+            if config["as_test"]:
+                break
                 
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
@@ -323,12 +305,14 @@ def training_function(kwargs: dict):
             collate_fn=collate_partial,
         )
         
+        print("Running evaluation ...")
         perplex, eloss = evaluate(
             model, 
             valid_ds_len, 
             valid_dataloader, 
             accelerator, 
-            bsize=config["eval_batch_size"]
+            bsize=config["eval_batch_size"],
+            as_test=config["as_test"]
         )
         accelerator.print("Eval result loss", eloss)
         accelerator.print("Eval perplex", perplex)
@@ -339,6 +323,42 @@ def training_function(kwargs: dict):
         accelerator.print("avg bwd time: ", avg_bwd_time / (step + 1))
         accelerator.print("avg opt step time: ", avg_opt_step_time / (step + 1))
 
+        accelerator.print(f"Saving the model in {ckpt_path}")
+        accelerator.wait_for_everyone()
+        with accelerator.main_process_first():
+            ckpt_path_epoch = Path(ckpt_path) / f"epoch-{epoch}"
+            ckpt_path_epoch.mkdir(parents=True, exist_ok=True)
+        
+        if accelerator.is_main_process:
+            print("Saving tokenizer and config.")
+            tokenizer.save_pretrained(ckpt_path_epoch)
+
+        accelerator.wait_for_everyone()
+        
+        # This checkpointing method makes deepspeed checkpoints on each node and then 
+        # Ray Train will aggregate them to a central s3 bucket.
+        # It should be done on all processes (not just the Rank 0)
+        # checkpoint_model(
+        #     checkpoint_folder=ckpt_path_epoch, 
+        #     ckpt_id=epoch, 
+        #     model=model, 
+        #     epoch=epoch, 
+        #     last_global_step=step
+        # )
+        
+        unwrapped_model = accelerator.unwrap_model(model)
+        unwrapped_model.save_pretrained(
+            ckpt_path_epoch,
+            is_main_process=accelerator.is_main_process,
+            save_function=accelerator.save,
+            safe_serialization=True,
+            state_dict=accelerator.get_state_dict(model),
+        )
+        
+        
+        # Note: After the following call, in the case of remote storage, the checkpoint 
+        # directoy will get synced to the remote storage and then deleted from the 
+        # local directory. This will open up local disk. 
         session.report(
             {
                 "epoch": epoch,
@@ -352,21 +372,10 @@ def training_function(kwargs: dict):
                 "avg fwd time": avg_fwd_time / (step + 1),
                 "avg bwd time": avg_bwd_time / (step + 1),
             },
+            checkpoint = air.Checkpoint.from_directory(ckpt_path_epoch),
         )
         
-        accelerator.print(f"Saving the model in {ckpt_path}")
-        accelerator.wait_for_everyone()
-        with accelerator.main_process_first():
-            ckpt_path_epoch = Path(ckpt_path) / f"epoch-{epoch}"
-            ckpt_path_epoch.mkdir(parents=True, exist_ok=True)
-        unwrapped_model = accelerator.unwrap_model(model)
-        unwrapped_model.save_pretrained(
-            ckpt_path_epoch,
-            is_main_process=accelerator.is_main_process,
-            save_function=accelerator.save,
-            safe_serialization=True,
-            state_dict=accelerator.get_state_dict(model),
-        )
+
 
 def parse_args():
     
@@ -458,6 +467,19 @@ def parse_args():
         default=512, 
         help="Learning rate to use."
     )
+        
+    parser.add_argument(
+        "--as-test", 
+        action="store_true",
+        help="If passed, will run the script in test mode."
+    )
+
+    parser.add_argument(
+        "--ds-config", 
+        type=str,
+        default="./deepspeed_configs/zero_3_llama_2_7b.json", 
+        help="Deepspeed config json to use."
+    )
     args = parser.parse_args()
     
     return args
@@ -469,7 +491,9 @@ def main():
     if not args.output_dir:
         raise ValueError("--output_dir must be specified")
     
-    config = {
+    # update the config with args so that we have access to them.
+    config = vars(args)
+    config.update(**{
         "lr": args.lr, 
         "num_epochs": args.num_epochs, 
         "seed": 42, 
@@ -478,7 +502,11 @@ def main():
         "model_name": args.model_name,
         "block_size": args.ctx_len,
         "eval_batch_size": args.eval_batch_size_per_device,
-    }
+    })
+
+    # Add deepspeed plugin to the config
+    ds_plugin = DeepSpeedPlugin(hf_ds_config=config.get("ds_config"))
+    config.update(ds_plugin=ds_plugin)
     
     ray.init(
         runtime_env={
@@ -507,6 +535,18 @@ def main():
             "args": vars(args), 
             "special_tokens": special_tokens
         },
+        run_config=air.RunConfig(
+            # storage_path=args.output_dir,
+            # # For NFS: disables the default syncing to head node (already disabled on 2.6+)
+            # sync_config=tune.SyncConfig(syncer=None),
+            storage_path="s3://anyscale-staging-data-cld-kvedzwag2qa8i5bjxuevf5i7/templates-release-tests/04_finetuning_llms",
+            checkpoint_config=air.CheckpointConfig(
+                num_to_keep=1,
+                # Enable distributed checkpointing
+                _checkpoint_keep_all_ranks=True,
+                _checkpoint_upload_from_workers=True,
+            ),
+        ),
         scaling_config=air.ScalingConfig(
             num_workers=args.num_devices, 
             use_gpu=True,  
@@ -519,7 +559,11 @@ def main():
     )
 
     results = trainer.fit()
+    
+    print("results are stored in:")
+    print(results.checkpoint.uri)
 
-
+    
+    
 if __name__ == "__main__":
     main() 
