@@ -15,7 +15,6 @@ except Exception:
     Request = None
     Response = None
 
-from ray.util.state import list_actors, ActorState
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import (
@@ -24,7 +23,6 @@ from ray.dashboard.modules.job.common import (
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
 )
-from ray.core.generated import gcs_service_pb2
 
 try:
     # package `pydantic` is not in ray's minimal dependencies
@@ -251,7 +249,7 @@ async def find_job_by_ids(
     return None
 
 
-def get_supervisor_actor_state(address: str, job_submission_id: str) -> ActorState:
+def get_supervisor_actor_state(address: str, job_submission_id: str) -> "ActorState":
     return list_actors(address=address,
                        filters=[
                            ("job_id", "=", JOB_ACTOR_NAME_TEMPLATE.format(
