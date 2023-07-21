@@ -356,9 +356,10 @@ def batch_predict_tensorflow(dataset, checkpoint):
 
 def online_predict_torch(checkpoint):
     # __torch_serve_start__
+    from io import BytesIO
+    import numpy as np
+    from PIL import Image
     from ray import serve
-    from ray.serve.drivers import DAGDriver
-    from ray.serve.http_adapters import json_to_ndarray
     from ray.train.torch import TorchPredictor
 
     @serve.deployment
@@ -366,25 +367,18 @@ def online_predict_torch(checkpoint):
         def __init__(self, checkpoint):
             self.predictor = TorchPredictor.from_checkpoint(checkpoint)
 
-        async def __call__(self, data):
-            return self.predictor.predict(data)
+        async def __call__(self, request):
+            image = Image.open(BytesIO(await request.body()))
+            return self.predictor.predict(np.array(image))
 
-    serve.run(DAGDriver.bind(
-        TorchService.bind(checkpoint), http_adapter=json_to_ndarray))
+    serve.run(TorchService.bind(checkpoint))
     # __torch_serve_stop__
 
     # __torch_online_predict_start__
-    from io import BytesIO
-
-    import numpy as np
     import requests
-    from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
-    image = Image.open(BytesIO(response.content))
-
-    payload = {"array": [np.array(image).tolist()], "dtype": "float32"}
-    response = requests.post("http://localhost:8000/", json=payload)
+    response = requests.post("http://localhost:8000/", data=response.content)
     predictions = response.json()
     # __torch_online_predict_stop__
     predictions
