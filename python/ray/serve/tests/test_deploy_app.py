@@ -1311,6 +1311,5 @@ def test_get_app_handle(client: ServeControllerClient):
     assert ray.get(handle_2.predict.remote("ADD", 2)) == "5 pizzas please!"
 
 
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

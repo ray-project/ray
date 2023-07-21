@@ -739,10 +739,10 @@ def get_app_handle(
     interface compatibility.
 
     When called from within a deployment `sync` will default to `False`,
-    returning an `AsyncDeploymentHandle`.
+    returning an `RayServeHandle`.
 
     When called from outside a deployment `sync` will default to `True`,
-    returning a `SyncDeploymentHandle`.
+    returning a `RayServeSyncHandle`.
     """
 
     client = get_global_client()
