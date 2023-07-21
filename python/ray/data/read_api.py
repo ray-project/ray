@@ -935,6 +935,9 @@ def read_json(
 ) -> Dataset:
     """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
 
+    For JSON file, the whole file is read as one row.
+    For JSONL file, each line of file is read as separate row.
+
     Examples:
         Read a JSON file in remote storage.
 
