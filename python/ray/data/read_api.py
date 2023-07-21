@@ -939,7 +939,7 @@ def read_json(
         Read a JSON file in remote storage.
 
         >>> import ray
-        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/log.json")
         >>> ds.schema()
         Column     Type
         ------     ----

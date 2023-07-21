@@ -2529,10 +2529,11 @@ class Dataset:
         and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-            Write the dataset as JSON files to a local directory.
+            Write the dataset as JSON file to a local directory.
 
             >>> import ray
-            >>> ds = ray.data.range(100)
+            >>> import pandas as pd
+            >>> ds = ray.data.from_pandas([pd.DataFrame({"one": [1], "two": ["a"]})])
             >>> ds.write_json("local:///tmp/data")
 
             Write the dataset as JSONL files to a local directory.
