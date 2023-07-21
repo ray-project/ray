@@ -13,7 +13,6 @@ import pytest
 import yaml
 
 from ray._private.utils import get_or_create_event_loop
-from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.working_dir import upload_working_dir_if_needed
 from ray._private.runtime_env.py_modules import upload_py_modules_if_needed
 from ray._private.ray_constants import DEFAULT_DASHBOARD_AGENT_LISTEN_PORT
@@ -29,8 +28,9 @@ from ray._private.test_utils import (
 from ray.dashboard.modules.job.common import JobSubmitRequest
 from ray.dashboard.modules.job.utils import (
     validate_request_type,
-    get_supervisor_actor_into,
+    get_supervisor_actor_state,
 )
+from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.util.state import list_nodes
@@ -446,15 +446,10 @@ async def test_job_log_in_multiple_node(
             if job_check_status[index]:
                 continue
             result_log = f"hello index-{index}"
-            gcs_aio_client = GcsAioClient(
-                address=cluster.address, nums_reconnect_retry=0
-            )
-            supervisor_actor_info = await get_supervisor_actor_into(
-                gcs_aio_client, job_id
-            )
+            supervisor_actor_state = get_supervisor_actor_state(cluster.address, job_id)
 
             # Try to get the node id which supervisor actor running in.
-            node_id = supervisor_actor_info.actor_table_data.address.raylet_id.hex()
+            node_id = supervisor_actor_state.node_id
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break
@@ -469,7 +464,8 @@ async def test_job_log_in_multiple_node(
             ), f"port: {agent_port}"
 
             # Finally, we got the whole agent address, and try to get the job log.
-            ip = supervisor_actor_info.actor_table_data.address.ip_address
+            node_summary = await DataOrganizer.get_node_summary(node_id)
+            ip = node_summary["raylet"]["nodeManagerAddress"]
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))

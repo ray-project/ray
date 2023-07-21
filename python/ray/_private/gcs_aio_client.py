@@ -138,11 +138,3 @@ class GcsAioClient:
         self, timeout: Optional[float] = None
     ) -> gcs_service_pb2.GetAllJobInfoReply:
         return await self._async_proxy.get_all_job_info(timeout)
-
-    async def get_named_actor_info(
-        self,
-        actor_name: str,
-        ray_namespace: str = "",
-        timeout: Optional[float] = None,
-    ) -> gcs_service_pb2.GetNamedActorInfoReply:
-        assert False, "not implemented in GcsClient"
