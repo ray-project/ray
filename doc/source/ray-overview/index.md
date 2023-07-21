@@ -66,7 +66,7 @@ Ray's unified compute framework consists of three layers:
             :outline:
             :expand:
         
-            Ray AIR Libraries 
+            Ray AIR Libraries
 
     .. grid-item-card::
         
