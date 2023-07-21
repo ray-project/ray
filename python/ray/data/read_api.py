@@ -933,10 +933,10 @@ def read_json(
     ignore_missing_paths: bool = False,
     **arrow_json_args,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from JSON files.
+    """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
 
     Examples:
-        Read a file in remote storage.
+        Read a JSON file in remote storage.
 
         >>> import ray
         >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
@@ -945,6 +945,14 @@ def read_json(
         ------     ----
         timestamp  timestamp[s]
         size       int64
+
+        Read a JSONL file in remote storage.
+
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl")
+        >>> ds.schema()
+        Column  Type
+        ------  ----
+        input   string
 
         Read multiple local files.
 
@@ -997,7 +1005,7 @@ def read_json(
             Use with a custom callback to read only selected partitions of a
             dataset.
             By default, this filters out any file paths whose file extension does not
-            match "*.json*".
+            match "*.json" or "*.jsonl".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
