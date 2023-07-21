@@ -208,7 +208,7 @@ class Node:
 
         self._init_temp()
         # SANG-TODO
-        # ray._private.services.record_node_ip(self._node_ip_address)
+        ray._private.services.record_node_ip(self._node_ip_address)
 
         # Validate and initialize the persistent storage API.
         if head:
