@@ -1,4 +1,3 @@
-import PIL
 import torch
 import torchvision
 import os
@@ -18,6 +17,7 @@ DEFAULT_IMAGE_SIZE = 224
 # This is the size of dog.jpg in s3://air-cuj-imagenet-1gb.
 FULL_IMAGE_SIZE = (1213, 1546)
 
+
 def iterate(dataset, label, batch_size, metrics):
     start = time.time()
     it = iter(dataset)
@@ -35,17 +35,14 @@ def iterate(dataset, label, batch_size, metrics):
 
 
 class MosaicDataset(LocalDataset):
-    def __init__(self,
-                 local: str,
-                 transforms: Callable
-                ) -> None:
+    def __init__(self, local: str, transforms: Callable) -> None:
         super().__init__(local=local)
         self.transforms = transforms
 
-    def __getitem__(self, idx:int) -> Any:
+    def __getitem__(self, idx: int) -> Any:
         obj = super().__getitem__(idx)
-        image = obj['image']
-        label = obj['label']
+        image = obj["image"]
+        label = obj["label"]
         return self.transforms(image), label
 
 
@@ -53,9 +50,9 @@ def parse_and_decode_tfrecord(example_serialized):
     feature_map = {
         "image/encoded": tf.io.FixedLenFeature([], dtype=tf.string, default_value=""),
         "image/class/label": tf.io.FixedLenFeature(
-             [], dtype=tf.int64, default_value=-1
-         ),
-     }
+            [], dtype=tf.int64, default_value=-1
+        ),
+    }
 
     features = tf.io.parse_single_example(example_serialized, feature_map)
     label = tf.cast(features["image/class/label"], dtype=tf.int32)
@@ -129,13 +126,16 @@ def tf_crop_and_flip(image_buffer, num_channels=3):
 
 
 def build_tf_dataset(data_root, batch_size):
-    filenames = [os.path.join(data_root, pathname) for pathname in os.listdir(data_root)]
+    filenames = [
+        os.path.join(data_root, pathname) for pathname in os.listdir(data_root)
+    ]
     ds = tf.data.Dataset.from_tensor_slices(filenames)
-    ds = ds.interleave(tf.data.TFRecordDataset).map(parse_and_decode_tfrecord, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+    ds = ds.interleave(tf.data.TFRecordDataset).map(
+        parse_and_decode_tfrecord, num_parallel_calls=tf.data.experimental.AUTOTUNE
+    )
     ds = ds.map(lambda img, label: (tf_crop_and_flip(img), label))
     ds = ds.batch(batch_size)
     return ds
-
 
 
 def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.DataFrame:
@@ -146,7 +146,6 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
     - the reference tf.data implementation can use the fused decode_and_crop op
     - ray.data doesn't have to materialize the intermediate decoded batch.
     """
-    
 
     def process_images():
         for image_buffer in tf_record_batch["image/encoded"]:
@@ -162,7 +161,9 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
 
 
 def build_ray_dataset(data_root, batch_size):
-    filenames = [os.path.join(data_root, pathname) for pathname in os.listdir(data_root)]
+    filenames = [
+        os.path.join(data_root, pathname) for pathname in os.listdir(data_root)
+    ]
     ds = ray.data.read_tfrecords(filenames)
     ds = ds.map_batches(decode_crop_and_flip_tf_record_batch, batch_format="pandas")
     return ds
@@ -216,11 +217,14 @@ if __name__ == "__main__":
                 ratio=(0.75, 1.33),
             ),
             torchvision.transforms.RandomHorizontalFlip(),
-            torchvision.transforms.ToTensor()]
+            torchvision.transforms.ToTensor(),
+        ]
     )
     mosaic_ds = MosaicDataset(args.mosaic_data_root, transforms=transform)
     num_workers = os.cpu_count()
-    mosaic_dl = torch.utils.data.DataLoader(mosaic_ds, batch_size=args.batch_size, num_workers=num_workers)
+    mosaic_dl = torch.utils.data.DataLoader(
+        mosaic_ds, batch_size=args.batch_size, num_workers=num_workers
+    )
     for i in range(args.num_epochs):
         iterate(mosaic_dl, "mosaic", args.batch_size, metrics)
 
@@ -232,7 +236,12 @@ if __name__ == "__main__":
     # ray.data.
     ray_ds = build_ray_dataset(args.tf_data_root, args.batch_size)
     for i in range(args.num_epochs):
-        iterate(ray_ds.iter_batches(batch_size=args.batch_size), "ray_tfrecords", args.batch_size, metrics)
+        iterate(
+            ray_ds.iter_batches(batch_size=args.batch_size),
+            "ray_tfrecords",
+            args.batch_size,
+            metrics,
+        )
 
     metrics_list = []
     for label, tput in metrics.items():

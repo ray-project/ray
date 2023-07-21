@@ -3,12 +3,10 @@
 Download or generate a fake TF dataset from images.
 """
 
-from typing import Union, Iterable, Tuple, Optional
+from typing import Union, Iterable, Tuple
 import os
-import requests
-import shutil
 import sys
-import time
+import PIL
 
 import tensorflow.compat.v1 as tf
 from streaming import MDSWriter
@@ -86,7 +84,9 @@ def preprocess_tfdata(data_root, tf_data_root, max_images_per_file):
     num_shards = 0
     output_filename = os.path.join(tf_data_root, f"data-{num_shards}.tfrecord")
     for image_path in os.listdir(data_root):
-        example = create_single_example(os.path.join(data_root, image_path)).SerializeToString()
+        example = create_single_example(
+            os.path.join(data_root, image_path)
+        ).SerializeToString()
         examples.append(example)
 
         if len(examples) >= max_images_per_file:
@@ -116,10 +116,12 @@ def preprocess_mosaic(input_dir, output_dir):
     # streaming.StreamingDataset.
     with MDSWriter(out=output_dir, columns=columns, compression=None) as out:
         for i, img in enumerate(it):
-            out.write({
-                "image": PIL.Image.fromarray(img["image"]),
-                "label": 0,
-            })
+            out.write(
+                {
+                    "image": PIL.Image.fromarray(img["image"]),
+                    "label": 0,
+                }
+            )
             if i % 10 == 0:
                 print(f"Wrote {i} images.")
 
