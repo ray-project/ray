@@ -1,8 +1,8 @@
 import ray.dashboard.utils as dashboard_utils
 import ray.dashboard.optional_utils as optional_utils
 from ray.dashboard.modules.healthz.utils import HealthChecker
+import ray.exceptions
 from aiohttp.web import Request, Response
-import grpc
 
 routes = optional_utils.ClassMethodRouteTable
 
@@ -27,16 +27,20 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             alive = await self._health_checker.check_local_raylet_liveness()
             if alive is False:
                 return Response(status=503, text="Local Raylet failed")
-        except grpc.RpcError as e:
+        except ray.exceptions.RpcError as e:
             # We only consider the error other than GCS unreachable as raylet failure
             # to avoid false positive.
             # In case of GCS failed, Raylet will crash eventually if GCS is not back
             # within a given time and the check will fail since agent can't live
             # without a local raylet.
-            if e.code() not in (
-                grpc.StatusCode.UNAVAILABLE,
-                grpc.StatusCode.UNKNOWN,
-                grpc.StatusCode.DEADLINE_EXCEEDED,
+            # Note: we want to cehck the rpc error code, but we can't import grpc since
+            # this is a minimal module. I hardcode these error codes because grpc status
+            # codes are relatively stable. Here is the reference link:
+            # https://grpc.github.io/grpc/core/md_doc_statuscodes.html
+            if e.rpc_code not in (
+                14,  # grpc.StatusCode.UNAVAILABLE,
+                2,  # grpc.StatusCode.UNKNOWN,
+                4,  # grpc.StatusCode.DEADLINE_EXCEEDED,
             ):
                 return Response(status=503, text=f"Health check failed due to: {e}")
 
