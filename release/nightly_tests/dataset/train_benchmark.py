@@ -27,8 +27,7 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--data-root",
-        # default="s3://air-cuj-imagenet-1gb",
-        default="~/desktop/train-benchmark-data/",
+        default="s3://air-cuj-imagenet-1gb",
         type=str,
         help="Directory path with files.",
     )
@@ -48,7 +47,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num-workers",
-        default=4,
+        default=1,
         type=int,
         help="Number of workers.",
     )
