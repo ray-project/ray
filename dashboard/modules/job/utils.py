@@ -19,8 +19,6 @@ from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import (
     validate_request_type,
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
 )
 
@@ -247,13 +245,3 @@ async def find_job_by_ids(
         return job
 
     return None
-
-
-def get_supervisor_actor_state(address: str, job_submission_id: str) -> "ActorState":
-    return list_actors(address=address,
-                       filters=[
-                           ("job_id", "=", JOB_ACTOR_NAME_TEMPLATE.format(
-                               job_id=job_submission_id)),  # job_id
-                           ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE),
-                       ]
-                       )[0]

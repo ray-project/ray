@@ -25,19 +25,23 @@ from ray._private.test_utils import (
     get_current_unused_port,
     async_wait_for_condition_async_predicate,
 )
-from ray.dashboard.modules.job.common import JobSubmitRequest
+from ray.dashboard.modules.job.common import (
+    JobSubmitRequest,
+    validate_request_type,
+    JOB_ACTOR_NAME_TEMPLATE,
+    SUPERVISOR_ACTOR_RAY_NAMESPACE,
+)
 from ray.dashboard.modules.job.utils import (
     validate_request_type,
-    get_supervisor_actor_state,
 )
-from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
-from ray.util.state import list_nodes
+from ray.util.state import (
+    get_node, list_nodes, list_actors,
+)
 from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.tests.conftest import _ray_start
 from ray.dashboard.modules.job.job_head import JobAgentSubmissionClient
-
 
 # This test requires you have AWS credentials set up (any AWS credentials will
 # do, this test only accesses a public bucket).
@@ -46,6 +50,23 @@ logger = logging.getLogger(__name__)
 
 DRIVER_SCRIPT_DIR = os.path.join(os.path.dirname(__file__), "subprocess_driver_scripts")
 EVENT_LOOP = get_or_create_event_loop()
+
+
+def get_node_id_for_supervisor_actor_for_job(
+        address: str, job_submission_id: str) -> str:
+    actor = list_actors(address=address,
+                        filters=[
+                            ("job_id", "=", JOB_ACTOR_NAME_TEMPLATE.format(
+                                job_id=job_submission_id)),  # job_id
+                            ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE),
+                        ]
+                        )[0]
+    return actor.node_id
+
+
+def get_node_ip_by_id(address: str, node_id: str) -> str:
+    node = get_node(id=node_id, address=address)
+    return node.node_ip
 
 
 @pytest.fixture
@@ -446,10 +467,8 @@ async def test_job_log_in_multiple_node(
             if job_check_status[index]:
                 continue
             result_log = f"hello index-{index}"
-            supervisor_actor_state = get_supervisor_actor_state(cluster.address, job_id)
-
             # Try to get the node id which supervisor actor running in.
-            node_id = supervisor_actor_state.node_id
+            node_id = get_node_id_for_supervisor_actor_for_job(cluster.address, job_id)
             for node_info in summary:
                 if node_info["raylet"]["nodeId"] == node_id:
                     break
@@ -464,8 +483,7 @@ async def test_job_log_in_multiple_node(
             ), f"port: {agent_port}"
 
             # Finally, we got the whole agent address, and try to get the job log.
-            node_summary = await DataOrganizer.get_node_summary(node_id)
-            ip = node_summary["raylet"]["nodeManagerAddress"]
+            ip = get_node_ip_by_id(node_id)
             agent_address = f"{ip}:{agent_port}"
             assert wait_until_server_available(agent_address)
             client = JobAgentSubmissionClient(format_web_url(agent_address))
