@@ -4,7 +4,6 @@ import hashlib
 import json
 import logging
 import os
-import re
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -14,6 +13,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
 import ray._private.services as services
+from ray._private.utils import (
+    PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN,
+    PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN,
+)
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
 from ray.autoscaler._private.docker import validate_docker_config
@@ -23,10 +26,6 @@ from ray.autoscaler.tags import NODE_TYPE_LEGACY_HEAD, NODE_TYPE_LEGACY_WORKER
 
 REQUIRED, OPTIONAL = True, False
 
-PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN = re.compile(
-    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
-)
-PLACEMENT_GROUP_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
 
 HEAD_TYPE_MAX_WORKERS_WARN_TEMPLATE = (
     "Setting `max_workers` for node type"
@@ -83,8 +82,8 @@ def is_placement_group_resource(resource_name: str) -> bool:
     Check if a resource name is structured like a placement group.
     """
     return bool(
-        PLACEMENT_GROUP_RESOURCE_PATTERN.match(resource_name)
-        or PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(resource_name)
+        PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(resource_name)
+        or PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(resource_name)
     )
 
 
@@ -551,12 +550,14 @@ def parse_placement_group_resource_str(
         have duplicated resource information as
         wildcard resources (resource name without bundle index).
     """
-    result = PLACEMENT_GROUP_RESOURCE_BUNDLED_PATTERN.match(
+    result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(
         placement_group_resource_str
     )
     if result:
         return (result.group(1), result.group(3), False)
-    result = PLACEMENT_GROUP_RESOURCE_PATTERN.match(placement_group_resource_str)
+    result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(
+        placement_group_resource_str
+    )
     if result:
         return (result.group(1), result.group(2), True)
     return (placement_group_resource_str, None, True)

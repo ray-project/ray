@@ -3,6 +3,7 @@ from typing import Any, Dict, Optional
 
 import ray._private.worker
 from ray._private.client_mode_hook import client_mode_hook
+from ray._private.utils import pasre_pg_formatted_resources_to_original
 from ray.runtime_env import RuntimeEnv
 from ray.util.annotations import Deprecated, PublicAPI
 
@@ -323,7 +324,7 @@ class RuntimeContext(object):
             res: sum(amt for _, amt in mapping)
             for res, mapping in resource_id_map.items()
         }
-        return resource_map
+        return pasre_pg_formatted_resources_to_original(resource_map)
 
     def get_runtime_env_string(self):
         """Get the runtime env string used for the current driver or worker.
