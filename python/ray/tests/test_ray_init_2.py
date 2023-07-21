@@ -18,7 +18,6 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.util.client.ray_client_helpers import ray_start_client_server
-from ray.util.state import list_nodes
 
 
 def test_ray_init_context(shutdown_only):
