@@ -2,11 +2,14 @@ import ray
 import torch
 import torchvision
 import os
-import time
 import json
 import tensorflow as tf
 
-from release.nightly_tests.dataset.benchmark_utils import crop_and_flip_image_batch, get_transform, iterate
+from benchmark_utils import (
+    crop_and_flip_image_batch,
+    get_transform,
+    iterate,
+)
 
 
 # tf.data needs to resize all images to the same size when loading.
