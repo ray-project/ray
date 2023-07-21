@@ -369,7 +369,7 @@ def online_predict_torch(checkpoint):
 
         async def __call__(self, request):
             image = Image.open(BytesIO(await request.body()))
-            return self.predictor.predict(np.array(image))
+            return self.predictor.predict(np.array(image)[np.newaxis])
 
     serve.run(TorchService.bind(checkpoint))
     # __torch_serve_stop__
