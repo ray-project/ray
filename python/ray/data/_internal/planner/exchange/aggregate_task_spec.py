@@ -92,7 +92,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: str,
+        key: Union[str, List[str]],
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
@@ -101,6 +101,9 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         if isinstance(key, str):
             columns.add(key)
+        elif isinstance(key, list):
+            for k in key:
+                columns.add(k)
         elif callable(key):
             prune_columns = False
 
