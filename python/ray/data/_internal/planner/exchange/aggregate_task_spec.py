@@ -40,19 +40,36 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: Optional[str],
+        key: Union[str, List[str], None],
         aggs: List[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, key, aggs)
 
+        def make_key(keys: Union[str, Tuple[str, str], List[str], List[Tuple[str, str]]]) -> List[Tuple[str, str]]:
+            if isinstance(keys, str):
+                return [(keys, "ascending")]
+            
+            if isinstance(keys, tuple):
+                return keys
+            
+            out_keys = []
+            
+            for key in keys:
+                if isinstance(key, str):
+                    out_keys.append((key, "ascending"))
+                else:
+                    out_keys.append(key)
+
+            return out_keys
+
         if key is None:
             partitions = [block]
         else:
             partitions = BlockAccessor.for_block(block).sort_and_partition(
                 boundaries,
-                [(key, "ascending")] if isinstance(key, str) else key,
+                make_key(key),
                 descending=False,
             )
         parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]

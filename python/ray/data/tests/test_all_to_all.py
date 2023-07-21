@@ -347,7 +347,9 @@ def test_groupby_multiple_keys_tabular_count(
     if ds_format == "pandas":
         ds = _to_pandas(ds)
 
-    agg_ds = ds.groupby(["A", "B"]).count()
+    ds = ds.materialize()
+
+    agg_ds = ds.groupby(["A", "B"]).count().materialize()
     assert agg_ds.count() == 6
     assert list(agg_ds.sort(["A", "B"]).iter_rows()) == [
         {"A": 0, "B": 0, "count()": 17},
