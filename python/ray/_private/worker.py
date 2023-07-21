@@ -35,7 +35,6 @@ from typing import (
 from urllib.parse import urlparse
 
 import colorama
-from ray._private.event.event_logger import parse_event
 import setproctitle
 
 if sys.version_info >= (3, 8):
@@ -1810,6 +1809,8 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
     if is_autoscaler_v2():
+        from ray._private.event.event_logger import parse_event
+
         for event_line in lines:
             if autoscaler_log_fyi_needed():
                 yield AUTOSCALER_LOG_FYI

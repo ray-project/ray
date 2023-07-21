@@ -156,8 +156,11 @@ class LogMonitor:
             f" [is_autoscaler_v2={self.is_autoscaler_v2}]"
         )
 
-    def get_is_autoscaler_v2(self, gcs_address: str) -> bool:
+    def get_is_autoscaler_v2(self, gcs_address: Optional[str]) -> bool:
         """Check if autoscaler v2 is enabled."""
+        if gcs_address is None:
+            return False
+
         if not ray.experimental.internal_kv._internal_kv_initialized():
             gcs_client = GcsClient(address=gcs_address)
             ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
