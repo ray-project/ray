@@ -395,9 +395,10 @@ class PandasBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
-        if key is not None and not isinstance(key, str):
+        if key is not None and not isinstance(key, (str, list)):
             raise ValueError(
-                "key must be a string or None when aggregating on Pandas blocks, but "
+                "key must be a string, list of strings or None when aggregating "
+                "on Pandas blocks, but "
                 f"got: {type(key)}."
             )
 
