@@ -3,8 +3,6 @@ import logging
 import asyncio
 import aiohttp.web
 from typing import Optional, Tuple, List
-import time
-import re
 
 
 import ray
@@ -40,20 +38,12 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER = "Warning: This task is running in a worker process that is running multiple tasks. The information that follows may come from any of these tasks:"
-
-
-def get_warning_text_in_html(task_ids: List[str]) -> str:
-    return '<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
-        EMOJI_WARNING, WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids)
-    )
-
-
-def add_css_to_svg_with_regex(svg_string: str) -> str:
-    # Search for the opening <svg> tag and add the CSS styles as an attribute
-    modified_svg_string = re.sub(
-        r"<svg(.*?)>", r'<svg\1 style="width: 100%; height: 100%;">', svg_string
-    )
-    return modified_svg_string
+SVG_STYLE = """<style>
+    svg {
+        width: 100%;
+        height: 100%;
+    }
+</style>\n"""
 
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
@@ -163,21 +153,19 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             detail=True,
             timeout=10,
         )
-        ## Call the state API to get all tasks in a worker
+        # Call the state API to get all tasks in a worker
         tasks_in_a_worker_result = await self._state_api.list_tasks(option=option)
         tasks_in_a_worker = tasks_in_a_worker_result.result
 
-        ## Get task_id from each task in a worker
-        task_ids_in_a_worker = []
-        if tasks_in_a_worker is not None:
-            task_ids_in_a_worker = [
-                task.get("task_id")
-                for task in tasks_in_a_worker
-                if task and "task_id" in task
-            ]
+        # Get task_id from each task in a worker
+        task_ids_in_a_worker = [
+            task.get("task_id")
+            for task in tasks_in_a_worker
+            if task and "task_id" in task
+        ]
         return task_ids_in_a_worker
 
-    async def get_worker_details_for_task(
+    async def get_worker_details_for_running_task(
         self, task_id: str, attempt_number: int
     ) -> Tuple[Optional[int], Optional[str]]:
         """
@@ -250,29 +238,36 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         node_id = req.query.get("node_id")
 
         ip = DataSource.node_id_to_ip[node_id]
-
-        try:
-            (pid, _) = await self.get_worker_details_for_task(task_id, attempt_number)
-        except ValueError as e:
-            raise aiohttp.web.HTTPInternalServerError(text=str(e))
+        reporter_stub = self._stubs[ip]
 
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
+
+        try:
+            (pid, _) = await self.get_worker_details_for_running_task(
+                task_id, attempt_number
+            )
+        except ValueError as e:
+            raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
             "Sending stack trace request to {}:{} with native={}".format(
                 ip, pid, native
             )
         )
-        reporter_stub = self._stubs[ip]
         reply = await reporter_stub.GetTraceback(
             reporter_pb2.GetTracebackRequest(pid=pid, native=native)
         )
 
-        ## Call the API again to make sure task is still running and the worker is still working on the task
-        ## Since there is a task scheduling strategy that a worker may run different tasks at different time
+        """
+            In order to truly confirm whether there are any other tasks running during the profiling,
+            we need to retrieve all tasks that are currently running or have finished,
+            and then parse the task events (i.e., their start and finish times) to check for any potential overlap.
+            However, this process can be quite extensive, so here we will make our best efforts to check for any overlapping tasks.
+            Therefore, we will check if the task is still running
+        """
         try:
-            (_, worker_id) = await self.get_worker_details_for_task(
+            (_, worker_id) = await self.get_worker_details_for_running_task(
                 task_id, attempt_number
             )
 
@@ -326,11 +321,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         ip = DataSource.node_id_to_ip[node_id]
 
-        try:
-            (pid, _) = await self.get_worker_details_for_task(task_id, attempt_number)
-        except ValueError as e:
-            raise aiohttp.web.HTTPInternalServerError(text=str(e))
-
         duration = int(req.query.get("duration", 5))
         if duration > 60:
             raise ValueError(f"The max duration allowed is 60: {duration}.")
@@ -339,6 +329,13 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # Default not using `--native` for profiling
         native = req.query.get("native", False) == "1"
         reporter_stub = self._stubs[ip]
+
+        try:
+            (pid, _) = await self.get_worker_details_for_running_task(
+                task_id, attempt_number
+            )
+        except ValueError as e:
+            raise aiohttp.web.HTTPInternalServerError(text=str(e))
 
         logger.info(
             "Sending CPU profiling request to {}:{} for {} with native={}".format(
@@ -352,10 +349,15 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             )
         )
 
-        ## Call the API again to make sure task is still running and the worker is still working on the task
-        ## Since there is a task scheduling strategy that a worker may run different tasks at different time
+        """
+            In order to truly confirm whether there are any other tasks running during the profiling,
+            we need to retrieve all tasks that are currently running or have finished,
+            and then parse the task events (i.e., their start and finish times) to check for any potential overlap.
+            However, this process can be quite extensive, so here we will make our best efforts to check for any overlapping tasks.
+            Therefore, we will check if the task is still running
+        """
         try:
-            (_, worker_id) = await self.get_worker_details_for_task(
+            (_, worker_id) = await self.get_worker_details_for_running_task(
                 task_id, attempt_number
             )
         except ValueError as e:
@@ -367,10 +369,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         task_ids_in_a_worker = await self.get_task_ids_running_in_a_worker(worker_id)
         return aiohttp.web.Response(
-            body=get_warning_text_in_html(task_ids_in_a_worker)
-            + add_css_to_svg_with_regex(reply.output)
+            body='<p style="color: #E37400;">{} {} </br> </p> </br>'.format(
+                EMOJI_WARNING,
+                WARNING_FOR_MULTI_TASK_IN_A_WORKER + str(task_ids_in_a_worker),
+            )
+            + SVG_STYLE
+            + (reply.output)
             if len(task_ids_in_a_worker) > 1
-            else add_css_to_svg_with_regex(reply.output),
+            else SVG_STYLE + reply.output,
             headers={"Content-Type": "text/html"},
         )
 

@@ -701,10 +701,43 @@ def test_reporter_worker_cpu_percent():
 TASK = {
     "task_id": "32d950ec0ccf9d2affffffffffffffffffffffff01000000",
     "attempt_number": 0,
+    "node_id": "ffffffffffffffffffffffffffffffffffffffff01000000",
 }
 
 
-def test_get_task_traceback():
+def test_get_task_traceback_running_task():
+    """
+    Verify that we throw an error for a non-running task.
+    """
+    context = ray.init()
+    dashboard_url = f"http://{context['webui_url']}"
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get([f.remote() for _ in range(5)])
+    task = f.remote()
+    task_id = task.task_id().hex()
+    node_id = ray.get_runtime_context().node_id.hex()
+
+    attempt_number = 0
+
+    def verify():
+        resp = requests.get(
+            f"{dashboard_url}/task/traceback?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
+        )
+        print(f"resp {type(resp)}: {resp}")
+
+        assert (
+            "Failed to execute" in resp.text or "<svg>" in resp.text
+        ), "Error message not found in response."
+        return True
+
+    wait_for_condition(verify, timeout=20)
+
+
+def test_get_task_traceback_non_running_task():
     """
     Verify that we throw an error for a non-running task.
     """
@@ -721,7 +754,7 @@ def test_get_task_traceback():
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
             resp = requests.get(
-                f"{dashboard_url}/task/traceback?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}"
+                f"{dashboard_url}/task/traceback?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}&node_id={TASK['node_id']}"
             )
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
@@ -730,7 +763,36 @@ def test_get_task_traceback():
     wait_for_condition(verify, timeout=10)
 
 
-def test_get_cpu_profile():
+def test_get_cpu_profile_running_task():
+    context = ray.init()
+    dashboard_url = f"http://{context['webui_url']}"
+
+    @ray.remote
+    def f():
+        pass
+
+    ray.get([f.remote() for _ in range(5)])
+    task = f.remote()
+    task_id = task.task_id().hex()
+    node_id = ray.get_runtime_context().node_id.hex()
+
+    attempt_number = 0
+
+    def verify():
+        resp = requests.get(
+            f"{dashboard_url}/task/cpu_profile?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
+        )
+        print(f"resp {type(resp)}: {resp}")
+
+        assert (
+            "Failed to execute" in resp.text or "<svg>" in resp.text
+        ), "Error message not found in response."
+        return True
+
+    wait_for_condition(verify, timeout=20)
+
+
+def test_get_cpu_profile_non_running_task():
     """
     Verify that we throw an error for a non-running task.
     """
@@ -747,7 +809,7 @@ def test_get_cpu_profile():
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
             resp = requests.get(
-                f"{dashboard_url}/task/cpu_profile?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}"
+                f"{dashboard_url}/task/cpu_profile?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}&node_id={TASK['node_id']}"
             )
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
