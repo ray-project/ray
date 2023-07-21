@@ -142,7 +142,7 @@ In contrast to training many models, model parallelism partitions a large model 
 Learn more about the Train library with the following talks and user guides.
 
 - `[Talk] Ray Train, PyTorch, TorchX, and distributed deep learning <https://www.youtube.com/watch?v=e-A93QftCfc>`_
-- `[Blog] Elastic Distributed Training with XGBoost on Ray <https://uber.com/blog/elastic-xgboost-ray/>`_
+- `[Blog] Elastic Distributed Training with XGBoost on Ray <http://uber.com/blog/elastic-xgboost-ray/>`_
 - `[Guide] Getting Started with Ray Train </train/train>`_
 - `[Example] Fine-tune a 🤗 Transformers model </ray-air/examples/huggingface_text_classification>`_
 - `[Gallery] Ray Train Examples Gallery </train/examples>`_
