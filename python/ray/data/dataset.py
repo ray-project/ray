@@ -3243,12 +3243,16 @@ class Dataset:
             >>> import ray
             >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
             ...     return torch.stack(
-            ...     [torch.as_tensor(array) for array in batch.values()],
-            ...     axis=1)
-            >>> iterator = ray.data.from_items([{"col_1": 1, "col_2": 2}]).iterator()
+            ...         [torch.as_tensor(array) for array in batch.values()],
+            ...         axis=1
+            ...     )
+            >>> iterator = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}]).iterator()
             >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
             ...     print(batch)
-            tensor([[1, 2]])
+            tensor([[1, 2],
+                    [3, 4]])
 
 
         Time complexity: O(1)
