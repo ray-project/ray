@@ -380,7 +380,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(self, key: Union[str, List[str]], aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -417,7 +417,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_key = next_row[key]
-                    while next_row[key] == next_key:
+                    while (next_row[key] == next_key).all():
                         end += 1
                         try:
                             next_row = next(iter)
@@ -439,7 +439,15 @@ class PandasBlockAccessor(TableBlockAccessor):
             # Build the row.
             row = {}
             if key is not None:
-                row[key] = group_key
+                if isinstance(key, list):
+                    keys = key
+                    group_keys = group_key
+                else:
+                    keys = [key]
+                    group_keys = [group_key]
+
+                for k, gk in zip(keys, group_keys):
+                    row[k] = gk
 
             count = collections.defaultdict(int)
             for agg, accumulator in zip(aggs, accumulators):
@@ -476,7 +484,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
-        key: str,
+        key: Union[str, List[str]],
         aggs: Tuple[AggregateFn],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
@@ -501,7 +509,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         """
 
         stats = BlockExecStats.builder()
-        key_fn = (lambda r: r[r._row.columns[0]]) if key is not None else (lambda r: 0)
+        keys = key if isinstance(key, list) else [key]
+        key_fn = (lambda r: tuple(r[r._row.columns[:len(keys)]])) if key is not None else (lambda r: (0,))
 
         iter = heapq.merge(
             *[
@@ -516,13 +525,13 @@ class PandasBlockAccessor(TableBlockAccessor):
             try:
                 if next_row is None:
                     next_row = next(iter)
-                next_key = key_fn(next_row)
-                next_key_name = next_row._row.columns[0] if key is not None else None
+                next_keys = key_fn(next_row)
+                next_key_names = next_row._row.columns[:len(keys)] if key is not None else None
 
                 def gen():
                     nonlocal iter
                     nonlocal next_row
-                    while key_fn(next_row) == next_key:
+                    while key_fn(next_row) == next_keys:
                         yield next_row
                         try:
                             next_row = next(iter)
@@ -557,7 +566,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Build the row.
                 row = {}
                 if key is not None:
-                    row[next_key_name] = next_key
+                    for next_key, next_key_name in zip(next_keys, next_key_names):
+                        row[next_key_name] = next_key
 
                 for agg, agg_name, accumulator in zip(
                     aggs, resolved_agg_names, accumulators
