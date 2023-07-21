@@ -389,8 +389,6 @@ def online_predict_tensorflow(checkpoint):
     import tensorflow as tf
 
     from ray import serve
-    from ray.serve import PredictorDeployment
-    from ray.serve.http_adapters import json_to_multi_ndarray
     from ray.train.tensorflow import TensorflowPredictor
 
     @serve.deployment
