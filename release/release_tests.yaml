@@ -6244,7 +6244,7 @@
 
   run:
     timeout: 600
-    script: python ../../air_benchmarks/workloads/train_benchmark.py
+    script: python ../../air_tests/air_benchmarks/workloads/train_benchmark.py 
 
   variations:
     - __suffix__: aws
