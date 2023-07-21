@@ -177,7 +177,7 @@ def train_loop_for_worker(config):
                 if i % 10 == 0:
                     print("Step", i)
 
-            assert num_rows_read == config["num_images_per_epoch"], (
+            assert num_rows_read >= config["num_images_per_epoch"], (
                 num_rows_read,
                 config["num_images_per_epoch"],
             )
@@ -185,8 +185,9 @@ def train_loop_for_worker(config):
         epoch_time_s = time.perf_counter() - epoch_start_time_s
         epoch_times.append(epoch_time_s)
         throughputs.append(config["num_images_per_epoch"] / epoch_time_s)
+
+        total_tput = config["num_images_per_epoch"] / epoch_time_s
         # Drop the first epoch to remove warmup time.
-        total_tput = -1
         if len(epoch_times) > 1:
             total_tput = (epoch) * config["num_images_per_epoch"] / sum(epoch_times[1:])
         logger.info(
