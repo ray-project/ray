@@ -350,8 +350,6 @@ class LogMonitor:
                     "task_name": file_info.task_name,
                 }
                 try:
-                    if "AUTOSCALER" in file_info.filename:
-                        logger.info(f"Publishing log messages: {lines_to_publish}")
                     self.publisher.publish_logs(data)
                 except Exception:
                     logger.exception(f"Failed to publish log messages {data}")
@@ -366,7 +364,6 @@ class LogMonitor:
             for _ in range(max_num_lines_to_read):
                 try:
                     next_line = file_info.file_handle.readline()
-                    logger.info(f"file_info: {repr(file_info)}\nnext_line: {next_line}")
                     # Replace any characters not in UTF-8 with
                     # a replacement character, see
                     # https://stackoverflow.com/a/38565489/10891801

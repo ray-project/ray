@@ -1811,7 +1811,6 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
 
     if is_autoscaler_v2():
         for event_line in lines:
-            print("Get line: {}".format(event_line))
             if autoscaler_log_fyi_needed():
                 yield AUTOSCALER_LOG_FYI
 

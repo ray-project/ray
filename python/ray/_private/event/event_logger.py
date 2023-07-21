@@ -14,6 +14,8 @@ from google.protobuf.json_format import MessageToDict, Parse
 
 from ray.core.generated.event_pb2 import Event
 
+global_logger = logging.getLogger(__name__)
+
 
 def get_event_id():
     return "".join([random.choice(string.hexdigits) for _ in range(36)])
@@ -144,7 +146,8 @@ def parse_event(event_str: str) -> Optional[Event]:
     """Parse an event from a string.
 
     Args:
-        event_str: The string to parse.
+        event_str: The string to parse. Expect to be a JSON serialized
+            Event protobuf.
 
     Returns:
         The parsed event if parsable, else None
@@ -152,4 +155,5 @@ def parse_event(event_str: str) -> Optional[Event]:
     try:
         return Parse(event_str, Event())
     except Exception:
+        global_logger.exception(f"Failed to parse event: {event_str}")
         return None
