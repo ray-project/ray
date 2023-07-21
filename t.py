@@ -1,9 +1,11 @@
-import ray
 import time
+
+import ray
 
 while True:
     s = time.time()
     ray.init()
+
     @ray.remote
     class A:
         def f(self):

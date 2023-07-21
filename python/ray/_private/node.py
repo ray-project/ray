@@ -18,6 +18,7 @@ from collections import defaultdict
 from typing import Dict, Optional, Tuple, IO, AnyStr
 
 from filelock import FileLock
+from pathlib import Path
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -97,26 +98,6 @@ class Node:
             ray_params.external_addresses = external_redis
             ray_params.num_redis_shards = len(external_redis) - 1
 
-        # Try to get node IP address with the parameters.
-        if ray_params.node_ip_address:
-            node_ip_address = ray_params.node_ip_address
-        elif ray_params.redis_address:
-            node_ip_address = ray.util.get_node_ip_address(ray_params.redis_address)
-        else:
-            node_ip_address = ray.util.get_node_ip_address()
-        self._node_ip_address = node_ip_address
-
-        if ray_params.raylet_ip_address:
-            raylet_ip_address = ray_params.raylet_ip_address
-        else:
-            raylet_ip_address = node_ip_address
-
-        if raylet_ip_address != node_ip_address and (not connect_only or head):
-            raise ValueError(
-                "The raylet IP address should only be different than the node "
-                "IP address when connecting to an existing raylet; i.e., when "
-                "head=False and connect_only=True."
-            )
         if (
             ray_params._system_config
             and len(ray_params._system_config) > 0
@@ -125,8 +106,6 @@ class Node:
             raise ValueError(
                 "System config parameters can only be set on the head node."
             )
-
-        self._raylet_ip_address = raylet_ip_address
 
         ray_params.update_if_absent(
             include_log_monitor=True,
@@ -206,9 +185,45 @@ class Node:
                     f"{ray_params.dashboard_host}:{ray_params.dashboard_port}"
                 )
 
+        # It creates a session_dir.
         self._init_temp()
-        # SANG-TODO
-        ray._private.services.record_node_ip(self._node_ip_address)
+
+        node_ip_address = ray_params.node_ip_address
+        if connect_only:
+            self.wait_for_node_address()
+        else:
+            if node_ip_address is None:
+                node_ip_address = ray._private.services.resolve_ip_for_localhost(
+                    ray_constants.NODE_DEFAULT_IP
+                )
+
+        node_ip_address = self._get_or_write_node_address(node_ip_address)
+
+        ray_params.update_if_absent(
+            node_ip_address=node_ip_address, raylet_ip_address=node_ip_address
+        )
+
+        # Try to get node IP address with the parameters.
+        # if ray_params.node_ip_address:
+        #     node_ip_address = ray_params.node_ip_address
+        # elif ray_params.redis_address:
+        #     node_ip_address = ray.util.get_node_ip_address(ray_params.redis_address)
+        # else:
+        #     node_ip_address = ray.util.get_node_ip_address()
+        self._node_ip_address = node_ip_address
+
+        if ray_params.raylet_ip_address:
+            raylet_ip_address = ray_params.raylet_ip_address
+        else:
+            raylet_ip_address = node_ip_address
+
+        if raylet_ip_address != node_ip_address and (not connect_only or head):
+            raise ValueError(
+                "The raylet IP address should only be different than the node "
+                "IP address when connecting to an existing raylet; i.e., when "
+                "head=False and connect_only=True."
+            )
+        self._raylet_ip_address = raylet_ip_address
 
         # Validate and initialize the persistent storage API.
         if head:
@@ -874,6 +889,73 @@ class Node:
                     json.dump(ports_by_node, f)
 
         return port
+
+    def wait_for_node_address(self):
+        """Wait until the node_ip_address.json file is avialable.
+
+        node_ip_address.json is created when a ray instance is started.
+        """
+        assert hasattr(self, "_session_dir")
+        NODE_IP_FILE_NAME = "node_ip_address.json"
+        file_path = Path(os.path.join(self.get_session_dir_path(), NODE_IP_FILE_NAME))
+        MAX_WAIT_S = 60
+        for i in range(MAX_WAIT_S):
+            if file_path.exists():
+                break
+
+            time.sleep(1)
+            if i % 10 == 0:
+                logger.info(
+                    f"Can't find a `{NODE_IP_FILE_NAME}` file. "
+                    "Have you started Ray instsance using "
+                    "`ray start` or `ray.init`?"
+                )
+            if i == MAX_WAIT_S:
+                raise ValueError(
+                    f"Can't find a `{NODE_IP_FILE_NAME}` file "
+                    f"for {MAX_WAIT_S} seconds"
+                    "It means the ray instance hasn't started. "
+                    "Did you do `ray start` or `ray.init` on this host?"
+                )
+
+    def _get_or_write_node_address(self, node_ip_address: str) -> str:
+        """Get a node address cached on this session.
+
+        If a ray instance is started by `ray start --node-ip-address`,
+        the node ip address is cached to a file node_ip_address.json.
+
+        This API is process-safe, meaning the file access is protected by
+        a file lock.
+
+        Args:
+            node_ip_address: The node IP address of the current node.
+        Returns:
+            node_ip_address of the current node passed to ray start if it exists.
+            None otherwise.
+        """
+        assert hasattr(self, "_session_dir")
+        file_path = Path(
+            os.path.join(self.get_session_dir_path(), "node_ip_address.json")
+        )
+        cached_node_ip_address = {}
+
+        with FileLock(str(file_path.absolute()) + ".lock"):
+            if not file_path.exists():
+                with file_path.open(mode="w") as f:
+                    json.dump({}, f)
+
+            with file_path.open() as f:
+                cached_node_ip_address.update(json.load(f))
+
+            if "node_ip_address" in cached_node_ip_address:
+                # The port has already been cached at this node, so use it.
+                node_ip_address = cached_node_ip_address["node_ip_address"]
+            else:
+                cached_node_ip_address["node_ip_address"] = node_ip_address
+                with file_path.open(mode="w") as f:
+                    json.dump(cached_node_ip_address, f)
+
+        return node_ip_address
 
     def start_reaper_process(self):
         """

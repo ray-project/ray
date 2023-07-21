@@ -338,16 +338,20 @@ def test_temp_dir_must_be_absolute(shutdown_only):
 
 def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluster):
     """Simulate the ray is started with node-ip-address (privately assigned IP).
-    
+
     At this time, the driver should automatically use the node-ip-address given
     to ray start.
     """
-    with patch("ray._private.ray_constants.ENABLE_RAY_CLUSTER") as enable_cluster_constant:
+    with patch(
+        "ray._private.ray_constants.ENABLE_RAY_CLUSTER"
+    ) as enable_cluster_constant:
         # Without this, it will always use localhost (for MacOS and Windows).
         enable_cluster_constant.return_value = True
         ray_start_ip = get_node_ip_address()
 
-        with patch("ray._private.services.node_ip_address_from_perspective") as mocked_node_ip_address: # noqa
+        with patch(
+            "ray._private.services.node_ip_address_from_perspective"
+        ) as mocked_node_ip_address:  # noqa
             # Mock the node_ip_address_from_perspective will return the
             # IP that's not assigned to ray start.
             mocked_node_ip_address.return_value = "134.31.31.31"
@@ -358,8 +362,10 @@ def test_driver_node_ip_address_auto_configuration(monkeypatch, ray_start_cluste
 
             # If the IP is not correctly configured, it will hang.
             ray.init(address=cluster.address)
-            assert (_get_node_id_from_node_ip(get_node_ip_address()).hex()
-                    == ray.get_runtime_context().node_id)
+            assert (
+                _get_node_id_from_node_ip(get_node_ip_address())
+                == ray.get_runtime_context().get_node_id()
+            )
 
 
 if __name__ == "__main__":
