@@ -8,7 +8,7 @@ import os
 import json
 
 
-from benchmark_utils import crop_and_flip_image_batch, iterate
+from benchmark_utils import crop_and_flip_image_batch
 
 # This benchmark does the following:
 # 1) Read images with ray.data.read_images()
@@ -27,7 +27,8 @@ if __name__ == "__main__":
 
     parser.add_argument(
         "--data-root",
-        default="s3://air-cuj-imagenet-1gb",
+        # default="s3://air-cuj-imagenet-1gb",
+        default="~/desktop/train-benchmark-data/",
         type=str,
         help="Directory path with files.",
     )
@@ -39,6 +40,8 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num-epochs",
+        # Use 2 epochs and report the throughput of the last epoch, in case
+        # there is warmup in the first epoch.
         default=2,
         type=int,
         help="Number of epochs to run. The throughput for the last epoch will be kept.",
@@ -59,13 +62,6 @@ if __name__ == "__main__":
         # 2) Preprocess data by applying transformation with map_batches()
         .map_batches(crop_and_flip_image_batch)
     )
-    # Iterate over the dataset.
-    for i in range(args.num_epochs):
-        iterate(
-            ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+transform",
-            metrics,
-        )
 
     def train_loop_per_worker():
         it = session.get_dataset_shard("train")
@@ -82,6 +78,7 @@ if __name__ == "__main__":
             epoch_tput = num_rows / (end_t - start_t)
             session.report({"tput": epoch_tput, "epoch": i})
 
+    # 3) Train TorchTrainer on processed data
     torch_trainer = TorchTrainer(
         train_loop_per_worker,
         scaling_config=ScalingConfig(num_workers=args.num_workers),
@@ -114,5 +111,5 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
 
-    print(f"===> Finished benchmark, metrics written to {test_output_json}:")
+    print(f"Finished benchmark, metrics exported to {test_output_json}:")
     print(metrics)
