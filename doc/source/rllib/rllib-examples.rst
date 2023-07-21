@@ -207,6 +207,9 @@ Community Examples
    A dense traffic simulating environment with RLlib-generated baselines.
 - `GFootball <https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py>`__:
    Example of setting up a multi-agent version of `GFootball <https://github.com/google-research>`__ with RLlib.
+- `mobile-env <https://github.com/stefanbschneider/mobile-env>`__:
+   An open, minimalist Gymnasium environment for autonomous coordination in wireless mobile networks.
+   Includes an example notebook using Ray RLlib for multi-agent RL with mobile-env.
 - `Neural MMO <https://github.com/NeuralMMO/environment>`__:
    A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games –
    self-contained worlds featuring thousands of agents per persistent macrocosm, diverse skilling systems, local and global economies, complex emergent social structures,
