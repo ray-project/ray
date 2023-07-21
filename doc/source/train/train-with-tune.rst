@@ -9,7 +9,7 @@ with Ray Train.
 
 .. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
 
-.. figure:: images/tuner.svg
+.. figure:: images/train-tuner.svg
     :align: center
 
     The `Tuner` will take in a `Trainer` and execute multiple training runs, each with different hyperparameter configurations.
@@ -79,7 +79,7 @@ The :class:`TuneConfig <ray.tune.tune_config.TuneConfig>` contains tuning specif
 
 Here are some common configurations for `TuneConfig`:
 
-.. literalinclude:: doc_code/tuner.py  # TODO:FIX
+.. literalinclude:: doc_code/tuner.py
     :language: python
     :start-after: __tune_config_start__
     :end-before: __tune_config_end__

@@ -1,8 +1,9 @@
+:orphan:
+
 .. _air-examples-ref:
 
 Examples
 ========
-
 
 Framework-specific Examples
 ---------------------------
