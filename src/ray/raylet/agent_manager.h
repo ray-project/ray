@@ -30,8 +30,11 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
                                                                    uint32_t delay_ms)>
     DelayExecutorFn;
 
-// Manages a separate "Agent" process. In constructor (or the `StartAgnet` method) it
+// Manages a separate "Agent" process. The `StartAgnet` method)
 // starts a process with `agent_commands` plus some additional arguments.
+//
+// NOTE: the ctor itself does NOT start the process. One have to call StartAgent to start
+// it.
 //
 // Raylet outlives agents. This means when Raylet exits, the agents must exit; on the
 // other hand, if the agent exits, the raylet may exit only if fate_shares = true. This is
@@ -45,27 +48,19 @@ class AgentManager {
   struct Options {
     const NodeID node_id;
     const std::string agent_name;
-    // Commands to start the agent. Note we append extra arguments:
-    // --agent-id $AGENT_ID # A random string of int
+    // Commands to start the agent.
     std::vector<std::string> agent_commands;
     // If true: the started process fate-shares with the raylet. i.e. when the process
     // fails to start or exits, we SIGTERM the raylet.
     bool fate_shares;
   };
 
-  explicit AgentManager(Options options,
-                        DelayExecutorFn delay_executor,
-                        bool start_agent = true /* for test */)
+  explicit AgentManager(Options options, DelayExecutorFn delay_executor)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        kill_raylet_if_process_exits_(options_.fate_shares) {
-    if (start_agent) {
-      StartAgent();
-    }
-  }
+        kill_raylet_if_process_exits_(options_.fate_shares) {}
   ~AgentManager();
 
- private:
   void StartAgent();
 
  private:

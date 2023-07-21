@@ -239,17 +239,15 @@ int main(int argc, char *argv[]) {
           RAY_LOG(FATAL) << "At least one of Python/Java/CPP worker command "
                          << "should be provided";
         }
-        if (!dashboard_agent_command.empty()) {
-          node_manager_config.dashboard_agent_command = dashboard_agent_command;
-        } else {
-          RAY_LOG(DEBUG) << "Dashboard agent command is empty. Not starting agent.";
+        if (dashboard_agent_command.empty()) {
+          RAY_LOG(FATAL) << "Dashboard agent command must be non empty";
         }
+        node_manager_config.dashboard_agent_command = dashboard_agent_command;
 
-        if (!runtime_env_agent_command.empty()) {
-          node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
-        } else {
-          RAY_LOG(DEBUG) << "Runtime env agent command is empty. Not starting agent.";
+        if (runtime_env_agent_command.empty()) {
+          RAY_LOG(FATAL) << "Runtime env agent command must be non empty";
         }
+        node_manager_config.runtime_env_agent_command = runtime_env_agent_command;
 
         node_manager_config.report_resources_period_ms =
             RayConfig::instance().raylet_report_resources_period_milliseconds();
