@@ -16,6 +16,7 @@ from ray.serve.context import (
     get_internal_replica_context,
 )
 from ray.serve._private.common import MultiplexedReplicaInfo
+from ray.serve._private.utils import MetricsPusher
 from ray.serve import metrics
 
 
@@ -93,11 +94,32 @@ class _ModelMultiplexWrapper:
         # Model cache lock
         self._model_cache_lock = asyncio.Lock()
         self._model_load_tasks: Set[str] = set()
-        self._model_ids_pusher_thread_stop: bool = False
-        # Push the model IDs to the controller periodically.
-        self._model_ids_pusher_thread = threading.Thread(target=self._push_model_ids)
-        self._model_ids_pusher_thread.setDaemon(True)
-        self._model_ids_pusher_thread.start()
+
+
+        self.metrics_pusher = MetricsPusher()
+        self.metrics_pusher.register_task(
+            self._push_model_ids,
+            PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
+        )
+        self.metrics_pusher.start()
+
+    def _push_model_ids(self):
+        """Push the multiplexed replica info to the controller."""
+        try:
+            if self._push_multiplexed_replica_info:
+                get_global_client().record_multiplexed_replica_info(
+                    MultiplexedReplicaInfo(
+                        self._deployment_name,
+                        self._replica_tag,
+                        self._get_model_ids(),
+                    )
+                )
+                self._push_multiplexed_replica_info = False
+        except Exception as e:
+            logger.warning(
+                "Failed to push the multiplexed replica info "
+                f"to the controller. Error: {e}"
+            )
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the user-constructed model object.
@@ -128,34 +150,39 @@ class _ModelMultiplexWrapper:
                 # Check if the model has been loaded by another request.
                 if model_id in self.models:
                     return self.models[model_id]
+                try:
+                    # If the number of models per replica is specified, check if
+                    # the number of models on the current replica has reached the limit.
+                    if (
+                        self.max_num_models_per_replica > 0
+                        and len(self.models) >= self.max_num_models_per_replica
+                    ):
+                        # Unload the least recently used model.
+                        await self.unload_model()
+                        self._push_multiplexed_replica_info = True
 
-                # If the number of models per replica is specified, check if
-                # the number of models on the current replica has reached the limit.
-                if (
-                    self.max_num_models_per_replica > 0
-                    and len(self.models) >= self.max_num_models_per_replica
-                ):
-                    # Unload the least recently used model.
-                    self.models_unload_counter.inc()
-                    unload_start_time = time.time()
-                    await self.unload_model()
-                    self.model_unload_latency_s.set(time.time() - unload_start_time)
-
-                # Load the model.
-                logger.info(f"Loading model '{model_id}'.")
-                self.models_load_counter.inc()
-                load_start_time = time.time()
-                if self.self_arg is None:
-                    self.models[model_id] = await self._func(model_id)
-                else:
-                    self.models[model_id] = await self._func(self.self_arg, model_id)
-                self._push_multiplexed_replica_info = True
-                self._model_load_tasks.discard(model_id)
-                self.model_load_latency_s.set(time.time() - load_start_time)
-                return self.models[model_id]
-
+                    # Load the model.
+                    logger.info(f"Loading model '{model_id}'.")
+                    self.models_load_counter.inc()
+                    load_start_time = time.time()
+                    if self.self_arg is None:
+                        self.models[model_id] = await self._func(model_id)
+                    else:
+                        self.models[model_id] = await self._func(self.self_arg, model_id)
+                    self._model_load_tasks.discard(model_id)
+                    self.model_load_latency_s.set(time.time() - load_start_time)
+                    return self.models[model_id]
+                except Exception as e:
+                    logger.error(
+                        f"Failed to load model '{model_id}'. Error: {e}",
+                    )
+                    self._model_load_tasks.discard(model_id)
+                    raise e
+        
     async def unload_model(self) -> None:
         """Unload the least recently used model."""
+        self.models_unload_counter.inc()
+        unload_start_time = time.time()
         model_id, model = self.models.popitem(last=False)
         logger.info(f"Unloading model '{model_id}'.")
 
@@ -167,6 +194,7 @@ class _ModelMultiplexWrapper:
             else:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
+        self.model_unload_latency_s.set(time.time() - unload_start_time)
 
     def _get_model_ids(self) -> List[str]:
         """Get the model IDs of the models loaded & loading on the current replica."""
@@ -174,31 +202,6 @@ class _ModelMultiplexWrapper:
         models_list.update(self._model_load_tasks)
         return list(models_list)
 
-    def _push_model_ids(self):
-        """Push the multiplexed replica info to the controller."""
-
-        while True:
-            try:
-                if self._model_ids_pusher_thread_stop:
-                    break
-                if self._push_multiplexed_replica_info:
-                    get_global_client().record_multiplexed_replica_info(
-                        MultiplexedReplicaInfo(
-                            self._deployment_name,
-                            self._replica_tag,
-                            self._get_model_ids(),
-                        )
-                    )
-                    self._push_multiplexed_replica_info = False
-            except Exception as e:
-                logger.warning(
-                    "Failed to push the multiplexed replica info "
-                    f"to the controller. Error: {e}"
-                )
-            time.sleep(PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S)
-
     def __del__(self):
         while len(self.models) > 0:
             asyncio.run(self.unload_model())
-        self._model_ids_pusher_thread_stop = True
-        self._model_ids_pusher_thread.join()
