@@ -680,16 +680,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Checks the expiry time of the task failures and garbage collect them.
   void GCTaskFailureReason();
 
-  /// Creates a AgentManager that creates and manages a dashboard agent if the command is
-  /// not empty. Otherwise, returns null shared_ptr.
-  std::shared_ptr<AgentManager> CreateDashboardAgentManager(
-      const NodeID &self_node_id, const NodeManagerConfig &config);
-
-  /// Creates a AgentManager that creates and manages a runtime env agent if the command
-  /// is not empty. Otherwise, returns null shared_ptr.
-  std::shared_ptr<AgentManager> CreateRuntimeEnvAgentManager(
-      const NodeID &self_node_id, const NodeManagerConfig &config);
-
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -738,10 +728,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   WaitManager wait_manager_;
 
   /// A manager for the dashboard agent.
-  std::shared_ptr<AgentManager> dashboard_agent_manager_;
+  AgentManager dashboard_agent_manager_;
 
   /// A manager for the runtime env agent.
-  std::shared_ptr<AgentManager> runtime_env_agent_manager_;
+  AgentManager runtime_env_agent_manager_;
 
   /// The RPC server.
   rpc::GrpcServer node_manager_server_;

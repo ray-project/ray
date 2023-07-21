@@ -175,6 +175,9 @@ void WorkerPool::SetNodeManagerPort(int node_manager_port) {
 
 void WorkerPool::SetRuntimeEnvAgentClient(
     std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client) {
+  if (!runtime_env_agent_client) {
+    RAY_LOG(FATAL) << "SetRuntimeEnvAgentClient requires non empty pointer";
+  }
   runtime_env_agent_client_ = runtime_env_agent_client;
 }
 
