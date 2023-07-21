@@ -2515,9 +2515,6 @@ class Dataset:
     ) -> None:
         """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
 
-        When the dataset has multiple rows, the output file is in JSONL format.
-        Otherwise, the output file is in JSON format.
-
         The number of files is determined by the number of blocks in the dataset.
         To control the number of number of blocks, call
         :meth:`~ray.data.Dataset.repartition`.
