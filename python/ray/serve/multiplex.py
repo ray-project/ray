@@ -95,7 +95,6 @@ class _ModelMultiplexWrapper:
         self._model_cache_lock = asyncio.Lock()
         self._model_load_tasks: Set[str] = set()
 
-
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_task(
             self._push_model_ids,
@@ -168,7 +167,9 @@ class _ModelMultiplexWrapper:
                     if self.self_arg is None:
                         self.models[model_id] = await self._func(model_id)
                     else:
-                        self.models[model_id] = await self._func(self.self_arg, model_id)
+                        self.models[model_id] = await self._func(
+                            self.self_arg, model_id
+                        )
                     self._model_load_tasks.discard(model_id)
                     self.model_load_latency_s.set(time.time() - load_start_time)
                     return self.models[model_id]
@@ -178,7 +179,7 @@ class _ModelMultiplexWrapper:
                     )
                     self._model_load_tasks.discard(model_id)
                     raise e
-        
+
     async def unload_model(self) -> None:
         """Unload the least recently used model."""
         self.models_unload_counter.inc()

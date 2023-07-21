@@ -3,13 +3,11 @@ import pytest
 from typing import List
 import os
 import requests
-import time
 
 import ray
 from ray import serve
 
 from ray._private.test_utils import (
-    async_wait_for_condition,
     wait_for_condition,
     SignalActor,
 )
@@ -37,11 +35,12 @@ def start_serve_with_context():
 
 def stop_model_ids_pusher_thread(multiplexer):
     multiplexer.metrics_pusher.stop_event.set()
-    wait_for_condition(lambda: multiplexer.metrics_pusher.pusher_thread.is_alive() is False)
+    wait_for_condition(
+        lambda: multiplexer.metrics_pusher.pusher_thread.is_alive() is False
+    )
 
 
 class TestMultiplexWrapper:
-
     def test_failed_to_get_replica_context(self):
         async def model_load_func(model_id: str):
             return model_id
@@ -129,7 +128,7 @@ class TestMultiplexWrapper:
         assert multiplexer.models == {"1": MyModel("1")}
         with pytest.raises(Exception, match="1 is dead"):
             await multiplexer.load_model("2")
-    
+
     def test_push_model_ids_info(self, start_serve_with_context):
         async def model_load_func(model_id: str):
             return model_id
@@ -142,11 +141,9 @@ class TestMultiplexWrapper:
         multiplexer._push_multiplexed_replica_info = True
         multiplexer._push_model_ids()
         assert multiplexer._push_multiplexed_replica_info is False
-    
+
     def test_collect_model_ids(self):
-        multiplexer = _ModelMultiplexWrapper(
-            None, None, max_num_models_per_replica=1
-        )
+        multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
         assert sorted(multiplexer._get_model_ids()) == ["1", "2"]
         multiplexer._model_load_tasks = {"3"}
@@ -159,12 +156,13 @@ class TestMultiplexWrapper:
         new model is not loaded yet.
         """
         signal = SignalActor.remote()
+
         async def model_load_func(model_id: str):
             if model_id == "1":
                 return model_id
             await signal.wait.remote()
-            return 
-        
+            return
+
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=1
         )
@@ -195,8 +193,8 @@ class TestMultiplexWrapper:
 
         async def model_load_func(model_id: str):
             await signal.wait.remote()
-            return 
-        
+            return
+
         multiplexer = _ModelMultiplexWrapper(
             model_load_func, None, max_num_models_per_replica=1
         )
