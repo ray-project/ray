@@ -240,10 +240,6 @@ Here's an overview of all available search algorithms in Tune:
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
      - :doc:`/tune/examples/optuna_example`
-   * - :ref:`ZOOptSearch <zoopt>`
-     - Zeroth-order Optimization
-     - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - :doc:`/tune/examples/includes/zoopt_example`
    * - :ref:`SigOptSearch <sigopt>`
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]

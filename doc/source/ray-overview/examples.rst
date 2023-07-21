@@ -537,13 +537,6 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
-        .. button-ref:: /tune/examples/zoopt_example
-
-            How To Use Tune With ZOOpt
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
         .. button-ref:: /tune/examples/sigopt_example
 
             How To Use Tune With SigOpt

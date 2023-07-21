@@ -992,15 +992,6 @@ py_test(
     args = ["--test"]
 )
 
-py_test(
-    name = "zoopt_example",
-    size = "small",
-    srcs = ["examples/zoopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/tune/tests/output directory.
 # Please keep these sorted alphabetically.

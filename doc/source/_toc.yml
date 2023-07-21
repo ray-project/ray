@@ -233,8 +233,6 @@ parts:
                     title: "Nevergrad Example"
                   - file: tune/examples/optuna_example
                     title: "Optuna Example"
-                  - file: tune/examples/zoopt_example
-                    title: "ZOOpt Example"
                   - file: tune/examples/sigopt_example
                     title: "SigOpt Example"
               - file: tune/examples/other-examples
