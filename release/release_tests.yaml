@@ -6231,7 +6231,7 @@
 
 - name: read_images_train_multi_node
   group: data-tests
-  working_dir: nightly_tests/dataset
+  working_dir: air_tests/air_benchmarks
 
   frequency: nightly
   team: data
@@ -6240,11 +6240,11 @@
     byod:
       type: gpu
     cluster_env: app_config.yaml
-    cluster_compute: multi_node_benchmark_compute.yaml
+    cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 600
-    script: python ../../air_tests/air_benchmarks/workloads/train_benchmark.py 
+    script: python workloads/train_benchmark.py 
 
   variations:
     - __suffix__: aws
@@ -6253,7 +6253,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: multi_node_benchmark_compute.yaml
+        cluster_compute: compute_gpu_4x4_aws.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
