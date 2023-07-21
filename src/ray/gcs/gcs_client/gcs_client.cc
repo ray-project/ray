@@ -171,7 +171,7 @@ void GrpcClientContextWithTimeoutMs(grpc::ClientContext &context, int64_t timeou
 
 Status PythonGcsClient::CheckAlive(const std::vector<std::string> &raylet_addresses,
                                    int64_t timeout_ms,
-                                   std::vector<bool> result) {
+                                   std::vector<bool> &result) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
