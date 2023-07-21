@@ -727,10 +727,9 @@ def test_get_task_traceback_running_task():
         resp = requests.get(
             f"{dashboard_url}/task/traceback?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
         )
-        print(f"resp {type(resp)}: {resp}")
 
         assert (
-            "Failed to execute" in resp.text or "<svg>" in resp.text
+            "Failed to execute" in resp.text or "Process" in resp.text
         ), "Error message not found in response."
         return True
 
@@ -782,7 +781,6 @@ def test_get_cpu_profile_running_task():
         resp = requests.get(
             f"{dashboard_url}/task/cpu_profile?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
         )
-        print(f"resp {type(resp)}: {resp}")
 
         assert (
             "Failed to execute" in resp.text or "<svg>" in resp.text
