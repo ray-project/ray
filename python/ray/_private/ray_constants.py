@@ -177,7 +177,10 @@ EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
+# Used by autoscaler to set the node custom resources and labels
+# from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
+LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)

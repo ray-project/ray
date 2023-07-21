@@ -178,11 +178,11 @@ def test_ray_address_environment_variable(ray_start_cluster):
     ray.shutdown()
 
 
-def test_ray_resources_environment_variable(ray_start_cluster):
-    address = ray_start_cluster.address
-
-    os.environ["RAY_OVERRIDE_RESOURCES"] = '{"custom1":1, "custom2":2, "CPU":3}'
-    ray.init(address=address, resources={"custom1": 3, "custom3": 3})
+def test_ray_resources_environment_variable(shutdown_only):
+    os.environ[
+        ray_constants.RESOURCES_ENVIRONMENT_VARIABLE
+    ] = '{"custom1":1, "custom2":2, "CPU":3}'
+    ray.init(resources={"custom1": 3, "custom3": 3})
 
     cluster_resources = ray.cluster_resources()
     print(cluster_resources)
@@ -190,6 +190,18 @@ def test_ray_resources_environment_variable(ray_start_cluster):
     assert cluster_resources["custom2"] == 2
     assert cluster_resources["custom3"] == 3
     assert cluster_resources["CPU"] == 3
+
+
+def test_ray_labels_environment_variables(shutdown_only):
+    os.environ[
+        ray_constants.LABELS_ENVIRONMENT_VARIABLE
+    ] = '{"custom1":"1", "custom2":"2"}'
+    ray.init(labels={"custom1": "3", "custom3": "3"})
+
+    node_info = ray.nodes()[0]
+    assert node_info["Labels"]["custom1"] == "1"
+    assert node_info["Labels"]["custom2"] == "2"
+    assert node_info["Labels"]["custom3"] == "3"
 
 
 def test_gpu_info_parsing():

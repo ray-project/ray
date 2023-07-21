@@ -415,6 +415,41 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
 
+    def _get_node_labels(self):
+        def merge_labels(env_override_labels, params_labels):
+            """Merges two dictionaries, picking from the
+            first in the event of a conflict. Also emit a warning on every
+            conflict.
+            """
+
+            result = params_labels.copy()
+            result.update(env_override_labels)
+
+            for key in set(env_override_labels.keys()).intersection(
+                set(params_labels.keys())
+            ):
+                if params_labels[key] != env_override_labels[key]:
+                    logger.warning(
+                        "Autoscaler is overriding your label:"
+                        f"{key}: {params_labels[key]} to "
+                        f"{key}: {env_override_labels[key]}."
+                    )
+            return result
+
+        env_override_labels = {}
+        env_override_labels_string = os.getenv(
+            ray_constants.LABELS_ENVIRONMENT_VARIABLE
+        )
+        if env_override_labels_string:
+            try:
+                env_override_labels = json.loads(env_override_labels_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_override_labels_string}")
+                raise
+            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
+
+        return merge_labels(env_override_labels, self._ray_params.labels or {})
+
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
 
@@ -1048,7 +1083,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
-            labels=self._ray_params.labels,
+            labels=self._get_node_labels(),
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
