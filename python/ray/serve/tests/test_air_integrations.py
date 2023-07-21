@@ -11,7 +11,7 @@ from fastapi import Depends, FastAPI
 import ray
 from ray import serve
 from ray.air.checkpoint import Checkpoint
-from ray.serve.air_integrations import _BatchingManager, PredictorDeployment
+from ray.serve.air_integrations import _BatchingManager
 from ray.serve.dag import InputNode
 from ray.serve.deployment_graph import RayServeDAGHandle
 from ray.serve._private.deployment_graph_build import build

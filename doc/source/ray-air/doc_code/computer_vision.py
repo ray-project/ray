@@ -393,14 +393,19 @@ def online_predict_tensorflow(checkpoint):
     from ray.serve.http_adapters import json_to_multi_ndarray
     from ray.train.tensorflow import TensorflowPredictor
 
-    serve.run(
-        PredictorDeployment.bind(
-            TensorflowPredictor,
-            checkpoint,
-            http_adapter=json_to_multi_ndarray,
-            model_definition=tf.keras.applications.resnet50.ResNet50,
-        )
-    )
+    @serve.deployment
+    class TensorflowService:
+        def __init__(self, checkpoint):
+            self.predictor = TensorflowPredictor.from_checkpoint(
+                checkpoint,
+                model_definition=tf.keras.applications.resnet50.ResNet50,
+            )
+
+        async def __call__(self, request):
+            image = Image.open(BytesIO(await request.body()))
+            return self.predictor.predict(np.array(image))
+
+    serve.run(TensorflowService.bind(checkpoint))
     # __tensorflow_serve_stop__
 
     # __tensorflow_online_predict_start__
@@ -411,10 +416,7 @@ def online_predict_tensorflow(checkpoint):
     from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
-    image = Image.open(BytesIO(response.content))
-
-    payload = {"image": {"array": np.array(image).tolist(), "dtype": "float32"}}
-    response = requests.post("http://localhost:8000/", json=payload)
+    response = requests.post("http://localhost:8000/", data=response.content)
     predictions = response.json()
     # __tensorflow_online_predict_stop__
     predictions
