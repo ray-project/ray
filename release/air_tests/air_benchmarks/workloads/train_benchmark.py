@@ -18,7 +18,9 @@ DEFAULT_IMAGE_SIZE = 224
 # 3) Train TorchTrainer on processed data
 # The resulting metrics are:
 # - ray.data+transform: Throughput of data ingest (steps 1+2 above)
-# - ray.torchtrainer.fit: Throughput of the final epoch in TorchTrainer.fit() (step 3 above)
+# - ray.torchtrainer.fit: Throughput of the final epoch in
+#   TorchTrainer.fit() (step 3 above)
+
 
 def iterate(dataset, label, metrics):
     start = time.time()
@@ -72,7 +74,7 @@ if __name__ == "__main__":
         "--data-root",
         default="s3://air-cuj-imagenet-1gb",
         type=str,
-        help='Directory path with files.',
+        help="Directory path with files.",
     )
     parser.add_argument(
         "--batch-size",
@@ -95,14 +97,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     metrics = {}
-    
+
     ray_dataset = (
         # 1) Read in data with read_images()
         ray.data.read_images(args.data_root)
         # 2) Preprocess data by applying transformation with map_batches()
-        .map_batches(
-            crop_and_flip_image_batch
-        )
+        .map_batches(crop_and_flip_image_batch)
     )
     # Iterate over the dataset.
     for i in range(args.num_epochs):
@@ -119,7 +119,7 @@ if __name__ == "__main__":
             num_rows = 0
             start_t = time.time()
             for batch in it.iter_batches(
-               batch_size=args.batch_size, prefetch_batches=10
+                batch_size=args.batch_size, prefetch_batches=10
             ):
                 num_rows += len(batch)
             end_t = time.time()
