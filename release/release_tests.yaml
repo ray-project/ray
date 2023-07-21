@@ -726,8 +726,9 @@
         cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
-# Test tiny, medium, and huge input files.
-- name: ray-data-bulk-ingest-file-size-benchmark
+# Test tiny, and medium input files to check that performance stays about
+# constant.
+- name: ray-data-resnet50-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
@@ -758,8 +759,8 @@
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
 
-# Test dataset larger than object store memory.
-- name: ray-data-bulk-ingest-out-of-core-benchmark
+# Test huge files to check that we do not OOM.
+- name: ray-data-resnet50-ingest-out-of-memory-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
@@ -779,7 +780,7 @@
 
   run:
     timeout: 3600
-    script: bash out_of_core_benchmark.sh
+    script: bash oom_benchmark.sh
 
   variations:
     - __suffix__: aws
@@ -789,42 +790,6 @@
       cluster:
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
-
-# Test additional CPU nodes for preprocessing.
-- name: ray-data-bulk-ingest-heterogeneity-benchmark
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks/mlperf-train
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod:
-      type: gpu
-      runtime_env:
-        - RAY_task_oom_retries=50
-        - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
-    cluster_compute: compute_cpu_16_worker_nodes_2.yaml
-
-  run:
-    wait_for_nodes:
-      num_nodes: 3
-
-    timeout: 1800
-    script: bash heterogeneity_benchmark.sh 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_oom.yaml
-        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
-
 
 #######################
 # AIR examples
