@@ -183,7 +183,9 @@ def test_predictor_kwargs(serve_instance):
 
         async def __call__(self, request):
             data = await request.json()
-            return self.predictor.predict(np.array(data["array"]), override_increment=100)
+            return self.predictor.predict(
+                np.array(data["array"]), override_increment=100
+            )
 
     AdderService.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
@@ -285,7 +287,8 @@ def test_air_integrations_reconfigure(serve_instance):
 
         def reconfigure(self, config):
             self.predictor = AdderPredictor.from_checkpoint(
-                Checkpoint.from_dict(config["checkpoint"]))
+                Checkpoint.from_dict(config["checkpoint"])
+            )
 
         async def __call__(self, data):
             return self.predictor.predict(data)

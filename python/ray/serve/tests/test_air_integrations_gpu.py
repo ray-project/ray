@@ -38,12 +38,16 @@ def test_automatic_enable_gpu(serve_instance):
         async def __call__(self, data):
             return self.predictor.predict(data)
 
-    serve.run(DAGDriver.bind(
-        DummyGPUDeployment.options(name="GPU").bind(Checkpoint.from_dict({"x": 1})),
-        http_adapter=json_to_ndarray)
+    serve.run(
+        DAGDriver.bind(
+            DummyGPUDeployment.options(name="GPU").bind(Checkpoint.from_dict({"x": 1})),
+            http_adapter=json_to_ndarray,
+        )
     )
 
-    assert ray.get(send_request.remote(json={"array": [40], "dtype": "int64"})) == [{"value": 40}]
+    assert ray.get(send_request.remote(json={"array": [40], "dtype": "int64"})) == [
+        {"value": 40}
+    ]
 
 
 if __name__ == "__main__":

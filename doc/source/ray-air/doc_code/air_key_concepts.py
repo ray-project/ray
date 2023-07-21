@@ -119,6 +119,7 @@ pipeline.show()
 from ray import serve
 from fastapi import Request
 
+
 @serve.deployment
 class XGBoostService:
     def __init__(self, checkpoint):
@@ -127,6 +128,7 @@ class XGBoostService:
     async def __call__(self, request: Request):
         data = pd.DataFrame.from_dict(await request.json())
         return self.predictor.predict(data)
+
 
 serve.run(XGBoostService.bind(result.checkpoint))
 # __air_deploy_end__
