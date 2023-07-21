@@ -248,10 +248,6 @@ Here's an overview of all available search algorithms in Tune:
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/includes/sigopt_example`
-   * - :ref:`HEBOSearch <tune-hebo>`
-     - Heteroscedastic Evolutionary Bayesian Optimization
-     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-     - :doc:`/tune/examples/includes/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune Search Algorithms cannot affect or stop training processes.

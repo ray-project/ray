@@ -96,11 +96,3 @@ on each of our integrations:
         .. button-ref:: sigopt_example
 
             How To Use Tune With SigOpt
-
-    .. grid-item-card::
-        :img-top: ../images/hebo.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: hebo_example
-
-            How To Use Tune With HEBO

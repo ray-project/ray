@@ -548,13 +548,6 @@ Ray Examples
 
             How To Use Tune With SigOpt
 
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
-        .. button-ref:: /tune/examples/hebo_example
-
-            How To Use Tune With HEBO
-
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item tuning serving
 

@@ -654,15 +654,6 @@ py_test(
 )
 
 py_test(
-    name = "hebo_example",
-    size = "medium",
-    srcs = ["examples/hebo_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperband_example",
     size = "medium",
     srcs = ["examples/hyperband_example.py"],

@@ -237,8 +237,6 @@ parts:
                     title: "ZOOpt Example"
                   - file: tune/examples/sigopt_example
                     title: "SigOpt Example"
-                  - file: tune/examples/hebo_example
-                    title: "HEBO Example"
               - file: tune/examples/other-examples
                 title: "Other Examples"
               - file: tune/examples/exercises
