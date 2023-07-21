@@ -17,15 +17,35 @@ echo "Setting up AWS..."
 echo "Preparing nodes..."
 python prepare_nodes.py --hf-model-id ${MODEL_ID}
 
-# Check if --as-test argument is present
-for arg in "$@"
-do
-    if [ $arg == "--as-test" ]; then
-        TEST_ARG="--as-test"
-        break
-    else
-        TEST_ARG=""
-    fi
+# Check if data directory exists, if not, run create_dataset.py
+if [ ! -d "${DATA_DIR}" ]; then
+    echo "Data directory not found. Creating dataset..."
+    python create_dataset.py
+fi
+
+# Dictionary to hold command-line arguments
+declare -A args
+
+# Check command-line arguments
+for arg in "$@"; do
+    case $arg in
+        --as-test)
+            args[--as-test]="--as-test"
+            ;;
+        # Here you can add more command-line arguments
+        # For example:
+        # --another-argument)
+        #     args[--another-argument]="--another-argument"
+        #     ;;
+        *)
+            ;;
+    esac
+done
+
+# Construct additional arguments string
+additional_args=""
+for key in "${!args[@]}"; do
+    additional_args+="${args[$key]} "
 done
 
 # Fine-tune the model
@@ -39,6 +59,6 @@ python finetune_hf_llm.py \
     --train_path ${TRAIN_PATH} \
     --test_path ${TEST_PATH}  \
     --special_token_path ${TOKEN_PATH} \
-    ${TEST_ARG}
+    $additional_args
 
 echo "Process completed."
