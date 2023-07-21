@@ -1,6 +1,7 @@
 import subprocess
 from ray.autoscaler._private.constants import AUTOSCALER_METRIC_PORT
 
+import pytest
 import ray
 import sys
 from ray._private.test_utils import (
@@ -12,7 +13,8 @@ from ray.cluster_utils import AutoscalingCluster
 from ray.autoscaler.node_launch_exception import NodeLaunchException
 
 
-def test_ray_status_e2e(shutdown_only):
+@pytest.mark.parametrize("enable_v2", [True, False])
+def test_ray_status_e2e(shutdown_only, enable_v2):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -32,7 +34,7 @@ def test_ray_status_e2e(shutdown_only):
     )
 
     try:
-        cluster.start()
+        cluster.start(_system_config={"enable_autoscaler_v2": enable_v2})
         ray.init(address="auto")
 
         @ray.remote(num_cpus=0, resources={"fun": 2})

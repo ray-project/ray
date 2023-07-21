@@ -11,13 +11,10 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import wait_for_condition
-from ray.autoscaler.v2.sdk import _get_cluster_status, request_cluster_resources
+from ray.autoscaler.v2.sdk import get_cluster_status, request_cluster_resources
 from ray.autoscaler.v2.tests.util import get_cluster_resource_state
-from ray.core.generated.experimental import autoscaler_pb2_grpc
-from ray.core.generated.experimental.autoscaler_pb2 import (
-    ClusterResourceState,
-    NodeStatus,
-)
+from ray.core.generated import autoscaler_pb2_grpc
+from ray.core.generated.autoscaler_pb2 import ClusterResourceState, NodeStatus
 from ray.util.state.api import list_nodes
 
 
@@ -331,10 +328,8 @@ def test_get_cluster_status(shutdown_only):
     ray.init(num_cpus=1)
 
     def verify():
-        reply = _get_cluster_status()
-        assert reply.autoscaling_state is not None
-        assert reply.cluster_resource_state is not None
-        assert len(reply.cluster_resource_state.node_states) == 1
+        cluster = get_cluster_status()
+        assert len(cluster.healthy_nodes) == 1
         return True
 
     wait_for_condition(verify)
