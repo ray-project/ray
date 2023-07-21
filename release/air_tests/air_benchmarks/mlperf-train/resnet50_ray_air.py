@@ -6,14 +6,17 @@ import time
 import logging
 import csv
 import json
+import torchvision
+import torch
 
 import ray
 from ray.air import session
 from ray.train.tensorflow import prepare_dataset_shard, TensorflowTrainer
 from ray.air.config import ScalingConfig
-from ray.data.preprocessors import BatchMapper
+from ray.train import DataConfig
 from ray import tune
 from ray.tune import Tuner
+from ray.data.datasource.partitioning import Partitioning
 
 
 from tf_utils import (
@@ -43,6 +46,8 @@ TF_DATA = "tf.data"
 SYNTHETIC = "synthetic"
 # Use Ray Datasets.
 RAY_DATA = "ray.data"
+# torch dataloader.
+TORCH_DATALOADER = "torch"
 
 # Each image is about 600KB after preprocessing.
 APPROX_PREPROCESS_IMAGE_BYTES = 6 * 1e5
@@ -61,14 +66,15 @@ def build_model():
 def print_dataset_stats(ds):
     print("")
     print("====Dataset stats====")
-    print(f"num_rows: {ds.count()}")
-    print(f"num_partitions: {ds.num_blocks()}")
-    print(f"size: {ds.size_bytes() // 1e9}GB")
     print(ds.stats())
     print("")
 
 
 def train_loop_for_worker(config):
+    ray.data.DataContext.get_current().execution_options.verbose_progress = True
+
+    epoch_times = []
+    throughputs = []
     if config["train_sleep_time_ms"] >= 0:
         model = None
     else:
@@ -94,48 +100,23 @@ def train_loop_for_worker(config):
             config["batch_size"],
             config["num_images_per_epoch"],
             config["num_epochs"],
-            config["online_processing"],
             shuffle_buffer=config["shuffle_buffer_size"],
         )
     elif config["data_loader"] == SYNTHETIC:
         # Build an empty batch and repeat it.
         synthetic_dataset = build_synthetic_dataset(config["batch_size"])
-
-    def ray_dataset_to_tf_dataset(
-        dataset, batch_size, num_steps_per_epoch, online_processing
-    ):
-        if online_processing:
-            # Apply online preprocessing on the decoded images, cropping and
-            # flipping.
-            dataset = dataset.map_batches(
-                crop_and_flip_image_batch, batch_format="pandas"
-            )
-
-        def to_tensor_iterator():
-            num_steps = 0
-            # TODO(swang): Should also set a local shuffle buffer size here and
-            # pass the same one to build_tf_dataset to match the tf.data
-            # implementation.
-            for batch in dataset.iter_tf_batches(
-                batch_size=batch_size,
-                dtypes=tf.float32,
-                local_shuffle_buffer_size=config["shuffle_buffer_size"],
-            ):
-                yield batch["image"], batch["label"]
-                num_steps += 1
-            assert (
-                num_steps == num_steps_per_epoch
-            ), f"expected {num_steps} to equal {num_steps_per_epoch}"
-            print_dataset_stats(dataset)
-
-        output_signature = (
-            tf.TensorSpec(shape=IMAGE_DIMS, dtype=tf.uint8),
-            tf.TensorSpec(shape=(None,), dtype=tf.int32),
-        )
-        tf_dataset = tf.data.Dataset.from_generator(
-            to_tensor_iterator, output_signature=output_signature
-        )
-        return prepare_dataset_shard(tf_dataset)
+    # TODO(swang): We should use the TorchTrainer and iter_torch_batches to
+    # compare properly against TORCH_DATALOADER.
+    # elif config["data_loader"] == TORCH_DATALOADER:
+    #     assert dataset_shard is None
+    #     logger.info("Building torch.DataLoader...")
+    #     # TODO(swang): pass in shuffle buffer size.
+    #     # NOTE(swang): There is no way to .limit() the number of images read
+    #     # for torch.
+    #     torch_dataset = build_torch_dataset(
+    #         config["data_root"],
+    #         config["batch_size"],
+    #     )
 
     def build_synthetic_tf_dataset(dataset, batch_size, num_steps_per_epoch):
         batch = list(dataset.iter_tf_batches(batch_size=batch_size, dtypes=tf.float32))[
@@ -162,20 +143,18 @@ def train_loop_for_worker(config):
     if config["num_images_per_epoch"] % config["batch_size"]:
         # Assuming batches will respect epoch boundaries.
         num_steps_per_epoch += 1
-    for epoch in range(config["num_epochs"]):
-        epoch_start_time_s = time.perf_counter()
 
+    for epoch in range(config["num_epochs"]):
         tf_dataset = None
         if config["data_loader"] == TF_DATA:
             assert _tf_dataset is not None
             tf_dataset = _tf_dataset
         elif config["data_loader"] == RAY_DATA:
             assert dataset_shard is not None
-            tf_dataset = ray_dataset_to_tf_dataset(
-                dataset=dataset_shard,
+            tf_dataset = dataset_shard.to_tf(
+                feature_columns="image",
+                label_columns="label",
                 batch_size=config["batch_size"],
-                num_steps_per_epoch=num_steps_per_epoch,
-                online_processing=config["online_processing"],
             )
         elif config["data_loader"] == SYNTHETIC:
             tf_dataset = build_synthetic_tf_dataset(
@@ -184,17 +163,33 @@ def train_loop_for_worker(config):
                 num_steps_per_epoch=num_steps_per_epoch,
             )
 
+        epoch_start_time_s = time.perf_counter()
+
         if model:
             model.fit(tf_dataset, steps_per_epoch=num_steps_per_epoch)
         else:
-            for i, row in enumerate(tf_dataset):
-                if i == num_steps_per_epoch:
+            num_rows_read = 0
+            for i, batch in enumerate(tf_dataset):
+                num_rows_read += len(batch[0])
+                if i >= num_steps_per_epoch:
                     break
                 time.sleep(config["train_sleep_time_ms"] / 1000)
                 if i % 10 == 0:
                     print("Step", i)
 
+            assert num_rows_read >= config["num_images_per_epoch"], (
+                num_rows_read,
+                config["num_images_per_epoch"],
+            )
+
         epoch_time_s = time.perf_counter() - epoch_start_time_s
+        epoch_times.append(epoch_time_s)
+        throughputs.append(config["num_images_per_epoch"] / epoch_time_s)
+
+        total_tput = config["num_images_per_epoch"] / epoch_time_s
+        # Drop the first epoch to remove warmup time.
+        if len(epoch_times) > 1:
+            total_tput = (epoch) * config["num_images_per_epoch"] / sum(epoch_times[1:])
         logger.info(
             "Epoch time: {epoch_time_s}s, images/s: {throughput}".format(
                 epoch_time_s=epoch_time_s,
@@ -202,27 +197,35 @@ def train_loop_for_worker(config):
             )
         )
 
-        # You can also use ray.air.integrations.keras.Callback
-        # for reporting and checkpointing instead of reporting manually.
         session.report(
             {
-                # f"epoch_{epoch}_time_s": epoch_time_s,
+                "all_epoch_times_s": epoch_times,
+                "all_throughputs_imgs_s": throughputs,
+                "tput_images_per_s": total_tput,
             }
         )
 
+        if config["data_loader"] == RAY_DATA:
+            print_dataset_stats(dataset_shard)
+            print("epoch time", epoch, epoch_time_s)
+
 
 def crop_and_flip_image_batch(image_batch):
-    image_batch["image"] = [
-        preprocess_image(
-            image_buffer=image_buffer,
-            output_height=DEFAULT_IMAGE_SIZE,
-            output_width=DEFAULT_IMAGE_SIZE,
-            num_channels=NUM_CHANNELS,
-            # TODO(swang): Also load validation set.
-            is_training=True,
-        ).numpy()
-        for image_buffer in image_batch["image"]
-    ]
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.RandomResizedCrop(
+                size=DEFAULT_IMAGE_SIZE,
+                scale=(0.05, 1.0),
+                ratio=(0.75, 1.33),
+            ),
+            torchvision.transforms.RandomHorizontalFlip(),
+        ]
+    )
+    batch_size, height, width, channels = image_batch["image"].shape
+    tensor_shape = (batch_size, channels, height, width)
+    image_batch["image"] = transform(
+        torch.Tensor(image_batch["image"].reshape(tensor_shape))
+    )
     return image_batch
 
 
@@ -253,6 +256,7 @@ def decode_crop_and_flip_tf_record_batch(tf_record_batch: pd.DataFrame) -> pd.Da
 
     def process_images():
         for image_buffer in tf_record_batch["image/encoded"]:
+            # Each image output is ~600KB.
             yield preprocess_image(
                 image_buffer=image_buffer,
                 output_height=DEFAULT_IMAGE_SIZE,
@@ -294,18 +298,51 @@ def get_tfrecords_filenames(data_root, num_images_per_epoch, num_images_per_inpu
     return filenames
 
 
-def build_dataset(data_root, num_images_per_epoch, num_images_per_input_file):
-    filenames = get_tfrecords_filenames(
-        data_root, num_images_per_epoch, num_images_per_input_file
-    )
-    ds = ray.data.read_tfrecords(filenames)
-    # TODO(swang): If we are reading the actual dataset and we only want to read
-    # a fraction of images, then we should actually call .limit(), but right now
-    # this materializes all data to the object store. For now, we can just skip
-    # the call since we're generating all the data files to have the right
-    # number of images anyway.
-    # See https://github.com/ray-project/ray/issues/29122.
-    # ds = ray.data.read_tfrecords(filenames).limit(num_images_per_epoch)
+def build_dataset(
+    data_root,
+    num_images_per_epoch,
+    num_images_per_input_file,
+    batch_size,
+    read_from_images=True,
+):
+    if read_from_images:
+        ds = ray.data.read_images(
+            data_root,
+            # Use the same partitioning required by torch dataloader.
+            # root_dir
+            #   class_name1
+            #     XXX.jpg
+            #   class_name2
+            #     YYY.jpg
+            partitioning=Partitioning("dir", field_names=["label"], base_dir="~/data"),
+        )
+
+        classes = {label: i for i, label in enumerate(ds.unique("label"))}
+
+        def convert_class_to_idx(df, classes):
+            df["label"] = df["label"].map(classes).astype("float32")
+            return df
+
+        ds = ds.map_batches(
+            convert_class_to_idx,
+            fn_kwargs={"classes": classes},
+        )
+        ds = ds.map_batches(
+            crop_and_flip_image_batch,
+            zero_copy_batch=True,
+        )
+    else:
+        filenames = get_tfrecords_filenames(
+            data_root, num_images_per_epoch, num_images_per_input_file
+        )
+        ds = ray.data.read_tfrecords(filenames)
+        ds = ds.map_batches(
+            decode_crop_and_flip_tf_record_batch,
+            batch_size=batch_size,
+            batch_format="pandas",
+        )
+
+    ds = ds.limit(num_images_per_epoch)
     return ds
 
 
@@ -325,23 +362,20 @@ FIELDS = [
     "min_available_mb",
     "time_total_s",
     "tput_images_per_s",
+    "all_epoch_times_s",
+    "all_throughputs_imgs_s",
 ]
 
 
 def write_metrics(data_loader, command_args, metrics, output_file):
+    print(metrics)
+    assert "tput_images_per_s" in metrics
     row = {key: val for key, val in metrics.items() if key in FIELDS}
     row["data_loader"] = data_loader
     for field in FIELDS:
         val = getattr(command_args, field, None)
         if val is not None:
             row[field] = val
-
-    if "tput_images_per_s" in metrics:
-        row["tput_images_per_s"] = metrics["tput_images_per_s"]
-    else:
-        row["tput_images_per_s"] = (
-            args.num_images_per_epoch * args.num_epochs / metrics["time_total_s"]
-        )
 
     for field in FIELDS:
         print(f"{field}: {row[field]}")
@@ -424,11 +458,12 @@ if __name__ == "__main__":
     data_ingest_group = parser.add_mutually_exclusive_group(required=True)
     data_ingest_group.add_argument("--use-tf-data", action="store_true")
     data_ingest_group.add_argument("--use-ray-data", action="store_true")
+    data_ingest_group.add_argument("--use-torch", action="store_true")
     data_ingest_group.add_argument("--synthetic-data", action="store_true")
 
     parser.add_argument(
         "--num-images-per-input-file",
-        default=98,
+        default=1,
         type=int,
         help=(
             "Estimated number of images per input TFRecord file. "
@@ -471,8 +506,8 @@ if __name__ == "__main__":
     )
     parser.add_argument("--output-file", default="out.csv", type=str)
     parser.add_argument("--use-gpu", action="store_true")
-    parser.add_argument("--online-processing", action="store_true")
     parser.add_argument("--num-cpu-nodes", default=0, type=int)
+    parser.add_argument("--from-images", action="store_true")
     args = parser.parse_args()
 
     ray.init(
@@ -481,10 +516,10 @@ if __name__ == "__main__":
         }
     )
 
-    if args.use_tf_data or args.use_ray_data:
+    if args.use_tf_data or args.use_ray_data or args.use_torch:
         assert (
             args.data_root is not None
-        ), "Both --use-tf-data and --use-ray-data require a --data-root directory for TFRecord files"  # noqa: E501
+        ), "--use-tf-data, --use-ray-data, and --use-torch require a --data-root directory for TFRecord files"  # noqa: E501
     elif args.synthetic_data:
         assert args.data_root is None, "--synthetic-data doesn't use --data-root"
 
@@ -511,17 +546,21 @@ if __name__ == "__main__":
         "shuffle_buffer_size": None
         if args.shuffle_buffer_size == 0
         else args.shuffle_buffer_size,
-        "online_processing": args.online_processing,
     }
+
+    options = DataConfig.default_ingest_options()
+
     if args.synthetic_data:
         logger.info("Using synthetic data loader...")
-        preprocessor = None
         train_loop_config["data_loader"] = SYNTHETIC
     else:
         if args.use_tf_data:
             logger.info("Using tf.data loader")
-            preprocessor = None
             train_loop_config["data_loader"] = TF_DATA
+        elif args.use_torch:
+            logger.info("Using torch Dataloader")
+            preprocessor = None
+            train_loop_config["data_loader"] = TORCH_DATALOADER
         else:
             logger.info("Using Ray Datasets loader")
 
@@ -529,23 +568,15 @@ if __name__ == "__main__":
             ctx = ray.data.context.DataContext.get_current()
             ctx.block_splitting_enabled = True
 
+            options.resource_limits.object_store_memory = 10e9
+
             datasets["train"] = build_dataset(
                 args.data_root,
                 args.num_images_per_epoch,
                 args.num_images_per_input_file,
+                args.batch_size,
+                args.from_images,
             )
-            # Set a lower batch size for images to prevent OOM.
-            batch_size = 32
-            if args.online_processing:
-                preprocessor = BatchMapper(
-                    decode_tf_record_batch, batch_size=batch_size, batch_format="pandas"
-                )
-            else:
-                preprocessor = BatchMapper(
-                    decode_crop_and_flip_tf_record_batch,
-                    batch_size=batch_size,
-                    batch_format="pandas",
-                )
             train_loop_config["data_loader"] = RAY_DATA
 
     trainer = TensorflowTrainer(
@@ -556,7 +587,9 @@ if __name__ == "__main__":
             trainer_resources={"CPU": args.trainer_resources_cpu},
         ),
         datasets=datasets,
-        preprocessor=preprocessor,
+        dataset_config=ray.train.DataConfig(
+            execution_options=options,
+        ),
         train_loop_config=train_loop_config,
     )
 
@@ -601,13 +634,17 @@ if __name__ == "__main__":
         "ray_mem_monitor_enabled"
     ] = determine_if_memory_monitor_is_enabled_in_latest_session()
 
-    result["num_files"] = len(
-        get_tfrecords_filenames(
-            train_loop_config["data_root"],
-            train_loop_config["num_images_per_epoch"],
-            train_loop_config["num_images_per_input_file"],
+    if args.from_images:
+        result["num_files"] = args.num_images_per_epoch
+        result["num_images_per_input_file"] = 1
+    else:
+        result["num_files"] = len(
+            get_tfrecords_filenames(
+                train_loop_config["data_root"],
+                train_loop_config["num_images_per_epoch"],
+                train_loop_config["num_images_per_input_file"],
+            )
         )
-    )
 
     try:
         write_metrics(train_loop_config["data_loader"], args, result, args.output_file)
@@ -624,3 +661,5 @@ if __name__ == "__main__":
             # returned by AIR, so it's possible that it raised an error other
             # than OutOfDiskError here.
             pass
+
+    ray.timeline("timeline.json")
