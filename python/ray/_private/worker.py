@@ -1804,8 +1804,8 @@ def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
         global autoscaler_log_fyi_printed
         if not autoscaler_log_fyi_printed:
             autoscaler_log_fyi_printed = True
-
-        return not autoscaler_log_fyi_printed
+            return True
+        return False
 
     from ray.autoscaler.v2.utils import is_autoscaler_v2
 
