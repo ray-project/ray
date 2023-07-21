@@ -1,7 +1,5 @@
 :orphan:
 
-.. _air-examples-ref:
-
 Examples
 ========
 

@@ -61,7 +61,7 @@ Ray's unified compute framework consists of three layers:
         :doc:`model serving <../serve/index>`, 
         and :doc:`more <../ray-more-libs/index>`.
         +++
-        .. button-ref:: ../ray-air/getting-started
+        .. button-ref:: libraries-quickstart
             :color: primary
             :outline:
             :expand:
@@ -104,7 +104,7 @@ Ray's unified compute framework consists of three layers:
             Ray Clusters 
 ```
 
-Each of [Ray AIR's](../ray-air/getting-started) five native libraries distributes a specific ML task:
+Each of [Ray's](../ray-air/getting-started) five native libraries distributes a specific ML task:
 - [Data](../data/data): Scalable, framework-agnostic data loading and transformation across training, tuning, and prediction.
 - [Train](../train/train): Distributed multi-node and multi-core model training with fault tolerance that integrates with popular training libraries.
 - [Tune](../tune/index): Scalable hyperparameter tuning to optimize model performance.

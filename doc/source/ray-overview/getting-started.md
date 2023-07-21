@@ -10,7 +10,9 @@ Use Ray to scale applications on your laptop or the cloud. Choose the right guid
 * Deploy to the cloud: [Ray Clusters Quickstart](#ray-cluster-quickstart)
 * Debug and monitor applications: [Debugging and Monitoring Quickstart](#debugging-and-monitoring-quickstart)
 
-## Ray Libraries Quickstart
+
+(libraries-quickstart)=
+## Ray AI Runtime Libraries Quickstart
 
 Use individual libraries for ML workloads. Click on the dropdowns for your workload below.
 

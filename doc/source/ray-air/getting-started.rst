@@ -1,7 +1,5 @@
 :orphan:
 
-.. _air:
-
 Ray AI Runtime (AIR)
 ====================
 

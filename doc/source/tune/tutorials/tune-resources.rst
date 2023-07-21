@@ -141,8 +141,7 @@ Read more in the Tune :ref:`distributed experiments guide <tune-distributed-ref>
 How to run distributed training with Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-To tune distributed training jobs, you should use :ref:`Ray AI Runtime (Ray AIR) <air>` to use Ray Tune and Ray Train in conjunction with
-each other. Ray Tune will run multiple trials in parallel, with each trial running distributed training with Ray Train.
+To tune distributed training jobs, you can use Ray Tune with Ray Train. Ray Tune will run multiple trials in parallel, with each trial running distributed training with Ray Train.
 
 How to limit concurrency in Tune?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
