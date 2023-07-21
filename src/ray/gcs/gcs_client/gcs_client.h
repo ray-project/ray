@@ -195,7 +195,7 @@ class RAY_EXPORT PythonGcsClient {
 
   Status CheckAlive(const std::vector<std::string> &raylet_addresses,
                     int64_t timeout_ms,
-                    std::vector<bool> result);
+                    std::vector<bool> &result);
 
   Status InternalKVGet(const std::string &ns,
                        const std::string &key,
