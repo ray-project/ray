@@ -6229,9 +6229,9 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: read_images_train_multi_node
+- name: read_images_train_4_cpu
   group: data-tests
-  working_dir: air_tests/air_benchmarks
+  working_dir: ./
 
   frequency: nightly
   team: data
@@ -6239,12 +6239,12 @@
   cluster:
     byod:
       type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_4x4_aws.yaml
+    cluster_env: nightly_tests/dataset/app_config.yaml
+    cluster_compute: air_tests/air_benchmarks/compute_cpu_4_aws.yaml
 
   run:
     timeout: 600
-    script: python workloads/train_benchmark.py 
+    script: python nightly_tests/dataset/train_benchmark.py --num-workers 4
 
   variations:
     - __suffix__: aws
@@ -6252,8 +6252,34 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_gpu_4x4_aws.yaml
+        cluster_env: nightly_tests/dataset/app_config.yaml
+        cluster_compute: air_tests/air_benchmarks/compute_cpu_4_gce.yaml
+
+- name: read_images_train_16_cpu
+  group: data-tests
+  working_dir: ./
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: nightly_tests/dataset/app_config.yaml
+    cluster_compute: air_tests/air_benchmarks/mlperf-train/compute_cpu_16.yaml
+
+  run:
+    timeout: 600
+    script: python nightly_tests/dataset/train_benchmark.py --num-workers 16
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: nightly_tests/dataset/app_config.yaml
+        cluster_compute: air_tests/air_benchmarks/mlperf-train/compute_gce_cpu_16.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
