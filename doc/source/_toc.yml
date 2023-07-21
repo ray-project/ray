@@ -219,8 +219,6 @@ parts:
                     title: "Ax Example"
                   - file: tune/examples/dragonfly_example
                     title: "Dragonfly Example"
-                  - file: tune/examples/skopt_example
-                    title: "Skopt Example"
                   - file: tune/examples/hyperopt_example
                     title: "HyperOpt Example"
                   - file: tune/examples/bayesopt_example

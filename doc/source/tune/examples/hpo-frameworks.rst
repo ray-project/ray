@@ -26,14 +26,6 @@ on each of our integrations:
             How To Use Tune With Dragonfly
 
     .. grid-item-card::
-        :img-top: ../images/skopt.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: skopt_example
-
-            How To Use Tune With Scikit-Optimize
-
-    .. grid-item-card::
         :img-top: ../images/hyperopt.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 

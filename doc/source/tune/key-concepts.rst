@@ -216,10 +216,6 @@ Here's an overview of all available search algorithms in Tune:
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
      - :doc:`/tune/examples/includes/dragonfly_example`
-   * - :ref:`SkoptSearch <skopt>`
-     - Bayesian Optimization
-     - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - :doc:`/tune/examples/includes/skopt_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]

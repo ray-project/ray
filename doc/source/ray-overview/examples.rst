@@ -488,13 +488,6 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
-        .. button-ref:: /tune/examples/skopt_example
-
-            How To Use Tune With Scikit-Optimize
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
         .. button-ref:: /tune/examples/hyperopt_example
 
             How To Use Tune With HyperOpt

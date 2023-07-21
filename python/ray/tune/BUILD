@@ -930,15 +930,6 @@ py_test(
 )
 
 py_test(
-    name = "skopt_example",
-    size = "medium",
-    srcs = ["examples/skopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "tf_mnist_example",
     size = "medium",
     srcs = ["examples/tf_mnist_example.py"],
