@@ -6231,7 +6231,7 @@
 
 - name: read_images_train_multi_node
   group: data-tests
-  working_dir: air_tests
+  working_dir: nightly_tests/dataset
 
   frequency: nightly
   team: data
@@ -6244,7 +6244,7 @@
 
   run:
     timeout: 600
-    script: python air_benchmarks/workloads/train_benchmark.py
+    script: python ../../air_benchmarks/workloads/train_benchmark.py
 
   variations:
     - __suffix__: aws
