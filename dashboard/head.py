@@ -289,7 +289,10 @@ class DashboardHead:
             self.gcs_aio_client = GcsAioClient(
                 address=gcs_address, nums_reconnect_retry=0
             )
-            self.aiogrpc_gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+            gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+            gcs_channel.connect()
+            self.aiogrpc_gcs_channel = gcs_channel.channel()
+
             self.metrics = await self._setup_metrics(self.gcs_aio_client)
         try:
             assert internal_kv._internal_kv_initialized()
