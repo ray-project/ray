@@ -386,6 +386,9 @@ def online_predict_torch(checkpoint):
 
 def online_predict_tensorflow(checkpoint):
     # __tensorflow_serve_start__
+    from io import BytesIO
+    import numpy as np
+    from PIL import Image
     import tensorflow as tf
 
     from ray import serve
@@ -407,11 +410,7 @@ def online_predict_tensorflow(checkpoint):
     # __tensorflow_serve_stop__
 
     # __tensorflow_online_predict_start__
-    from io import BytesIO
-
-    import numpy as np
     import requests
-    from PIL import Image
 
     response = requests.get("http://placekitten.com/200/300")
     response = requests.post("http://localhost:8000/", data=response.content)
