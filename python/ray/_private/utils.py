@@ -73,6 +73,12 @@ _CALLED_FREQ = defaultdict(lambda: 0)
 _CALLED_FREQ_LOCK = threading.Lock()
 
 
+PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
+    r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
+)
+PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
 def get_user_temp_dir():
     if "RAY_TMPDIR" in os.environ:
         return os.environ["RAY_TMPDIR"]
@@ -1962,3 +1968,22 @@ def validate_node_labels(labels: Dict[str, str]):
                 f"`{ray_constants.RAY_DEFAULT_LABEL_KEYS_PREFIX}`. "
                 f"This is reserved for Ray defined labels."
             )
+
+
+def pasre_pg_formatted_resources_to_original(
+    pg_formatted_resources: Dict[str, float]
+) -> Dict[str, float]:
+    original_resources = {}
+
+    for key, value in pg_formatted_resources.items():
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            original_resources[result.group(1)] = value
+            continue
+        result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 3:
+            original_resources[result.group(1)] = value
+            continue
+        original_resources[key] = value
+
+    return original_resources
