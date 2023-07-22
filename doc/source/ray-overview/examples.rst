@@ -488,13 +488,6 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
-        .. button-ref:: /tune/examples/skopt_example
-
-            How To Use Tune With Scikit-Optimize
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
         .. button-ref:: /tune/examples/hyperopt_example
 
             How To Use Tune With HyperOpt
@@ -537,23 +530,9 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
-        .. button-ref:: /tune/examples/zoopt_example
-
-            How To Use Tune With ZOOpt
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
         .. button-ref:: /tune/examples/sigopt_example
 
             How To Use Tune With SigOpt
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
-        .. button-ref:: /tune/examples/hebo_example
-
-            How To Use Tune With HEBO
 
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item tuning serving
