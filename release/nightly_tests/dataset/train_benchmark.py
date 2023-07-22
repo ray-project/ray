@@ -8,14 +8,33 @@ import os
 import json
 
 
-from benchmark_utils import crop_and_flip_image_batch
+# test imports until we find the one that works
+import sys
+print("===> current directory:", os.getcwd())
+print("===> sys.path:", sys.path)
+
+try:
+    from benchmark_utils import crop_and_flip_image_batch
+except Exception as e:
+    print("===> benchmark_utils WRONG", str(e))
+try:
+    from dataset.benchmark_utils import crop_and_flip_image_batch
+except Exception as e:
+    print("===> dataset.benchmark_utils WRONG", str(e))
+try:
+    from nightly_tests.dataset.benchmark_utils import crop_and_flip_image_batch
+except Exception as e:
+    print("===> nightly_tests.dataset.benchmark_utils WRONG", str(e))
+try:
+    from .benchmark_utils import crop_and_flip_image_batch
+except Exception as e:
+    print("===> .benchmark_utils WRONG", str(e))
 
 # This benchmark does the following:
 # 1) Read images with ray.data.read_images()
 # 2) Apply preprocessing with map_batches()
 # 3) Train TorchTrainer on processed data
-# The resulting metrics are:
-# - ray.data+transform: Throughput of data ingest (steps 1+2 above)
+# Metrics recorded to the output file are:
 # - ray.torchtrainer.fit: Throughput of the final epoch in
 #   TorchTrainer.fit() (step 3 above)
 
