@@ -537,12 +537,22 @@ def test_json_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.from_pandas([df, df2])
     ds._set_uuid("data")
     ds.write_json(data_path, filesystem=fs)
-    ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
-    ds2df = ds2.to_pandas()
-    assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
-    # Test metadata ops.
-    for block, meta in ds2._plan.execute().get_blocks_with_metadata():
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
+    for read_jsonl in [False, True]:
+        if fs is None and read_jsonl:
+            # Rename input files extension to .jsonl when testing local files.
+            # This is to test reading JSONL files.
+            for file_name in os.listdir(data_path):
+                old_file_path = os.path.join(data_path, file_name)
+                new_file_path = old_file_path.replace(".json", ".jsonl")
+                os.rename(old_file_path, new_file_path)
+        else:
+            ds2 = ray.data.read_json(data_path, parallelism=2, filesystem=fs)
+        ds2df = ds2.to_pandas()
+        assert pd.concat([df, df2], ignore_index=True).equals(ds2df)
+        # Test metadata ops.
+        for block, meta in ds2._plan.execute().get_blocks_with_metadata():
+            BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
 @pytest.mark.parametrize(
