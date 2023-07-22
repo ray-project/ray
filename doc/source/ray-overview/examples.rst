@@ -75,7 +75,7 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm
 
-        .. button-ref:: https://github.com/ray-project/aviary/
+        .. button-link:: https://github.com/ray-project/aviary/
 
             Aviary toolkit serving live traffic for LLMs 
 
