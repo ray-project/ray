@@ -322,12 +322,12 @@ def test_http_redirect_metrics(serve_start_shutdown):
     assert resp.text == '"123"'
 
     # wait_for_condition(
-    #    lambda: len(get_metric_dictionaries("serve_num_http_requests", timeout=5)) == 2,
+    #    lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
     #    timeout=40,
     # )
     print_metrics_wait_time(
         "test_http_redirect_metrics",
-        lambda: len(get_metric_dictionaries("serve_num_http_requests", timeout=5)) == 2,
+        lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
         timeout=40,
     )
     num_http_requests = get_metric_dictionaries("serve_num_http_requests")
@@ -348,10 +348,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
     verify_metrics_with_route(num_http_requests, expected_output)
 
     wait_for_condition(
-        lambda: len(
-            get_metric_dictionaries("serve_http_request_latency_ms_sum", timeout=5)
-        )
-        == 2,
+        lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum")) == 2,
         timeout=40,
     )
     http_latency = get_metric_dictionaries("serve_num_http_requests")
@@ -387,17 +384,14 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
     # wait_for_condition(
     #    lambda: len(
-    #        get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
+    #        get_metric_dictionaries("serve_deployment_request_counter")
     #    )
     #    == 2,
     #    timeout=40,
     # )
     print_metrics_wait_time(
         "test_replica_metrics_fields",
-        lambda: len(
-            get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
-        )
-        == 2,
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
         timeout=40,
     )
 
@@ -416,9 +410,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries(
-                "serve_deployment_processing_latency_ms_count", timeout=5
-            )
+            get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
         )
         == 2,
         timeout=40,
@@ -531,7 +523,7 @@ class TestRequestContextMetrics:
         # wait_for_condition(
         #    lambda: len(
         #        get_metric_dictionaries(
-        #            "serve_deployment_processing_latency_ms_sum", timeout=5
+        #            "serve_deployment_processing_latency_ms_sum"
         #        )
         #    )
         #    == 3,
@@ -540,9 +532,7 @@ class TestRequestContextMetrics:
         print_metrics_wait_time(
             "test_request_context_pass_for_http_proxy",
             lambda: len(
-                get_metric_dictionaries(
-                    "serve_deployment_processing_latency_ms_sum", timeout=5
-                )
+                get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
             )
             == 3,
             timeout=40,
@@ -649,16 +639,14 @@ class TestRequestContextMetrics:
         #   {xxx, route:/api2}
         # wait_for_condition(
         #    lambda: len(
-        #        get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
+        #        get_metric_dictionaries("serve_deployment_request_counter")
         #    )
         #    == 4,
         #    timeout=40,
         # )
         print_metrics_wait_time(
             "test_request_context_pass_for_handle_passing",
-            lambda: len(
-                get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
-            )
+            lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
             == 4,
             timeout=40,
         )
@@ -724,12 +712,12 @@ class TestRequestContextMetrics:
         resp = requests.get("http://127.0.0.1:8000/app")
         deployment_name, replica_tag = resp.json()
         # wait_for_condition(
-        #    lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
+        #    lambda: len(get_metric_dictionaries("my_gauge")) == 1,
         #    timeout=40,
         # )
         print_metrics_wait_time(
             "test_customer_metrics_with_context",
-            lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
+            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
             timeout=40,
         )
 
@@ -865,13 +853,13 @@ class TestRequestContextMetrics:
         resp = requests.get("http://127.0.0.1:8000/app")
         assert resp.text == "hello"
         # wait_for_condition(
-        #    lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
+        #    lambda: len(get_metric_dictionaries("my_gauge")) == 1,
         #    timeout=40,
         # )
 
         print_metrics_wait_time(
             "test_serve_metrics_outside_serve",
-            lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
+            lambda: len(get_metric_dictionaries("my_gauge")) == 1,
             timeout=40,
         )
 
