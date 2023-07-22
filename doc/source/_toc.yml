@@ -281,6 +281,14 @@ parts:
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
 
+      - file: ray-air/getting-started
+        title: Ray for ML Platforms
+        sections:
+          - file: ray-air/deployment
+          - file: ray-air/computer-vision
+          # - file: ray-air/examples/index
+
+
       - file: ray-more-libs/index
         title: More Libraries
         sections:
