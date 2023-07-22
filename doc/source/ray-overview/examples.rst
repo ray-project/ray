@@ -75,20 +75,6 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item llm
 
-        .. button-ref:: /ray-air/examples/dreambooth_finetuning
-
-            Fine-tuning Dreambooth with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm
-
-        .. button-ref:: /ray-air/examples/gptj_serving
-
-            GPT-J-6B Serving with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item llm
-
         .. button-ref:: https://github.com/ray-project/aviary/
 
             Aviary toolkit serving live traffic for LLMs 
@@ -353,21 +339,21 @@ Ray Examples
             Serving an Object Detection Model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-ref:: /ray-air/examples/dreambooth_finetuning
 
             Fine-tuning DreamBooth with Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-ref:: /ray-air/examples/stablediffusion_batch_prediction
 
             Stable Diffusion Batch Prediction with Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving
+        :class-item: gallery-item serving llm
 
         .. button-ref:: /ray-air/examples/gptj_serving
 
