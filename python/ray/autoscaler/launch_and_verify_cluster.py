@@ -128,14 +128,20 @@ def check_file(file_path):
 
 
 def override_wheels_url(config_yaml, wheel_url):
-    config_yaml["setup_commands"].append(
+    setup_commands = config_yaml.get("setup_commands", [])
+    setup_commands.append(
         f'pip3 uninstall -y ray && pip3 install -U "ray[default] @ {wheel_url}"'
     )
+    config_yaml["setup_commands"] = setup_commands
 
 
 def override_docker_image(config_yaml, docker_image):
-    assert config_yaml["docker"], "Docker section is missing from cluster config"
-    config_yaml["docker"]["image"] = docker_image
+    docker_config = config_yaml.get("docker", {})
+    docker_config["image"] = docker_image
+    docker_config["container_name"] = "ray_container"
+    assert docker_config.get("head_image") is None, "Cannot override head_image"
+    assert docker_config.get("worker_image") is None, "Cannot override worker_image"
+    config_yaml["docker"] = docker_config
 
 
 def download_ssh_key():
