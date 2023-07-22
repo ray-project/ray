@@ -216,10 +216,6 @@ Here's an overview of all available search algorithms in Tune:
      - Scalable Bayesian Optimization
      - [`Dragonfly <https://dragonfly-opt.readthedocs.io/>`__]
      - :doc:`/tune/examples/includes/dragonfly_example`
-   * - :ref:`SkoptSearch <skopt>`
-     - Bayesian Optimization
-     - [`Scikit-Optimize <https://scikit-optimize.github.io>`__]
-     - :doc:`/tune/examples/includes/skopt_example`
    * - :ref:`HyperOptSearch <tune-hyperopt>`
      - Tree-Parzen Estimators
      - [`HyperOpt <http://hyperopt.github.io/hyperopt>`__]
@@ -240,18 +236,10 @@ Here's an overview of all available search algorithms in Tune:
      - Optuna search algorithms
      - [`Optuna <https://optuna.org/>`__]
      - :doc:`/tune/examples/optuna_example`
-   * - :ref:`ZOOptSearch <zoopt>`
-     - Zeroth-order Optimization
-     - [`ZOOpt <https://github.com/polixir/ZOOpt>`__]
-     - :doc:`/tune/examples/includes/zoopt_example`
    * - :ref:`SigOptSearch <sigopt>`
      - Closed source
      - [`SigOpt <https://sigopt.com/>`__]
      - :doc:`/tune/examples/includes/sigopt_example`
-   * - :ref:`HEBOSearch <tune-hebo>`
-     - Heteroscedastic Evolutionary Bayesian Optimization
-     - [`HEBO <https://github.com/huawei-noah/HEBO/tree/master/HEBO>`__]
-     - :doc:`/tune/examples/includes/hebo_example`
 
 .. note:: Unlike :ref:`Tune's Trial Schedulers <tune-schedulers>`,
     Tune Search Algorithms cannot affect or stop training processes.
