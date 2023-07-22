@@ -286,8 +286,6 @@ parts:
         sections:
           - file: ray-air/deployment
           - file: ray-air/computer-vision
-          # - file: ray-air/examples/index
-
 
       - file: ray-more-libs/index
         title: More Libraries
