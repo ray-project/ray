@@ -11,9 +11,13 @@ Ray is an open-source unified framework for scaling AI and Python applications l
 * Integrations and utilities for integrating and deploying a Ray cluster with existing tools and infrastructure such as Kubernetes, AWS, GCP, and Azure.
 
 For data scientists and machine learning practitioners, Ray lets you scale jobs without needing infrastructure expertise:
-* Easily parallelize and distribute workloads across multiple nodes and GPUs.
-* Ray's libraries enable swapping between popular frameworks, such as PyTorch, and Hugging Face, and XGboost, with minimal code changes.
+* Easily parallelize and distribute ML workloads across multiple nodes and GPUs.
 * Leverage the ML ecosystem with native and extensible integrations.
+
+For ML platform builders and ML engineers, Ray:
+* Provides compute abstractions for creating a scalable and robust ML platform.
+* Provides a unified ML API that simplifies onboarding and integration with the broader ML ecosystem.
+* Reduces friction between development and production by enabling the same Python code to scale seamlessly from a laptop to a large cluster.
 
 For distributed systems engineers, Ray automatically handles key processes:
 * Orchestration--Managing the various components of a distributed system.
