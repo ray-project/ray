@@ -1,3 +1,5 @@
+.. _mlplatform-deployment:
+
 Deploying Ray for ML platforms
 ==============================
 
