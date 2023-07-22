@@ -37,7 +37,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_state import DeploymentStateManager, ReplicaState
 from ray.serve._private.endpoint_state import EndpointState
-from ray.serve._private.http_state import HTTPState
+from ray.serve._private.http_state import HTTPProxyStateManager
 from ray.serve._private.logging_utils import (
     configure_component_logger,
     get_component_logger_file_path,
@@ -134,9 +134,9 @@ class ServeController:
         self.done_recovering_event = asyncio.Event()
 
         if _disable_http_proxy:
-            self.http_state = None
+            self.http_proxy_state_manager = None
         else:
-            self.http_state = HTTPState(
+            self.http_proxy_state_manager = HTTPProxyStateManager(
                 controller_name,
                 detached,
                 http_config,
@@ -265,19 +265,19 @@ class ServeController:
 
     def get_http_proxies(self) -> Dict[NodeId, ActorHandle]:
         """Returns a dictionary of node ID to http_proxy actor handles."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return {}
-        return self.http_state.get_http_proxy_handles()
+        return self.http_proxy_state_manager.get_http_proxy_handles()
 
     def get_http_proxy_names(self) -> bytes:
         """Returns the http_proxy actor name list serialized by protobuf."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
 
         from ray.serve.generated.serve_pb2 import ActorNameList
 
         actor_name_list = ActorNameList(
-            names=self.http_state.get_http_proxy_names().values()
+            names=self.http_proxy_state_manager.get_http_proxy_names().values()
         )
         return actor_name_list.SerializeToString()
 
@@ -325,9 +325,11 @@ class ServeController:
             # Don't update http_state until after the done recovering event is set,
             # otherwise we may start a new HTTP proxy but not broadcast it any
             # info about available deployments & their replicas.
-            if self.http_state and self.done_recovering_event.is_set():
+            if self.http_proxy_state_manager and self.done_recovering_event.is_set():
                 try:
-                    self.http_state.update(active_nodes=self._active_nodes)
+                    self.http_proxy_state_manager.update(
+                        active_nodes=self._active_nodes
+                    )
                 except Exception:
                     logger.exception("Exception updating HTTP state.")
 
@@ -421,13 +423,13 @@ class ServeController:
 
     def get_http_config(self):
         """Return the HTTP proxy configuration."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
-        return self.http_state.get_config()
+        return self.http_proxy_state_manager.get_config()
 
     def get_root_url(self):
         """Return the root url for the serve instance."""
-        if self.http_state is None:
+        if self.http_proxy_state_manager is None:
             return None
         http_config = self.get_http_config()
         if http_config.root_url == "":
@@ -467,15 +469,16 @@ class ServeController:
         self.application_state_manager.shutdown()
         self.deployment_state_manager.shutdown()
         self.endpoint_state.shutdown()
-        if self.http_state:
-            self.http_state.shutdown()
+        if self.http_proxy_state_manager:
+            self.http_proxy_state_manager.shutdown()
 
         config_checkpoint_deleted = self.config_checkpoint_deleted()
         application_is_shutdown = self.application_state_manager.is_ready_for_shutdown()
         deployment_is_shutdown = self.deployment_state_manager.is_ready_for_shutdown()
         endpoint_is_shutdown = self.endpoint_state.is_ready_for_shutdown()
         http_state_is_shutdown = (
-            self.http_state is None or self.http_state.is_ready_for_shutdown()
+            self.http_proxy_state_manager is None
+            or self.http_proxy_state_manager.is_ready_for_shutdown()
         )
         if (
             config_checkpoint_deleted
@@ -810,8 +813,8 @@ class ServeController:
                 port=http_config.port,
                 request_timeout_s=http_config.request_timeout_s,
             ),
-            http_proxies=self.http_state.get_http_proxy_details()
-            if self.http_state
+            http_proxies=self.http_proxy_state_manager.get_http_proxy_details()
+            if self.http_proxy_state_manager
             else None,
             deploy_mode=self.deploy_mode,
             applications=applications,
