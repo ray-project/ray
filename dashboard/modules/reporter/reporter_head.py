@@ -193,6 +193,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         result = await self._state_api.list_tasks(option=option)
         tasks = result.result
+        logger.info(f"tasks {type(tasks)}: {tasks}")
         if not tasks:
             return None, None
 
@@ -238,6 +239,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         node_id = req.query.get("node_id")
 
         ip = DataSource.node_id_to_ip[node_id]
+
+        logger.info(f"ip {type(ip)}: {ip}")
         reporter_stub = self._stubs[ip]
 
         # Default not using `--native` for profiling
