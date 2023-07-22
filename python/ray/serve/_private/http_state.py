@@ -252,7 +252,7 @@ class HTTPProxyState:
         return False
 
 
-class HTTPState:
+class HTTPProxyStateManager:
     """Manages all state for HTTP proxies in the system.
 
     This class is *not* thread safe, so any state-modifying methods should be
