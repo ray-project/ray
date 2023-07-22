@@ -3,6 +3,7 @@ import os
 import sys
 
 import aiohttp
+import threading
 
 import requests
 import numpy as np
@@ -716,17 +717,26 @@ def test_get_task_traceback_running_task():
     def f():
         pass
 
+    @ray.remote
+    def long_running_task():
+        time.sleep(1000)
+        print("Long-running task completed.")
+
     ray.get([f.remote() for _ in range(5)])
-    task = f.remote()
+
+    thread = threading.Thread(target=long_running_task.remote)
+    thread.start()
+    task = long_running_task.remote()
+
     task_id = task.task_id().hex()
     node_id = ray.get_runtime_context().node_id.hex()
-
     attempt_number = 0
 
     def verify():
         resp = requests.get(
             f"{dashboard_url}/task/traceback?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
         )
+        print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert (
             "Failed to execute" in resp.text or "Process" in resp.text
