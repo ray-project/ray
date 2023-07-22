@@ -1,5 +1,5 @@
 
-MODEL_ID="meta-llama/Llama-2-70b-chat-hf"
+MODEL_ID="meta-llama/Llama-2-70b-hf"
 
 python prepare_nodes.py --hf-model-id ${MODEL_ID}
 

@@ -90,7 +90,7 @@ def create_ray_dataset(path):
 def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize, as_test: bool = False):
     model.eval()
     losses = []
-    for step, batch in tqdm.tqdm(enumerate(eval_dataloader)):
+    for step, batch in tqdm.tqdm(enumerate(eval_dataloader), total=eval_dataset_len//bsize+1):
         with torch.no_grad():
             outputs = model(**batch)
 
@@ -249,7 +249,7 @@ def training_function(kwargs: dict):
             collate_fn=collate_partial,
         )
     
-        for step, batch in tqdm.tqdm(enumerate(train_dataloader)):
+        for step, batch in tqdm.tqdm(enumerate(train_dataloader), total=train_ds_len//batch_size+1):
             
             # We could avoid this line since we set the accelerator with `device_placement=True`.
             with accelerator.accumulate(model):
@@ -355,7 +355,7 @@ def training_function(kwargs: dict):
             state_dict=accelerator.get_state_dict(model),
         )
         
-        
+        accelerator.wait_for_everyone()
         # Note: After the following call, in the case of remote storage, the checkpoint 
         # directoy will get synced to the remote storage and then deleted from the 
         # local directory. This will open up local disk. 
@@ -372,7 +372,7 @@ def training_function(kwargs: dict):
                 "avg fwd time": avg_fwd_time / (step + 1),
                 "avg bwd time": avg_bwd_time / (step + 1),
             },
-            checkpoint = air.Checkpoint.from_directory(ckpt_path_epoch),
+            # checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
         
 
@@ -401,7 +401,7 @@ def parse_args():
     parser.add_argument(
         "--eval-batch-size-per-device", 
         type=int, 
-        default=16, 
+        default=64, 
         help="Batch size to use per device (For evaluation)."
     )
     
@@ -539,6 +539,10 @@ def main():
             # storage_path=args.output_dir,
             # # For NFS: disables the default syncing to head node (already disabled on 2.6+)
             # sync_config=tune.SyncConfig(syncer=None),
+            # Turn off syncing artifact as as of 2.6 it introduces a resource contention 
+            # between checkpoint syncronizer and artifact syncronizer that can sometimes 
+            # result in failed checkpoint syncing
+            sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path="s3://anyscale-staging-data-cld-kvedzwag2qa8i5bjxuevf5i7/templates-release-tests/04_finetuning_llms",
             checkpoint_config=air.CheckpointConfig(
                 num_to_keep=1,
@@ -548,6 +552,7 @@ def main():
             ),
         ),
         scaling_config=air.ScalingConfig(
+            trainer_resources={"memory": 80 * 1024 * 1024 * 1024},
             num_workers=args.num_devices, 
             use_gpu=True,  
             resources_per_worker={"GPU": 1},
@@ -555,7 +560,11 @@ def main():
         datasets={
             "train": train_ds,
             "valid": valid_ds,
-        }
+        },
+        # # Make sure both datasets are sharded, so that we can maximally use our GPUs. (un-comment on 2.6)
+        # dataset_config=ray.train.DataConfig(
+        #     datasets_to_split=["train", "valid"],
+        # ),
     )
 
     results = trainer.fit()

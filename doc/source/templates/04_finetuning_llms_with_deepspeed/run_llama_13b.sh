@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Variables for cleaner handling
-MODEL_ID="meta-llama/Llama-2-13b-chat-hf"
+MODEL_ID="meta-llama/Llama-2-13b-hf"
 BASE_DIR="/mnt/cluster_storage/finetuning-llama"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_13b.json"
 DATA_DIR="./data"
