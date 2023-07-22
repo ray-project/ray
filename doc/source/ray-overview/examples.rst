@@ -173,9 +173,9 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
 
-        .. button-ref:: /ray-air/examples/torch_image_example
+        .. button-ref:: /ray-air/computer-vision
 
-            Torch Image Classification Example with Ray AIR
+            Computer Vision User Guide
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
