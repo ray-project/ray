@@ -654,15 +654,6 @@ py_test(
 )
 
 py_test(
-    name = "hebo_example",
-    size = "medium",
-    srcs = ["examples/hebo_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "hyperband_example",
     size = "medium",
     srcs = ["examples/hyperband_example.py"],
@@ -939,15 +930,6 @@ py_test(
 )
 
 py_test(
-    name = "skopt_example",
-    size = "medium",
-    srcs = ["examples/skopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "tf_mnist_example",
     size = "medium",
     srcs = ["examples/tf_mnist_example.py"],
@@ -999,15 +981,6 @@ py_test(
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--test"]
-)
-
-py_test(
-    name = "zoopt_example",
-    size = "small",
-    srcs = ["examples/zoopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
 )
 
 # --------------------------------------------------------------------
