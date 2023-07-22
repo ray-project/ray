@@ -39,4 +39,4 @@ What's Next
 -----------
 
 * Take a look at our :ref:`deployment guide <mlplatform-deployment>`.
-* Take a look at how to use Ray for end-to-end :ref:`computer vision workloads <computer-vision>`.`
+* Take a look at how to use Ray for end-to-end :ref:`computer vision workloads <computer-vision>`.
