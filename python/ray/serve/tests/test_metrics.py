@@ -31,6 +31,16 @@ def serve_start_shutdown():
     ray.shutdown()
 
 
+def print_metrics_wait_time(test_name: str, *args, **kwargs):
+    import time
+
+    print(f"[DEBUG_METRIC]Starting {test_name}")
+    start = time.time()
+    wait_for_condition(*args, **kwargs)
+    end = time.time()
+    print(f"[DEBUG_METRIC]Finished {test_name} in {end - start} seconds")
+
+
 def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     @serve.deployment(name="metrics")
     async def f(request):
@@ -83,7 +93,12 @@ def test_serve_metrics_for_successful_connection(serve_start_shutdown):
         return True
 
     try:
-        wait_for_condition(verify_metrics, retry_interval_ms=500)
+        # wait_for_condition(verify_metrics, retry_interval_ms=500)
+        print_metrics_wait_time(
+            "test_serve_metrics_for_successful_connection",
+            verify_metrics,
+            retry_interval_ms=500,
+        )
     except RuntimeError:
         verify_metrics(do_assert=True)
 
@@ -306,7 +321,12 @@ def test_http_redirect_metrics(serve_start_shutdown):
     assert resp.status_code == 200
     assert resp.text == '"123"'
 
-    wait_for_condition(
+    # wait_for_condition(
+    #    lambda: len(get_metric_dictionaries("serve_num_http_requests", timeout=5)) == 2,
+    #    timeout=40,
+    # )
+    print_metrics_wait_time(
+        "test_http_redirect_metrics",
         lambda: len(get_metric_dictionaries("serve_num_http_requests", timeout=5)) == 2,
         timeout=40,
     )
@@ -365,7 +385,15 @@ def test_replica_metrics_fields(serve_start_shutdown):
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
-    wait_for_condition(
+    # wait_for_condition(
+    #    lambda: len(
+    #        get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
+    #    )
+    #    == 2,
+    #    timeout=40,
+    # )
+    print_metrics_wait_time(
+        "test_replica_metrics_fields",
         lambda: len(
             get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
         )
@@ -500,7 +528,17 @@ class TestRequestContextMetrics:
         resp = requests.get("http://127.0.0.1:8000/app3")
         assert resp.status_code == 500
 
-        wait_for_condition(
+        # wait_for_condition(
+        #    lambda: len(
+        #        get_metric_dictionaries(
+        #            "serve_deployment_processing_latency_ms_sum", timeout=5
+        #        )
+        #    )
+        #    == 3,
+        #    timeout=40,
+        # )
+        print_metrics_wait_time(
+            "test_request_context_pass_for_http_proxy",
             lambda: len(
                 get_metric_dictionaries(
                     "serve_deployment_processing_latency_ms_sum", timeout=5
@@ -609,7 +647,15 @@ class TestRequestContextMetrics:
         #   {xxx, route:/api}
         # g2 deployment metrics:
         #   {xxx, route:/api2}
-        wait_for_condition(
+        # wait_for_condition(
+        #    lambda: len(
+        #        get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
+        #    )
+        #    == 4,
+        #    timeout=40,
+        # )
+        print_metrics_wait_time(
+            "test_request_context_pass_for_handle_passing",
             lambda: len(
                 get_metric_dictionaries("serve_deployment_request_counter", timeout=5)
             )
@@ -677,7 +723,12 @@ class TestRequestContextMetrics:
         serve.run(Model.bind(), name="app", route_prefix="/app")
         resp = requests.get("http://127.0.0.1:8000/app")
         deployment_name, replica_tag = resp.json()
-        wait_for_condition(
+        # wait_for_condition(
+        #    lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
+        #    timeout=40,
+        # )
+        print_metrics_wait_time(
+            "test_customer_metrics_with_context",
             lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
             timeout=40,
         )
@@ -813,7 +864,13 @@ class TestRequestContextMetrics:
         serve.run(Model.bind(), name="app", route_prefix="/app")
         resp = requests.get("http://127.0.0.1:8000/app")
         assert resp.text == "hello"
-        wait_for_condition(
+        # wait_for_condition(
+        #    lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
+        #    timeout=40,
+        # )
+
+        print_metrics_wait_time(
+            "test_serve_metrics_outside_serve",
             lambda: len(get_metric_dictionaries("my_gauge", timeout=5)) == 1,
             timeout=40,
         )
@@ -879,10 +936,15 @@ def test_multiplexed_metrics(serve_start_shutdown):
             assert metric in resp
         return True
 
+    """
     wait_for_condition(
         verify_metrics,
         timeout=40,
         retry_interval_ms=1000,
+    )
+    """
+    print_metrics_wait_time(
+        "test_multiplexed_metrics", verify_metrics, timeout=40, retry_interval_ms=1000
     )
 
 
