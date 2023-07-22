@@ -121,6 +121,19 @@ def check_file(file_path):
         sys.exit(1)
 
 
+def override_wheels_url(config_yaml, wheel_url):
+    config_yaml["setup_commands"].append(
+        f'pip3 uninstall -y ray && pip3 install -U "ray[default] @ {wheel_url}"'
+    )
+
+
+def override_docker_image(config_yaml, docker_image):
+    assert config_yaml["docker"][
+        "image"
+    ], "Docker section is missing from cluster config"
+    config_yaml["docker"]["image"] = docker_image
+
+
 def download_ssh_key():
     """Download the ssh key from the S3 bucket to the local machine."""
     print("======================================")
@@ -242,14 +255,24 @@ if __name__ == "__main__":
     print(f"Overriding docker image: {docker_override}")
     print(f"Overriding ray wheel: {wheel_override}")
 
-    docker_override_image = get_docker_image(docker_override)
-    print(f"Using docker image: {docker_override_image}")
-
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
     config_yaml["cluster_name"] = (
         config_yaml["cluster_name"] + "-" + str(int(time.time()))
     )
+
+    if wheel_override:
+        print("======================================")
+        print("Overriding ray wheel...")
+        override_wheels_url(config_yaml, wheel_override)
+
+    docker_override_image = get_docker_image(docker_override)
+    print(f"Using docker image: {docker_override_image}")
+    if docker_override_image:
+        print("======================================")
+        print("Overriding docker image...")
+        override_docker_image(config_yaml, docker_override_image)
+
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
         download_ssh_key()
