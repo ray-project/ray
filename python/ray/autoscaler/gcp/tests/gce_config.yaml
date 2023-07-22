@@ -1,8 +1,7 @@
 base_image: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("anyscale/ray:nightly-py37") }}
 debian_packages: []
 env_vars:
-  RAY_IMAGE: {{ env["RAY_IMAGE_NIGHTLY_CPU"] | default("rayproject/ray:nightly-py37") }}
-  RAY_WHEEL: {{ env["RAY_WHEELS"] | default("ray") }}
+  RAY_WHEELS: {{ env["RAY_WHEELS"] | default("ray") }}
 
 python:
   pip_packages: []
