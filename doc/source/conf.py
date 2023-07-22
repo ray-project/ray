@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-import json
+from datetime import datetime
 from pathlib import Path
 from importlib import import_module
 import os
@@ -7,8 +7,13 @@ import sys
 from jinja2.filters import FILTERS
 
 sys.path.insert(0, os.path.abspath("."))
-from custom_directives import *
-from datetime import datetime
+from custom_directives import (
+    DownloadAndPreprocessEcosystemDocs,
+    mock_modules,
+    update_context,
+    LinkcheckSummarizer,
+    build_gallery,
+)
 
 
 # Mocking modules allows Sphinx to work without installing Ray.
@@ -241,6 +246,8 @@ linkcheck_ignore = [
     "https://dev.mysql.com/doc/connector-python/en/",
     # Returning 522s intermittently.
     "https://lczero.org/",
+    # Returns 429 errors in Linkcheck due to too many requests
+    "https://archive.is/2022.12.16-171259/https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12",
 ]
 
 # -- Options for HTML output ----------------------------------------------
@@ -380,10 +387,7 @@ def setup(app):
         defer="defer",
     )
     app.add_js_file("js/docsearch.js", defer="defer")
-
-    # https://github.com/medmunds/rate-the-docs for allowing users
-    # to give thumbs up / down and feedback on existing docs pages.
-    app.add_js_file("js/rate-the-docs.es.min.js")
+    app.add_js_file("js/csat.js", defer="defer")
 
     # https://github.com/ines/termynal
     app.add_js_file("js/termynal.js", defer="defer")

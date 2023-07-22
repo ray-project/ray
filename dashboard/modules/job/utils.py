@@ -1,6 +1,7 @@
 import dataclasses
 import logging
 import os
+import re
 import traceback
 from dataclasses import dataclass
 from typing import Iterator, List, Optional, Any, Dict, Tuple, Union
@@ -51,6 +52,15 @@ MAX_CHUNK_CHAR_LENGTH = 20000
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
     """Strip keys with value None from a dictionary."""
     return {k: v for k, v in d.items() if v is not None}
+
+
+def redact_url_password(url: str) -> str:
+    """Redact any passwords in a URL."""
+    secret = re.findall("https?:\/\/.*:(.*)@.*", url)
+    if len(secret) > 0:
+        url = url.replace(f":{secret[0]}@", ":<redacted>@")
+
+    return url
 
 
 def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
@@ -168,7 +178,7 @@ async def get_driver_jobs(
             driver = DriverInfo(
                 id=job_id,
                 node_ip_address=job_table_entry.driver_address.ip_address,
-                pid=job_table_entry.driver_pid,
+                pid=str(job_table_entry.driver_pid),
             )
             job = JobDetails(
                 job_id=job_id,
@@ -190,7 +200,7 @@ async def get_driver_jobs(
             driver = DriverInfo(
                 id=job_id,
                 node_ip_address=job_table_entry.driver_address.ip_address,
-                pid=job_table_entry.driver_pid,
+                pid=str(job_table_entry.driver_pid),
             )
             submission_job_drivers[job_submission_id] = driver
 

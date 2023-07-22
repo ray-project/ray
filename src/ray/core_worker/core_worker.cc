@@ -20,6 +20,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
@@ -118,7 +119,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
-      exiting_detail_(std::nullopt) {
+      exiting_detail_(std::nullopt),
+      pid_(getpid()) {
+  // Notify that core worker is initialized.
+  auto initialzed_scope_guard = absl::MakeCleanup([this] {
+    absl::MutexLock lock(&initialize_mutex_);
+    initialized_ = true;
+    intialize_cv_.SignalAll();
+  });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -321,6 +329,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
+        rpc::ErrorType error_type;
+        if (obj.IsException(&error_type) &&
+            error_type == rpc::ErrorType::END_OF_STREAMING_GENERATOR) {
+          // End-of-stream ObjectRefs are sentinels and should never get
+          // returned to the caller.
+          return;
+        }
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
         io_service_.post(
@@ -916,7 +931,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
 
   worker_data->set_is_alive(true);
-  worker_data->set_pid(getpid());
+  worker_data->set_pid(pid_);
   worker_data->set_start_time_ms(current_sys_time_ms());
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
@@ -2543,10 +2558,14 @@ Status CoreWorker::ExecuteTask(
           task_spec,
           rpc::TaskStatus::RUNNING,
           /* include_task_info */ false,
-          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name));
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_));
     } else {
       task_manager_->RecordTaskStatusEvent(
-          task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(pid_));
     }
 
     worker_context_.SetCurrentTask(task_spec);
