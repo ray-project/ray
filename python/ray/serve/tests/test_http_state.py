@@ -10,7 +10,7 @@ import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve.config import DeploymentMode, HTTPOptions
 from ray.serve._private.common import HTTPProxyStatus
-from ray.serve._private.http_state import HTTPState, HTTPProxyState
+from ray.serve._private.http_state import HTTPProxyStateManager, HTTPProxyState
 from ray.serve._private.http_proxy import HTTPProxyActor
 from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
 from ray.serve.controller import ServeController
@@ -22,8 +22,8 @@ HEAD_NODE_ID = "node_id-index-head"
 def _make_http_state(
     http_options: HTTPOptions,
     head_node_id: str = HEAD_NODE_ID,
-) -> HTTPState:
-    return HTTPState(
+) -> HTTPProxyStateManager:
+    return HTTPProxyStateManager(
         SERVE_CONTROLLER_NAME,
         detached=True,
         config=http_options,
@@ -109,13 +109,13 @@ def _update_and_check_proxy_status(state: HTTPProxyState, status: HTTPProxyStatu
 
 
 def _update_and_check_http_state(
-    http_state: HTTPState,
+    http_proxy_state_manager: HTTPProxyStateManager,
     node_ids: List[str],
     statuses: List[HTTPProxyStatus],
     **kwargs,
 ):
-    http_state.update(**kwargs)
-    proxy_states = http_state._proxy_states
+    http_proxy_state_manager.update(**kwargs)
+    proxy_states = http_proxy_state_manager._proxy_states
     return all(
         [
             proxy_states[node_ids[idx]].status == statuses[idx]
@@ -164,11 +164,13 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
 
 
 def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
-    """Test the update method in HTTPState would kill and restart unhealthy proxies.
+    """Test the update method in HTTPProxyStateManager would
+       kill and restart unhealthy proxies.
 
     Set up a HTTPProxyState with UNHEALTHY status. Calls the update method on the
-    HTTPState object. Expects the unhealthy proxy being replaced by a new proxy with
-    STARTING status. The unhealthy proxy state is also shutting down.
+    HTTPProxyStateManager object. Expects the unhealthy proxy being replaced
+    by a new proxy with STARTING status.
+    The unhealthy proxy state is also shutting down.
     """
     state = _make_http_state(HTTPOptions(location=DeploymentMode.HeadOnly))
     state._proxy_states[HEAD_NODE_ID] = _create_http_proxy_state(
@@ -181,7 +183,7 @@ def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
     old_proxy = old_proxy_state.actor_handle
 
     def _update_state_and_check_proxy_status(
-        _state: HTTPState,
+        _state: HTTPProxyStateManager,
         _status: HTTPProxyStatus,
     ):
         _state.update()
