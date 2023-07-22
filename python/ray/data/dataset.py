@@ -153,7 +153,6 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
-    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_data import GroupedData
 
@@ -3223,7 +3222,7 @@ class Dataset:
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator[TorchTensorBatchType]:
+    ) -> Iterator[TorchBatchType]:
         """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator will will yield a dictionary of column-tensors. If looking for
