@@ -27,15 +27,6 @@ namespace ray {
 namespace raylet {
 
 void AgentManager::StartAgent() {
-  if (options_.agent_name.empty()) {
-    RAY_LOG(INFO) << "Not starting agent, the agent name is empty.";
-    return;
-  }
-  if (options_.agent_commands.empty()) {
-    RAY_LOG(INFO) << "Not starting agent, the agent command is empty.";
-    return;
-  }
-
   std::vector<const char *> argv;
   for (const std::string &arg : options_.agent_commands) {
     argv.push_back(arg.c_str());
@@ -102,11 +93,11 @@ void AgentManager::StartAgent() {
 }
 
 AgentManager::~AgentManager() {
-  RAY_LOG(INFO) << "Killing agent " << options_.agent_name << ", pid " << process_.GetId()
-                << ".";
-  kill_raylet_if_process_exits_ = false;
-  process_.Kill();
   if (monitor_thread_) {
+    RAY_LOG(INFO) << "Killing agent " << options_.agent_name << ", pid "
+                  << process_.GetId() << ".";
+    kill_raylet_if_process_exits_ = false;
+    process_.Kill();
     monitor_thread_->join();
   }
 }
