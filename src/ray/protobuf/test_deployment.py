@@ -22,7 +22,7 @@ class GrpcDeployment:
         return output.SerializeToString()
 
 
-g = GrpcDeployment.options(name="test-name").bind()
+g = GrpcDeployment.options(name="grpc-deployment").bind()
 
 
 @serve.deployment

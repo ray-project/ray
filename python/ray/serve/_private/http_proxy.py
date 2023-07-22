@@ -866,13 +866,9 @@ class GRPCProxy(GenericProxy):
             "Predict, serve_response.streaming_response",
             serve_response.streaming_response,
         )
-        while True:
-            try:
-                ref = await serve_response.streaming_response.__anext__()
-                print("Predict, ref", ref)
-                yield ref
-            except StopAsyncIteration:
-                break
+        async for response in serve_response.streaming_response:
+            yield response
+
         print("Predict, done with generator")
 
     @property
@@ -919,14 +915,13 @@ class GRPCProxy(GenericProxy):
         print("_streaming_generator_helper, obj_ref_generator", obj_ref_generator)
         while True:
             try:
-                obj_ref = await obj_ref_generator._next_async(timeout_s=15)
+                obj_ref = await obj_ref_generator._next_async()
                 response = await obj_ref
                 print("_streaming_generator_helper, response", response)
                 yield serve_pb2.RayServeResponse(
                     user_response=response,
                     request_id=request_id,
                 )
-
             except StopAsyncIteration:
                 break
 

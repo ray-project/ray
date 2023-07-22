@@ -15,7 +15,7 @@ test_in = serve_pb2.TestIn(
 )
 response = stub.Predict(
     serve_pb2.RayServeRequest(
-        application="default_test-name",
+        application="default_grpc-deployment",
         user_request=test_in.SerializeToString(),
         # request_id="123",
         # multiplexed_model_id="123",
