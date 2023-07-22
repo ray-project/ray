@@ -273,7 +273,8 @@ def training_function(kwargs: dict):
                 
             if accelerator.is_main_process:
                 accelerator.print(
-                    f"[epoch {epoch} step {step}] loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
+                    f"[epoch {epoch} step {step}] "
+                    f"loss: {loss.item()} step-time: {e_opt_step - s_fwd}"
                 )
 
             if config["as_test"]:
@@ -372,7 +373,14 @@ def training_function(kwargs: dict):
                 "avg fwd time": avg_fwd_time / (step + 1),
                 "avg bwd time": avg_bwd_time / (step + 1),
             },
-            # checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
+            # We do not need to explictly call report(checkpoint). 
+            # This is because the checkpointing is not on all distributed workers, it's 
+            # only done on rank_0 which is forced to be co-located with the trainer 
+            # object. By default the files created by trainer will get synced which 
+            # will include the checkpoint files created by the Rank_0. 
+            # Note that this will not delete the checkpoints from the previous 
+            # iterations.
+            checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
         
 
@@ -508,11 +516,13 @@ def main():
     ds_plugin = DeepSpeedPlugin(hf_ds_config=config.get("ds_config"))
     config.update(ds_plugin=ds_plugin)
     
+    os.environ["TUNE_RESULT_DIR"] = args.output_dir
+    
     ray.init(
         runtime_env={
             "env_vars": {
                 "HF_HOME": "/mnt/local_storage/.cache/huggingface",
-                "TUNE_RESULT_DIR": args.output_dir,
+                "TUNE_RESULT_DIR": os.environ["TUNE_RESULT_DIR"],
             }
         }
     )
@@ -536,12 +546,9 @@ def main():
             "special_tokens": special_tokens
         },
         run_config=air.RunConfig(
-            # storage_path=args.output_dir,
-            # # For NFS: disables the default syncing to head node (already disabled on 2.6+)
-            # sync_config=tune.SyncConfig(syncer=None),
-            # Turn off syncing artifact as as of 2.6 it introduces a resource contention 
-            # between checkpoint syncronizer and artifact syncronizer that can sometimes 
-            # result in failed checkpoint syncing
+            # Turn off syncing artifact as as of 2.6 it introduces a resource 
+            # contention between checkpoint syncronizer and artifact syncronizer that 
+            # can sometimes result in failed checkpoint syncing
             sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path="s3://anyscale-staging-data-cld-kvedzwag2qa8i5bjxuevf5i7/templates-release-tests/04_finetuning_llms",
             checkpoint_config=air.CheckpointConfig(
@@ -552,7 +559,11 @@ def main():
             ),
         ),
         scaling_config=air.ScalingConfig(
-            trainer_resources={"memory": 80 * 1024 * 1024 * 1024},
+            # This forces the trainer + Rank 0 worker to get scheduled on the large cpu 
+            # RAM instance, making the checkpointing easier.
+            # "large_cpu_mem" is the tag used to identify this machine type in the 
+            # cluster config.
+            trainer_resources={"large_cpu_mem": 0.01},
             num_workers=args.num_devices, 
             use_gpu=True,  
             resources_per_worker={"GPU": 1},
