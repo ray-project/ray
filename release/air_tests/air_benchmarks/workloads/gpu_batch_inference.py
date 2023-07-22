@@ -6,7 +6,6 @@ import os
 
 import numpy as np
 import torch
-from torchvision import transforms
 from torchvision.models import resnet50, ResNet50_Weights
 
 import ray
@@ -33,11 +32,14 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
     # Largest batch that can fit on a T4.
     BATCH_SIZE = 1000
 
+    device = "cpu" if smoke_test else "cuda"
+
     weights = ResNet50_Weights.DEFAULT
     model = resnet50(weights=weights)
     model_ref = ray.put(model)
 
-    transform = weights.transforms
+    # Get the preprocessing transforms from the pre-trained weights.
+    transform = weights.transforms()
 
     start_time = time.time()
 
@@ -52,7 +54,10 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
 
     # Preprocess the images using standard preprocessing
     def preprocess(image_batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        tensor_batch = torch.as_tensor(image_batch, dtype=torch.float)
+        tensor_batch = torch.as_tensor(image_batch["image"], dtype=torch.float)
+        # (B, H, W, C) -> (B, C, H, W). This is required for the torchvision transform.
+        # https://pytorch.org/vision/main/models/generated/torchvision.models.resnet50.html#torchvision.models.ResNet50_Weights  # noqa
+        tensor_batch = tensor_batch.permute(0, 3, 1, 2)
         transformed_batch = transform(tensor_batch).numpy()
         return {"image": transformed_batch}
 
@@ -60,20 +65,27 @@ def main(data_directory: str, data_format: str, smoke_test: bool):
         def __init__(self, model):
             self.model = ray.get(model)
             self.model.eval()
-            self.model.to("cuda")
+            self.model.to(device)
 
         def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
             with torch.inference_mode():
-                output = self.model(torch.as_tensor(batch["image"], device="cuda"))
+                output = self.model(torch.as_tensor(batch["image"], device=device))
                 return {"predictions": output.cpu().numpy()}
 
     start_time_without_metadata_fetching = time.time()
+
+    if smoke_test:
+        actor_pool_size = 4
+        num_gpus = 0
+    else:
+        actor_pool_size = int(ray.cluster_resources().get("GPU"))
+        num_gpus = 1
     ds = ds.map_batches(preprocess)
     ds = ds.map_batches(
         Predictor,
         batch_size=BATCH_SIZE,
-        compute=ActorPoolStrategy(size=int(ray.cluster_resources()["GPU"])),
-        num_gpus=1,
+        compute=ActorPoolStrategy(size=actor_pool_size),
+        num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
         max_concurrency=2,
     )
