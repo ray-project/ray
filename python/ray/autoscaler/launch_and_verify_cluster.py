@@ -27,11 +27,12 @@ import yaml
 def check_arguments():
     """
     Check command line arguments and return the cluster configuration file path, the
-    number of retries, and the value of the --no-config-cache flag.
+    number of retries, the number of expected nodes, and the value of the
+    --no-config-cache flag.
 
     Returns:
-        A tuple containing the cluster config file path, the number of retries, and the
-        value of the --no-config-cache flag.
+        A tuple containing the cluster config file path, the number of retries, the
+        value of the --no-config-cache flag, and the number of expected nodes.
     """
     parser = argparse.ArgumentParser(description="Launch and verify a Ray cluster")
     parser.add_argument(
