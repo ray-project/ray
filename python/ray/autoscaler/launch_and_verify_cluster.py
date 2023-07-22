@@ -112,7 +112,7 @@ def cleanup_cluster(cluster_config):
     subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
 
 
-def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=2):
+def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=1):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
