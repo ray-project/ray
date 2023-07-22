@@ -336,7 +336,7 @@ PyWavelets==1.4.1
 PyYAML==6.0
 pyzmq==25.0.2
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-2.6.0-cp39-cp39-manylinux2014_x86_64.whl
+ray @ file:///home/ray/ray-2.6.1-cp39-cp39-manylinux2014_x86_64.whl
 ray-lightning==0.3.0
 recsim==0.2.4
 redis==3.5.3
