@@ -27,7 +27,7 @@ from ray.serve._private.common import (
     ReplicaTag,
     ServeComponentType,
     StreamingHTTPRequest,
-    StreamingGRPCRequest,
+    GRPCRequest,
 )
 from ray.serve.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -229,7 +229,16 @@ def create_replica_wrapper(name: str):
         ) -> Tuple[bytes, Any]:
 
             request_metadata = pickle.loads(pickled_request_metadata)
-            if request_metadata.is_http_request:
+            if request_metadata.serve_grpc_request:
+                print("handle_request, serve_grpc_request", request_args)
+                assert len(request_args) == 1 and isinstance(
+                    request_args[0], GRPCRequest
+                )
+                result = await self.replica.call_user_method_grpc_unary(
+                    request_metadata=request_metadata, request=request_args[0]
+                )
+                return b"", result
+            elif request_metadata.is_http_request:
                 # The sole argument passed from `http_proxy.py` is the ASGI scope.
                 assert len(request_args) == 1
                 request: HTTPRequestWrapper = pickle.loads(request_args[0])
@@ -248,19 +257,6 @@ def create_replica_wrapper(name: str):
 
             # Returns a small object for router to track request status.
             return b"", result
-
-        async def _handle_grpc_request_generator(
-            self,
-            request_metadata: RequestMetadata,
-            request: StreamingGRPCRequest,
-        ) -> AsyncGenerator[Any, None]:
-            """Handle an grpc request and stream grpc messages to the caller."""
-            print("_handle_grpc_request_generator, request", request, request_metadata)
-            result = await self.replica.call_user_method_with_grpc_serialization(
-                request_metadata, request
-            )
-            yield result
-            print("_handle_grpc_request_generator, result", result)
 
         async def _handle_http_request_generator(
             self,
@@ -350,9 +346,9 @@ def create_replica_wrapper(name: str):
             if request_metadata.serve_grpc_request:
                 print("handle_request_streaming, serve_grpc_request", request_args)
                 assert len(request_args) == 1 and isinstance(
-                    request_args[0], StreamingGRPCRequest
+                    request_args[0], GRPCRequest
                 )
-                generator = self._handle_grpc_request_generator(
+                generator = self.replica.call_user_method_with_grpc_stream(
                     request_metadata, request_args[0]
                 )
             elif request_metadata.is_http_request:
@@ -731,10 +727,35 @@ class RayServeReplica:
             self.error_counter.inc(tags={"route": request_metadata.route})
             raise user_exception from None
 
-    async def call_user_method_with_grpc_serialization(
+    async def call_user_method_with_grpc_stream(
         self, request_metadata, request
-    ) -> bytes:
-        print("in call_user_method_with_grpc_serialization", request_metadata, request)
+    ) -> AsyncGenerator[bytes, None]:
+        async with self.wrap_user_method_call(
+            request_metadata, acquire_reader_lock=False
+        ):
+            print("in call_user_method_with_grpc_stream", request_metadata, request)
+            user_method = self.get_runner_method(request_metadata)
+            method_to_call = sync_to_async(user_method)
+            user_request = request.grpc_user_request
+            result_generator = method_to_call(user_request)
+            print("result_generator", result_generator)
+            if inspect.iscoroutine(result_generator):
+                result_generator = await result_generator
+
+            if inspect.isgenerator(result_generator):
+                for result in result_generator:
+                    yield result
+            elif inspect.isasyncgen(result_generator):
+                async for result in result_generator:
+                    yield result
+            else:
+                raise TypeError(
+                    "When using `stream=True`, the called method must be a generator "
+                    f"function, but '{user_method.__name__}' is not."
+                )
+
+    async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
+        print("in call_user_method_grpc_unary", request_metadata, request)
         print("request.grpc_user_request", request.grpc_user_request)
         user_request = request.grpc_user_request
         print("user_request", user_request)

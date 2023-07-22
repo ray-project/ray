@@ -402,8 +402,8 @@ class StreamingHTTPRequest:
 
 
 @dataclass
-class StreamingGRPCRequest:
-    """Sent from the GRPC proxy to replicas on the streaming codepath."""
+class GRPCRequest:
+    """Sent from the GRPC proxy to replicas on both streaming and unary"""
 
     grpc_user_request: bytes
     grpc_proxy_handle: ActorHandle

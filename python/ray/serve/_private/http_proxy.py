@@ -6,7 +6,7 @@ import logging
 import pickle
 import socket
 import time
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, List, Generator, Optional, Set, Tuple
 import grpc
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 
@@ -39,7 +39,7 @@ from ray.serve._private.common import (
     EndpointInfo,
     EndpointTag,
     NodeId,
-    StreamingGRPCRequest,
+    GRPCRequest,
     StreamingHTTPRequest,
 )
 from ray.serve._private.constants import (
@@ -568,7 +568,7 @@ class GenericProxy:
             )
         if isinstance(serve_request, GRPCServeRequest):
             assignment_task = handle.remote(
-                StreamingGRPCRequest(
+                GRPCRequest(
                     grpc_user_request=serve_request.user_request,
                     grpc_proxy_handle=self.self_actor_handle,
                 )
@@ -698,6 +698,7 @@ class GenericProxy:
             )
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
+                print("before calling send request to replica streaming")
                 serve_response = await self.send_request_to_replica_streaming(
                     request_id=request_id,
                     handle=handle,
@@ -826,10 +827,53 @@ class GRPCProxy(GenericProxy):
         route_path, handle = self.prefix_router.match_target(app_name)
         print("route_path", route_path)
 
-        serve_request = GRPCServeRequest(request=request, route_path=route_path)
+        serve_request = GRPCServeRequest(
+            request=request,
+            route_path=route_path,
+            stream=False,
+        )
         serve_response = await self.proxy_request(serve_request=serve_request)
         print("Predict, serve_response", serve_response)
         return serve_response.response
+
+    async def PredictStreaming(
+        self, request: serve_pb2.RayServeRequest, context
+    ) -> Generator[serve_pb2.RayServeResponse, None, None]:
+        """Entry point of the gRPC proxy.
+
+        This method is called by the gRPC server when a request is received. It
+        wraps the request in a ServeRequest object and calls proxy_request. The return
+        value is protobuf RayServeResponse object.
+        """
+        print("in grpc proxy, Predict called!!")
+        print("request", request)
+        print("context.invocation_metadata()", context.invocation_metadata())
+        print("context.details()", context.details())
+        print("context.peer()", context.peer())
+
+        app_name = request.application
+        route_path, handle = self.prefix_router.match_target(app_name)
+        print("route_path", route_path)
+
+        serve_request = GRPCServeRequest(
+            request=request,
+            route_path=route_path,
+            stream=True,
+        )
+        serve_response = await self.proxy_request(serve_request=serve_request)
+        print("Predict, serve_response", serve_response)
+        print(
+            "Predict, serve_response.streaming_response",
+            serve_response.streaming_response,
+        )
+        while True:
+            try:
+                ref = await serve_response.streaming_response.__anext__()
+                print("Predict, ref", ref)
+                yield ref
+            except StopAsyncIteration:
+                break
+        print("Predict, done with generator")
 
     @property
     def proxy_name(self) -> str:
@@ -849,7 +893,10 @@ class GRPCProxy(GenericProxy):
             request_id = self.generate_request_id()
             serve_request.set_request_id(request_id)
 
-        handle = handle.options(serve_grpc_request=True)
+        handle = handle.options(
+            stream=serve_request.stream,
+            serve_grpc_request=True,
+        )
         if multiplexed_model_id:
             handle = handle.options(multiplexed_model_id=multiplexed_model_id)
 
@@ -864,15 +911,40 @@ class GRPCProxy(GenericProxy):
         )
         return handle, request_id
 
-    async def _consume_generator(
+    async def _streaming_generator_helper(
         self,
         obj_ref_generator: StreamingObjectRefGenerator,
         request_id: str,
+    ) -> Generator[serve_pb2.RayServeResponse, None, None]:
+        print("_streaming_generator_helper, obj_ref_generator", obj_ref_generator)
+        while True:
+            try:
+                obj_ref = await obj_ref_generator._next_async(timeout_s=15)
+                response = await obj_ref
+                print("_streaming_generator_helper, response", response)
+                yield serve_pb2.RayServeResponse(
+                    user_response=response,
+                    request_id=request_id,
+                )
+
+            except StopAsyncIteration:
+                break
+
+    async def _consume_generator_stream(
+        self,
+        obj_ref: StreamingObjectRefGenerator,
+        request_id: str,
     ) -> ServeResponse:
-        # TODO (genesu): Non-streaming request only has one result. Make this work
-        #  with streaming results as well.
-        print("_consume_generator, obj_ref_generator", obj_ref_generator)
-        user_response = await next(obj_ref_generator)
+        print("_consume_generator, obj_ref_generator", obj_ref)
+        streaming_response = self._streaming_generator_helper(obj_ref, request_id)
+        return ServeResponse(status_code="200", streaming_response=streaming_response)
+
+    async def _consume_generator_unary(
+        self,
+        obj_ref: ray.ObjectRef,
+        request_id: str,
+    ) -> ServeResponse:
+        user_response = await obj_ref
         print("_consume_generator, result", user_response)
         response = serve_pb2.RayServeResponse(
             user_response=user_response,
@@ -890,12 +962,12 @@ class GRPCProxy(GenericProxy):
     ) -> ServeResponse:
         try:
             try:
-                obj_ref_generator = await self._assign_request_with_timeout(
+                obj_ref = await self._assign_request_with_timeout(
                     handle=handle,
                     serve_request=serve_request,
                     timeout_s=self.request_timeout_s,
                 )
-                if obj_ref_generator is None:
+                if obj_ref is None:
                     logger.info(
                         f"Client from {serve_request.client} disconnected, "
                         "cancelling the request.",
@@ -909,15 +981,20 @@ class GRPCProxy(GenericProxy):
                 )
                 return TIMEOUT_ERROR_CODE, None
 
-            print("obj_ref_generator", obj_ref_generator)
+            print("obj_ref", obj_ref)
             print("serve_request", serve_request)
 
-            return await self._consume_generator(
-                obj_ref_generator=obj_ref_generator, request_id=request_id
-            )
+            if serve_request.stream:
+                return await self._consume_generator_stream(
+                    obj_ref=obj_ref, request_id=request_id
+                )
+            else:
+                return await self._consume_generator_unary(
+                    obj_ref=obj_ref, request_id=request_id
+                )
 
         except Exception as e:
-            print("in HTTPProxy#send_request_to_replica_streaming exception!!", e)
+            print("in GRPCProxy#send_request_to_replica_streaming exception!!", e)
             logger.exception(e)
             return ServeResponse(status_code="500")
 
