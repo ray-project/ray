@@ -1520,6 +1520,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
     }
   }
 
+  /// Wait until the worker is initialized.
+  void WaitUntilInitialized() override {
+    absl::MutexLock lock(&initialize_mutex_);
+    while (!initialized_) {
+      intialize_cv_.WaitWithTimeout(&initialize_mutex_, absl::Seconds(1));
+    }
+  }
+
   const CoreWorkerOptions options_;
 
   /// Callback to get the current language (e.g., Python) call site.
@@ -1547,6 +1555,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   TaskID main_thread_task_id_ GUARDED_BY(mutex_);
 
   std::string main_thread_task_name_ GUARDED_BY(mutex_);
+
+  /// States that used for initialization.
+  absl::Mutex initialize_mutex_;
+  absl::CondVar intialize_cv_;
+  bool initialized_ GUARDED_BY(initialize_mutex_) = false;
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context io_service_;
@@ -1730,6 +1743,9 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A shared pointer between various components that emitting task state events.
   /// e.g. CoreWorker, TaskManager.
   std::unique_ptr<worker::TaskEventBuffer> task_event_buffer_ = nullptr;
+
+  /// Worker's PID
+  uint32_t pid_;
 };
 
 // Lease request rate-limiter based on cluster node size.

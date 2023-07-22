@@ -71,9 +71,7 @@ class DatasetWriter(OutputWriter):
         # Todo: We should flush at the end of sampling even if this
         # condition was not reached.
         if len(self.samples) >= self.max_num_samples_per_file:
-            ds = data.from_items(self.samples, output_arrow_format=True).repartition(
-                num_blocks=1, shuffle=False
-            )
+            ds = data.from_items(self.samples).repartition(num_blocks=1, shuffle=False)
             if self.format == "json":
                 ds.write_json(self.path, try_create_dir=True)
             elif self.format == "parquet":

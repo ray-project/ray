@@ -65,4 +65,3 @@ WORKDIR /ray
 COPY . .
 
 RUN ./ci/env/install-dependencies.sh init
-RUN bash --login -i ./ci/ci.sh compile_pip_dependencies

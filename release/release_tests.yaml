@@ -386,10 +386,9 @@
   frequency: nightly
   team: ml
   cluster:
-#    byod:
-#      type: gpu
-#      pip:
-#        - xgboost_ray
+    byod:
+      type: gpu
+      post_build_script: byod_xgboost_cuj_test.sh
     cluster_env: xgboost_app_config.yaml
     cluster_compute: compute_xgboost_aws.yaml
 
@@ -824,8 +823,9 @@
         cluster_env: app_config.yaml
         cluster_compute: compute_gpu_4x4_gce.yaml
 
-# Test tiny, medium, and huge input files.
-- name: ray-data-bulk-ingest-file-size-benchmark
+# Test tiny, and medium input files to check that performance stays about
+# constant.
+- name: ray-data-resnet50-ingest-file-size-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
@@ -856,8 +856,8 @@
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
 
-# Test dataset larger than object store memory.
-- name: ray-data-bulk-ingest-out-of-core-benchmark
+# Test huge files to check that we do not OOM.
+- name: ray-data-resnet50-ingest-out-of-memory-benchmark
   group: AIR tests
   working_dir: air_tests/air_benchmarks/mlperf-train
 
@@ -877,7 +877,7 @@
 
   run:
     timeout: 3600
-    script: bash out_of_core_benchmark.sh
+    script: bash oom_benchmark.sh
 
   variations:
     - __suffix__: aws
@@ -887,42 +887,6 @@
       cluster:
         cluster_env: app_config_oom.yaml
         cluster_compute: compute_gce_cpu_16.yaml
-
-# Test additional CPU nodes for preprocessing.
-- name: ray-data-bulk-ingest-heterogeneity-benchmark
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks/mlperf-train
-
-  stable: false
-
-  frequency: nightly
-  team: data
-  python: "3.8"
-  cluster:
-    byod: 
-      type: gpu
-      runtime_env:
-        - RAY_task_oom_retries=50
-        - RAY_min_memory_free_bytes=1000000000
-    cluster_env: app_config_oom.yaml
-    cluster_compute: compute_cpu_16_worker_nodes_2.yaml
-
-  run:
-    wait_for_nodes:
-      num_nodes: 3
-
-    timeout: 1800
-    script: bash heterogeneity_benchmark.sh 2
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config_oom.yaml
-        cluster_compute: compute_gce_cpu_16_worker_nodes_2.yaml
-
 
 #######################
 # AIR examples
@@ -994,35 +958,23 @@
   frequency: weekly
   team: ml
   cluster:
+    byod:
+      type: gpu
+      pip:
+        - "datasets"
+        - "evaluate"
+        - "scikit-learn"
+        - "boto3"
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
+      post_build_script: byod_dolly_test.sh
     cluster_env: dolly_v2_fsdp_env.yaml
     cluster_compute: dolly_v2_fsdp_compute_aws.yaml
 
   run:
     timeout: 4700
     script: python test_myst_doc.py --path lightning-llm-finetuning-7b.ipynb
-
-
-- name: air_example_opt_deepspeed_batch_inference
-  group: AIR examples
-  working_dir: air_examples/opt_deepspeed_batch_inference
-
-  python: "3.9"
-
-  frequency: weekly
-  team: ml
-  cluster:
-    byod:
-      type: gpu
-      pip:
-        - myst-parser==0.15.2
-        - myst-nb==0.13.1
-        - jupytext==1.13.6
-    cluster_env: 30b_deepspeed_env.yaml
-    cluster_compute: 30b_deepspeed_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python test_myst_doc.py --path opt_deepspeed_batch_inference.ipynb
 
   # variations: TODO(jungong): add GCP variation.
 
@@ -1038,7 +990,7 @@
   frequency: nightly-3x
   team: data
   cluster:
-    byod: 
+    byod:
       type: gpu
     cluster_env: ../testing/cluster_envs/default_cluster_env_nightly_ml_py39.yaml
     cluster_compute: ../testing/compute_configs/gpu/aws.yaml
@@ -1097,7 +1049,7 @@
 
   run:
     timeout: 600
-    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py
+    script: jupyter nbconvert --to script --output _test start.ipynb && ipython _test.py && serve run app:entrypoint --non-blocking && python query.py
 
   variations:
       - __suffix__: aws
@@ -2427,7 +2379,7 @@
   team: ml
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
     cluster_env: torch_tune_serve_app_config.yaml
     cluster_compute: gpu_tpl_aws.yaml
@@ -2881,7 +2833,7 @@
   team: serve
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
@@ -2923,7 +2875,7 @@
   team: serve
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
@@ -2965,7 +2917,7 @@
   team: serve
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
     cluster_env: app_config.yaml
@@ -3680,7 +3632,7 @@
   team: ml
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
       post_build_script: byod_alpa_test.sh
     cluster_env: app_config.yaml
@@ -3718,7 +3670,7 @@
   team: ml
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
       post_build_script: byod_alpa_test.sh
     cluster_env: app_config.yaml
@@ -3760,6 +3712,12 @@
   team: rllib
   python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: multi_node_checkpointing_compute_config.yaml
 
@@ -3816,7 +3774,7 @@
         cluster_env: app_config.yaml
         cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
 
-- name: rllib_multi_node_e2e_training_smoke_test
+- name: rllib_learning_tests_a2c_tf
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -3830,34 +3788,6 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_env: app_config.yaml
-    cluster_compute: multi_node_checkpointing_compute_config.yaml
-
-  run:
-    timeout: 3600
-    script: pytest smoke_tests/smoke_test_basic_multi_node_training_learner.py
-
-    wait_for_nodes:
-      num_nodes: 2
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: multi_node_checkpointing_compute_config_gce.yaml
-
-- name: rllib_learning_tests_a2c_tf
-  group: RLlib tests
-  working_dir: rllib_tests
-
-  frequency: nightly
-  team: rllib
-  cluster:
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3882,7 +3812,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -3942,7 +3879,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
@@ -3967,7 +3911,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_24cpus.yaml
 
@@ -3992,7 +3943,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -4020,7 +3978,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -4046,7 +4011,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4075,7 +4047,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4236,6 +4215,12 @@
   team: rllib
   python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4260,7 +4245,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4285,9 +4277,16 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
-    cluster_compute: 1gpu_16cpus.yaml
+    cluster_compute: 1gpu_32cpus.yaml
 
   run:
     timeout: 18000
@@ -4313,7 +4312,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4402,7 +4408,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4427,7 +4440,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4455,7 +4475,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4483,7 +4510,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4508,7 +4542,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -4536,7 +4577,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 4gpus_64cpus.yaml
 
@@ -4562,7 +4610,14 @@
   frequency: nightly
   team: rllib
 
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4591,7 +4646,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 2gpus_32cpus.yaml
 
@@ -4616,7 +4678,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4708,7 +4777,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4765,7 +4841,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 1gpu_16cpus.yaml
 
@@ -4790,7 +4873,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
@@ -4815,7 +4905,14 @@
 
   frequency: nightly
   team: rllib
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
     cluster_env: app_config.yaml
     cluster_compute: 8gpus_96cpus.yaml
 
@@ -4842,7 +4939,7 @@
   team: rllib
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
@@ -4877,7 +4974,7 @@
   team: rllib
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
       post_build_script: byod_rllib_test.sh
       runtime_env:
@@ -5033,32 +5130,6 @@
   frequency: nightly
   working_dir: microbenchmark
 
-  python: "3.7"
-
-  cluster:
-    cluster_env: app_config.yaml
-    cluster_compute: tpl_64.yaml
-
-  run:
-    timeout: 1800
-    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: tpl_64_gce.yaml
-
-
-- name: microbenchmark_38
-  group: core-daily-test
-  team: core
-  frequency: nightly
-  working_dir: microbenchmark
-
   python: "3.8"
 
   cluster:
@@ -5184,7 +5255,7 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  stable: false 
+  stable: false
 
   python: "3.8"
   frequency: nightly
@@ -5237,7 +5308,7 @@
   cluster:
     byod:
       runtime_env:
-        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000 
+        - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
         - RAY_MAX_LIMIT_FROM_DATA_SOURCE=1000000000
     cluster_env: shuffle/shuffle_with_state_api_app_config.yaml
     cluster_compute: shuffle/shuffle_compute_single.yaml
@@ -5811,7 +5882,12 @@
 
   frequency: nightly
   team: core
+  python: "3.8"
   cluster:
+    byod:
+      type: gpu
+      runtime_env:
+        - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_env: app_config.yaml
     cluster_compute: scheduling.yaml
 
@@ -5887,7 +5963,7 @@
   team: data
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
     cluster_env: app_config.yaml
     cluster_compute: inference.yaml
@@ -5942,7 +6018,7 @@
   team: data
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
@@ -6001,7 +6077,7 @@
   team: data
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
     cluster_env: app_config.yaml
     cluster_compute: data_ingest_benchmark_compute.yaml
@@ -6189,6 +6265,32 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
+- name: read_images_comparison_microbenchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash run_image_loader_microbenchmark.sh
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -6305,7 +6407,7 @@
   team: data
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       type: gpu
     cluster_env: app_config.yaml
     cluster_compute: single_node_benchmark_compute.yaml
@@ -6422,8 +6524,6 @@
   group: data-tests
   working_dir: nightly_tests
 
-  stable: false
-
   frequency: nightly
   team: data
   python: "3.8"
@@ -6454,6 +6554,8 @@
 - name: dataset_shuffle_push_based_random_shuffle_1tb
   group: data-tests
   working_dir: nightly_tests
+
+  stable: false
 
   frequency: nightly
   team: data
@@ -6519,7 +6621,12 @@
 
   frequency: weekly
   team: data
+  python: "3.8"
   cluster:
+    byod: 
+      runtime_env:
+        - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
+      post_build_script: byod_dataset_shuffle.sh
     cluster_env: shuffle/100tb_shuffle_app_config.yaml
     cluster_compute: shuffle/100tb_shuffle_compute.yaml
 

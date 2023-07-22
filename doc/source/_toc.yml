@@ -57,7 +57,6 @@ parts:
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
-              - file: ray-air/examples/opt_deepspeed_batch_inference
               - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
@@ -192,8 +191,6 @@ parts:
                     title: "PyTorch Example"
                   - file: tune/examples/tune-pytorch-lightning
                     title: "PyTorch Lightning Example"
-                  - file: tune/examples/mxnet_example
-                    title: "MXNet Example"
                   - file: tune/examples/tune-serve-integration-mnist
                     title: "Ray Serve Example"
                   - file: tune/examples/pbt_ppo_example
@@ -267,6 +264,7 @@ parts:
             sections:
               - file: serve/production-guide/config
               - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/docker
               - file: serve/production-guide/fault-tolerance
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
@@ -313,6 +311,7 @@ parts:
               - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-rlmodule
+              - file: rllib/rllib-torch2x
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
