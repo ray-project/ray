@@ -6,11 +6,9 @@ cluster configuration file.
 
 Usage:
     python launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
-        [--num-expected-nodes NUM_NODES] <cluster_configuration_file_path>
-
-Example:
-    python launch_and_verify_cluster.py --retries 5 --no-config-cache
-        --num-expected-nodes 1 /path/to/cluster_config.yaml
+        [--num-expected-nodes NUM_NODES] [--docker-override DOCKER_OVERRIDE]
+        [--wheel-override WHEEL_OVERRIDE]
+        <cluster_configuration_file_path>
 """
 import argparse
 import os
