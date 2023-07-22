@@ -6803,8 +6803,8 @@
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -6835,8 +6835,8 @@
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/example-full.yaml
+    timeout: 3000
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -6869,5 +6869,5 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 2400
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20

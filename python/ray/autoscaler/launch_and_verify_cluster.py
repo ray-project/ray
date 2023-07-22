@@ -46,11 +46,22 @@ def check_arguments():
         help="Number of retries for verifying Ray is running (default: 3)",
     )
     parser.add_argument(
+        "--num-expected-nodes",
+        type=int,
+        default=1,
+        help="Number of nodes for verifying Ray is running (default: 1)",
+    )
+    parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
     args = parser.parse_args()
 
-    return args.cluster_config, args.retries, args.no_config_cache
+    return (
+        args.cluster_config,
+        args.retries,
+        args.no_config_cache,
+        args.num_expected_nodes,
+    )
 
 
 def check_file(file_path):
@@ -101,7 +112,7 @@ def cleanup_cluster(cluster_config):
     subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
 
 
-def run_ray_commands(cluster_config, retries, no_config_cache):
+def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=2):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
@@ -135,7 +146,10 @@ def run_ray_commands(cluster_config, retries, no_config_cache):
                 "exec",
                 "-v",
                 str(cluster_config),
-                "python -c 'import ray; ray.init(\"localhost:6379\")'",
+                (
+                    'python -c \'import ray; ray.init("localhost:6379");'
+                    + f" assert len(ray.nodes()) >= {num_expected_nodes}'"
+                ),
             ]
             if no_config_cache:
                 cmd.append("--no-config-cache")
@@ -145,7 +159,7 @@ def run_ray_commands(cluster_config, retries, no_config_cache):
         except subprocess.CalledProcessError:
             count += 1
             print(f"Verification failed. Retry attempt {count} of {retries}...")
-            time.sleep(5)
+            time.sleep(60)
 
     if not success:
         print("======================================")
@@ -168,13 +182,14 @@ def run_ray_commands(cluster_config, retries, no_config_cache):
 
 
 if __name__ == "__main__":
-    cluster_config, retries, no_config_cache = check_arguments()
+    cluster_config, retries, no_config_cache, num_expected_nodes = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
 
     print(f"Using cluster configuration file: {cluster_config}")
     print(f"Number of retries for 'verify ray is running' step: {retries}")
     print(f"Using --no-config-cache flag: {no_config_cache}")
+    print(f"Number of expected nodes for 'verify ray is running': {num_expected_nodes}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
@@ -222,4 +237,4 @@ if __name__ == "__main__":
         temp.write(yaml.dump(config_yaml).encode("utf-8"))
         temp.flush()
         cluster_config = Path(temp.name)
-        run_ray_commands(cluster_config, retries, no_config_cache)
+        run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes)
