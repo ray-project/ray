@@ -5,7 +5,7 @@ import os
 import json
 import tensorflow as tf
 
-from benchmark_utils import (
+from benchmark import (
     crop_and_flip_image_batch,
     get_transform,
     iterate,

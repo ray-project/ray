@@ -14,21 +14,22 @@ print("===> current directory:", os.getcwd())
 print("===> sys.path:", sys.path)
 
 try:
-    from benchmark_utils import crop_and_flip_image_batch
+    from benchmark import crop_and_flip_image_batch
 except Exception as e:
-    print("===> benchmark_utils WRONG", str(e))
+    print("===> benchmark WRONG", str(e))
 try:
-    from dataset.benchmark_utils import crop_and_flip_image_batch
+    from .benchmark import crop_and_flip_image_batch
 except Exception as e:
-    print("===> dataset.benchmark_utils WRONG", str(e))
+    print("===> .benchmark WRONG", str(e))
 try:
-    from nightly_tests.dataset.benchmark_utils import crop_and_flip_image_batch
+    from dataset.benchmark import crop_and_flip_image_batch
 except Exception as e:
-    print("===> nightly_tests.dataset.benchmark_utils WRONG", str(e))
+    print("===> dataset.benchmark WRONG", str(e))
 try:
-    from .benchmark_utils import crop_and_flip_image_batch
+    from nightly_tests.dataset.benchmark import crop_and_flip_image_batch
 except Exception as e:
-    print("===> .benchmark_utils WRONG", str(e))
+    print("===> nightly_tests.dataset.benchmark WRONG", str(e))
+
 
 # This benchmark does the following:
 # 1) Read images with ray.data.read_images()
