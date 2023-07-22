@@ -30,11 +30,8 @@ typedef std::function<std::shared_ptr<boost::asio::deadline_timer>(std::function
                                                                    uint32_t delay_ms)>
     DelayExecutorFn;
 
-// Manages a separate "Agent" process. The `StartAgnet` method)
+// Manages a separate "Agent" process. In constructor (or the `StartAgent` method) it
 // starts a process with `agent_commands` plus some additional arguments.
-//
-// NOTE: the ctor itself does NOT start the process. One have to call StartAgent to start
-// it.
 //
 // Raylet outlives agents. This means when Raylet exits, the agents must exit; on the
 // other hand, if the agent exits, the raylet may exit only if fate_shares = true. This is
@@ -48,19 +45,33 @@ class AgentManager {
   struct Options {
     const NodeID node_id;
     const std::string agent_name;
-    // Commands to start the agent.
+    // Commands to start the agent. Note we append extra arguments:
+    // --agent-id $AGENT_ID # A random string of int
     std::vector<std::string> agent_commands;
     // If true: the started process fate-shares with the raylet. i.e. when the process
     // fails to start or exits, we SIGTERM the raylet.
     bool fate_shares;
   };
 
-  explicit AgentManager(Options options, DelayExecutorFn delay_executor)
+  explicit AgentManager(Options options,
+                        DelayExecutorFn delay_executor,
+                        bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        kill_raylet_if_process_exits_(options_.fate_shares) {}
+        kill_raylet_if_process_exits_(options_.fate_shares) {
+    if (options_.agent_name.empty()) {
+      RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
+    }
+    if (options_.agent_commands.empty()) {
+      RAY_LOG(FATAL) << "AgentManager agent_commands must not be empty.";
+    }
+    if (start_agent) {
+      StartAgent();
+    }
+  }
   ~AgentManager();
 
+ private:
   void StartAgent();
 
  private:

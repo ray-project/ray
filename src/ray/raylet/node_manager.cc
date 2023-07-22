@@ -86,73 +86,6 @@ namespace ray {
 
 namespace raylet {
 
-namespace {
-
-// Options to start a Dashboard Agent.
-//  Note we append extra arguments:
-// --agent-id $AGENT_ID # A random string of int
-AgentManager::Options DashboardAgentManagerOptions(const NodeID &self_node_id,
-                                                   const NodeManagerConfig &config) {
-  auto agent_command_line = ParseCommandLine(config.dashboard_agent_command);
-
-  for (auto &arg : agent_command_line) {
-    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
-    if (node_manager_port_position != std::string::npos) {
-      arg.replace(node_manager_port_position,
-                  strlen(kNodeManagerPortPlaceholder),
-                  std::to_string(config.node_manager_port));
-    }
-  }
-  // Disable metrics report if needed.
-  if (!RayConfig::instance().enable_metrics_collection()) {
-    agent_command_line.push_back("--disable-metrics-collection");
-  }
-
-  // Create a non-zero random agent_id to pass to the child process
-  // We cannot use pid an id because os.getpid() from the python process is not
-  // reliable when using a launcher.
-  // See https://github.com/ray-project/ray/issues/24361 and Python issue
-  // https://github.com/python/cpython/issues/83086
-  int agent_id = 0;
-  while (agent_id == 0) {
-    agent_id = rand();
-  };
-  std::string agent_id_str = std::to_string(agent_id);
-  agent_command_line.push_back("--agent-id");
-  agent_command_line.push_back(agent_id_str);
-
-  std::string agent_name = "dashboard_agent/" + agent_id_str;
-  // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
-  // dashboard agent crash no longer lead to a raylet crash.
-  return AgentManager::Options({self_node_id,
-                                agent_name,
-                                agent_command_line,
-                                /*fate_shares=*/true});
-}
-
-AgentManager::Options RuntimeEnvAgentManagerOptions(const NodeID &self_node_id,
-                                                    const NodeManagerConfig &config) {
-  auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
-
-  for (auto &arg : agent_command_line) {
-    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
-    if (node_manager_port_position != std::string::npos) {
-      arg.replace(node_manager_port_position,
-                  strlen(kNodeManagerPortPlaceholder),
-                  std::to_string(config.node_manager_port));
-    }
-  }
-
-  std::string agent_name = "runtime_env_agent";
-
-  return AgentManager::Options({self_node_id,
-                                agent_name,
-                                agent_command_line,
-                                /*fate_shares=*/true});
-}
-
-}  // namespace
-
 // A helper function to print the leased workers.
 std::string LeasedWorkersSring(
     const absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
@@ -336,17 +269,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                       RAY_UNUSED(execute_after(
                           io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
-      dashboard_agent_manager_(
-          DashboardAgentManagerOptions(self_node_id, config),
-          /*delay_executor=*/
-          [this](std::function<void()> task, uint32_t delay_ms) {
-            return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-          }),
-      runtime_env_agent_manager_(
-          RuntimeEnvAgentManagerOptions(self_node_id, config), /*delay_executor=*/
-          [this](std::function<void()> task, uint32_t delay_ms) {
-            return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
-          }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
                            config.node_manager_address == "127.0.0.1"),
@@ -486,8 +408,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       self_node_id_.Hex(), true);
   worker_pool_.SetNodeManagerPort(GetServerPort());
 
-  dashboard_agent_manager_.StartAgent();
-  runtime_env_agent_manager_.StartAgent();
+  dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
+  runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
   runtime_env_agent_client_ = RuntimeEnvAgentClient::Create(
       io_service_,
@@ -2854,7 +2776,11 @@ void NodeManager::TriggerGlobalGC() {
   should_local_gc_ = true;
 }
 
-void NodeManager::Stop() { object_manager_.Stop(); }
+void NodeManager::Stop() {
+  object_manager_.Stop();
+  dashboard_agent_manager_.reset();
+  runtime_env_agent_manager_.reset();
+}
 
 void NodeManager::RecordMetrics() {
   recorded_metrics_ = true;
@@ -3172,6 +3098,86 @@ void NodeManager::ReportWorkerOOMKillStats() {
   }
   number_workers_killed_by_oom_ = 0;
   number_workers_killed_ = 0;
+}
+
+std::unique_ptr<AgentManager> NodeManager::CreateDashboardAgentManager(
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
+  auto agent_command_line = ParseCommandLine(config.dashboard_agent_command);
+
+  if (agent_command_line.empty()) {
+    return nullptr;
+  }
+
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position,
+                  strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+  // Disable metrics report if needed.
+  if (!RayConfig::instance().enable_metrics_collection()) {
+    agent_command_line.push_back("--disable-metrics-collection");
+  }
+
+  // Create a non-zero random agent_id to pass to the child process
+  // We cannot use pid an id because os.getpid() from the python process is not
+  // reliable when using a launcher.
+  // See https://github.com/ray-project/ray/issues/24361 and Python issue
+  // https://github.com/python/cpython/issues/83086
+  int agent_id = 0;
+  while (agent_id == 0) {
+    agent_id = rand();
+  };
+  std::string agent_id_str = std::to_string(agent_id);
+  agent_command_line.push_back("--agent-id");
+  agent_command_line.push_back(agent_id_str);
+
+  std::string agent_name = "dashboard_agent/" + agent_id_str;
+  // TODO(ryw): after thorough testing, we can disable the fate_shares flag and let a
+  // dashboard agent crash no longer lead to a raylet crash.
+  auto options = AgentManager::Options({self_node_id,
+                                        agent_name,
+                                        agent_command_line,
+                                        /*fate_shares=*/true});
+  return std::make_unique<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
+      });
+}
+
+std::unique_ptr<AgentManager> NodeManager::CreateRuntimeEnvAgentManager(
+    const NodeID &self_node_id, const NodeManagerConfig &config) {
+  auto agent_command_line = ParseCommandLine(config.runtime_env_agent_command);
+
+  if (agent_command_line.empty()) {
+    return nullptr;
+  }
+
+  for (auto &arg : agent_command_line) {
+    auto node_manager_port_position = arg.find(kNodeManagerPortPlaceholder);
+    if (node_manager_port_position != std::string::npos) {
+      arg.replace(node_manager_port_position,
+                  strlen(kNodeManagerPortPlaceholder),
+                  std::to_string(GetServerPort()));
+    }
+  }
+
+  std::string agent_name = "runtime_env_agent";
+
+  auto options = AgentManager::Options({self_node_id,
+                                        agent_name,
+                                        agent_command_line,
+                                        /*fate_shares=*/true});
+  return std::make_unique<AgentManager>(
+      std::move(options),
+      /*delay_executor=*/
+      [this](std::function<void()> task, uint32_t delay_ms) {
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
+      });
 }
 
 }  // namespace raylet
