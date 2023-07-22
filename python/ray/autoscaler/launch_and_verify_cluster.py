@@ -14,6 +14,7 @@ Example:
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -21,6 +22,7 @@ import time
 from pathlib import Path
 
 import boto3
+import ray
 import yaml
 
 
@@ -53,16 +55,55 @@ def check_arguments():
         help="Number of nodes for verifying Ray is running (default: 1)",
     )
     parser.add_argument(
+        "--docker-override",
+        choices=["disable", "latest", "nightly", "commit"],
+        default="disable",
+        help="Override the docker image used for the head node and worker nodes",
+    )
+    parser.add_argument(
+        "--wheel-override",
+        type=str,
+        default="",
+        help="Override the wheel used for the head node and worker nodes",
+    )
+    parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
     args = parser.parse_args()
+
+    assert not (
+        args.docker_override != "disable" and args.wheel_override != ""
+    ), "Cannot override both docker and wheel"
 
     return (
         args.cluster_config,
         args.retries,
         args.no_config_cache,
         args.num_expected_nodes,
+        args.docker_override,
+        args.wheel_override,
     )
+
+
+def get_docker_image(docker_override):
+    """
+    Get the docker image to use for the head node and worker nodes.
+
+    Args:
+        docker_override: The value of the --docker-override flag.
+
+    Returns:
+        The docker image to use for the head node and worker nodes, or None if not
+        applicable.
+    """
+    if docker_override == "latest":
+        return "rayproject/ray:latest-py38"
+    elif docker_override == "nightly":
+        return "rayproject/ray:nightly-py38"
+    elif docker_override == "commit":
+        if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py38"
+    return None
 
 
 def check_file(file_path):
@@ -183,7 +224,14 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
 
 
 if __name__ == "__main__":
-    cluster_config, retries, no_config_cache, num_expected_nodes = check_arguments()
+    (
+        cluster_config,
+        retries,
+        no_config_cache,
+        num_expected_nodes,
+        docker_override,
+        wheel_override,
+    ) = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
 
@@ -191,6 +239,11 @@ if __name__ == "__main__":
     print(f"Number of retries for 'verify ray is running' step: {retries}")
     print(f"Using --no-config-cache flag: {no_config_cache}")
     print(f"Number of expected nodes for 'verify ray is running': {num_expected_nodes}")
+    print(f"Overriding docker image: {docker_override}")
+    print(f"Overriding ray wheel: {wheel_override}")
+
+    docker_override_image = get_docker_image(docker_override)
+    print(f"Using docker image: {docker_override_image}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
