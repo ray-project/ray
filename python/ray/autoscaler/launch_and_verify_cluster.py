@@ -103,6 +103,12 @@ def get_docker_image(docker_override):
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
             return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py38"
+        else:
+            print(
+                "Error: docker image is only available for "
+                f"release version, but we get: {ray.__version__}"
+            )
+            sys.exit(1)
     return None
 
 
@@ -128,9 +134,7 @@ def override_wheels_url(config_yaml, wheel_url):
 
 
 def override_docker_image(config_yaml, docker_image):
-    assert config_yaml["docker"][
-        "image"
-    ], "Docker section is missing from cluster config"
+    assert config_yaml["docker"], "Docker section is missing from cluster config"
     config_yaml["docker"]["image"] = docker_image
 
 
@@ -252,8 +256,6 @@ if __name__ == "__main__":
     print(f"Number of retries for 'verify ray is running' step: {retries}")
     print(f"Using --no-config-cache flag: {no_config_cache}")
     print(f"Number of expected nodes for 'verify ray is running': {num_expected_nodes}")
-    print(f"Overriding docker image: {docker_override}")
-    print(f"Overriding ray wheel: {wheel_override}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
@@ -261,16 +263,16 @@ if __name__ == "__main__":
         config_yaml["cluster_name"] + "-" + str(int(time.time()))
     )
 
+    print("======================================")
+    print(f"Overriding ray wheel...: {wheel_override}")
     if wheel_override:
-        print("======================================")
-        print("Overriding ray wheel...")
         override_wheels_url(config_yaml, wheel_override)
 
+    print("======================================")
+    print(f"Overriding docker image...: {docker_override}")
     docker_override_image = get_docker_image(docker_override)
     print(f"Using docker image: {docker_override_image}")
     if docker_override_image:
-        print("======================================")
-        print("Overriding docker image...")
         override_docker_image(config_yaml, docker_override_image)
 
     provider_type = config_yaml.get("provider", {}).get("type")
