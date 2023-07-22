@@ -401,7 +401,7 @@ def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
     for cmd in cmds:
         kv_str = ""
         for k, v in kv.items():
-            kv_str += f"{k}={v} "
+            kv_str += f"export {k}={v}; "
 
         out_cmds.append(f"{kv_str}{cmd}")
     return out_cmds
