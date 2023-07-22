@@ -6,11 +6,11 @@ cluster configuration file.
 
 Usage:
     python launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
-        <cluster_configuration_file_path>
+        [--num-expected-nodes NUM_NODES] <cluster_configuration_file_path>
 
 Example:
     python launch_and_verify_cluster.py --retries 5 --no-config-cache
-        /path/to/cluster_config.yaml
+        --num-expected-nodes 1 /path/to/cluster_config.yaml
 """
 import argparse
 import os
