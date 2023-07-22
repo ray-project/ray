@@ -164,7 +164,7 @@ Ray Examples
             How to fine-tune a DreamBooth text-to-image model with your own images.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
+        :class-item: gallery-item training train
 
         .. button-ref:: /ray-air/examples/dolly_lightning_fsdp_finetuning
 
@@ -443,7 +443,6 @@ Ray Examples
 
             Scaling Instacart fulfillment ML on Ray
 
-
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
@@ -613,63 +612,63 @@ Ray Examples
             Hyperparameter Search with 🤗 Transformers
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tensorflow tuning
+        :class-item: gallery-item tensorflow tuning tune
 
         .. button-ref:: tune-mnist-keras
 
             How To Use Tune With Keras & TF Models
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch tuning
+        :class-item: gallery-item pytorch tuning tune serve
 
         .. button-ref:: tune-pytorch-cifar-ref
 
             How To Use Tune With PyTorch Models
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch tuning
+        :class-item: gallery-item pytorch tuning tune serve
 
         .. button-ref:: tune-pytorch-lightning-ref
 
             How To Tune PyTorch Lightning Models
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning serving
+        :class-item: gallery-item tuning serving tune serve
 
         .. button-ref:: /tune/examples/tune-serve-integration-mnist
 
             Model Selection & Serving With Ray Serve
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item rl tuning serving
+        :class-item: gallery-item rl tuning serving tune serve
 
         .. button-ref:: tune-rllib-example
 
             Tuning RL Experiments With Ray Tune & Ray Serve
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
+        :class-item: gallery-item tuning tune serve
 
         .. button-ref:: tune-xgboost-ref
 
             A Guide To Tuning XGBoost Parameters With Tune
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
+        :class-item: gallery-item tuning tune serve
 
         .. button-ref:: tune-lightgbm-example
 
             A Guide To Tuning LightGBM Parameters With Tune
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
+        :class-item: gallery-item tuning tune serve
 
         .. button-ref:: tune-horovod-example
 
             A Guide To Tuning Horovod Parameters With Tune
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning huggingface
+        :class-item: gallery-item tuning huggingface tune serve
 
         .. button-ref:: tune-huggingface-example
 
@@ -689,13 +688,6 @@ Ray Examples
 
             Ray Train, PyTorch, TorchX, and distributed deep learning
 
-    .. grid-item-card:: :bdg-primary:`Code example`
-        :class-item: gallery-item training
-
-        .. button-link:: https://www.uber.com/blog/elastic-xgboost-ray/
-
-            Elastic Distributed Training with XGBoost on Ray
-
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item
 
@@ -711,42 +703,42 @@ Ray Examples
             Fine-tune a 🤗 Transformers model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch training
+        :class-item: gallery-item pytorch training train
 
         .. button-ref:: torch_fashion_mnist_ex
 
             PyTorch Fashion MNIST Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch training
+        :class-item: gallery-item pytorch training train
 
         .. button-ref:: train_transformers_example
 
             Transformers with PyTorch Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tensorflow training
+        :class-item: gallery-item tensorflow training train
 
         .. button-ref:: tensorflow_mnist_example
 
             TensorFlow MNIST Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item training
+        :class-item: gallery-item training train
 
         .. button-ref:: horovod_example
 
             End-to-end Horovod Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item pytorch training
+        :class-item: gallery-item pytorch training train
 
         .. button-ref:: lightning_mnist_example
 
             End-to-end PyTorch Lightning Training Example
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item data-processing
+        :class-item: gallery-item data-processing train
 
         .. button-ref:: lightning_advanced_example
 
@@ -858,6 +850,13 @@ Ray Examples
             Example of defining and registering a gym env and model for use with RLlib
 
     .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/tree/master/rllib/examples/unity3d_env_local.py
+
+            Example of how to setup an RLlib algorithm against a locally running Unity3D editor
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl
 
         .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/env_rendering_and_recording.py
@@ -872,11 +871,25 @@ Ray Examples
             Coin game example with RLlib
 
     .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/dmlab_watermaze.py
+
+            Example for how to use a DMLab environment (Watermaze)
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl
 
         .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/recommender_system_with_recsim_and_slateq.py
 
             RecSym environment example (for recommender systems) using the SlateQ algorithm
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/sumo_env_local.py
+
+            Example demonstrating how to use the SUMO simulator in connection with RLlib.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl
@@ -888,9 +901,422 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item rl
 
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/env/tests/test_env_with_subprocess.py
+
+            Example of how to ensure subprocesses spawned by envs are killed when RLlib exits.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl
+
         .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/attention_net.py
 
             Attention Net (GTrXL) learning the "repeat-after-me" environment
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/lstm_auto_wrapping.py
+
+            Example showing how to use the auto-LSTM wrapper for your default- and custom models in RLlib.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib pytorch tensorflow
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_rnn_model.py
+
+            Example of using a custom Keras- or PyTorch RNN model.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_loss.py
+
+            Example of defining and registering a custom model with a supervised loss.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/batch_norm_model.py
+
+            Example of adding batch norm layers to a custom model.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py
+
+            Example of how to leverage TensorFlow eager to simplify debugging and design of custom models and policies.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_fast_model.py
+
+            Example of a "fast" Model learning only one parameter for tf and torch.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py
+
+            Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/trajectory_view_api.py
+
+            An example on how a model can use the trajectory view API to specify its own input.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/mobilenet_v2_with_lstm.py
+
+            Implementations of `MobileNetV2` and `torch.hub (mobilenet_v2)`-wrapping example models.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/models/neural_computer.py
+
+            Example of DeepMind's Differentiable Neural Computer for partially-observable environments.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib training
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_train_fn.py
+
+            Example of how to use Tune's support for custom training functions to implement custom training workflows.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum_learning.py
+
+            Example of how to advance the environment through different phases (tasks) over time.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_logger.py
+
+            How to setup a custom Logger object in RLlib.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib tensorflow
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_metrics_and_callbacks.py
+
+            Example of how to output custom training metrics to TensorBoard.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib tensorflow
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py
+
+            How to setup a custom TFPolicy.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib pytorch
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py
+
+            How to setup a custom TorchPolicy.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/rollout_worker_custom_workflow.py
+
+            Example of how to use RLlib's lower-level building blocks to implement a fully customized training workflow.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/two_trainer_workflow.py
+
+            Example of how to use the exec. plan of an Algorithm to trin two different policies in parallel (also using multi-agent API).
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_experiment.py
+
+            How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_eval.py
+
+            Example of how to write a custom evaluation function that is called instead of the default behavior, which is running with the evaluation worker set through n episodes.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/parallel_evaluation_and_training.py
+
+            Example showing how the evaluation workers and the "normal" rollout workers can run (to some extend) in parallel to speed up training.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-link:: https://github.com/ray-project/ray/tree/master/rllib/examples/offline_rl.py
+
+            Example showing how to run an offline RL training job using a historic-data json file.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-ref:: serve-rllib-tutorial
+
+            Example of using Ray Serve to serve RLlib models with HTTP and JSON interface
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-link:: https://github.com/ray-project/ray/tree/master/rllib/examples/inference_and_serving/serve_and_rllib.py
+
+            This script offers a simple workflow for 1) training a policy with RLlib first, 2) creating a new policy 3) restoring its weights from the trained one and serving the new policy via Ray Serve.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-link:: https://github.com/ray-project/ray/tree/master/rllib/examples/serving/unity3d_server.py
+
+            Example of how to setup n distributed Unity3D (compiled) games in the cloud that function as data collecting clients against a central RLlib Policy server learning how to play the game.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-link:: https://github.com/ray-project/ray/tree/master/rllib/examples/serving/cartpole_server.py
+
+            Example of online serving of predictions for a simple CartPole policy.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py
+
+            Example of how to externally generate experience batches in RLlib-compatible format.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib serving
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/checkpoint_by_custom_criteria.py
+
+            Example of how to find a checkpoint after a `Tuner.fit()` via some custom defined criteria.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_independent_learning.py
+
+            Setup RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_parameter_sharing.py
+
+            Setup RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/rock_paper_scissors_multiagent.py
+
+            Example of different heuristic and learned policies competing against each other in rock-paper-scissors.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/two_step_game.py
+
+            Example of the two-step game from the QMIX paper.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py
+
+            Example on how to use RLlib to learn in PettingZoo multi-agent environments.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py
+
+            Example of customizing PPO to leverage a centralized value function.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py
+
+            A simpler method of implementing a centralized critic by augmentating agent observations with global information.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_custom_policy.py
+
+            Example of running a custom hand-coded policy alongside trainable policies.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py
+
+            Example of how to define weight-sharing layers between two different policies.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_two_trainers.py
+
+            Example of alternating training between DQN and PPO.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical_training.py
+
+            Example of hierarchical training using the multi-agent API.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/iterated_prisoners_dilemma_env.py
+
+            Example of an iterated prisoner's dilemma environment solved by RLlib.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/partial_gpus.py
+
+            Example of how to setup fractional GPUs for learning (driver) and environment rollouts (remote workers).
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/nested_action_spaces.py
+
+            Learning in arbitrarily nested action spaces.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/parametric_actions_cartpole.py
+
+            Example of how to handle variable-length or parametric action spaces
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/custom_observation_filters.py
+
+            How to filter raw observations coming from the environment for further processing by the Agent's model(s).
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/complex_struct_space.py
+
+            How to use RLlib's `Repeated` space to handle variable length observations.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ray-project/ray/blob/master/rllib/examples/autoregressive_action_dist.py
+
+            Learning with auto-regressive action dependencies (e.g. 2 action components; distribution for 2nd component depends on the 1st component's actually sampled value).
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://sites.google.com/view/arena-unity/home
+
+            A General Evaluation Platform and Building Toolkit for Single/Multi-Agent Intelligence with RLlib-generated baselines.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/layssi/Carla_Ray_Rlib
+
+            Example of training autonomous vehicles with RLlib and CARLA simulator.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://arxiv.org/pdf/2008.02616.pdf
+
+            Using Graph Neural Networks and RLlib to train multiple cooperative and adversarial agents to solve the "cover the area"-problem, thereby learning how to best communicate (or - in the adversarial case - how to disturb communication).
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://flatland.aicrowd.com/intro.html
+
+            A dense traffic simulating environment with RLlib-generated baselines.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/google-research/football/blob/master/gfootball/examples/run_multiagent_rllib.py
+
+            Example of setting up a multi-agent version of GFootball with RLlib.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/NeuralMMO/environment
+
+            A multiagent AI research environment inspired by Massively Multiplayer Online (MMO) role playing games
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/neurocuts/neurocuts
+
+            Example of building packet classification trees using RLlib / multi-agent in a bandit-like setting.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/ucb-bar/NeuroVectorizer
+
+            Example of learning optimal LLVM vectorization compiler pragmas for loops in C and C++ codes using RLlib.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/eugenevinitsky/sequential_social_dilemma_games
+
+            Example of using the multi-agent API to model several social dilemma games.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/lcipolina/Ray_tutorials/blob/main/RLLIB_Ray2_0.ipynb
+
+            Create a custom environment and train a single agent RL using Ray 2.0 with Tune and Air.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://github.com/oxwhirl/smac
+
+            Example of training in StarCraft2 maps with RLlib / multi-agent.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item rl rllib
+
+        .. button-link:: https://berkeleyflow.readthedocs.io/en/latest/flow_setup.html
+
+            Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tensorflow rl
@@ -912,7 +1338,6 @@ Ray Examples
         .. button-link:: https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games
 
             Deep reinforcement learning at Riot Games
-
 
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item
@@ -963,7 +1388,6 @@ Ray Examples
 
             AutoML for Time Series with Ray
 
-
     .. grid-item-card:: :bdg-primary:`Blog`
         :class-item: gallery-item
 
@@ -991,3 +1415,227 @@ Ray Examples
         .. button-ref:: /ray-core/examples/web-crawler
 
             Speed up your web crawler by parallelizing it with Ray
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item huggingface cv data inference
+
+        .. button-ref:: /data/examples/huggingface_vit_batch_prediction
+
+            Image Classification Batch Inference with Huggingface Vision Transformer
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item pytorch cv data inference
+
+        .. button-ref:: /data/examples/pytorch_resnet_batch_prediction
+
+            Image Classification Batch Inference with PyTorch ResNet152
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item pytorch cv data inference
+
+        .. button-ref:: /data/examples/batch_inference_object_detection
+
+            Object Detection Batch Inference with PyTorch FasterRCNN_ResNet50
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item data data-processing
+
+        .. button-ref:: /data/examples/nyc_taxi_basic_processing
+
+            Processing the NYC taxi dataset
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item data data-processing training
+
+        .. button-ref:: /data/examples/batch_training
+
+            Batch Training with Ray Data
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item data data-processing cv
+
+        .. button-ref:: /data/examples/ocr_example
+
+            Scaling OCR with Ray Data
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item data data-processing
+
+        .. button-ref:: /data/examples/random-access
+
+            Random Data Access (Experimental)
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item data data-processing
+
+        .. button-ref:: /data/examples/custom-datasource
+
+            Implementing a Custom Datasource
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core inference
+
+        .. button-ref:: /ray-core/examples/batch_prediction
+
+            Build Batch Prediction Using Ray
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core serve
+
+        .. button-ref:: /ray-core/examples/plot_parameter_server
+
+            Build a Simple Parameter Server Using Ray
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core
+
+        .. button-ref:: /ray-core/examples/plot_hyperparameter
+
+            Simple Parallel Model Selection
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core training
+
+        .. button-ref:: /ray-core/examples/plot_example-lm
+
+            Fault-Tolerant Fairseq Training
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core rl
+
+        .. button-ref:: /ray-core/examples/plot_pong_example
+
+            Learning to Play Pong
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core rl
+
+        .. button-ref:: /ray-core/examples/plot_example-a3c
+
+            Asynchronous Advantage Actor Critic (A3C)
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core
+
+        .. button-ref:: /ray-core/examples/gentle_walkthrough
+
+            A Gentle Introduction to Ray Core by Example
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core
+
+        .. button-ref:: /ray-core/examples/highly_parallel
+
+            Using Ray for Highly Parallelizable Tasks
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core
+
+        .. button-ref:: /ray-core/examples/map_reduce
+
+            Running a Simple MapReduce Example with Ray Core
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item core pytorch
+
+        .. button-ref:: train_benchmark
+
+            Benchmark example for the PyTorch data transfer auto pipeline
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/tune-sklearn
+
+            How To Use Tune's Scikit-Learn Adapters?
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/includes/tune_basic_example
+
+            Simple example for doing a basic random and grid search.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/includes/async_hyperband_example
+
+            Example of using a simple tuning function with AsyncHyperBandScheduler.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/includes/hyperband_function_example
+
+            Example of using a Trainable function with HyperBandScheduler. Also uses the AsyncHyperBandScheduler.
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/pbt_visualization/pbt_visualization
+
+            Configuring and running (synchronous) PBT and understanding the underlying algorithm behavior with a simple example.
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/includes/pbt_function
+
+            Example of using the function API with a PopulationBasedTraining scheduler.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/includes/pb2_example
+
+            Example of using the Population-based Bandits (PB2) scheduler.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune
+
+        .. button-ref:: /tune/examples/includes/logging_example
+
+            Example of custom loggers and custom trial directory naming.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune notebook tensorflow
+
+        .. button-link:: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_1_basics.ipynb
+
+            Basics of using Tune
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune notebook pytorch
+
+        .. button-link:: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_2_optimize.ipynb
+
+            Using Search algorithms and Trial Schedulers to optimize your model.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune notebook pytorch
+
+        .. button-link:: https://colab.research.google.com/github/ray-project/tutorial/blob/master/tune_exercises/exercise_3_pbt.ipynb
+
+            Using Population-Based Training (PBT).
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune notebook huggingface pytorch
+
+        .. button-link:: https://colab.research.google.com/drive/1tQgAKgcKQzheoh503OzhS4N9NtfFgmjF?usp=sharing
+
+            Fine-tuning Huggingface Transformers with PBT.
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item tune notebook comet
+
+        .. button-link:: https://colab.research.google.com/drive/1dp3VwVoAH1acn_kG7RuT62mICnOqxU1z?usp=sharing
+
+            Logging Tune Runs to Comet ML.
+
+    .. grid-item-card:: :bdg-success:`Tutorial`
+        :class-item: gallery-item serve
+
+        .. button-ref:: /serve/tutorials/streaming
+
+            Using Ray Serve to deploy a chatbot

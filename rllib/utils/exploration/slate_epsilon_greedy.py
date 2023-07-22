@@ -1,8 +1,7 @@
 from typing import Union
 
 from ray.rllib.models.action_dist import ActionDistribution
-from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.annotations import override, PublicAPI
 from ray.rllib.utils.exploration.epsilon_greedy import EpsilonGreedy
 from ray.rllib.utils.exploration.exploration import TensorType
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -11,7 +10,7 @@ tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
 
 
-@Deprecated(error=False)
+@PublicAPI
 class SlateEpsilonGreedy(EpsilonGreedy):
     @override(EpsilonGreedy)
     def _get_tf_exploration_action_op(
