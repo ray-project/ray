@@ -28,6 +28,7 @@ import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeList } from "./hook/useNodeList";
+import { useNodeLogicalResourceMap } from "./hook/useNodeLogicalResource";
 import { NodeRows } from "./NodeRow";
 
 const useStyles = makeStyles((theme) => ({
@@ -226,7 +227,8 @@ const Nodes = () => {
     mode,
     setMode,
   } = useNodeList();
-
+  const { nodeLogicalResourceMap } = useNodeLogicalResourceMap();
+  console.info('nodeLogicalResourceMap: ', nodeLogicalResourceMap)
   return (
     <div className={classes.root}>
       <Loading loading={isLoading} />

@@ -299,7 +299,6 @@ export const NodeRows = ({
   startExpanded = false,
 }: NodeRowsProps) => {
   const [isExpanded, setExpanded] = useState(startExpanded);
-  const { nodeLogicalResourceMap } = useNodeLogicalResourceMap();
 
   const { data } = useSWR(
     ["getNodeDetail", node.raylet.nodeId],
@@ -334,11 +333,7 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
-        logicalResource={
-          nodeLogicalResourceMap
-            ? nodeLogicalResourceMap[node.raylet.nodeId]
-            : ""
-        }
+        logicalResource={""}
       />
       {isExpanded &&
         workers.map((worker) => (

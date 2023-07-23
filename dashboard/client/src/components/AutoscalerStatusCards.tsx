@@ -2,7 +2,7 @@ import { Box, Typography } from "@material-ui/core";
 import React from "react";
 import { RayStatusResp } from "../service/status";
 
-export const formatNodeStatus = (cluster_status: string) => {
+const formatNodeStatus = (cluster_status: string) => {
   // ==== auto scaling status
   // Node status
   // ....
@@ -15,7 +15,7 @@ export const formatNodeStatus = (cluster_status: string) => {
   );
 };
 
-export const formatResourcesStatus = (cluster_status: string) => {
+const formatResourcesStatus = (cluster_status: string) => {
   // ==== auto scaling status
   // Node status
   // ....
@@ -25,7 +25,7 @@ export const formatResourcesStatus = (cluster_status: string) => {
   return formatClusterStatus("Resource Status", sections[1]);
 };
 
-export const formatClusterStatus = (title: string, cluster_status: string) => {
+const formatClusterStatus = (title: string, cluster_status: string) => {
   const cluster_status_rows = cluster_status.split("\n");
 
   return (

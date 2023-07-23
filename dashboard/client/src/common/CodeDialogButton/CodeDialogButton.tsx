@@ -36,10 +36,6 @@ export type CodeDialogButtonProps = {
    * Code to show in the dialog. If an object is passed in, that object will be stringified to yaml.
    */
   code: string | object;
-  /**
-   * React node to show in the dialog. If this is passed in, code will be ignored.
-   */
-  children?: React.ReactNode;
 };
 
 /**
@@ -49,7 +45,6 @@ export const CodeDialogButton = ({
   title,
   buttonText = "View",
   code,
-  children,
 }: CodeDialogButtonProps) => {
   const classes = useStyles();
 
@@ -72,15 +67,9 @@ export const CodeDialogButton = ({
           }}
         >
           <Card variant="outlined">
-            {children ? (
-              children
-            ) : (
-              <Typography className={classes.configText}>
-                {typeof code === "string"
-                  ? code
-                  : yaml.dump(code, { indent: 2 })}
-              </Typography>
-            )}
+            <Typography className={classes.configText}>
+              {typeof code === "string" ? code : yaml.dump(code, { indent: 2 })}
+            </Typography>
           </Card>
         </DialogWithTitle>
       )}

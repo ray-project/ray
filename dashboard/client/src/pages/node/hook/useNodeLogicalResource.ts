@@ -8,6 +8,7 @@ export const useNodeLogicalResourceMap = () => {
     async () => {
       try {
         const rsp = await getNodeLogicalResourceMap();
+        console.info("rsp: ", rsp);
         return rsp.data;
       } catch (e) {
         console.error(

@@ -6,9 +6,6 @@ import aiohttp.web
 import ray
 import ray._private.services
 import ray._private.utils
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeAvailabilitySummary,
-)
 import ray.dashboard.optional_utils as dashboard_optional_utils
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 import ray.dashboard.utils as dashboard_utils
@@ -25,7 +22,6 @@ from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray.autoscaler._private.commands import debug_status
-from ray.autoscaler._private.util import LoadMetricsSummary, get_per_node_breakdown
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.ClassMethodRouteTable
@@ -68,49 +64,6 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             success=True, message="", **self.cluster_metadata
         )
 
-    @routes.get("/api/logical_resource")
-    async def get_logical_resource(self, req):
-        if "node_id" in req.query:
-            logger.info(f"Getting status of node {req.query['node_id']}")
-
-        (status, error) = await asyncio.gather(
-            *[
-                self._gcs_aio_client.internal_kv_get(
-                    key.encode(), namespace=None, timeout=GCS_RPC_TIMEOUT_SECONDS
-                )
-                for key in [
-                    DEBUG_AUTOSCALING_STATUS,
-                    DEBUG_AUTOSCALING_ERROR,
-                ]
-            ]
-        )
-        status_dict = json.loads(status)
-        lm_summary_dict = status_dict.get("load_metrics_report")
-        if lm_summary_dict:
-            lm_summary = LoadMetricsSummary(**lm_summary_dict)
-        node_availability_summary_dict = autoscaler_summary_dict.pop(
-            "node_availability_summary", {}
-        )
-        node_availability_summary = NodeAvailabilitySummary.from_fields(
-            **node_availability_summary_dict
-        )
-        autoscaler_summary = AutoscalerSummary(
-            node_availability_summary=node_availability_summary,
-            **autoscaler_summary_dict,
-        )
-        output = get_per_node_breakdown(
-            lm_summary, autoscaler_summary.node_type_mapping, verbose=True
-        )
-
-        if output:
-            return dashboard_optional_utils.rest_response(
-                success=True,
-                message="Got the logical resource info for a node",
-                data=output,
-            )
-        else:
-            return aiohttp.web.HTTPInternalServerError(text=error)
-
     @routes.get("/api/cluster_status")
     async def get_cluster_status(self, req):
         """Returns status information about the cluster.
@@ -122,12 +75,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
         These fields are both read from the GCS, it's expected that the
         autoscaler writes them there.
-
-        If node_id is specified, return the status of a node.
         """
-        if "node_id" in req.query:
-            logger.info(f"Getting status of node {req.query['node_id']}")
-
         return_formatted_output = req.query.get("format", "0") == "1"
 
         (legacy_status, formatted_status_string, error) = await asyncio.gather(

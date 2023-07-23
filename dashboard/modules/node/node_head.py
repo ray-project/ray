@@ -85,18 +85,6 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-def combine_data(node_list, node_logical_resource):
-    for node in node_list["data"]["summary"]:
-        node_id = node["nodeId"]
-        if node_id in node_logical_resource:
-            resource_info = node_logical_resource[node_id]
-            node_summary = node["raylet"].setdefault("summary", {})
-            node_summary.update(resource_info)
-    logger.info(f"node_list {type(node_list)}: {node_list}")
-
-    return node_list
-
-
 class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
