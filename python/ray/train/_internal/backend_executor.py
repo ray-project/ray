@@ -17,6 +17,7 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
+from ray.train._internal.storage import _use_storage_context, get_storage_context
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
 from ray.train.backend import BackendConfig
@@ -378,6 +379,7 @@ class BackendExecutor:
             encode_data_fn,
             checkpoint_keep_all_ranks,
             checkpoint_upload_from_workers,
+            storage,
         ):
             try:
                 init_session(
@@ -395,6 +397,7 @@ class BackendExecutor:
                     enable_lazy_checkpointing=use_lazy_checkpointing,
                     checkpoint_keep_all_ranks=checkpoint_keep_all_ranks,
                     checkpoint_upload_from_workers=(checkpoint_upload_from_workers),
+                    storage=storage,
                 )
             except ValueError:
                 raise TrainBackendError(
@@ -440,6 +443,8 @@ class BackendExecutor:
                     checkpoint_upload_from_workers=(
                         self._checkpoint_upload_from_workers
                     ),
+                    # Pass the Trainable's shared storage context to the Train workers
+                    storage=get_storage_context() if _use_storage_context() else None,
                 )
             )
 
