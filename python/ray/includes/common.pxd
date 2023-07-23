@@ -491,6 +491,7 @@ cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
         c_string job_id() const
         c_bool is_dead() const
         CJobConfig config() const
+        const c_string &SerializeAsString()
 
     cdef cppclass CPythonFunction "ray::rpc::PythonFunction":
         void set_key(const c_string &key)
