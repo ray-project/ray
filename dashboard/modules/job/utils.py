@@ -158,11 +158,11 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    reply = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
 
     jobs = {}
     submission_job_drivers = {}
-    for job_table_entry in reply.job_info_list:
+    for job_table_entry in job_infos.values():
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):

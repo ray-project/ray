@@ -160,6 +160,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
+from ray.core.generated.gcs_pb2 import JobTableData
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
@@ -2308,21 +2309,24 @@ cdef class GcsClient:
 
     @_auto_reconnect
     def get_all_job_info(self, timeout=None):
+        # Ideally we should use json_format.MessageToDict(job_info),
+        # but `job_info` is a cpp pb message not a python one.
+        # Manually converting each and every protobuf field is out of question,
+        # so we serialize the pb to string to cross the FFI interface.
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CJobTableData job_info
-            c_vector[CJobTableData] job_infos
+            CJobTableData c_job_info
+            c_vector[CJobTableData] c_job_infos
+            c_vector[c_string] serialized_job_infos
         with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, job_infos))
-
+            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
+            for c_job_info in c_job_infos:
+                serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
-        for job_info in job_infos:
-            result[job_info.job_id()] = {
-                "is_dead": job_info.is_dead(),
-                "config": {
-                    "ray_namespace": job_info.config().ray_namespace().decode()
-                }
-            }
+        for serialized in serialized_job_infos:
+            job_info = JobTableData()
+            job_info.ParseFromString(serialized)
+            result[job_info.job_id] = job_info
         return result
 
     ########################################################
