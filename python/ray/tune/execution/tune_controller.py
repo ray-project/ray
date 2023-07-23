@@ -14,7 +14,7 @@ from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
-from ray.train._internal.storage import StorageContext
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.exceptions import RayActorError
 from ray.tune.error import _AbortTrialExecution
 from ray.tune.execution.ray_trial_executor import _class_cache
@@ -1156,15 +1156,21 @@ class TuneController(_TuneControllerBase):
             should_chdir=self._chdir_to_trial_dir,
         )
 
+        reset_kwargs = {
+            "logger_creator": logger_creator,
+            "remote_checkpoint_dir": trial.remote_checkpoint_dir,
+        }
+
+        if _use_storage_context():
+            assert trial.storage
+            reset_kwargs["storage"] = trial.storage
+
         self._resetting_trials.add(trial)
         self._schedule_trial_task(
             trial=trial,
             method_name="reset",
             args=(extra_config,),
-            kwargs={
-                "logger_creator": logger_creator,
-                "remote_checkpoint_dir": trial.remote_checkpoint_dir,
-            },
+            kwargs=reset_kwargs,
             on_result=self._on_trial_reset,
             on_error=self._trial_task_failure,
         )

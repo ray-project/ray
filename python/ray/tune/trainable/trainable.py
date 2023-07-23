@@ -197,6 +197,10 @@ class Trainable:
 
             self.remote_checkpoint_dir = storage.trial_fs_path
             self.sync_config = storage.sync_config
+
+            # TODO(justinvyu): This is needed for the legacy Trainable syncing code.
+            # Remove this after syncer argument is removed from SyncConfig.
+            self.sync_config.syncer = storage.syncer
         else:
             self.remote_checkpoint_dir = remote_checkpoint_dir
             # If no sync_config is provided, but we save to a remote_checkpoint_dir,
@@ -220,6 +224,11 @@ class Trainable:
 
     @property
     def uses_cloud_checkpointing(self):
+        # NOTE: If storage_path == cache_path, no syncer is set,
+        # so don't attempt uploading checkpoints/artifacts
+        if _use_storage_context():
+            return bool(self._storage.syncer)
+
         return bool(self.remote_checkpoint_dir)
 
     def _remote_storage_path(self, local_path):
@@ -590,9 +599,14 @@ class Trainable:
             return None
 
         checkpoint_candidates = []
-        for name in list_at_uri(self.remote_checkpoint_dir):
+        for name in list_at_uri(
+            self.remote_checkpoint_dir,
+            fs=self._storage.storage_filesystem if _use_storage_context() else None,
+        ):
             if not name.startswith("checkpoint_"):
                 continue
+            # TODO(justinvyu): This is joining the local dir which is incorrect
+            # This local/remote logic should be unified to just check storage_path.
             candidate_path = os.path.join(self._logdir, name)
             checkpoint_candidates.append(candidate_path)
 
@@ -664,9 +678,8 @@ class Trainable:
         syncer = self.sync_config.syncer
         assert syncer
 
-        checkpoint_uri = self._remote_storage_path(local_dir)
-
-        syncer.sync_up(local_dir=local_dir, remote_dir=checkpoint_uri, exclude=exclude)
+        remote_dir = self._remote_storage_path(local_dir)
+        syncer.sync_up(local_dir=local_dir, remote_dir=remote_dir, exclude=exclude)
         try:
             syncer.wait_or_retry(
                 max_retries=self.sync_num_retries,
@@ -675,8 +688,7 @@ class Trainable:
         except TuneError as e:
             num_retries = self.sync_num_retries
             logger.error(
-                f"Could not upload checkpoint to {checkpoint_uri} even after "
-                f"{num_retries} retries. "
+                f"Could not upload to {remote_dir} even after {num_retries} retries. "
                 f"Please check if the credentials expired and that the remote "
                 f"filesystem is supported. For large checkpoints or artifacts, "
                 f"consider increasing `SyncConfig(sync_timeout)` "
@@ -714,6 +726,9 @@ class Trainable:
         rel_checkpoint_dir = TrainableUtil.find_rel_checkpoint_dir(
             self.logdir, checkpoint_path
         )
+
+        # TODO(justinvyu): Move away from using URI, since everything is a
+        # regular path now, and storage_filesystem defines the "scheme".
         external_uri = str(URI(self.remote_checkpoint_dir) / rel_checkpoint_dir)
         local_dir = os.path.join(self.logdir, rel_checkpoint_dir)
         path_existed_before = os.path.exists(local_dir)
@@ -729,6 +744,10 @@ class Trainable:
 
     def _maybe_load_artifacts_from_cloud(self) -> bool:
         if not self.sync_config.sync_artifacts:
+            return False
+
+        # NOTE: Don't download artifacts for the user in the new persistence mode.
+        if _use_storage_context():
             return False
 
         remote_dir = self._remote_storage_path(self.logdir)
@@ -755,7 +774,10 @@ class Trainable:
     def _maybe_load_from_cloud(
         self, remote_dir: str, local_dir: str, exclude: List[str] = None
     ) -> bool:
-        if not self.uses_cloud_checkpointing or not list_at_uri(remote_dir):
+        if not self.uses_cloud_checkpointing or not list_at_uri(
+            remote_dir,
+            fs=self._storage.storage_filesystem if _use_storage_context() else None,
+        ):
             return False
 
         syncer = self.sync_config.syncer
@@ -848,6 +870,12 @@ class Trainable:
         if isinstance(checkpoint_path, Checkpoint):
             return self._restore_from_checkpoint_obj(checkpoint_path)
 
+        # TODO(justinvyu): This needs to be reworked in a followup PR.
+        # We should not download the checkpoint at the Trainable level.
+        # Instead, the we should pass a Checkpoint to the user, where they can
+        # download it themselves.
+        # One complication to solve: below, we load back Trainable state
+        # from .tune_metadata, which is stored within the checkpoint folder.
         synced_from_cloud = self._maybe_load_checkpoint_from_cloud(checkpoint_path)
 
         if not synced_from_cloud and (
@@ -1007,7 +1035,13 @@ class Trainable:
         export_dir = export_dir or self.logdir
         return self._export_model(export_formats, export_dir)
 
-    def reset(self, new_config, logger_creator=None, remote_checkpoint_dir=None):
+    def reset(
+        self,
+        new_config,
+        logger_creator=None,
+        remote_checkpoint_dir=None,
+        storage: Optional[StorageContext] = None,
+    ):
         """Resets trial for use with new config.
 
         Subclasses should override reset_config() to actually
@@ -1045,6 +1079,16 @@ class Trainable:
         if not success:
             return False
 
+        self._storage = storage
+        if _use_storage_context():
+            assert storage
+            self.remote_checkpoint_dir = storage.trial_fs_path
+            # NOTE: The global storage context needs to be reset to
+            # one corresponding to the new trial coming in.
+            init_shared_storage_context(storage)
+        else:
+            self.remote_checkpoint_dir = remote_checkpoint_dir
+
         # Reset attributes. Will be overwritten by `restore` if a checkpoint
         # is provided.
         self._iteration = 0
@@ -1054,7 +1098,6 @@ class Trainable:
         self._time_since_restore = 0.0
         self._timesteps_since_restore = 0
         self._iterations_since_restore = 0
-        self.remote_checkpoint_dir = remote_checkpoint_dir
         self._last_artifact_sync_iter = None
         self._restored = False
 
