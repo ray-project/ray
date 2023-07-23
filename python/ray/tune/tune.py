@@ -1182,7 +1182,9 @@ def run(
         trials=all_trials,
         default_metric=metric,
         default_mode=mode,
-        remote_storage_path=remote_path,
+        # NOTE: In the new persistence mode, we don't distinguish
+        # between remote/local storage_path.
+        remote_storage_path=storage_path if _use_storage_context() else remote_path,
     )
 
     return ea
