@@ -1027,7 +1027,6 @@ def run(
         callbacks=callbacks,
         metric=metric,
         trial_checkpoint_config=experiments[0].checkpoint_config,
-        storage=experiments[0].storage,
         _trainer_api=_entrypoint == AirEntrypoint.TRAINER,
     )
 
@@ -1036,8 +1035,13 @@ def run(
         runner_kwargs.pop("trial_executor")
         runner_kwargs["reuse_actors"] = reuse_actors
         runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
+        runner_kwargs["storage"] = experiments[0].storage
     else:
         trial_runner_cls = TrialRunner
+        if _use_storage_context():
+            raise ValueError(
+                "The old execution path does not support the new persistence mode."
+            )
 
     runner = trial_runner_cls(**runner_kwargs)
 
