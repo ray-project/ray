@@ -677,24 +677,39 @@ class _BackgroundSyncer(Syncer):
 
 
 class _DefaultSyncer(_BackgroundSyncer):
-    """Default syncer between local storage and remote URI."""
+    """Default syncer between local and remote storage, using `pyarrow.fs.copy_files`"""
+
+    def __init__(
+        self, storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None, **kwargs
+    ):
+        self.storage_filesystem = storage_filesystem
+        super().__init__(**kwargs)
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None
     ) -> Tuple[Callable, Dict]:
         return (
             upload_to_uri,
-            dict(local_path=local_path, uri=uri, exclude=exclude),
+            dict(
+                local_path=local_path,
+                uri=uri,
+                exclude=exclude,
+                destination_filesystem=self.storage_filesystem,
+            ),
         )
 
     def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
         return (
             download_from_uri,
-            dict(uri=uri, local_path=local_path),
+            dict(
+                uri=uri,
+                local_path=local_path,
+                source_filesystem=self.storage_filesystem,
+            ),
         )
 
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
-        return delete_at_uri, dict(uri=uri)
+        return delete_at_uri, dict(uri=uri, fs=self.storage_filesystem)
 
 
 @DeveloperAPI
