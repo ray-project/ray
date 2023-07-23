@@ -563,7 +563,7 @@ void ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
     if (meta.owned_by_us && meta.pinned_at_raylet_id) {
       ++owned_objs;
       std::ofstream out(prefix / obj_id.Hex(), std::ios::out | std::ios::trunc);
-      out << meta.pinned_at_raylet_id->Hex() << std::endl;
+      out << meta.pinned_at_raylet_id->Hex() << "\t" << meta.object_size << std::endl;
     }
   }
   RAY_LOG(INFO) << "Dump owner info into " << prefix << ", num=" << owned_objs;

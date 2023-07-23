@@ -19,7 +19,7 @@
 #endif
 
 #include <google/protobuf/util/json_util.h>
-
+#include <filesystem>
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -121,6 +121,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
       pid_(getpid()) {
+  ::RayConfig::instance().prototype_session_dir() = options_.session_dir;
   // Notify that core worker is initialized.
   auto initialzed_scope_guard = absl::MakeCleanup([this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -1429,6 +1430,8 @@ Status CoreWorker::Get(const std::vector<ObjectID> &ids,
       missing_result = true;
     }
   }
+  RAY_LOG(INFO) << "CoreWorker::DEBUG: " << will_throw_exception << " "
+                << missing_result << " " << timeout_ms << " " << got_exception;
   // If no timeout was set and none of the results will throw an exception,
   // then check that we fetched all results before returning.
   if (timeout_ms < 0 && !will_throw_exception) {

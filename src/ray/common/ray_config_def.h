@@ -833,3 +833,4 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
+RAY_CONFIG(std::string, prototype_session_dir, "")

@@ -46,11 +46,29 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
                      << " that was deserialized: " << status.ToString();
   }
 
+  std::string out;
+  google::protobuf::util::MessageToJsonString(reply, &out);
+  RAY_LOG(INFO) << "DEBUG:::::: " << out;
+
   if (!status.ok()) {
-    // The owner is unreachable. Store an error so that an exception will be
-    // thrown immediately when the worker tries to get the value.
-    RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED), object_id));
-  } else if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
+    auto path = std::filesystem::path(::RayConfig::instance().prototype_session_dir()) / "drain_object_meta" / object_id.Hex();
+    if(std::filesystem::exists(path)){
+      // std::ifstream fout(path);
+      // std::string data;
+      // fout >> data;
+      // auto node_id = NodeID::FromHex(data);
+      // const_cast<rpc::GetObjectStatusReply &>(reply).set_status(rpc::GetObjectStatusReply::CREATED);
+      // const_cast<rpc::GetObjectStatusReply &>(reply).add_node_ids(node_id.Binary());
+
+    } else {
+      // The owner is unreachable. Store an error so that an exception will be
+      // thrown immediately when the worker tries to get the value.
+      RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED), object_id));
+      return;
+    }
+  }
+
+  if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
     // The owner replied that the object has gone out of scope (this is an edge
     // case in the distributed ref counting protocol where a borrower dies
     // before it can notify the owner of another borrower). Store an error so

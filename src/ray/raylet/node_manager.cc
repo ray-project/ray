@@ -319,6 +319,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
+  RayConfig::instance().prototype_session_dir() = initial_config_.session_dir;
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       io_service,
       scheduling::NodeID(self_node_id_.Binary()),
