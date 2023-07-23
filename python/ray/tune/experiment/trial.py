@@ -27,6 +27,7 @@ from ray.air.constants import (
 
 import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune import TuneError
 from ray.tune.error import _TuneRestoreError
 from ray.tune.execution.checkpoint_manager import _CheckpointManager
@@ -60,6 +61,7 @@ from ray.tune.utils.util import _split_remote_local_path
 from ray.util.annotations import DeveloperAPI, Deprecated
 from ray.util.debug import log_once
 from ray._private.utils import binary_to_hex, hex_to_binary
+
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
@@ -247,7 +249,11 @@ def _get_trainable_kwargs(
         "logger_creator": logger_creator,
     }
 
-    if trial.uses_cloud_checkpointing:
+    if _use_storage_context():
+        assert trial.storage
+        assert trial.storage.trial_dir_name
+        kwargs["storage"] = trial.storage
+    elif trial.uses_cloud_checkpointing:
         # We keep these kwargs separate for backwards compatibility
         # with trainables that don't provide these keyword arguments
         kwargs["remote_checkpoint_dir"] = trial.remote_path
@@ -327,6 +333,7 @@ class Trial:
         *,
         config: Optional[Dict] = None,
         trial_id: Optional[str] = None,
+        storage: Optional[StorageContext] = None,
         experiment_path: Optional[str] = None,
         experiment_dir_name: Optional[str] = None,
         evaluated_params: Optional[Dict] = None,
@@ -368,64 +375,75 @@ class Trial:
         self.trainable_name = trainable_name
         self.trial_id = Trial.generate_id() if trial_id is None else trial_id
 
-        # Sync config
-        self.sync_config = sync_config or SyncConfig()
-
         # Set to pass through on `Trial.reset()`
         self._orig_experiment_path = experiment_path
         self._orig_experiment_dir_name = experiment_dir_name
 
-        local_experiment_path, remote_experiment_path = _split_remote_local_path(
-            experiment_path, None
-        )
+        self.storage = copy.copy(storage)
+        if _use_storage_context():
+            # NOTE: storage is None on restoration and is manually set afterwards.
+            # See `TuneControllerBase.restore_from_dir`.
+            if storage:
+                self.sync_config = self.storage.sync_config
+                self._local_experiment_path = self.storage.experiment_cache_path
+                self._remote_experiment_path = self.storage.experiment_fs_path
+        else:
+            # Sync config
+            self.sync_config = sync_config or SyncConfig()
 
-        # Backwards compatibility for `local_dir`
-        if local_dir:
-            if local_experiment_path:
-                raise ValueError(
-                    "Only one of `local_dir` or `experiment_path` "
-                    "can be passed to `Trial()`."
-                )
-            local_experiment_path = local_dir
-
-        # Derive experiment dir name from local path
-        if not experiment_dir_name and local_experiment_path:
-            # Maybe derive experiment dir name from local storage dir
-            experiment_dir_name = Path(local_experiment_path).name
-        elif not experiment_dir_name:
-            experiment_dir_name = DEFAULT_EXPERIMENT_NAME
-
-        # Set default experiment dir name
-        if not local_experiment_path:
-            local_experiment_path = str(
-                Path(_get_defaults_results_dir()) / experiment_dir_name
+            local_experiment_path, remote_experiment_path = _split_remote_local_path(
+                experiment_path, None
             )
-            os.makedirs(local_experiment_path, exist_ok=True)
 
-        # Set remote experiment path if upload_dir is set
-        if self.sync_config.upload_dir:
-            if remote_experiment_path:
-                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
+            # Backwards compatibility for `local_dir`
+            if local_dir:
+                if local_experiment_path:
                     raise ValueError(
-                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
-                        f"pointing to remote storage were passed, but they do not "
-                        f"point to the same location. Got: "
-                        f"`experiment_path={experiment_path}` and "
-                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                        "Only one of `local_dir` or `experiment_path` "
+                        "can be passed to `Trial()`."
                     )
-                warnings.warn(
-                    "If `experiment_path` points to a remote storage location, "
-                    "do not set `SyncConfig.upload_dir`. ",
-                    DeprecationWarning,
-                )
-            else:
-                remote_experiment_path = str(
-                    URI(self.sync_config.upload_dir) / experiment_dir_name
-                )
+                local_experiment_path = local_dir
 
-        # Finally, set properties
-        self._local_experiment_path = local_experiment_path
-        self._remote_experiment_path = remote_experiment_path
+            # Derive experiment dir name from local path
+            if not experiment_dir_name and local_experiment_path:
+                # Maybe derive experiment dir name from local storage dir
+                experiment_dir_name = Path(local_experiment_path).name
+            elif not experiment_dir_name:
+                experiment_dir_name = DEFAULT_EXPERIMENT_NAME
+
+            # Set default experiment dir name
+            if not local_experiment_path:
+                local_experiment_path = str(
+                    Path(_get_defaults_results_dir()) / experiment_dir_name
+                )
+                os.makedirs(local_experiment_path, exist_ok=True)
+
+            # Set remote experiment path if upload_dir is set
+            if self.sync_config.upload_dir:
+                if remote_experiment_path:
+                    if not remote_experiment_path.startswith(
+                        self.sync_config.upload_dir
+                    ):
+                        raise ValueError(
+                            f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
+                            f"pointing to remote storage were passed, but they do not "
+                            f"point to the same location. Got: "
+                            f"`experiment_path={experiment_path}` and "
+                            f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                        )
+                    warnings.warn(
+                        "If `experiment_path` points to a remote storage location, "
+                        "do not set `SyncConfig.upload_dir`. ",
+                        DeprecationWarning,
+                    )
+                else:
+                    remote_experiment_path = str(
+                        URI(self.sync_config.upload_dir) / experiment_dir_name
+                    )
+
+            # Finally, set properties
+            self._local_experiment_path = local_experiment_path
+            self._remote_experiment_path = remote_experiment_path
 
         self.config = config or {}
         # Save a copy of the original unresolved config so that we can swap
@@ -839,6 +857,11 @@ class Trial:
                 f"Path: {logdir_path}"
             )
         logdir_path.mkdir(parents=True, exist_ok=True)
+
+        if _use_storage_context():
+            # Populate the storage context with the trial dir name we just generated.
+            assert self.storage
+            self.storage.trial_dir_name = self.relative_logdir
 
         self.invalidate_json_state()
 
