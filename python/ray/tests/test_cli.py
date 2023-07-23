@@ -377,7 +377,7 @@ def test_ray_stop_all_clusters(configure_lang, monkeypatch, cleanup_ray):
     # Start 2 ray clusters
     port0 = 0
     port1 = 1
-    runner.invoke(
+    result_start0 = runner.invoke(
         scripts.start,
         [
             "--head",
@@ -388,7 +388,7 @@ def test_ray_stop_all_clusters(configure_lang, monkeypatch, cleanup_ray):
             str(port0),
         ],
     )
-    runner.invoke(
+    result_start1 = runner.invoke(
         scripts.start,
         [
             "--head",
@@ -399,13 +399,16 @@ def test_ray_stop_all_clusters(configure_lang, monkeypatch, cleanup_ray):
             str(port1),
         ],
     )
+    print("T1 RESULT0 START OUTPUT", result_start0.output)
+    print("T1 RESULT1 START OUTPUT", result_start1.output)
     assert len(services.find_gcs_addresses()) == 2
 
     # Ensure that ray stop with no address stops both clusters
-    runner.invoke(
+    result_stop = runner.invoke(
         scripts.stop,
         [],
     )
+    print("T1 RESULT STOP OUTPUT", result_stop.output)
     assert len(services.find_gcs_addresses()) == 2
     _die_on_error(runner.invoke(scripts.stop))
 
@@ -420,7 +423,7 @@ def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
     # Start 2 ray clusters
     port_cluster_0 = 0
     port_cluster_1 = 1
-    runner.invoke(
+    result_start0 = runner.invoke(
         scripts.start,
         [
             "--head",
@@ -431,7 +434,7 @@ def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
             str(port_cluster_0),
         ],
     )
-    runner.invoke(
+    result_start1 = runner.invoke(
         scripts.start,
         [
             "--head",
@@ -442,18 +445,21 @@ def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
             str(port_cluster_1),
         ],
     )
+    print("T2 RESULT0 START OUTPUT", result_start0.output)
+    print("T2 RESULT1 START OUTPUT", result_start1.output)
     gcs_addresses = list(services.find_gcs_addresses())
     assert len(gcs_addresses) == 2
 
     # Stop one of the clusters and ensure that the second cluster is still up
     cluster_address_to_stop, cluster_address_to_keep = gcs_addresses
-    runner.invoke(
+    result_stop = runner.invoke(
         scripts.stop,
         [
             "--address",
             cluster_address_to_stop,
         ],
     )
+    print("T2 RESULT STOP OUTPUT", result_stop.output)
     gcs_addresses = services.find_gcs_addresses()
     assert len(gcs_addresses) == 1
     assert cluster_address_to_keep in gcs_addresses
