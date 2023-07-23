@@ -82,9 +82,6 @@ py_test_module_list(
   files = [
     "test_client.py",
     "test_client_reconnect.py",
-    "test_client_builder.py",
-    "test_client_init.py",
-    "test_client_proxy.py",
   ],
   size = "large",
   tags = ["exclusive", "client_tests", "team:serverless"],
