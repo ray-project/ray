@@ -187,15 +187,25 @@ class Experiment:
         # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
         if _experiment_checkpoint_dir:
             experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-            local_dir_path = Path(full_local_storage_path)
-            assert local_dir_path in experiment_checkpoint_dir_path.parents, (
-                local_dir_path,
-                str(list(experiment_checkpoint_dir_path.parents)),
-            )
-            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-            self.dir_name = os.path.relpath(
-                _experiment_checkpoint_dir, full_local_storage_path
-            )
+            if _use_storage_context():
+                # TODO(justinvyu): This is a temporary hack for the
+                # custom storage_filesystem case.
+                # With a custom storage_filesystem, the storage path is possibly
+                # a "local path" (ex: [fs, path] = CustomS3FileSystem, "bucket/subdir")
+                # Our current path resolution treats a local storage_path as
+                # the cache dir, so the assertion in the else case would fail.
+                # This will be re-worked in a follow-up.
+                self.dir_name = experiment_checkpoint_dir_path.name
+            else:
+                local_dir_path = Path(full_local_storage_path)
+                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
+                    local_dir_path,
+                    str(list(experiment_checkpoint_dir_path.parents)),
+                )
+                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
+                self.dir_name = os.path.relpath(
+                    _experiment_checkpoint_dir, full_local_storage_path
+                )
 
         self._local_storage_path = full_local_storage_path
         self._remote_storage_path = remote_storage_path
