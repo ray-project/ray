@@ -6910,8 +6910,61 @@
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+
+
+- name: aws_cluster_launcher_nightly_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: nightly
+  team: core
+  python: "3.8"
+  cluster:
+    byod: {}
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
+
+
+- name: aws_cluster_launcher_latest_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: nightly
+  team: core
+  python: "3.8"
+  cluster:
+    byod: {}
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
+
+
+- name: aws_cluster_launcher_release_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: manual
+  team: core
+  python: "3.8"
+  cluster:
+    byod: {}
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
+
+
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -6942,8 +6995,8 @@
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/example-full.yaml
+    timeout: 3000
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
@@ -6976,5 +7029,57 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 2400
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20
+
+- name: gcp_cluster_launcher_latest_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: gcp/tests/gce_config.yaml
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+
+- name: gcp_cluster_launcher_nightly_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: gcp/tests/gce_config.yaml
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+
+
+- name: gcp_cluster_launcher_release_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: manual
+  team: core
+  cluster:
+    cluster_env: gcp/tests/gce_config.yaml
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
