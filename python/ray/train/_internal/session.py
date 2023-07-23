@@ -41,7 +41,7 @@ from ray.train.constants import (
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
-
+from ray.train._internal.storage import _use_storage_context, StorageContext
 
 if TYPE_CHECKING:
     from ray.data import DataIterator
@@ -106,6 +106,7 @@ class _TrainSession:
         enable_lazy_checkpointing: bool = True,
         checkpoint_keep_all_ranks: bool = False,
         checkpoint_upload_from_workers: bool = False,
+        storage: Optional[StorageContext] = None,
     ):
 
         self.dataset_shard = dataset_shard
@@ -121,6 +122,14 @@ class _TrainSession:
         self.enable_lazy_checkpointing = enable_lazy_checkpointing
         self.checkpoint_keep_all_ranks = checkpoint_keep_all_ranks
         self.checkpoint_upload_from_workers = checkpoint_upload_from_workers
+
+        if _use_storage_context():
+            assert storage
+            logger.debug(f"StorageContext on TRAIN WORKER {world_rank}:\n{storage}")
+            storage._check_validation_file()
+
+        self.storage = storage
+
         # Only used if checkpoint_upload_from_workers is True.
         self.checkpoint_uri = None
 
