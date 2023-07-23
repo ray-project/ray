@@ -8,7 +8,5 @@ flaky_tests:
   - //python/ray/tests:test_plasma_unlimited
   - //python/ray/tests:test_scheduling_performance
   - //python/ray/tests:test_object_manager
-  - //python/ray/tests:test_tensorflow
   - //python/ray/tests:test_threaded_actor
   - //python/ray/tests:test_unhandled_error
-  
