@@ -662,6 +662,7 @@ class TunerInternal:
 
         return dict(
             storage_path=self._run_config.storage_path,
+            storage_filesystem=self._run_config.storage_filesystem,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,

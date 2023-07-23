@@ -10,7 +10,7 @@ import warnings
 
 from ray.air._internal.remote_storage import list_at_uri
 from ray.air._internal.uri_utils import _join_path_or_uri
-
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.experiment import Trial
 from ray.tune.impl.out_of_band_serialize_dataset import out_of_band_serialize_dataset
 from ray.tune.syncer import SyncConfig, get_node_to_storage_syncer
@@ -127,17 +127,25 @@ class _ExperimentCheckpointManager:
         checkpoint_period: Union[int, float, str],
         sync_config: SyncConfig,
         sync_every_n_trial_checkpoints: Optional[int] = None,
+        storage: Optional[StorageContext] = None,
     ):
-        # Checkpoint directories
-        self._local_checkpoint_dir = local_checkpoint_dir
-        self._remote_checkpoint_dir = remote_checkpoint_dir
+        if _use_storage_context():
+            assert storage
+            self._local_checkpoint_dir = storage.experiment_cache_dir
+            self._remote_checkpoint_dir = storage.experiment_fs_path
+            self._sync_config = storage.sync_config
+            self._syncer = storage.syncer
+        else:
+            # Checkpoint directories
+            self._local_checkpoint_dir = local_checkpoint_dir
+            self._remote_checkpoint_dir = remote_checkpoint_dir
 
-        # Synch to/from cloud
-        self._sync_config = sync_config or SyncConfig
-        # Resolves syncer="auto" to an actual syncer if needed
-        self._syncer = get_node_to_storage_syncer(
-            self._sync_config, self._remote_checkpoint_dir
-        )
+            # Synch to/from cloud
+            self._sync_config = sync_config or SyncConfig()
+            # Resolves syncer="auto" to an actual syncer if needed
+            self._syncer = get_node_to_storage_syncer(
+                self._sync_config, self._remote_checkpoint_dir
+            )
 
         # Last save + sync time
         self._last_save_time = 0.0

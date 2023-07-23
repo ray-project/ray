@@ -25,6 +25,10 @@ from typing import (
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+)
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
@@ -37,8 +41,11 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, Deprecated
 
 if TYPE_CHECKING:
+    import pyarrow.fs
+
     from ray.tune.experiment import Trial
     from ray.tune import PlacementGroupFactory
+
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +145,7 @@ class Experiment:
         ] = None,
         num_samples: int = 1,
         storage_path: Optional[str] = None,
+        storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
@@ -300,6 +308,18 @@ class Experiment:
             if restore
             else None,
         }
+
+        self.storage = None
+        if _use_storage_context():
+            storage = StorageContext(
+                storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
+                sync_config=sync_config,
+                experiment_dir_name=self.dir_name,
+            )
+            self.storage = spec["storage"] = storage
+            logging.debug(f"StorageContext on the DRIVER:\n{storage}")
+
         self.spec = spec
 
     @classmethod
