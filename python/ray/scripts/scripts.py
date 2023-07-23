@@ -983,7 +983,9 @@ def start(
 
 
 @cli.command()
-@click.option("--address", required=False, type=str, help="The address of the cluster to stop")
+@click.option(
+    "--address", required=False, type=str, help="The address of the cluster to stop"
+)
 @click.option(
     "-f",
     "--force",
@@ -1126,6 +1128,16 @@ def stop(address: str, force: bool, grace_period: int):
         # Wait a little bit to make sure processes are killed forcefully.
         psutil.wait_procs(alive, timeout=2)
         return total_found, total_stopped, alive
+
+    if len(services.find_gcs_addresses()) > 1 and address is None:
+        confirm_kill_all_clusters = cli_logger.confirm(
+            False,
+            ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING,
+            _default=True,
+            _timeout_s=10,
+        )
+        if not confirm_kill_all_clusters:
+            sys.exit(0)
 
     # GCS should exit after all other processes exit.
     # Otherwise, some of processes may exit with an unexpected

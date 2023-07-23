@@ -449,3 +449,7 @@ RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
 )
 
 RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
+RAY_STOP_MULTIPLE_CLUSTERS_WARNING = (
+    "WARNING: Multiple ray clusters found. Are you sure you want to proceed? "
+    "Will automatically proceed in 10 seconds to avoid blocking."
+)
