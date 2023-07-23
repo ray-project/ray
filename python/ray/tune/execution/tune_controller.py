@@ -1066,11 +1066,15 @@ class TuneController(_TuneControllerBase):
 
         kwargs = {}
 
+        # TODO(justinvyu): These alternate restore paths need to all be cleaned up.
         if checkpoint.storage_mode == CheckpointStorage.MEMORY:
             method_name = "restore_from_object"
             args = (checkpoint.dir_or_data,)
         elif (
-            trial.uses_cloud_checkpointing
+            # NOTE: The head node syncing case doesn't apply anymore (the next elif),
+            # so always sync down from storage in the new persistence mode.
+            _use_storage_context()
+            or trial.uses_cloud_checkpointing
             or not trial.sync_on_checkpoint
             or not os.path.exists(checkpoint.dir_or_data)
         ):
