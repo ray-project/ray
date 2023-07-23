@@ -15,6 +15,13 @@ def dummy_context_manager():
     yield "dummy value"
 
 
+@pytest.fixture(autouse=True)
+def enable_new_persistence_mode(monkeypatch):
+    monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "1")
+    yield
+    monkeypatch.setenv("RAY_AIR_NEW_PERSISTENCE_MODE", "0")
+
+
 def train_fn(config):
     start = 0
 

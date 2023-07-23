@@ -12,7 +12,7 @@ from ray.tune.result import _get_defaults_results_dir
 
 def _use_storage_context() -> bool:
     # Whether to enable the new simple persistence mode.
-    return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "1")))
+    return bool(int(os.environ.get("RAY_AIR_NEW_PERSISTENCE_MODE", "0")))
 
 
 class StorageContext:

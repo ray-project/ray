@@ -328,7 +328,7 @@ class Experiment:
                 experiment_dir_name=self.dir_name,
             )
             self.storage = spec["storage"] = storage
-            logging.debug(f"StorageContext on the DRIVER:\n{storage}")
+            logger.debug(f"StorageContext on the DRIVER:\n{storage}")
 
         self.spec = spec
 
