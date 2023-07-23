@@ -2513,7 +2513,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
-        """Writes the :class:`~ray.data.Dataset` to JSON files.
+        """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
 
         The number of files is determined by the number of blocks in the dataset.
         To control the number of number of blocks, call
@@ -2529,10 +2529,16 @@ class Dataset:
         and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-            Write the dataset as JSON files to a local directory.
+            Write the dataset as JSON file to a local directory.
 
             >>> import ray
-            >>> ds = ray.data.range(100)
+            >>> import pandas as pd
+            >>> ds = ray.data.from_pandas([pd.DataFrame({"one": [1], "two": ["a"]})])
+            >>> ds.write_json("local:///tmp/data")
+
+            Write the dataset as JSONL files to a local directory.
+
+            >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl")
             >>> ds.write_json("local:///tmp/data")
 
         Time complexity: O(dataset size / parallelism)
@@ -3155,7 +3161,7 @@ class Dataset:
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
-        """Return a local batched iterator over the dataset.
+        """Return a batched iterator over the dataset.
 
         Examples:
             >>> import ray
@@ -3220,7 +3226,7 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> Iterator["TorchTensorBatchType"]:
-        """Return a local batched iterator of Torch Tensors over the dataset.
+        """Return a batched iterator of Torch Tensors over the dataset.
 
         This iterator will yield single-tensor batches if the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
@@ -3301,7 +3307,7 @@ class Dataset:
         # Deprecated
         prefetch_blocks: int = 0,
     ) -> Iterator[TensorFlowTensorBatchType]:
-        """Return a local batched iterator of TensorFlow Tensors over the dataset.
+        """Return a batched iterator of TensorFlow Tensors over the dataset.
 
         This iterator will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
@@ -3806,12 +3812,11 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    def to_pandas(self, limit: int = 100000) -> "pandas.DataFrame":
-        """Convert this :class:`~ray.data.Dataset` into a single pandas DataFrame.
+    def to_pandas(self, limit: int = None) -> "pandas.DataFrame":
+        """Convert this :class:`~ray.data.Dataset` to a single pandas DataFrame.
 
-        This method errors if the number of rows exceeds the
-        provided ``limit``. You can use :meth:`.limit` on the dataset
-        beforehand to truncate the dataset manually.
+        This method errors if the number of rows exceeds the provided ``limit``.
+        To truncate the dataset beforehand, call :meth:`.limit`.
 
         Examples:
             >>> import ray
@@ -3825,24 +3830,25 @@ class Dataset:
         Time complexity: O(dataset size)
 
         Args:
-            limit: The maximum number of records to return. An error is
-                raised if the dataset has more rows than this limit.
+            limit: The maximum number of rows to return. An error is
+                raised if the dataset has more rows than this limit. Defaults to
+                ``None``, which means no limit.
 
         Returns:
             A pandas DataFrame created from this dataset, containing a limited
-            number of records.
+            number of rows.
 
         Raises:
             ValueError: if the number of rows in the :class:`~ray.data.Dataset` exceeds
             ``limit``.
         """
         count = self.count()
-        if count > limit:
+        if limit is not None and count > limit:
             raise ValueError(
                 f"the dataset has more than the given limit of {limit} "
-                f"records: {count}. If you are sure that a DataFrame with "
-                f"{count} rows will fit in local memory, use "
-                f"ds.to_pandas(limit={count})."
+                f"rows: {count}. If you are sure that a DataFrame with "
+                f"{count} rows will fit in local memory, set ds.to_pandas(limit=None) "
+                "to disable limits."
             )
         blocks = self.get_internal_block_refs()
         output = DelegatingBlockBuilder()

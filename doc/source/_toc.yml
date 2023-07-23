@@ -57,7 +57,6 @@ parts:
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
-              - file: ray-air/examples/torch_image_example
               - file: ray-air/examples/torch_detection
               - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
               - file: ray-air/examples/convert_existing_tf_code_to_ray_air
@@ -221,8 +220,6 @@ parts:
                     title: "Ax Example"
                   - file: tune/examples/dragonfly_example
                     title: "Dragonfly Example"
-                  - file: tune/examples/skopt_example
-                    title: "Skopt Example"
                   - file: tune/examples/hyperopt_example
                     title: "HyperOpt Example"
                   - file: tune/examples/bayesopt_example
@@ -235,12 +232,8 @@ parts:
                     title: "Nevergrad Example"
                   - file: tune/examples/optuna_example
                     title: "Optuna Example"
-                  - file: tune/examples/zoopt_example
-                    title: "ZOOpt Example"
                   - file: tune/examples/sigopt_example
                     title: "SigOpt Example"
-                  - file: tune/examples/hebo_example
-                    title: "HEBO Example"
               - file: tune/examples/other-examples
                 title: "Other Examples"
               - file: tune/examples/exercises
@@ -266,6 +259,7 @@ parts:
             sections:
               - file: serve/production-guide/config
               - file: serve/production-guide/kubernetes
+              - file: serve/production-guide/docker
               - file: serve/production-guide/fault-tolerance
               - file: serve/production-guide/handling-dependencies
               - file: serve/production-guide/best-practices
@@ -312,6 +306,7 @@ parts:
               - file: rllib/rllib-catalogs
               - file: rllib/rllib-connector
               - file: rllib/rllib-rlmodule
+              - file: rllib/rllib-torch2x
               - file: rllib/rllib-fault-tolerance
               - file: rllib/rllib-dev
               - file: rllib/rllib-cli
