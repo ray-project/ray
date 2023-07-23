@@ -41,6 +41,7 @@ from testfixtures.popen import MockPopen, PopenBehaviour
 import ray
 import ray.autoscaler._private.aws.config as aws_config
 import ray._private.ray_constants as ray_constants
+import ray._private.services as services
 import ray.scripts.scripts as scripts
 from ray._private.test_utils import wait_for_condition
 from ray.cluster_utils import cluster_not_supported
@@ -364,6 +365,99 @@ def _ray_start_hook(ray_params, head):
     os.makedirs(ray_params.temp_dir, exist_ok=True)
     with open(os.path.join(ray_params.temp_dir, "ray_hook_ok"), "w") as f:
         f.write("HOOK_OK")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+def test_ray_stop_all_clusters(configure_lang, monkeypatch, cleanup_ray):
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+
+    # Start 2 ray clusters
+    port0 = 0
+    port1 = 1
+    runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--log-style=pretty",
+            "--log-color",
+            "False",
+            "--port",
+            str(port0),
+        ],
+    )
+    runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--log-style=pretty",
+            "--log-color",
+            "False",
+            "--port",
+            str(port1),
+        ],
+    )
+    assert len(services.find_gcs_addresses()) == 2
+
+    # Ensure that ray stop with no address stops both clusters
+    runner.invoke(
+        scripts.stop,
+        [],
+    )
+    assert len(services.find_gcs_addresses()) == 2
+    _die_on_error(runner.invoke(scripts.stop))
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and "travis" in os.environ.get("USER", ""),
+    reason=("Mac builds don't provide proper locale support"),
+)
+def test_ray_stop_single_cluster(configure_lang, monkeypatch, cleanup_ray):
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+
+    # Start 2 ray clusters
+    port_cluster_0 = 0
+    port_cluster_1 = 1
+    runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--log-style=pretty",
+            "--log-color",
+            "False",
+            "--port",
+            str(port_cluster_0),
+        ],
+    )
+    runner.invoke(
+        scripts.start,
+        [
+            "--head",
+            "--log-style=pretty",
+            "--log-color",
+            "False",
+            "--port",
+            str(port_cluster_1),
+        ],
+    )
+    gcs_addresses = list(services.find_gcs_addresses())
+    assert len(gcs_addresses) == 2
+
+    # Stop one of the clusters and ensure that the second cluster is still up
+    cluster_address_to_stop, cluster_address_to_keep = gcs_addresses
+    runner.invoke(
+        scripts.stop,
+        [
+            "--address",
+            cluster_address_to_stop,
+        ],
+    )
+    gcs_addresses = services.find_gcs_addresses()
+    assert len(gcs_addresses) == 1
+    assert cluster_address_to_keep in gcs_addresses
+    _die_on_error(runner.invoke(scripts.stop))
 
 
 @pytest.mark.skipif(
