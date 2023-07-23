@@ -983,6 +983,7 @@ def start(
 
 
 @cli.command()
+@click.option("--address", required=False, type=str, help="The address of the cluster to stop")
 @click.option(
     "-f",
     "--force",
@@ -1001,7 +1002,7 @@ def start(
 )
 @add_click_logging_options
 @PublicAPI
-def stop(force: bool, grace_period: int):
+def stop(address: str, force: bool, grace_period: int):
     """Stop Ray processes manually on the local machine."""
     is_linux = sys.platform.startswith("linux")
     total_procs_found = 0
@@ -1009,9 +1010,13 @@ def stop(force: bool, grace_period: int):
     procs_not_gracefully_killed = []
 
     def kill_procs(
-        force: bool, grace_period: int, processes_to_kill: List[str]
+        force: bool,
+        grace_period: int,
+        processes_to_kill: List[str],
+        proc_arg_filters: List[str] = None,
     ) -> Tuple[int, int, List[psutil.Process]]:
-        """Find all processes from `processes_to_kill` and terminate them.
+        """Find all processes from `processes_to_kill` that match the list of optional
+        process argument filters given and terminate them.
 
         Unless `force` is specified, it gracefully kills processes. If
         processes are not cleaned within `grace_period`, it force kill all
@@ -1045,10 +1050,19 @@ def stop(force: bool, grace_period: int):
             found = []
             for candidate in process_infos:
                 proc, proc_cmd, proc_args = candidate
-                corpus = (
-                    proc_cmd if filter_by_cmd else subprocess.list2cmdline(proc_args)
+                proc_args_cmdline = subprocess.list2cmdline(proc_args)
+                corpus = proc_cmd if filter_by_cmd else proc_args_cmdline
+                matches_arg_filter = (
+                    True
+                    if proc_arg_filters is None
+                    else all(
+                        [
+                            arg_filter in proc_args_cmdline
+                            for arg_filter in proc_arg_filters
+                        ]
+                    )
                 )
-                if keyword in corpus:
+                if keyword in corpus and matches_arg_filter:
                     found.append(candidate)
             for proc, proc_cmd, proc_args in found:
                 proc_string = str(subprocess.list2cmdline(proc_args))
@@ -1123,16 +1137,33 @@ def stop(force: bool, grace_period: int):
     grace_period_to_kill_gcs = int(grace_period / 2)
     grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
 
-    # Kill evertyhing except GCS.
+    # Kill everything except GCS.
+    non_gcs_proc_arg_filters = (
+        [f"--gcs-address={address}"] if address is not None else None
+    )
     found, stopped, alive = kill_procs(
-        force, grace_period_to_kill_components, processes_to_kill[1:]
+        force,
+        grace_period_to_kill_components,
+        processes_to_kill[1:],
+        non_gcs_proc_arg_filters,
     )
     total_procs_found += found
     total_procs_stopped += stopped
     procs_not_gracefully_killed.extend(alive)
 
     # Kill GCS.
-    found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
+    if address is not None:
+        address = services.canonicalize_bootstrap_address_or_die(address)
+        url, port = address.split(":")
+        gcs_proc_arg_filters = [f"--node-ip-address={url}", f"--gcs_server_port={port}"]
+    else:
+        gcs_proc_arg_filters = None
+    found, stopped, alive = kill_procs(
+        force,
+        grace_period_to_kill_gcs,
+        [gcs],
+        gcs_proc_arg_filters,
+    )
     total_procs_found += found
     total_procs_stopped += stopped
     procs_not_gracefully_killed.extend(alive)
