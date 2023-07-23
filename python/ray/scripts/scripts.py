@@ -1130,14 +1130,17 @@ def stop(address: str, force: bool, grace_period: int):
         return total_found, total_stopped, alive
 
     if len(services.find_gcs_addresses()) > 1 and address is None:
-        confirm_kill_all_clusters = cli_logger.confirm(
-            False,
-            ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING,
-            _default=True,
-            _timeout_s=10,
-        )
-        if not confirm_kill_all_clusters:
-            sys.exit(0)
+        if cli_logger.interactive:
+            confirm_kill_all_clusters = cli_logger.confirm(
+                False,
+                ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING,
+                _default=True,
+                _timeout_s=10,
+            )
+            if not confirm_kill_all_clusters:
+                sys.exit(0)
+        else:
+            cli_logger.print(ray_constants.RAY_STOP_MULTIPLE_CLUSTERS_WARNING)
 
     # GCS should exit after all other processes exit.
     # Otherwise, some of processes may exit with an unexpected
