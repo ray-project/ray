@@ -123,7 +123,7 @@ class StorageContext:
         return os.path.join(self.storage_fs_path, self.experiment_dir_name)
 
     @property
-    def experiment_cache_dir(self) -> str:
+    def experiment_cache_path(self) -> str:
         return os.path.join(self.storage_cache_path, self.experiment_dir_name)
 
     @property

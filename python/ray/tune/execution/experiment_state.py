@@ -131,7 +131,7 @@ class _ExperimentCheckpointManager:
     ):
         if _use_storage_context():
             assert storage
-            self._local_checkpoint_dir = storage.experiment_cache_dir
+            self._local_checkpoint_dir = storage.experiment_cache_path
             self._remote_checkpoint_dir = storage.experiment_fs_path
             self._sync_config = storage.sync_config
             self._syncer = storage.syncer

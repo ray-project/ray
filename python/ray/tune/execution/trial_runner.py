@@ -155,7 +155,7 @@ class _TuneControllerBase:
         if _use_storage_context():
             assert storage
             self._experiment_dir_name = storage.experiment_dir_name
-            self._local_experiment_path = storage.experiment_cache_dir
+            self._local_experiment_path = storage.experiment_cache_path
             self._remote_experiment_path = storage.experiment_fs_path
             self._sync_config = storage.sync_config
         else:
