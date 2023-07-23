@@ -13,8 +13,10 @@
 // limitations under the License.
 
 #include "ray/object_manager/ownership_based_object_directory.h"
+
 #include <filesystem>
 #include <fstream>
+
 #include "ray/stats/metric_defs.h"
 
 namespace ray {
@@ -349,14 +351,15 @@ ray::Status OwnershipBasedObjectDirectory::SubscribeObjectLocations(
     };
 
     auto failure_callback = [this, owner_address](const std::string &object_id_binary,
-                                                            const Status &status) {
+                                                  const Status &status) {
       const auto object_id = ObjectID::FromBinary(object_id_binary);
       rpc::WorkerObjectLocationsPubMessage location_info;
 
-      auto meta_path = std::filesystem::path(
-          ::RayConfig::instance().prototype_session_dir()) / "drain_object_meta" / object_id.Hex();
+      auto meta_path =
+          std::filesystem::path(::RayConfig::instance().prototype_session_dir()) /
+          "drain_object_meta" / object_id.Hex();
 
-      if(std::filesystem::exists(meta_path)) {
+      if (std::filesystem::exists(meta_path)) {
         std::ifstream ifs(meta_path);
         std::string node_id;
         size_t object_size;

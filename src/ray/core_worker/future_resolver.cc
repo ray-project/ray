@@ -54,7 +54,8 @@ void FutureResolver::ProcessResolvedObject(const ObjectID &object_id,
     // The owner is unreachable. Store an error so that an exception will be
     // thrown immediately when the worker tries to get the value.
     RAY_UNUSED(in_memory_store_->Put(RayObject(rpc::ErrorType::OWNER_DIED), object_id));
-  } if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
+  }
+  if (reply.status() == rpc::GetObjectStatusReply::OUT_OF_SCOPE) {
     // The owner replied that the object has gone out of scope (this is an edge
     // case in the distributed ref counting protocol where a borrower dies
     // before it can notify the owner of another borrower). Store an error so
