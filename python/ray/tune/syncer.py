@@ -55,6 +55,8 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
 if TYPE_CHECKING:
+    import pyarrow.fs
+
     from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
