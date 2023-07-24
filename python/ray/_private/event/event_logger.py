@@ -7,12 +7,14 @@ import socket
 import os
 import threading
 
-from typing import Dict
+from typing import Dict, Optional
 from datetime import datetime
 
-from google.protobuf.json_format import MessageToDict
+from google.protobuf.json_format import MessageToDict, Parse
 
 from ray.core.generated.event_pb2 import Event
+
+global_logger = logging.getLogger(__name__)
 
 
 def get_event_id():
@@ -138,3 +140,20 @@ def get_event_logger(source: Event.SourceType, sink_dir: str):
             _event_logger[source_name] = EventLoggerAdapter(source, logger)
 
         return _event_logger[source_name]
+
+
+def parse_event(event_str: str) -> Optional[Event]:
+    """Parse an event from a string.
+
+    Args:
+        event_str: The string to parse. Expect to be a JSON serialized
+            Event protobuf.
+
+    Returns:
+        The parsed event if parsable, else None
+    """
+    try:
+        return Parse(event_str, Event())
+    except Exception:
+        global_logger.exception(f"Failed to parse event: {event_str}")
+        return None
