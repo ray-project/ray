@@ -1,0 +1,14 @@
+head_node_type:
+  name: head_node_type
+  instance_type: n1-highmem-64-nvidia-k80-12gb-1
+  resources:
+    large_cpu_mem: 1
+
+worker_node_types:
+- name: gpu_worker
+  instance_type: n1-standard-16-nvidia-k80-12gb-1
+  min_workers: 15
+  max_workers: 15
+  use_spot: false
+  resources:
+    medium_cpu_mem: 1
