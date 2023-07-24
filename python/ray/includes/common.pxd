@@ -359,6 +359,7 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
     cdef enum CGrpcStatusCode "grpc::StatusCode":
         UNAVAILABLE "grpc::StatusCode::UNAVAILABLE",
         UNKNOWN "grpc::StatusCode::UNKNOWN",
+        DEADLINE_EXCEEDED "grpc::StatusCode::DEADLINE_EXCEEDED",
 
     cdef cppclass CGcsClientOptions "ray::gcs::GcsClientOptions":
         CGcsClientOptions(const c_string &gcs_address)
