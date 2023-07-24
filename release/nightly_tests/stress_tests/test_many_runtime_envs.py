@@ -14,7 +14,7 @@ ray.init(address="auto")
 
 @ray.remote
 def assert_file_content(file_name, expected_content):
-    with open(file_name, 'r') as file:
+    with open(file_name, "r") as file:
         actual_content = file.read()
     if actual_content != expected_content:
         raise ValueError(f"expected {expected_content}, got {actual_content}")
