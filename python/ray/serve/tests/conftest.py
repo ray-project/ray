@@ -72,18 +72,23 @@ def _shared_serve_instance():
         _metrics_export_port=9999,
         _system_config={"metrics_report_interval_ms": 1000, "task_retry_delay_ms": 50},
     )
+    print("before serve start, actors:", ray._private.state.actors())
     yield serve.start(detached=True, http_options={"host": "0.0.0.0"})
 
 
 @pytest.fixture
 def serve_instance(_shared_serve_instance):
     yield _shared_serve_instance
+    print("after test complete, actors:", ray._private.state.actors())
     # Clear all applications to avoid naming & route_prefix collisions.
     _shared_serve_instance.delete_all_apps()
+    print("delete_all_apps called")
     # Clear all state between tests to avoid naming collisions.
     _shared_serve_instance.delete_deployments(serve.list_deployments().keys())
+    print("delete_deployments called")
     # Clear the ServeHandle cache between tests to avoid them piling up.
     _shared_serve_instance.shutdown_cached_handles()
+    print("shutdown_cached_handles called")
 
 
 def check_ray_stop():
