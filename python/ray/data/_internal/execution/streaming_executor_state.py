@@ -475,17 +475,18 @@ def _try_to_scale_up_cluster(topology: Topology, execution_id: str):
     def to_bundle(resource: ExecutionResources) -> Dict:
         req = {}
         if resource.cpu:
-            req["CPU"] = math.ceil(resource.cpu)
+            req["CPU"] = resource.cpu
         if resource.gpu:
-            req["GPU"] = math.ceil(resource.gpu)
+            req["GPU"] = resource.gpu
         return req
 
     for op, state in topology.items():
+        per_task_resource = op.incremental_resource_usage()
+        task_bundle = to_bundle(per_task_resource)
+        resource_request.extend([task_bundle] * op.num_active_work_refs())
         # Only include incremental resource usage for ops that are ready for
         # dispatch.
         if state.num_queued() > 0:
-            per_task_resource = op.incremental_resource_usage()
-            task_bundle = to_bundle(per_task_resource)
             # TODO(Clark): Scale up more aggressively by adding incremental resource
             # usage for more than one bundle in the queue for this op?
             resource_request.append(task_bundle)
