@@ -228,7 +228,6 @@ const Nodes = () => {
     setMode,
   } = useNodeList();
   const { nodeLogicalResourceMap } = useNodeLogicalResourceMap();
-  console.info('nodeLogicalResourceMap: ', nodeLogicalResourceMap)
   return (
     <div className={classes.root}>
       <Loading loading={isLoading} />
@@ -352,7 +351,15 @@ const Nodes = () => {
                   .map((node) => (
                     <NodeRows
                       key={node.raylet.nodeId}
-                      node={node}
+                      node={
+                        nodeLogicalResourceMap
+                          ? {
+                              ...node,
+                              logicalResource:
+                                nodeLogicalResourceMap[node.raylet.nodeId],
+                            }
+                          : node
+                      }
                       isRefreshing={isRefreshing}
                       startExpanded={nodeList.length === 1}
                     />

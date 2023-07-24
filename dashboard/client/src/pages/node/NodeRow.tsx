@@ -1,6 +1,8 @@
 import {
   Box,
+  createStyles,
   IconButton,
+  makeStyles,
   TableCell,
   TableRow,
   Tooltip,
@@ -22,7 +24,6 @@ import { Worker } from "../../type/worker";
 import { memoryConverter } from "../../util/converter";
 import { NodeGPUView, WorkerGpuRow } from "./GPUColumn";
 import { NodeGRAM, WorkerGRAM } from "./GRAMColumn";
-import { useNodeLogicalResourceMap } from "./hook/useNodeLogicalResource";
 
 const TEXT_COL_MIN_WIDTH = 100;
 
@@ -35,11 +36,40 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
    * Click handler for when one clicks on the expand/unexpand button in this row.
    */
   onExpandButtonClick: () => void;
-  /**
-   * The logical resource of a node
-   */
-  logicalResource?: string;
 };
+
+const useStyles = makeStyles((theme) =>
+  createStyles({
+    tableContainer: {
+      overflowX: "scroll",
+    },
+    expandCollapseIcon: {
+      color: theme.palette.text.secondary,
+      fontSize: "1.5em",
+      verticalAlign: "middle",
+    },
+    idCol: {
+      display: "block",
+      width: "50px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    OverflowCol: {
+      display: "block",
+      width: "100px",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap",
+    },
+    helpInfo: {
+      marginLeft: theme.spacing(1),
+    },
+    logicalResource: {
+      maxWidth: 200,
+    },
+  }),
+);
 
 /**
  * A single row that represents the node information only.
@@ -48,7 +78,6 @@ type NodeRowProps = Pick<NodeRowsProps, "node"> & {
 export const NodeRow = ({
   node,
   expanded,
-  logicalResource,
   onExpandButtonClick,
 }: NodeRowProps) => {
   const {
@@ -60,9 +89,10 @@ export const NodeRow = ({
     networkSpeed = [0, 0],
     raylet,
     logUrl,
+    logicalResource,
   } = node;
 
-  const classes = rowStyles();
+  const classes = useStyles();
 
   const objectStoreTotalMemory =
     raylet.objectStoreAvailableMemory + raylet.objectStoreUsedMemory;
@@ -157,12 +187,9 @@ export const NodeRow = ({
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
       <TableCell align="center">
-        {/* <CodeDialogButton title={"Logical Resource"} code="">
-          {logicalResource}
-        </CodeDialogButton> */}
-
         {logicalResource ? (
           <CodeDialogButtonWithPreview
+            className={classes.logicalResource}
             title="Logical Resource"
             code={logicalResource}
           />
@@ -333,7 +360,6 @@ export const NodeRows = ({
         node={node}
         expanded={isExpanded}
         onExpandButtonClick={handleExpandButtonClick}
-        logicalResource={""}
       />
       {isExpanded &&
         workers.map((worker) => (

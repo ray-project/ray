@@ -14,6 +14,7 @@ from ray.autoscaler._private.node_provider_availability_tracker import (
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
+    get_per_node_breakdown,
 )
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -278,7 +279,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             **autoscaler_summary_dict,
         )
 
-        node_logical_resource = get_per_node_breakdown_as_dict(
+        node_logical_resource = get_per_node_breakdown(
             lm_summary, autoscaler_summary.node_type_mapping, verbose=True
         )
         return node_logical_resource
@@ -301,29 +302,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         )
 
         status_dict = json.loads(status)
-
         lm_summary_dict = status_dict.get("load_metrics_report")
         if lm_summary_dict:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
 
-        autoscaler_summary_dict = status_dict.get("autoscaler_report")
-        node_availability_summary_dict = autoscaler_summary_dict.pop(
-            "node_availability_summary", {}
-        )
-        node_availability_summary = NodeAvailabilitySummary.from_fields(
-            **node_availability_summary_dict
-        )
-        autoscaler_summary = AutoscalerSummary(
-            node_availability_summary=node_availability_summary,
-            **autoscaler_summary_dict,
-        )
-
-        node_logical_resource = get_per_node_breakdown_as_dict(
-            lm_summary, autoscaler_summary.node_type_mapping, verbose=True
-        )
-        logger.info(
-            f"node_logical_resource {type(node_logical_resource)}: {node_logical_resource}"
-        )
+        node_logical_resource = get_per_node_breakdown_as_dict(lm_summary)
 
         if node_logical_resource:
             return dashboard_optional_utils.rest_response(

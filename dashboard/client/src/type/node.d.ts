@@ -36,7 +36,7 @@ export type NodeDetail = {
   cmdline: string[];
   state: string;
   logUrl: string;
-  logicalResource?: LogicalResource;
+  logicalResource?: str;
 };
 
 // Example:

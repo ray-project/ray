@@ -8,8 +8,7 @@ export const useNodeLogicalResourceMap = () => {
     async () => {
       try {
         const rsp = await getNodeLogicalResourceMap();
-        console.info("rsp: ", rsp);
-        return rsp.data;
+        return rsp.data.data.data;
       } catch (e) {
         console.error(
           "Cluster Error. Couldn't get the logical resource data from the dashboard server.",
