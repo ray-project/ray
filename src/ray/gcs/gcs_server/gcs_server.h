@@ -58,6 +58,7 @@ struct GcsServerConfig {
   std::string log_dir;
   // This includes the config list of raylet.
   std::string raylet_config_list;
+  std::string session_name;
 };
 
 class GcsNodeManager;
@@ -154,6 +155,9 @@ class GcsServer {
   /// Initialize KV manager.
   void InitKVManager();
 
+  /// Initialize KV service.
+  void InitKVService();
+
   /// Initialize function manager.
   void InitFunctionManager();
 
@@ -181,6 +185,11 @@ class GcsServer {
 
   /// Collect stats from each module.
   void RecordMetrics() const;
+
+  /// Get cluster id if persisted, otherwise generate
+  /// a new one and persist as necessary.
+  /// Expected to be idempotent while server is up.
+  void GetOrGenerateClusterId(std::function<void(ClusterID cluster_id)> &&continuation);
 
   /// Print the asio event loop stats for debugging.
   void PrintAsioStats();

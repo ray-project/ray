@@ -424,22 +424,30 @@ def prep_ray_ml():
 
     requirements_files = [
         "python/requirements.txt",
+        "python/requirements_compiled.txt",
     ]
     ml_requirements_files = [
-        "python/requirements/ml/requirements_ml_docker.txt",
-        "python/requirements/ml/requirements_dl.txt",
-        "python/requirements/ml/requirements_tune.txt",
-        "python/requirements/ml/requirements_rllib.txt",
-        "python/requirements/ml/requirements_train.txt",
-        "python/requirements/ml/requirements_upstream.txt",
-        "python/requirements/ml/requirements_no_deps.txt",
+        "python/requirements/docker/ray-docker-requirements.txt",
+        "python/requirements/ml/core-requirements.txt",
+        "python/requirements/ml/data-requirements.txt",
+        "python/requirements/ml/dl-gpu-requirements.txt",
+        "python/requirements/ml/dl-cpu-requirements.txt",
+        "python/requirements/ml/tune-requirements.txt",
+        "python/requirements/ml/tune-test-requirements.txt",
+        "python/requirements/ml/rllib-requirements.txt",
+        "python/requirements/ml/rllib-test-requirements.txt",
+        "python/requirements/ml/train-requirements.txt",
+        "python/requirements/ml/train-test-requirements.txt",
     ]
-    # We don't need these in the ml docker image
+    # We don't need these in the ml docker image (or they are installed elsewhere)
     ignore_requirements = [
         "python/requirements/compat/requirements_legacy_compat.txt",
+        "python/requirements/ml/data-test-requirements.txt",
     ]
 
-    files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
+    files_on_disk = glob.glob(
+        f"{root_dir}/python/**/*-requirements.txt", recursive=True
+    )
     for file_on_disk in files_on_disk:
         rel = os.path.relpath(file_on_disk, start=root_dir)
         print(rel)
