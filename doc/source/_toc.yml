@@ -282,7 +282,6 @@ parts:
           - file: rllib/package_ref/index
 
       - file: ray-air/getting-started
-        title: Ray for ML Platforms
         sections:
           - file: ray-air/deployment
           - file: ray-air/computer-vision
