@@ -61,6 +61,12 @@ def train_arguments():
         "--num_epochs", type=int, default=4, help="Number of epochs to train."
     )
     parser.add_argument(
+        "--max_train_steps",
+        type=int,
+        default=800,
+        help="Maximum number of fine-tuning update steps to take.",
+    )
+    parser.add_argument(
         "--prior_loss_weight",
         type=float,
         default=1.0,
@@ -131,6 +137,14 @@ def run_model_flags():
         type=int,
         default=1,
         help="Number of images to generate for each prompt.",
+    )
+    parser.add_argument(
+        "--use_ray_data",
+        default=False,
+        action="store_true",
+        help=(
+            "Enable using Ray Data to use multiple GPU workers to perform inference."
+        ),
     )
 
     return parser

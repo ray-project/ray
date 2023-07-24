@@ -1,9 +1,31 @@
 Fine-tuning DreamBooth with Ray AIR
 ===================================
 
-.. include:: ../../../../python/ray/air/examples/dreambooth/README.rst
-  :start-after: section_intro
-  :end-before: How it works
+This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray AIR.
+See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.
+
+.. image:: https://dreambooth.github.io/DreamBooth_files/high_level.png
+  :target: https://dreambooth.github.io
+  :alt: DreamBooth fine-tuning overview
+
+This example is built on top of `this HuggingFace 🤗 tutorial <https://huggingface.co/docs/diffusers/training/dreambooth>`_.
+See the HuggingFace tutorial for useful explanations and suggestions on hyperparameters.
+**Adapting this example to Ray AIR allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
+
+**Compute requirements:**
+
+* Because of the large model sizes, you'll need a machine with at least 2 A10G GPUs.
+* Each training worker uses 2 GPUs, so you'll need ``N * 2`` total GPUs in your Ray cluster, if training with ``N`` distributed training workers. The example can leverage data-parallel training with more GPUs to speed up training time.
+
+This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
+
+
+.. image:: images/dreambooth_example.png
+   :target: images/dreambooth_example.png
+   :alt: DreamBooth example
+
+The full code repository can be found here: `https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/ <https://github.com/ray-project/ray/blob/master/python/ray/air/examples/dreambooth/>`_
+
 
 How it works
 ------------
@@ -42,8 +64,8 @@ And lastly, we apply a ``torchvision`` preprocessing pipeline to the images:
 
 .. literalinclude:: ../../../../python/ray/air/examples/dreambooth/dataset.py
   :language: python
-  :start-at: transform = transforms.Compose
-  :end-at: preprocessor = TorchVisionPreprocessor
+  :start-after: START: image preprocessing
+  :end-before: END: image preprocessing
   :dedent: 4
 
 We apply all of this in final step:
@@ -51,8 +73,8 @@ We apply all of this in final step:
 
 .. literalinclude:: ../../../../python/ray/air/examples/dreambooth/dataset.py
   :language: python
-  :start-at: instance_dataset = preprocessor
-  :end-before: ---
+  :start-after: START: Apply preprocessing
+  :end-before: END: Apply preprocessing
   :dedent: 4
 
 
@@ -84,7 +106,7 @@ The code was compacted for brevity. The `full code <https://github.com/ray-proje
 .. literalinclude:: ../../../../python/ray/air/examples/dreambooth/train.py
   :language: python
   :start-at: def train_fn(config)
-  :end-at: session.report(results)
+  :end-before: END: Training loop
 
 We can then run this training loop with Ray AIR's TorchTrainer:
 
@@ -98,7 +120,7 @@ We can then run this training loop with Ray AIR's TorchTrainer:
 Configuring the scale
 ^^^^^^^^^^^^^^^^^^^^^
 
-In the TorchTrainer, we can easily configure our scale. 
+In the TorchTrainer, we can easily configure our scale.
 The above example uses the ``num_workers`` argument to specify the number
 of workers. This defaults to 2 workers with 2 GPUs each - so 4 GPUs in total.
 
@@ -177,7 +199,106 @@ GPUs with higher batch sizes we would expect a greater benefit from scaling out.
 Run the example
 ---------------
 
-.. include:: ../../../../python/ray/air/examples/dreambooth/README.rst
-  :start-after: section_run_example
+First, we download the pre-trained stable diffusion model as a starting point.
+
+We will then train this model with a few images of our subject.
+
+To achieve this, we choose a non-word as an identifier, e.g. ``unqtkn``. When fine-tuning the model with our subject, we will teach it that the prompt is ``A photo of a unqtkn <class>``.
+
+After fine-tuning we can run inference with this specific prompt.
+For instance: ``A photo of a unqtkn <class>`` will create an image of our subject.
+Similarly, ``A photo of a unqtkn <class> at the beach`` will create an image of our subject at the beach.
+
+Step 0: Preparation
+^^^^^^^^^^^^^^^^^^^
+
+Clone the Ray repository, go to the example directory, and install dependencies.
+
+.. code-block:: bash
+
+   git clone https://github.com/ray-project/ray.git
+   cd ray/python/ray/air/examples/dreambooth
+   pip install -Ur requirements.txt
+
+Prepare some directories and environment variables.
+
+.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+  :language: bash
+  :start-after: Step 0 cont
+  :end-at: export UNIQUE_TOKEN
 
 
+Step 1: Supply images of your subject
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Use one of the sample datasets (dog, lego car), or provide your own directory
+of images, and specify the directory with the ``$INSTANCE_DIR`` environment variable.
+
+Then, we copy these images to ``$IMAGES_OWN_DIR``.
+
+.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+  :language: bash
+  :start-after: Step 1
+  :end-at: cp -rf $INSTANCE_DIR/*
+
+The ``$CLASS_NAME`` should be the general category of your subject.
+The images produced by the prompt ``photo of a unqtkn <class>`` should be diverse images
+that are different enough from the subject in order for generated images to clearly
+show the effect of fine-tuning.
+
+Step 2: Download the pre-trained model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Download and cache a pre-trained Stable-Diffusion model locally.
+
+.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+  :language: bash
+  :start-after: Step 2
+  :end-at: python cache_model.py
+
+You can access the downloaded model checkpoint at the ``$ORIG_MODEL_PATH``.
+
+Step 3: Create the regularization images
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Create a regularization image set for a class of subjects using the pre-trained
+Stable Diffusion model. This is used to regularize the fine-tuning by ensuring that
+the model still produces decent images for random images of the same class,
+rather than just optimize for producing good images of the subject.
+
+.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+  :language: bash
+  :start-at: Step 3: START
+  :end-before: Step 3: END
+
+We use Ray Data to do batch inference with 4 workers, so more images can be generated in parallel.
+
+Step 4: Fine-tune the model
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Save a few (4 to 5) images of the subject being fine-tuned
+in a local directory. Then launch the training job with:
+
+.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+  :language: bash
+  :start-after: Step 4: START
+  :end-before: Step 4: END
+
+Step 5: Generate images of our subject
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Try your model with the same command line as Step 2, but point
+to your own model this time!
+
+.. literalinclude:: ../../../../release/air_examples/dreambooth/dreambooth_run.sh
+  :language: bash
+  :start-after: Step 5: START
+  :end-before: Step 5: END
+
+Next, try replacing the prompt with something more interesting!
+
+For example, for the dog subject, you can try:
+
+- "photo of a unqtkn dog in a bucket"
+- "photo of a unqtkn dog sleeping"
+- "photo of a unqtkn dog in a doghouse"
