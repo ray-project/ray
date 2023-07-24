@@ -7,6 +7,7 @@ import pickle
 import socket
 import time
 from typing import Callable, Dict, List, Optional, Set, Tuple
+import uuid
 
 import uvicorn
 import starlette.responses
@@ -482,7 +483,8 @@ class HTTPProxy:
                 scope["path"] = route_path.replace(route_prefix, "", 1)
                 scope["root_path"] = root_path + route_prefix
 
-            request_id = get_random_letters(10)
+            # RequestIdMiddleware makes sure scoep has x-request-id attribute
+            request_id = MutableHeaders(scope=scope).get("x-request-id")
             request_context_info = {
                 "route": route_path,
                 "request_id": request_id,
@@ -857,13 +859,29 @@ class RequestIdMiddleware:
         self.app = app
 
     async def __call__(self, scope, receive, send):
+
+        headers = MutableHeaders(scope=scope)
+        if RAY_SERVE_REQUEST_ID_HEADER not in headers and "x-request-id" not in headers:
+            # If X-Request-ID and RAY_SERVE_REQUEST_ID_HEADER are both not set, we
+            # generate a new request ID.
+            request_id = str(uuid.uuid4())
+            headers.append("x-request-id", request_id)
+        elif "x-request-id" in headers:
+            request_id = headers["x-request-id"]
+        else:
+            # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
+            request_id = headers[RAY_SERVE_REQUEST_ID_HEADER]
+
         async def send_with_request_id(message: Dict):
-            request_id = ray.serve.context._serve_request_context.get().request_id
             if message["type"] == "http.response.start":
                 headers = MutableHeaders(scope=message)
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
+                headers.append("X-Request-ID", request_id)
             if message["type"] == "websocket.accept":
+                # TODO(Sihan) Deprecate RAY_SERVE_REQUEST_ID_HEADER
                 message[RAY_SERVE_REQUEST_ID_HEADER] = request_id
+                message["X-Request-ID"] = request_id
             await send(message)
 
         await self.app(scope, receive, send_with_request_id)
