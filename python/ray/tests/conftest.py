@@ -484,6 +484,7 @@ def _ray_start_cluster(**kwargs):
     # The code after the yield will run as teardown code.
     ray.shutdown()
     cluster.shutdown()
+    time.sleep(10)  # give some time for the raylet-created agents to die
 
 
 # This fixture will start a cluster with empty nodes.
