@@ -1713,14 +1713,15 @@ class Dataset:
                 import pandas as pd
                 import ray
 
-                def transform_variety(group: pd.DataFrame) -> pd.DataFrame:
+                def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
+                    variety = group.drop("variety")
                     ...  # Separately transform each variety
                     return group
 
                 ds = (
                     ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
                     .groupby("variety")
-                    .map_groups(transform_variety, batch_format="pandas")
+                    .map_groups(normalize_variety, batch_format="pandas")
                 )
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
@@ -1804,7 +1805,7 @@ class Dataset:
             *aggs: :class:`Aggregations <ray.data.aggregate.AggregateFn>` to perform.
 
         Returns:
-            A ``dict`` where each key corresponds to an aggregation.
+            A ``dict`` where each each value is an aggregation for a given column.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
@@ -1845,8 +1846,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column ``dict``
               containing the column-wise sum of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1855,7 +1856,7 @@ class Dataset:
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Find the minimum of one or more columns.
+        """Return the minimum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1897,7 +1898,7 @@ class Dataset:
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Find the maximum of one or more columns.
+        """Return the maximum of one or more columns.
 
         Examples:
             >>> import ray
