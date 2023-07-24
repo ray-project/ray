@@ -100,11 +100,10 @@ class TrainingIterator:
                 datasets=datasets,
                 data_config=data_config,
                 checkpoint=checkpoint,
+                # Workers need to start out with a path to write the first checkpoint to
+                on_session_init=self._send_next_checkpoint_path_to_workers,
             )
         )
-
-        # Workers need to start out with a path to write the first checkpoint to.
-        self._send_next_checkpoint_path_to_workers()
 
     def _send_next_checkpoint_path_to_workers(self):
         # NOTE: Always upload to storage from workers in the new persistence path
