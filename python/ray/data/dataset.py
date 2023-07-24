@@ -2996,7 +2996,7 @@ class Dataset:
     def iterator(self) -> DataIterator:
         """Return a :class:`~ray.data.DataIterator` over this dataset.
 
-        You shouldn't call this method directly. It's used internally.
+        Don't call this method directly. Use it internally.
 
         Returns:
             A :class:`~ray.data.DataIterator` over this dataset.
@@ -3070,7 +3070,7 @@ class Dataset:
                 to fetch the objects to the local node and format the batches. Defaults
                 to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
-                blocks as batches (blocks may contain different number of rows).
+                blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
@@ -3244,7 +3244,7 @@ class Dataset:
                 to fetch the objects to the local node and format the batches. Defaults
                 to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
-                blocks as batches (blocks may contain different number of rows).
+                blocks as batches (blocks may contain different numbers of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The TensorFlow dtype(s) for the created tensor(s); if ``None``, the
