@@ -165,7 +165,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         grid_pos=GridPos(0, 3, 8, 8),
     ),
     Panel(
-        id=10,
+        id=11,
         title="Number of multiplexed models per replica",
         description="The number of multiplexed models for each replica.",
         unit="models",
