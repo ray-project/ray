@@ -299,11 +299,11 @@ class KVClient:
         """List blobs and sub-dirs in the given path, if possible.
 
         Examples:
-        
+
             >>> import ray
             >>> from ray._private import storage
             >>> ray.shutdown()
-            
+
             Normal usage.
 
             >>> ray.init(storage="/tmp/storage/cluster_1/storage")
