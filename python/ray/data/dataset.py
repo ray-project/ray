@@ -1152,11 +1152,6 @@ class Dataset:
 
                 ray.get([consume.remote(it1), consume.remote(it2)])
 
-            .. testoutput::
-                :hide:
-
-                ...
-
             You can loop over the iterators multiple times (multiple epochs).
 
             .. testcode::
@@ -1168,12 +1163,7 @@ class Dataset:
                         for batch in it.iter_batches():
                            print(batch)
 
-                ray.get([train.remote(it1), train.remote(it2)])  # doctest: +SKIP
-
-            .. testoutput:
-                :hide:
-
-                ...
+                ray.get([train.remote(it1), train.remote(it2)])
 
             The following remote function call blocks waiting for a read on ``it2`` to
             start.
@@ -1227,7 +1217,7 @@ class Dataset:
                             pass
 
                 workers = [Worker.remote() for _ in range(4)]
-                shards = transformed_ds.split(n=4, equal=True)
+                shards = ray.data.range(100).split(n=4, equal=True)
                 ray.get([w.train.remote(s) for w, s in zip(workers, shards)])
 
         Time complexity: O(1)
