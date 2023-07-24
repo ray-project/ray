@@ -798,7 +798,7 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           DestroyActor(
               actor_id,
               GenActorOutOfScopeCause(GetActor(actor_id)),
-              /*force_kill=*/!RayConfig::instance().graceful_kill_actor_worker());
+              /*force_kill=*/!RayConfig::instance().graceful_actor_worker_shutdown());
         }
       });
 }
