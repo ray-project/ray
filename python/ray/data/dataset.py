@@ -1124,7 +1124,7 @@ class Dataset:
         .. warning::
 
             Because iterators are pulling blocks from the same :class:`Dataset`
-            execution, if one iterator falls behind other iterators may be stalled.
+            execution, if one iterator falls behind, other iterators may be stalled.
 
         Examples:
 
@@ -1169,7 +1169,7 @@ class Dataset:
 
                 ...
 
-            The follow remote function call blocks waiting for a read on ``it2`` to
+            The following remote function call blocks waiting for a read on ``it2`` to
             start.
 
             .. testcode::
@@ -1181,7 +1181,7 @@ class Dataset:
             n: Number of output iterators to return.
             equal: If ``True``, each output iterator sees an exactly equal number
                 of rows, dropping data if necessary. If ``False``, some iterators may
-                see slightly more or less rows than other, but no data is dropped.
+                see slightly more or less rows than others, but no data is dropped.
             locality_hints: Specify the node ids corresponding to each iterator
                 location. Dataset will try to minimize data movement based on the
                 iterator output locations. This list must have length ``n``. You can
@@ -1521,7 +1521,7 @@ class Dataset:
         and test sets (equivalent to eg. scikit-learn's ``train_test_split``).
         For a higher level abstraction, see :meth:`Dataset.train_test_split`.
 
-        This method splits datasets in such a way so that all splits
+        This method splits datasets so that all splits
         always contains at least one row. If that isn't possible,
         an exception is raised.
 
@@ -1609,9 +1609,9 @@ class Dataset:
             test_size: If float, should be between 0.0 and 1.0 and represent the
                 proportion of the dataset to include in the test split. If int,
                 represents the absolute number of test samples. The train split
-                always compliments the test split.
+                always complements the test split.
             shuffle: Whether or not to globally shuffle the dataset before splitting.
-                Defaults to ``False``. This may be a very expensive operation with large
+                Defaults to ``False``. This may be a very expensive operation with a large
                 dataset.
             seed: Fix the random seed to use for shuffle, otherwise one is chosen
                 based on system randomness. Ignored if ``shuffle=False``.
@@ -2120,7 +2120,7 @@ class Dataset:
         """Materialize and zip the columns of this dataset with the columns of another.
 
         The datasets must have the same number of rows. Their column sets are
-        merged, and any duplicate column names disambiguated with suffixes like
+        merged, and any duplicate column names are disambiguated with suffixes like
         ``"_1"``.
 
         .. note::
