@@ -90,7 +90,9 @@ def create_ray_dataset(path):
 def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize, as_test: bool = False):
     model.eval()
     losses = []
-    for step, batch in tqdm.tqdm(enumerate(eval_dataloader), total=eval_dataset_len//bsize+1):
+    for step, batch in tqdm.tqdm(
+        enumerate(eval_dataloader), total=eval_dataset_len // (bsize + 1)
+    ):
         with torch.no_grad():
             outputs = model(**batch)
 
@@ -101,7 +103,6 @@ def evaluate(model, eval_dataset_len, eval_dataloader, accelerator, bsize, as_te
             break
         
     losses = torch.cat(losses)
-    losses = losses[: eval_dataset_len]
     try:
         eval_loss = torch.mean(losses)
         perplexity = math.exp(eval_loss)
@@ -123,14 +124,12 @@ def checkpoint_model(checkpoint_folder, ckpt_id, model, epoch, last_global_step,
     
     # In here model will be a DeepspeedEngine object
     model.save_checkpoint(checkpoint_folder, ckpt_id, checkpoint_state_dict)
-    status_msg = f"checkpointing: checkpoint_folder={checkpoint_folder}, ckpt_id={ckpt_id}"
+    status_msg = (
+        f"checkpointing: checkpoint_folder={checkpoint_folder}, ckpt_id={ckpt_id}"
+    )
     print(status_msg)
 
 def training_function(kwargs: dict):
-    os.environ["OMP_NUM_THREADS"] = str(
-        session.get_trial_resources().bundles[-1].get("CPU", 1)
-    )
-
     print("training_function called")
 
     config = kwargs["config"]
@@ -283,17 +282,17 @@ def training_function(kwargs: dict):
             # as long as this is not the last step report here
             if step != (train_ds_len // batch_size - 1):
                 session.report(
-                    {
+                    {   
                         "epoch": epoch,
-                        "step": step,
-                        "train_loss": loss.item(),
+                        "iteration": step,
+                        "train_loss": loss_sum.item() / (step + 1),
                         "eval_loss": None,
                         "perplexity": None,
-                        "number of iterations": step + 1,
-                        "Train time per epoch": None,
-                        "Eval time per epoch": None,
-                        "avg fwd time": avg_fwd_time / (step + 1),
-                        "avg bwd time": avg_bwd_time / (step + 1),
+                        "num_iterations": step + 1,
+                        "train_time_per_epoch": None,
+                        "eval_time_per_epoch": None,
+                        "avg_fwd_time": avg_fwd_time / (step + 1),
+                        "avg_bwd_time": avg_bwd_time / (step + 1),
                     },
                 )
 
@@ -367,11 +366,11 @@ def training_function(kwargs: dict):
                 "train_loss": loss_sum.item() / (step + 1),
                 "eval_loss": eloss.item(),
                 "perplexity": perplex,
-                "number of iterations": step + 1,
-                "Train time per epoch": e_epoch - s_epoch,
-                "Eval time per epoch": eval_e_epoch - eval_s_epoch,
-                "avg fwd time": avg_fwd_time / (step + 1),
-                "avg bwd time": avg_bwd_time / (step + 1),
+                "num_iterations": step + 1,
+                "train_time_per_epoch": e_epoch - s_epoch,
+                "eval_time_per_epoch": eval_e_epoch - eval_s_epoch,
+                "avg_fwd_time": avg_fwd_time / (step + 1),
+                "avg_bwd_time": avg_bwd_time / (step + 1),
             },
             # We do not need to explictly call report(checkpoint). 
             # This is because the checkpointing is not on all distributed workers, it's 
@@ -380,7 +379,7 @@ def training_function(kwargs: dict):
             # will include the checkpoint files created by the Rank_0. 
             # Note that this will not delete the checkpoints from the previous 
             # iterations.
-            checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
+            # checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
         
 
@@ -580,8 +579,8 @@ def main():
 
     results = trainer.fit()
     
-    print("results are stored in:")
-    print(results.checkpoint.uri)
+    # print("results are stored in:")
+    # print(results.checkpoint.uri)
 
     
     

@@ -43,16 +43,9 @@ def _parse_args():
     return parser.parse_args()
     
     
-def main(pargs):
+def download_model_files_on_all_nodes(hf_model_id: str):
     """For every node in the cluster that has a GPU, download the model from the S3 mirror."""
     
-    ray.init(
-        runtime_env = {
-            "env_vars" : {"HF_HOME": "/mnt/local_storage/.cache/huggingface"}
-        }
-    )
-    
-    hf_model_id = pargs.hf_model_id
     mirror_uri = get_mirror_link(hf_model_id)
     
     kwargs = {
@@ -60,13 +53,20 @@ def main(pargs):
         "bucket_uri": mirror_uri,
         "s3_sync_args": ["--no-sign-request"],  
     }    
-    
 
     _ = run_on_every_node(download_model_remote, **kwargs)
     
     
     
 if __name__ == "__main__":
-    main(_parse_args())
+
+    ray.init(   
+        runtime_env = {
+            "env_vars" : {"HF_HOME": "/mnt/local_storage/.cache/huggingface"}
+        }
+    )
+    
+    pargs = _parse_args()
+    download_model_files_on_all_nodes(hf_model_id=pargs.hf_model_id)
     
     

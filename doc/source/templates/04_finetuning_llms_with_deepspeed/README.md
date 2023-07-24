@@ -1,9 +1,13 @@
 # Finetuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
+| Template Specification | Description |
+| ---------------------- | ----------- |
+| Summary | This template, demonstrates how to perform full parameter fine-tuning for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
+| Time to Run | Around 15 min. for 7B for 1 epoch on 3.5M tokens. |
+| Minimum Compute Requirements | At least 1xg5.16xlarge for head-node and 15xg5.4xlarge for worker nodes |
+| Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu116`](https://docs.anyscale.com/reference/base-images/overview). |
 
 ## Getting Started
-This template, demonstrates how to perform full parameter fine-tuning for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy.
 
-## Quick start
 For 7B, set up a cluster on AWS with the following settings:
 
 |            | num | instance type | GPU per node | GPU Memory | CPU Memory |
@@ -27,7 +31,28 @@ The pre-trained models for these models is quite large (12.8G for 7B model and 1
 
 ### Cloud storage
 
-Similarly the checkpoints during training can be quite large and we would like to be able to save those checkpoints to the familiar huggingface format so that we can serve it conveniently. The fine-tuning script in this template uses Ray Air Checkpointing to sync the checkpoints created by each node back to a centralized cloud storage on AWS S3.
+Similarly the checkpoints during training can be quite large and we would like to be able to save those checkpoints to the familiar huggingface format so that we can serve it conveniently. The fine-tuning script in this template uses Ray Air Checkpointing to sync the checkpoints created by each node back to a centralized cloud storage on AWS S3. The final file structure for each checkpoint will have a look similar to the following structure:
+
+```
+epoch-0
+├── .is_checkpoint
+├── .metadata.pkl
+├── .tune_metadata
+├── _metadata.meta.pkl
+├── _preprocessor
+├── _preprocessor.meta.pkl
+├── added_tokens.json
+├── config.json
+├── generation_config.json
+├── model-00001-of-00002.safetensors
+├── model-00002-of-00002.safetensors
+├── model.safetensors
+├── model.safetensors.index.json
+├── special_tokens_map.json
+├── tokenizer.json
+├── tokenizer.model
+└── tokenizer_config.json
+```
 
 After training we can use [Aviary](https://github.com/ray-project/aviary) to deploy our fine-tuned LLM by providing the checkpoint path stored on cloud directly.
 
