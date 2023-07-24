@@ -365,6 +365,23 @@ def test_fastapi_init_lifespan_should_not_shutdown(serve_instance):
     assert ray.get(A.get_handle().f.remote()) == 1
 
 
+def test_fastapi_lifespan_startup_failure_crashes_actor(serve_instance):
+    async def lifespan(app):
+        raise Exception("crash")
+
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+
+    @serve.deployment
+    @serve.ingress(app)
+    class A:
+        pass
+
+    with pytest.raises(RuntimeError):
+        A.deploy()
+
+
 def test_fastapi_duplicate_routes(serve_instance):
     app = FastAPI()
 

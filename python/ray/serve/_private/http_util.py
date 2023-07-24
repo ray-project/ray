@@ -400,6 +400,10 @@ class ASGIAppReplicaWrapper:
 
         with LoggingContext(self._serve_asgi_lifespan.logger, level=logging.WARNING):
             await self._serve_asgi_lifespan.startup()
+            if self._serve_asgi_lifespan.should_exit:
+                raise RuntimeError(
+                    "ASGI lifespan startup failed. Check replica logs for details."
+                )
 
     async def __call__(
         self,
