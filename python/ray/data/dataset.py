@@ -1241,10 +1241,17 @@ class Dataset:
         .. seealso::
 
             :meth:`Dataset.split_at_indices`
+                Unlike :meth:`~Dataset.split`, which splits a dataset into approximately
+                equal splits, :meth:`Dataset.split_proportionately` lets you split a 
+                dataset into different sizes.
 
             :meth:`Dataset.split_proportionately`
-
+                This method is equivalent to :meth:`Dataset.split_at_indices` if 
+                you compute indices manually.
+                
             :meth:`Dataset.streaming_split`.
+                Unlike :meth:`~Dataset.split`, :meth:`~Dataset.streaming_split`
+                doesn't materialize the dataset in memory.
         """
         if n <= 0:
             raise ValueError(f"The number of splits {n} is not positive.")
@@ -1460,10 +1467,17 @@ class Dataset:
         .. seealso::
 
             :meth:`Dataset.split`
+                Unlike :meth:`~Dataset.split_at_indices`, which lets you split a 
+                dataset into different sizes, :meth:`Dataset.split` splits a dataset 
+                into approximately equal splits.
 
             :meth:`Dataset.split_proportionately`
-
+                This method is equivalent to :meth:`Dataset.split_at_indices` if 
+                you compute indices manually.
+                
             :meth:`Dataset.streaming_split`.
+                Unlike :meth:`~Dataset.split`, :meth:`~Dataset.streaming_split`
+                doesn't materialize the dataset in memory.
         """
 
         if len(indices) < 1:
@@ -1552,10 +1566,16 @@ class Dataset:
         .. seealso::
 
             :meth:`Dataset.split`
+                Unlike :meth:`~Dataset.split_proportionately`, which lets you split a 
+                dataset into different sizes, :meth:`Dataset.split` splits a dataset 
+                into approximately equal splits.
 
             :meth:`Dataset.split_at_indices`
-
+                :meth:`Dataset.split_proportionately` uses this method under the hood.
+                
             :meth:`Dataset.streaming_split`.
+                Unlike :meth:`~Dataset.split`, :meth:`~Dataset.streaming_split`
+                doesn't materialize the dataset in memory.
         """
 
         if len(proportions) < 1:
@@ -1649,12 +1669,12 @@ class Dataset:
 
     @ConsumptionAPI
     def union(self, *other: List["Dataset"]) -> "Dataset":
-        """Materialize and concatenate datasets across rows.
+        """Materialize and concatenate :class:`Datasets <ray.data.Dataset>` across rows.
 
         The order of the blocks in the datasets is preserved, as is the
         relative ordering between the datasets passed in the argument list.
 
-        .. note::
+        .. caution::
             Unioned datasets aren't lineage-serializable. As a result, they can't be
             used as a tunable hyperparameter in Ray Tune.
 
