@@ -936,6 +936,8 @@ def test_exit_actor_queued(shutdown_only):
 
 
 def test_actor_graceful_shutdown(shutdown_only):
+    """with `graceful_actor_worker_shutdown=True`, actor worker will
+    wait for all references to be drained before shutting down."""
     ray.init(
         _system_config={
             "graceful_actor_worker_shutdown": True,
