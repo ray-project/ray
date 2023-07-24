@@ -7,6 +7,7 @@ from typing import Any, Callable, List, Set
 
 from ray._private.async_compat import sync_to_async
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
 )
@@ -56,13 +57,15 @@ class _ModelMultiplexWrapper:
         self.self_arg: Any = self_arg
         self.max_num_models_per_replica: int = max_num_models_per_replica
 
-        self.model_load_latency_s = metrics.Gauge(
-            "serve_multiplexed_model_load_latency_s",
+        self.model_load_latency_ms = metrics.Histogram(
+            "serve_multiplexed_model_load_latency_ms",
             description="The time it takes to load a model.",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
         )
-        self.model_unload_latency_s = metrics.Gauge(
-            "serve_multiplexed_model_unload_latency_s",
+        self.model_unload_latency_ms = metrics.Histogram(
+            "serve_multiplexed_model_unload_latency_ms",
             description="The time it takes to unload a model.",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
         )
         self.num_models = metrics.Gauge(
             "serve_num_multiplexed_models",
