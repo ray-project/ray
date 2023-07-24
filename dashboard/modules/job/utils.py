@@ -19,11 +19,8 @@ from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray.dashboard.modules.job.common import (
     validate_request_type,
-    JOB_ACTOR_NAME_TEMPLATE,
-    SUPERVISOR_ACTOR_RAY_NAMESPACE,
     JobInfoStorageClient,
 )
-from ray.core.generated import gcs_service_pb2
 
 try:
     # package `pydantic` is not in ray's minimal dependencies
@@ -93,10 +90,10 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
             if new_chunk_char_count > MAX_CHUNK_CHAR_LENGTH:
                 # Too many characters, return 20000 in this chunk, and then
                 # continue loop with remaining characters in curr_line
-                truncated_line = curr_line[0 : MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
+                truncated_line = curr_line[0: MAX_CHUNK_CHAR_LENGTH - chunk_char_count]
                 lines.append(truncated_line)
                 # Set remainder of current line to process next
-                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count :]
+                curr_line = curr_line[MAX_CHUNK_CHAR_LENGTH - chunk_char_count:]
                 yield lines or None
                 lines = []
                 chunk_char_count = 0
@@ -161,11 +158,11 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    reply = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
 
     jobs = {}
     submission_job_drivers = {}
-    for job_table_entry in reply.job_info_list:
+    for job_table_entry in job_infos.values():
         if job_table_entry.config.ray_namespace.startswith(
             ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX
         ):
@@ -248,13 +245,3 @@ async def find_job_by_ids(
         return job
 
     return None
-
-
-async def get_supervisor_actor_into(
-    gcs_aio_client: GcsAioClient, job_submission_id: str
-) -> gcs_service_pb2.GetNamedActorInfoReply:
-    actor_info = await gcs_aio_client.get_named_actor_info(
-        JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id),
-        SUPERVISOR_ACTOR_RAY_NAMESPACE,
-    )
-    return actor_info
