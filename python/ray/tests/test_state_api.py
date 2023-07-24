@@ -11,7 +11,7 @@ import pytest
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 from ray.util.state.common import Humanify
-from ray._private.gcs_utils import GcsAioClient
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
 import yaml
 from click.testing import CliRunner
 
@@ -156,8 +156,10 @@ def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     gcs_aio_client = GcsAioClient(address=gcs_address)
-    gcs_channel = gcs_aio_client.channel.channel()
-    state_api_data_source_client = StateDataSourceClient(gcs_channel, gcs_aio_client)
+    gcs_channel = GcsChannel(gcs_address=gcs_address, aio=True)
+    gcs_channel.connect()
+    state_api_data_source_client = StateDataSourceClient(
+        gcs_channel.channel(), gcs_aio_client)
     manager = StateAPIManager(state_api_data_source_client)
 
     yield manager
