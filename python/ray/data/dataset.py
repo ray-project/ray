@@ -446,7 +446,7 @@ class Dataset:
                 only supported for the actor compute strategy. Note ``fn`` must be
                 pickle-able.
             batch_size: The desired number of rows in each batch, or ``None`` to use
-                entire blocks as batches (blocks may contain different number of rows).
+                entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 4096 with "default".
