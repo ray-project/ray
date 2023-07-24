@@ -87,7 +87,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -99,7 +99,6 @@
     wait_for_nodes:
       num_nodes: 0
 
-
   variations:
     - __suffix__: aws
     - __suffix__: gce
@@ -108,7 +107,6 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
-
 
   alert: default
 
@@ -123,8 +121,7 @@
   working_dir: air_tests/air_benchmarks
 
   frequency: nightly
-  team: ml
-  python: "3.8"
+  team: data
   cluster:
     byod:
       type: gpu
@@ -153,8 +150,7 @@
   working_dir: air_tests/air_benchmarks
 
   frequency: nightly
-  team: ml
-  python: "3.8"
+  team: data
   cluster:
     byod:
       type: gpu
@@ -184,7 +180,7 @@
   working_dir: air_tests/air_benchmarks
 
   frequency: nightly
-  team: ml
+  team: data
   python: "3.8"
   cluster:
     byod:
@@ -218,8 +214,7 @@
   working_dir: air_tests/air_benchmarks
 
   frequency: nightly
-  team: ml
-  python: "3.8"
+  team: data
   stable: false
 
   cluster:
@@ -254,7 +249,6 @@
 
   frequency: weekly
   team: data
-  python: "3.8"
 
   cluster:
     byod:
@@ -281,7 +275,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -313,7 +307,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -337,7 +331,6 @@
     wait_for_nodes:
       num_nodes: 2
 
-
   smoke_test:
     frequency: manual
 
@@ -353,7 +346,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -382,7 +375,7 @@
 - name: air_benchmark_xgboost_cpu_10
   group: AIR tests
   working_dir: air_tests/air_benchmarks
-  python: "3.8"
+
   frequency: nightly
   team: ml
   cluster:
@@ -423,7 +416,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -454,7 +447,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -501,7 +494,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -530,7 +523,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -561,7 +554,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -592,7 +585,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -624,7 +617,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -656,7 +649,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -685,7 +678,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   stable: false
 
   cluster:
@@ -719,7 +712,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   stable: false
 
   cluster:
@@ -734,7 +727,6 @@
 
     wait_for_nodes:
       num_nodes: 4
-
 
   smoke_test:
     frequency: nightly
@@ -767,7 +759,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -796,7 +788,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   stable: false
 
   cluster:
@@ -832,7 +824,7 @@
   stable: false
 
   frequency: nightly
-  python: "3.8"
+
   team: data
   cluster:
     byod:
@@ -864,7 +856,7 @@
   stable: false
 
   frequency: nightly
-  python: "3.8"
+
   team: data
   cluster:
     byod:
@@ -902,7 +894,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -952,8 +944,6 @@
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
   working_dir: air_examples/dolly_v2_lightning_fsdp_finetuning
-
-  python: "3.8"
 
   frequency: weekly
   team: ml
@@ -1094,7 +1084,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1122,7 +1112,7 @@
 - name: xgboost_train_gpu
   group: XGBoost
   working_dir: xgboost_tests
-  python: "3.8"
+
   frequency: nightly
   team: ml
 
@@ -1159,7 +1149,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1190,7 +1180,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1213,7 +1203,6 @@
         cluster_env: app_config.yaml
         cluster_compute: tpl_cpu_small_gce.yaml
 
-
   alert: default
 
 - name: xgboost_ft_small_non_elastic
@@ -1222,7 +1211,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1253,7 +1242,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1285,7 +1274,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1317,7 +1306,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1374,7 +1363,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1407,7 +1396,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1440,7 +1429,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1473,7 +1462,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1503,7 +1492,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1533,7 +1522,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_test.sh
@@ -1569,7 +1558,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1599,7 +1588,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1632,7 +1621,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1663,7 +1652,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1694,7 +1683,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -1726,7 +1715,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -1758,7 +1747,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1789,7 +1778,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1820,7 +1809,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1856,7 +1845,7 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -1884,7 +1873,7 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -1912,7 +1901,7 @@
   working_dir: tune_tests/cloud_tests
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -1949,7 +1938,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -1991,7 +1980,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2029,7 +2018,7 @@
   working_dir: tune_tests/cloud_tests
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2068,7 +2057,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2095,7 +2084,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2130,7 +2119,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2164,7 +2153,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2200,7 +2189,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2241,7 +2230,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2271,7 +2260,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2301,7 +2290,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       post_build_script: byod_xgboost_tune_test.sh
@@ -2339,7 +2328,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -2377,7 +2366,7 @@
 
   frequency: nightly-3x
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2411,7 +2400,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2451,7 +2440,7 @@
 
   frequency: weekly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2497,7 +2486,7 @@
 
   frequency: weekly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2539,7 +2528,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2579,7 +2568,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2622,7 +2611,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2667,7 +2656,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2707,7 +2696,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2747,7 +2736,7 @@
   working_dir: long_running_tests
 
   frequency: weekly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -2788,7 +2777,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2831,7 +2820,7 @@
 
   frequency: weekly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -2873,7 +2862,7 @@
 
   frequency: weekly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -2915,7 +2904,7 @@
 
   frequency: weekly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -2955,7 +2944,7 @@
 
   frequency: weekly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -2997,7 +2986,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3028,7 +3017,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3058,7 +3047,7 @@
   team: serve
   frequency: nightly
   working_dir: jobs_tests
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3082,7 +3071,7 @@
 - name: jobs_check_cuda_available
   group: Jobs tests
   team: serve
-  python: "3.8"
+
   frequency: nightly
   working_dir: jobs_tests
   cluster:
@@ -3108,7 +3097,7 @@
 - name: jobs_specify_num_gpus
   group: Jobs tests
   team: serve
-  python: "3.8"
+
   frequency: nightly
   working_dir: jobs_tests
   cluster:
@@ -3140,7 +3129,6 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
 
   cluster:
     byod: {}
@@ -3171,7 +3159,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3227,7 +3215,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3255,7 +3243,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3283,7 +3271,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3311,7 +3299,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3339,7 +3327,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3387,7 +3375,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3416,7 +3404,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3445,7 +3433,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3474,7 +3462,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3504,7 +3492,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3532,7 +3520,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod: {}
     cluster_env: app_config.yaml
@@ -3561,7 +3549,7 @@
 
   frequency: nightly
   team: serve
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3594,7 +3582,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3630,7 +3618,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3668,7 +3656,7 @@
 
   frequency: nightly
   team: ml
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3710,7 +3698,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3745,7 +3733,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3780,7 +3768,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -3844,7 +3832,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4079,7 +4067,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4111,7 +4099,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4143,7 +4131,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   # Marking as unstable since it's currently expected to fail.
   stable: false
 
@@ -4181,7 +4169,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4213,7 +4201,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4344,7 +4332,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4376,7 +4364,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4710,7 +4698,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4742,7 +4730,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4809,7 +4797,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4937,7 +4925,7 @@
 
   frequency: nightly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -4972,7 +4960,7 @@
 
   frequency: weekly
   team: rllib
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -5021,7 +5009,7 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -5051,7 +5039,7 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod: {}
@@ -5076,7 +5064,7 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod: {}
@@ -5101,7 +5089,7 @@
   working_dir: nightly_tests
 
   frequency: nightly
-  python: "3.8"
+
   team: core
   cluster:
     byod:
@@ -5129,8 +5117,6 @@
   team: core
   frequency: nightly
   working_dir: microbenchmark
-
-  python: "3.8"
 
   cluster:
     byod: {}
@@ -5189,7 +5175,7 @@
 
   frequency: nightly
   team: core
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -5219,7 +5205,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -5257,7 +5243,6 @@
 
   stable: false
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5302,7 +5287,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5331,7 +5315,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5373,7 +5356,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5417,7 +5399,6 @@
 - name: threaded_actors_stress_test
   group: core-daily-test
   working_dir: nightly_tests
-  python: "3.8"
 
   frequency: nightly
   team: core
@@ -5481,7 +5462,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5511,7 +5491,7 @@
 
   frequency: nightly
   team: core
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -5531,7 +5511,7 @@
 
   frequency: nightly-3x
   team: core
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -5553,7 +5533,6 @@
   group: core-daily-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
   cluster:
@@ -5599,7 +5578,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5624,7 +5602,6 @@
   group: core-daily-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5656,7 +5633,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5685,7 +5661,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5715,7 +5690,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
   cluster:
@@ -5745,7 +5719,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5767,7 +5740,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5797,7 +5769,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
   cluster:
@@ -5828,7 +5799,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -5850,7 +5820,6 @@
   group: core-scalability-test
   working_dir: benchmarks
 
-  python: "3.8"
   frequency: nightly-3x
   team: core
   cluster:
@@ -5879,6 +5848,8 @@
 - name: scheduling_test_many_0s_tasks_many_nodes
   group: core-scalability-test
   working_dir: benchmarks
+
+  python: "3.7"
 
   frequency: nightly
   team: core
@@ -5961,7 +5932,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -5989,7 +5960,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6016,7 +5987,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6045,7 +6016,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6075,7 +6046,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6103,7 +6074,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6131,7 +6102,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6164,7 +6135,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6192,7 +6163,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6218,7 +6189,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6245,7 +6216,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6297,7 +6268,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6324,7 +6295,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6351,7 +6322,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6378,7 +6349,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6405,7 +6376,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6432,7 +6403,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6461,7 +6432,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6495,7 +6466,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6526,7 +6497,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6559,7 +6530,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6590,7 +6561,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6619,11 +6590,13 @@
   group: data-tests
   working_dir: nightly_tests
 
+  python: "3.7"
+
   frequency: weekly
   team: data
   python: "3.8"
   cluster:
-    byod: 
+    byod:
       runtime_env:
         - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
       post_build_script: byod_dataset_shuffle.sh
@@ -6658,7 +6631,6 @@
   group: core-nightly-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6686,7 +6658,6 @@
   group: core-nightly-test
   working_dir: nightly_tests
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6717,7 +6688,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6749,7 +6720,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6783,7 +6754,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       type: gpu
@@ -6819,7 +6790,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6853,7 +6824,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     byod:
       runtime_env:
@@ -6885,7 +6856,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     byod:
@@ -6920,7 +6891,7 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
+
   cluster:
     # leave oom disabled as test is marked unstable at the moment.
     byod:
@@ -6952,7 +6923,6 @@
   group: core-observability-test
   working_dir: dashboard
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6981,6 +6951,8 @@
   group: k8s-test
   working_dir: k8s_tests
 
+  python: "3.7"
+
   stable: false
 
   frequency: nightly
@@ -7000,6 +6972,23 @@
 
   frequency: nightly
   team: core
+
+  cluster:
+    byod: {}
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10
+
+
+- name: aws_cluster_launcher_nightly_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: nightly
+  team: core
   python: "3.8"
   cluster:
     byod: {}
@@ -7007,14 +6996,49 @@
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override nightly
+
+
+- name: aws_cluster_launcher_latest_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: nightly
+  team: core
+  python: "3.8"
+  cluster:
+    byod: {}
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override latest
+
+
+- name: aws_cluster_launcher_release_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  frequency: manual
+  team: core
+  python: "3.8"
+  cluster:
+    byod: {}
+    cluster_env: aws/tests/aws_config.yaml
+    cluster_compute: aws/tests/aws_compute.yaml
+
+  run:
+    timeout: 2400
+    script: python launch_and_verify_cluster.py aws/tests/aws_cluster.yaml --num-expected-nodes 2 --retries 10 --docker-override commit
+
+
 
 - name: aws_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7030,7 +7054,6 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7039,12 +7062,14 @@
     cluster_compute: aws/tests/aws_compute.yaml
 
   run:
-    timeout: 1200
-    script: python launch_and_verify_cluster.py aws/example-full.yaml
+    timeout: 3000
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
+
+  python: "3.7"
 
   stable: true
 
@@ -7063,6 +7088,8 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
+  python: "3.7"
+
   stable: true
 
   env: gce
@@ -7073,5 +7100,57 @@
     cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
 
   run:
-    timeout: 2400
-    script: python launch_and_verify_cluster.py gcp/example-full.yaml
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20
+
+- name: gcp_cluster_launcher_latest_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: gcp/tests/gce_config.yaml
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override nightly
+
+- name: gcp_cluster_launcher_nightly_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: nightly
+  team: core
+  cluster:
+    cluster_env: gcp/tests/gce_config.yaml
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override latest
+
+
+- name: gcp_cluster_launcher_release_image
+  group: cluster-launcher-test
+  working_dir: ../python/ray/autoscaler/
+
+  stable: true
+
+  env: gce
+  frequency: manual
+  team: core
+  cluster:
+    cluster_env: gcp/tests/gce_config.yaml
+    cluster_compute: gcp/tests/single_node_32_cpu_gce.yaml
+
+  run:
+    timeout: 3600
+    script: python launch_and_verify_cluster.py gcp/example-full.yaml --num-expected-nodes 2 --retries 20  --docker-override commit
