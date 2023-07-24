@@ -288,7 +288,7 @@ class Dataset:
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
 
-        Use this method to transform your data. To learn more, see 
+        Use this method to transform your data. To learn more, see
         :ref:`Transforming rows <transforming_rows>`.
 
         .. tip::
@@ -312,6 +312,15 @@ class Dataset:
                     ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
                     .map(parse_filename)
                 )
+                print(ds.schema)
+
+            .. testoutput::
+
+                Column    Type
+                ------    ----
+                image     numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+                path      string
+                filename  string
 
         Time complexity: O(dataset size / parallelism)
 
@@ -391,6 +400,10 @@ class Dataset:
 
         This method is useful for preprocessing data and performing inference. To learn
         more, see :ref:`Transforming batches <transforming_batches>`.
+
+        You can use either Ray Tasks or Ray Actors to perform the transformation. By
+        default, Ray Data uses Tasks. To use Actors, see
+        :ref:`Transforming batches with actors <transforming_data_actors>`.
 
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
@@ -490,11 +503,8 @@ class Dataset:
         .. note::
 
             The size of the batches provided to ``fn`` might be smaller than the
-            provided ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s)
-            sent to a given map task. When ``batch_size`` is specified, each map task is
-            sent a single block if the block is equal to or larger than ``batch_size``,
-            and sent a bundle of blocks up to (but not exceeding)
-            ``batch_size`` if blocks are smaller than ``batch_size``.
+            specified ``batch_size`` if ``batch_size`` doesn't evenly divide the
+            block(s) sent to a given map task.
 
         .. seealso::
 
@@ -2036,7 +2046,7 @@ class Dataset:
 
         Args:
             key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` to generate a sort key.
+                :meth:`Dataset.map` to generate a column to sort by.
             descending: Whether to sort in descending order.
 
         Returns:
