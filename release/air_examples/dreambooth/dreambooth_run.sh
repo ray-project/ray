@@ -52,7 +52,7 @@ python cache_model.py --model_dir=$ORIG_MODEL_DIR --model_name=$ORIG_MODEL_NAME 
 rm -rf "$IMAGES_REG_DIR"/*.jpg
 
 # Step 3: START
-python run_model.py \
+python generate.py \
   --model_dir=$ORIG_MODEL_PATH \
   --output_dir=$IMAGES_REG_DIR \
   --prompts="photo of a $CLASS_NAME" \
@@ -78,7 +78,7 @@ rm -rf "$IMAGES_NEW_DIR"/*.jpg
 
 # ATTN: Reduced the number of samples per prompt for faster testing
 # Step 5: START
-python run_model.py \
+python generate.py \
   --model_dir=$TUNED_MODEL_DIR \
   --output_dir=$IMAGES_NEW_DIR \
   --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" \

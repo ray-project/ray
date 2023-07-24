@@ -2,6 +2,7 @@ import hashlib
 from os import path
 
 from diffusers import DiffusionPipeline
+import time
 import torch
 import ray
 
@@ -35,6 +36,9 @@ def run(args):
 
     prompts = args.prompts.split(",")
 
+    start_time = time.time()
+    num_samples = len(prompts) * args.num_samples_per_prompt
+
     if args.use_ray_data:
         # Use Ray Data to perform batch inference to generate many images in parallel
         prompts_with_idxs = []
@@ -47,24 +51,17 @@ def run(args):
             )
 
         prompt_ds = ray.data.from_items(prompts_with_idxs)
-
-        num_samples = len(prompts_with_idxs)
         num_workers = 4
 
-        filenames = prompt_ds.map_batches(
+        # Run the batch inference by consuming output with `take_all`.
+        prompt_ds.map_batches(
             StableDiffusionCallable,
             compute=ray.data.ActorPoolStrategy(size=num_workers),
             fn_constructor_args=(args.model_dir, args.output_dir),
             num_gpus=1,
             batch_size=num_samples // num_workers,
-        ).take_batch(5)
+        ).take_all()
 
-        print(
-            f"Generated and saved {num_samples} images to {args.output_dir}. "
-            "Here are the first few:"
-        )
-        for filename in filenames["filename"]:
-            print(filename)
     else:
         # Generate images one by one
         stable_diffusion_predictor = StableDiffusionCallable(
@@ -73,6 +70,12 @@ def run(args):
         for prompt in prompts:
             for i in range(args.num_samples_per_prompt):
                 stable_diffusion_predictor({"idx": [i], "prompt": [prompt]})
+
+    elapsed = time.time() - start_time
+    print(
+        f"Generated and saved {num_samples} images to {args.output_dir} in "
+        f"{elapsed} seconds."
+    )
 
 
 if __name__ == "__main__":
