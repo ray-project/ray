@@ -2179,7 +2179,7 @@ cdef class GcsClient:
         check_status(status)
 
     def get_cluster_id(self):
-        return self.cluster_id.Hex()
+        return self.cluster_id.Hex().decode()
 
     @property
     def address(self):
