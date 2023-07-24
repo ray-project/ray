@@ -1,4 +1,4 @@
-(getting-started)=
+(serve-getting-started)=
 
 # Getting Started
 
