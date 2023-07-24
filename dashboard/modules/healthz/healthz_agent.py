@@ -33,14 +33,10 @@ class HealthzAgent(dashboard_utils.DashboardAgentModule):
             # In case of GCS failed, Raylet will crash eventually if GCS is not back
             # within a given time and the check will fail since agent can't live
             # without a local raylet.
-            # Note: we want to cehck the rpc error code, but we can't import grpc since
-            # this is a minimal module. I hardcode these error codes because grpc status
-            # codes are relatively stable. Here is the reference link:
-            # https://grpc.github.io/grpc/core/md_doc_statuscodes.html
             if e.rpc_code not in (
-                14,  # grpc.StatusCode.UNAVAILABLE,
-                2,  # grpc.StatusCode.UNKNOWN,
-                4,  # grpc.StatusCode.DEADLINE_EXCEEDED,
+                ray._raylet.GRPC_STATUS_CODE_UNAVAILABLE,
+                ray._raylet.GRPC_STATUS_CODE_UNKNOWN,
+                ray._raylet.GRPC_STATUS_CODE_DEADLINE_EXCEEDED,
             ):
                 return Response(status=503, text=f"Health check failed due to: {e}")
 
