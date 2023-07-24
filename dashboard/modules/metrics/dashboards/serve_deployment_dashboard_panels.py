@@ -216,7 +216,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate(serve_multiplexed_model_load_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))',
+                expr="histogram_quantile(0.99, sum(rate(serve_multiplexed_model_load_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
                 legend="{{replica}}",
             ),
         ],
@@ -231,7 +231,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate(serve_multiplexed_model_unload_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))',
+                expr="histogram_quantile(0.99, sum(rate(serve_multiplexed_model_unload_latency_ms_bucket{{{global_filters}}}[5m])) by (deployment, replica, le))",
                 legend="{{replica}}",
             ),
         ],
