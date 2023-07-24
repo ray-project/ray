@@ -1,6 +1,3 @@
-"""
-This script runs once and expects certain properties from the argparse.
-"""
 #!/usr/bin/env python
 
 import argparse
