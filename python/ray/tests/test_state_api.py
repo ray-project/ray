@@ -25,6 +25,7 @@ from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
+    find_free_port,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -1506,10 +1507,10 @@ Integration tests
 async def test_state_data_source_client(ray_start_cluster):
     cluster = ray_start_cluster
     # head
-    cluster.add_node(num_cpus=2)
+    cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
     ray.init(address=cluster.address)
     # worker
-    worker = cluster.add_node(num_cpus=2)
+    worker = cluster.add_node(num_cpus=2, dashboard_agent_listen_port=find_free_port())
 
     client = state_source_client(cluster.address)
 

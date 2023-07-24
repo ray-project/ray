@@ -3,7 +3,7 @@ from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from ray._raylet import GcsClient
 from ray.core.generated import (
-    gcs_service_pb2,
+    gcs_pb2,
 )
 import ray._private.utils
 
@@ -136,7 +136,7 @@ class GcsAioClient:
 
     async def get_all_job_info(
         self, timeout: Optional[float] = None
-    ) -> Dict[bytes, "JobTableData"]:
+    ) -> Dict[bytes, gcs_pb2.JobTableData]:
         """
         Return dict key: bytes of job_id; value: JobTableData pb message.
         """
