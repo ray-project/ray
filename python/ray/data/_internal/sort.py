@@ -116,7 +116,7 @@ def sample_boundaries(
     sample_block = cached_remote_fn(_sample_block)
 
     sample_results = [
-        sample_block.remote(block, n_samples, columns) for block in blocks
+        sample_block.remote(block, n_samples, sort_key) for block in blocks
     ]
 
     should_close_bar = True
