@@ -123,7 +123,6 @@ if sys.version_info >= (3, 8, 0):
 else:
     from asyncmock import AsyncMock
 
-
 """
 Unit tests
 """
@@ -2185,6 +2184,7 @@ def test_list_get_nodes(ray_start_cluster):
                 if node["node_name"] == "head_node"
                 else not node["is_head_node"]
             )
+            assert node["labels"] == {"ray.io/node_id": node["node_id"]}
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2464,6 +2464,7 @@ def test_pg_worker_id_tasks(shutdown_only):
 
         assert tasks[0]["placement_group_id"] == pg.id.hex()
         assert tasks[0]["worker_id"] == workers[0]["worker_id"]
+        assert tasks[0]["worker_pid"] == workers[0]["pid"]
 
         return True
 
@@ -2868,9 +2869,8 @@ async def test_cli_format_print(state_api_manager):
     print(result)
     result = [ActorState(**d) for d in result.result]
     # If the format is not yaml, it will raise an exception.
-    yaml.load(
-        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML),
-        Loader=yaml.FullLoader,
+    yaml.safe_load(
+        format_list_api_output(result, schema=ActorState, format=AvailableFormat.YAML)
     )
     # If the format is not json, it will raise an exception.
     json.loads(
@@ -3080,18 +3080,14 @@ def test_detail(shutdown_only):
 
     # Make sure when the --detail option is specified, the default formatting
     # is yaml. If the format is not yaml, the below line will raise an yaml exception.
-    print(
-        yaml.load(
-            result.output,
-            Loader=yaml.FullLoader,
-        )
-    )
+    # Retrieve yaml content from result output
+    print(yaml.safe_load(result.output.split("---")[1].split("...")[0]))
 
     # When the format is given, it should respect that formatting.
-    result = runner.invoke(ray_list, ["actors", "--detail", "--format=table"])
+    result = runner.invoke(ray_list, ["actors", "--detail", "--format=json"])
     assert result.exit_code == 0
-    with pytest.raises(yaml.YAMLError):
-        yaml.load(result.output, Loader=yaml.FullLoader)
+    # Fails if output is not JSON
+    print(json.loads(result.output))
 
 
 def _try_state_query_expect_rate_limit(api_func, res_q, start_q=None, **kwargs):

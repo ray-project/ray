@@ -123,6 +123,16 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
+void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
+  std::vector<std::string> default_keys = {kLabelKeyNodeID};
+
+  for (const auto &key : default_keys) {
+    RAY_CHECK(!labels.contains(key))
+        << "The label key name " << key << " should never be set by the user.";
+  }
+  labels[kLabelKeyNodeID] = self_node_id;
+}
+
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
                          const std::string &self_node_name,
@@ -335,7 +345,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       },
       /*get_pull_manager_at_capacity*/
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
-      /*labels*/ config.labels);
+      /*labels*/
+      config.labels);
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -389,8 +400,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
-  node_manager_server_.RegisterService(node_manager_service_);
-  node_manager_server_.RegisterService(agent_manager_service_);
+  node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
+  node_manager_server_.RegisterService(agent_manager_service_, false /* token_auth */);
   if (RayConfig::instance().use_ray_syncer()) {
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
@@ -883,10 +894,13 @@ void NodeManager::QueryAllWorkerStates(
   // Query all workers.
   auto rpc_replied = std::make_shared<size_t>(0);
   auto num_workers = all_workers.size();
+  bool all_dead = true;
   for (const auto &worker : all_workers) {
     if (worker->IsDead()) {
+      *rpc_replied += 1;
       continue;
     }
+    all_dead = false;
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(include_memory_info);
@@ -910,6 +924,9 @@ void NodeManager::QueryAllWorkerStates(
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
+  }
+  if (all_dead) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 

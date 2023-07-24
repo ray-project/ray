@@ -12,7 +12,7 @@ fairscale<=0.4.0; python_version < '3.7'
 filelock
 flask
 flatbuffers
-fastapi
+fastapi==0.99.1
 jsonschema
 mock
 numpy
@@ -27,7 +27,7 @@ pytorch-lightning==1.6.5
 scikit-optimize
 redis
 starlette
-uvicorn==0.16.0
+uvicorn==0.22.0
 werkzeug
 wandb
 tensorflow; sys_platform != 'darwin' or platform_machine != 'arm64'
@@ -36,9 +36,6 @@ tensorflow-datasets
 torch
 torchvision
 transformers
-
-# Train
-mxnet==1.8.0.post0
 
 # Ray libraries
 git+https://github.com/ray-project/tune-sklearn@master#tune-sklearn

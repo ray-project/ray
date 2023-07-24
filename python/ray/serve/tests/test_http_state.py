@@ -34,9 +34,15 @@ def _make_http_state(
 
 
 @pytest.fixture
-def all_nodes() -> List[Tuple[str, str]]:
+def number_of_worker_nodes() -> int:
+    return 100
+
+
+@pytest.fixture
+def all_nodes(number_of_worker_nodes) -> List[Tuple[str, str]]:
     return [(HEAD_NODE_ID, "fake-head-ip")] + [
-        (f"worker-node-id-{i}", f"fake-worker-ip-{i}") for i in range(100)
+        (f"worker-node-id-{i}", f"fake-worker-ip-{i}")
+        for i in range(number_of_worker_nodes)
     ]
 
 
@@ -57,7 +63,6 @@ def setup_controller():
         ).remote(
             SERVE_CONTROLLER_NAME,
             http_config=None,
-            head_node_id=HEAD_NODE_ID,
             detached=True,
             _disable_http_proxy=True,
         )
@@ -158,9 +163,7 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
     assert set(another_seed) != set(selected_nodes)
 
 
-def test_http_state_update_restarts_unhealthy_proxies(
-    mock_get_all_node_ids, setup_controller
-):
+def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
     """Test the update method in HTTPState would kill and restart unhealthy proxies.
 
     Set up a HTTPProxyState with UNHEALTHY status. Calls the update method on the
@@ -200,7 +203,7 @@ def test_http_state_update_restarts_unhealthy_proxies(
     assert new_proxy != old_proxy
 
 
-def test_http_proxy_state_update_shutting_down(setup_controller):
+def test_http_proxy_state_update_shutting_down():
     """Test calling update method on HTTPProxyState when the proxy state is shutting
     down.
 
@@ -219,7 +222,7 @@ def test_http_proxy_state_update_shutting_down(setup_controller):
     assert previous_status == current_status
 
 
-def test_http_proxy_state_update_starting_ready_succeed(setup_controller):
+def test_http_proxy_state_update_starting_ready_succeed():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
     when the ready call succeeded.
 
@@ -239,7 +242,7 @@ def test_http_proxy_state_update_starting_ready_succeed(setup_controller):
     )
 
 
-def test_http_proxy_state_update_starting_ready_failed_once(setup_controller):
+def test_http_proxy_state_update_starting_ready_failed_once():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
     when the ready call failed once and succeeded for the following call.
 
@@ -280,7 +283,7 @@ def test_http_proxy_state_update_starting_ready_failed_once(setup_controller):
     )
 
 
-def test_http_proxy_state_update_starting_ready_always_fails(setup_controller):
+def test_http_proxy_state_update_starting_ready_always_fails():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
     when the ready call is always failing.
 
@@ -314,7 +317,7 @@ def test_http_proxy_state_update_starting_ready_always_fails(setup_controller):
 
 
 @patch("ray.serve._private.http_state.PROXY_READY_CHECK_TIMEOUT_S", 1)
-def test_http_proxy_state_update_starting_ready_always_timeout(setup_controller):
+def test_http_proxy_state_update_starting_ready_always_timeout():
     """Test calling update method on HTTPProxyState when the proxy state is STARTING and
     when the ready call always timed out.
 
@@ -345,7 +348,7 @@ def test_http_proxy_state_update_starting_ready_always_timeout(setup_controller)
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_update_healthy_check_health_succeed(setup_controller):
+def test_http_proxy_state_update_healthy_check_health_succeed():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
     when the check_health call succeeded
 
@@ -376,7 +379,7 @@ def test_http_proxy_state_update_healthy_check_health_succeed(setup_controller):
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_update_healthy_check_health_failed_once(setup_controller):
+def test_http_proxy_state_update_healthy_check_health_failed_once():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
     when the check_health call failed once and succeeded for the following call.
 
@@ -427,7 +430,7 @@ def test_http_proxy_state_update_healthy_check_health_failed_once(setup_controll
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_update_healthy_check_health_always_fails(setup_controller):
+def test_http_proxy_state_update_healthy_check_health_always_fails():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
     when the check_health call is always failing.
 
@@ -472,9 +475,7 @@ def test_http_proxy_state_update_healthy_check_health_always_fails(setup_control
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 0.1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_check_health_always_timeout_timeout_eq_period(
-    setup_controller,
-):
+def test_http_proxy_state_check_health_always_timeout_timeout_eq_period():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
     when the ready call always timed out and health check timeout and period equals.
 
@@ -519,9 +520,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_eq_period(
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_TIMEOUT_S", 1)
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_period(
-    setup_controller,
-):
+def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_period():
     """Test calling update method on HTTPProxyState when the proxy state is HEALTHY and
     when the ready call always timed out and health check timeout greater than period.
 
@@ -565,7 +564,7 @@ def test_http_proxy_state_check_health_always_timeout_timeout_greater_than_perio
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_http_proxy_state_update_unhealthy_check_health_succeed(setup_controller):
+def test_http_proxy_state_update_unhealthy_check_health_succeed():
     """Test calling update method on HTTPProxyState when the proxy state is UNHEALTHY
     and when the check_health call succeeded.
 
@@ -631,7 +630,10 @@ def test_unhealthy_retry_correct_number_of_times():
 
 
 @patch("ray.serve._private.http_state.PROXY_HEALTH_CHECK_PERIOD_S", 0.1)
-def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
+@pytest.mark.parametrize("number_of_worker_nodes", [0, 1, 2, 3])
+def test_update_draining(
+    mock_get_all_node_ids, all_nodes, setup_controller, number_of_worker_nodes
+):
     """Test update draining logics.
 
     When update nodes to inactive, head node http proxy should never be draining while
@@ -639,7 +641,58 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
     node http proxy should continue to be healthy while worker node http proxy should
     be healthy.
     """
-    worker_node_id = all_nodes[1][0]
+    state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
+
+    for node_id, node_ip_address in all_nodes:
+        state._proxy_states[node_id] = _create_http_proxy_state(
+            proxy_actor_class=HTTPProxyActor,
+            status=HTTPProxyStatus.HEALTHY,
+            node_id=node_id,
+            host="localhost",
+            port=8000,
+            root_path="/",
+            controller_name=SERVE_CONTROLLER_NAME,
+            node_ip_address=node_ip_address,
+        )
+    node_ids = [node_id for node_id, _ in all_nodes]
+
+    # No active nodes
+    active_nodes = set()
+
+    # Head node proxy should continue to be HEALTHY.
+    # Worker node proxy should turn DRAINING.
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_state,
+        timeout=20,
+        http_state=state,
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY]
+        + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
+        active_nodes=active_nodes,
+    )
+
+    # All nodes are active
+    active_nodes = set(node_ids)
+
+    # Head node proxy should continue to be HEALTHY.
+    # Worker node proxy should turn HEALTHY.
+    wait_for_condition(
+        condition_predictor=_update_and_check_http_state,
+        timeout=20,
+        http_state=state,
+        node_ids=node_ids,
+        statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
+        active_nodes=active_nodes,
+    )
+
+
+def test_is_ready_for_shutdown(mock_get_all_node_ids, all_nodes):
+    """Test `is_ready_for_shutdown()` returns True the correct state.
+
+    Before `shutdown()` is called, `is_ready_for_shutdown()` should return false. After
+    `shutdown()` is called and all proxy actor are killed, `is_ready_for_shutdown()`
+    should return true.
+    """
     state = _make_http_state(HTTPOptions(location=DeploymentMode.EveryNode))
 
     for node_id, node_ip_address in all_nodes:
@@ -654,33 +707,16 @@ def test_update_draining(mock_get_all_node_ids, setup_controller, all_nodes):
             node_ip_address=node_ip_address,
         )
 
-    # No active nodes
-    active_nodes = set()
+    # Ensure before shutdown, state is not shutdown
+    assert not state.is_ready_for_shutdown()
 
-    # Head node proxy should continue to be HEALTHY.
-    # Worker node proxy should turn DRAINING.
-    wait_for_condition(
-        condition_predictor=_update_and_check_http_state,
-        timeout=15,
-        http_state=state,
-        node_ids=[HEAD_NODE_ID, worker_node_id],
-        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.DRAINING],
-        active_nodes=active_nodes,
-    )
+    state.shutdown()
 
-    # All nodes are active
-    active_nodes = {node_id for node_id, _ in all_nodes}
+    # Ensure after shutdown, state is shutdown and all proxy states are shutdown
+    def check_is_ready_for_shutdown():
+        return state.is_ready_for_shutdown()
 
-    # Head node proxy should continue to be HEALTHY.
-    # Worker node proxy should turn HEALTHY.
-    wait_for_condition(
-        condition_predictor=_update_and_check_http_state,
-        timeout=15,
-        http_state=state,
-        node_ids=[HEAD_NODE_ID, worker_node_id],
-        statuses=[HTTPProxyStatus.HEALTHY, HTTPProxyStatus.HEALTHY],
-        active_nodes=active_nodes,
-    )
+    wait_for_condition(check_is_ready_for_shutdown)
 
 
 if __name__ == "__main__":
