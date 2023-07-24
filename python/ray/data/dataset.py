@@ -450,7 +450,7 @@ class Dataset:
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 4096 with "default".
-            compute: Either "tasks" (default) to use Ray tasks or an
+            compute: Either "tasks" (default) to use Ray Tasks or an
                 :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
@@ -746,7 +746,7 @@ class Dataset:
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            cols: Names of the columns to select. If any name isn't included in the
+            cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
