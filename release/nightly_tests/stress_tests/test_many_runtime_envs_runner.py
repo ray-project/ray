@@ -37,7 +37,9 @@ def create_file_and_assert_n_times(n):
                 " python test_many_runtime_envs.py "
                 f"--file-name {file_name} "
                 f"--expected-content {shlex.quote(content)} "
-                f"--expected-file-count-in-working-dir {i + 2}", shell=True)
+                f"--expected-file-count-in-working-dir {i + 2}",
+                shell=True,
+            )
 
 
 def parse_script_args():
@@ -61,7 +63,8 @@ if __name__ == "__main__":
 
     logger.info(
         f"Finished {args.num_runtime_envs} rounds "
-        f"after {end_time - start_time} seconds.")
+        f"after {end_time - start_time} seconds."
+    )
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_put:
         out_put.write(json.dumps(result))
