@@ -244,46 +244,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             **self.get_internal_states(),
         )
 
-    async def get_nodes_logical_resource(self):
-        (status, error) = await asyncio.gather(
-            *[
-                self._gcs_aio_client.internal_kv_get(
-                    key.encode(),
-                    namespace=None,
-                    timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-                )
-                for key in [
-                    ray_constants.DEBUG_AUTOSCALING_STATUS_LEGACY,
-                    ray_constants.DEBUG_AUTOSCALING_ERROR,
-                ]
-            ]
-        )
-        if error:
-            return {}
-
-        status_dict = json.loads(status)
-
-        lm_summary_dict = status_dict.get("load_metrics_report")
-        if lm_summary_dict:
-            lm_summary = LoadMetricsSummary(**lm_summary_dict)
-
-        autoscaler_summary_dict = status_dict.get("autoscaler_report")
-        node_availability_summary_dict = autoscaler_summary_dict.pop(
-            "node_availability_summary", {}
-        )
-        node_availability_summary = NodeAvailabilitySummary.from_fields(
-            **node_availability_summary_dict
-        )
-        autoscaler_summary = AutoscalerSummary(
-            node_availability_summary=node_availability_summary,
-            **autoscaler_summary_dict,
-        )
-
-        node_logical_resource = get_per_node_breakdown(
-            lm_summary, autoscaler_summary.node_type_mapping, verbose=True
-        )
-        return node_logical_resource
-
     @routes.get("/nodes/logical_resource")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_nodes_logical_resource(self, req) -> aiohttp.web.Response:

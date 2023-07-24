@@ -1958,7 +1958,6 @@ def status(address: str, redis_password: str, verbose: bool):
     error = ray.experimental.internal_kv._internal_kv_get(
         ray_constants.DEBUG_AUTOSCALING_ERROR
     )
-    logger.info(f"CHAO: @PublicAPI CLI Status: {status}")
     print(debug_status(status, error, verbose=verbose))
 
 

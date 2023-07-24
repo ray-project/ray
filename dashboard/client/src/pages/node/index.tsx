@@ -104,8 +104,7 @@ const columns = [
   { label: "Received" },
   {
     label: "Logical Resource",
-    helpInfo: `
-  By viewing logical resource, you can access the same logical usage and task scheduling information found in the "Resources" section of the CLI command "ray status -v".`,
+    helpInfo: `You can access the logical usage (e.g., CPU, memory) for a node. Check https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources for more details. Alternatively, you could run the CLI command "ray status -v" to obtain a similar result.`,
   },
 ];
 

@@ -117,7 +117,6 @@ def debug_status(status, error, verbose: bool = False) -> str:
     if status:
         status = status.decode("utf-8")
         status_dict = json.loads(status)
-        logger.info("CHAO: In debug_status: status_dict {}".format(status_dict))
         lm_summary_dict = status_dict.get("load_metrics_report")
         autoscaler_summary_dict = status_dict.get("autoscaler_report")
         timestamp = status_dict.get("time")
@@ -125,8 +124,6 @@ def debug_status(status, error, verbose: bool = False) -> str:
         non_terminated_nodes_time = status_dict.get("non_terminated_nodes_time")
         if lm_summary_dict and autoscaler_summary_dict and timestamp:
             lm_summary = LoadMetricsSummary(**lm_summary_dict)
-            logger.info(f"CHAO: lm_summary {type(lm_summary)}: {lm_summary}")
-
             node_availability_summary_dict = autoscaler_summary_dict.pop(
                 "node_availability_summary", {}
             )
@@ -137,9 +134,6 @@ def debug_status(status, error, verbose: bool = False) -> str:
                 node_availability_summary=node_availability_summary,
                 **autoscaler_summary_dict,
             )
-            logger.info(
-                f"autoscaler_summary {type(autoscaler_summary)}: {autoscaler_summary}"
-            )
             report_time = datetime.datetime.fromtimestamp(timestamp)
             status = format_info_string(
                 lm_summary,
@@ -148,9 +142,6 @@ def debug_status(status, error, verbose: bool = False) -> str:
                 gcs_request_time=gcs_request_time,
                 non_terminated_nodes_time=non_terminated_nodes_time,
                 verbose=verbose,
-            )
-            logger.info(
-                f"CHAO: status after format_info_string {type(status)}: {status}"
             )
         else:
             status = (
@@ -515,6 +506,7 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
+
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
         output_redir = cmd_output_util.is_output_redirected()
@@ -768,6 +760,7 @@ def get_or_create_head_node(
         # cf.bold(provider.node_tags(head_node)[TAG_RAY_NODE_NAME]),
         _tags=dict(),
     ):  # add id, ARN to tags?
+
         # TODO(ekl) right now we always update the head node even if the
         # hash matches.
         # We could prompt the user for what they want to do here.
@@ -912,6 +905,7 @@ def _should_create_new_head(
         with cli_logger.group(
             "Currently running head node is out-of-date with cluster configuration"
         ):
+
             if hashes_mismatch:
                 cli_logger.print(
                     "Current hash is {}, expected {}",
@@ -1480,6 +1474,7 @@ def get_cluster_dump_archive(
     processes_verbose: bool = False,
     tempfile: Optional[str] = None,
 ) -> Optional[str]:
+
     # Inform the user what kind of logs are collected (before actually
     # collecting, so they can abort)
     content_str = ""
