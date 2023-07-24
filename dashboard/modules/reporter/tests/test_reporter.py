@@ -738,13 +738,10 @@ def test_get_task_traceback_running_task():
         )
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
-        assert (
-            "Failed to execute" in resp.text or "Process" in resp.text
-        ), "Error message not found in response."
+        assert "Process" in resp.text
         return True
 
     wait_for_condition(verify, timeout=20)
-
 
 def test_get_task_traceback_non_running_task():
     """
@@ -792,9 +789,7 @@ def test_get_cpu_profile_running_task():
             f"{dashboard_url}/task/cpu_profile?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
         )
 
-        assert (
-            "Failed to execute" in resp.text or "<svg>" in resp.text
-        ), "Error message not found in response."
+        assert  "<svg>" in resp.text
         return True
 
     wait_for_condition(verify, timeout=20)
