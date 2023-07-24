@@ -6,31 +6,8 @@ from ray.air.config import ScalingConfig
 import time
 import os
 import json
-
-
-# test imports until we find the one that works
-import sys
-
-print("===> current directory:", os.getcwd())
-print("===> sys.path:", sys.path)
-
-try:
-    from benchmark import crop_and_flip_image_batch
-except Exception as e:
-    print("===> benchmark WRONG", str(e))
-try:
-    from .benchmark import crop_and_flip_image_batch
-except Exception as e:
-    print("===> .benchmark WRONG", str(e))
-try:
-    from dataset.benchmark import crop_and_flip_image_batch
-except Exception as e:
-    print("===> dataset.benchmark WRONG", str(e))
-try:
-    from nightly_tests.dataset.benchmark import crop_and_flip_image_batch
-except Exception as e:
-    print("===> nightly_tests.dataset.benchmark WRONG", str(e))
-
+import torchvision
+import torch
 
 # This benchmark does the following:
 # 1) Read images with ray.data.read_images()
@@ -39,6 +16,40 @@ except Exception as e:
 # Metrics recorded to the output file are:
 # - ray.torchtrainer.fit: Throughput of the final epoch in
 #   TorchTrainer.fit() (step 3 above)
+
+
+# Constants and utility methods for image-based benchmarks.
+DEFAULT_IMAGE_SIZE = 224
+
+
+def get_transform(to_torch_tensor):
+    # Note(swang): This is a different order from tf.data.
+    # torch: decode -> randCrop+resize -> randFlip
+    # tf.data: decode -> randCrop -> randFlip -> resize
+    transform = torchvision.transforms.Compose(
+        [
+            torchvision.transforms.RandomResizedCrop(
+                size=DEFAULT_IMAGE_SIZE,
+                scale=(0.05, 1.0),
+                ratio=(0.75, 1.33),
+            ),
+            torchvision.transforms.RandomHorizontalFlip(),
+        ]
+        + [torchvision.transforms.ToTensor()]
+        if to_torch_tensor
+        else []
+    )
+    return transform
+
+
+def crop_and_flip_image_batch(image_batch):
+    transform = get_transform(False)
+    batch_size, height, width, channels = image_batch["image"].shape
+    tensor_shape = (batch_size, channels, height, width)
+    image_batch["image"] = transform(
+        torch.Tensor(image_batch["image"].reshape(tensor_shape))
+    )
+    return image_batch
 
 
 if __name__ == "__main__":
@@ -119,8 +130,9 @@ if __name__ == "__main__":
                 "perf_metric_type": "THROUGHPUT",
             }
         )
+    test_name = f"read_images_train{args.num_workers}_cpu"
     result_dict = {
-        "perf_metrics": metrics_list,
+        test_name: metrics_list,
         "success": 1,
     }
 
