@@ -833,7 +833,3 @@ class LearnerGroup:
         if not self._is_local:
             self._backend_executor.shutdown()
             self._is_shut_down = True
-
-    def __del__(self):
-        if not self._is_shut_down:
-            self.shutdown()

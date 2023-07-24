@@ -49,6 +49,7 @@ arguments in the `AlgorithmConfig`.
 
 .. testcode::
 	:hide:
+
 	from ray.rllib.algorithms.ppo.ppo import PPOConfig
 
 .. testcode::
@@ -108,18 +109,21 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
 
 .. testcode::
     :hide:
+
     # imports for the examples
 
+    import numpy as np
     import gymnasium as gym
     import ray
     from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
     from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
+    from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
     from ray.rllib.algorithms.ppo.ppo_learner import PPOLearnerHyperparameters
     from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
     from ray.rllib.core.learner.learner import FrameworkHyperparameters, LearnerSpec
     from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.core.learner.scaling_config import LearnerGroupScalingConfig
-    ray.init()
+    ray.init(ignore_reinit_error=True)
 
 
 .. tab-set::
@@ -135,6 +139,8 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
                             module_class=PPOTorchRLModule,
                             observation_space=env.observation_space,
                             action_space=env.action_space,
+                            model_config_dict={},
+                            catalog_class=PPOCatalog
                         )
 
             hparams = PPOLearnerHyperparameters(use_kl_loss=True, 
@@ -168,6 +174,8 @@ and `Learner` APIs via the RLlib algorithm config, then `Algorithm` will constru
                             module_class=PPOTorchRLModule,
                             observation_space=env.observation_space,
                             action_space=env.action_space,
+                            model_config_dict={},
+                            catalog_class=PPOCatalog
                         )
 
             hparams = PPOLearnerHyperparameters(use_kl_loss=True, 
@@ -192,7 +200,7 @@ Updates
 
     from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 
-	DUMMY_BATCH = {
+    DUMMY_BATCH = {
         SampleBatch.OBS: np.array(
             [[0.1, 0.2, 0.3, 0.4], [0.5, 0.6, 0.7, 0.8], [0.9, 1.0, 1.1, 1.2]],
             dtype=np.float32,
