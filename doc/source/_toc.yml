@@ -11,6 +11,12 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+        sections:
+          - file: ray-air/getting-started
+            sections:
+              - file: ray-air/deployment
+              - file: ray-air/computer-vision
+
       - file: ray-overview/examples
         title: "Example Gallery"
       - file: ray-overview/ray-libraries
@@ -280,11 +286,6 @@ parts:
               - file: rllib/rllib-cli
           - file: rllib/rllib-examples
           - file: rllib/package_ref/index
-
-      - file: ray-air/getting-started
-        sections:
-          - file: ray-air/deployment
-          - file: ray-air/computer-vision
 
       - file: ray-more-libs/index
         title: More Libraries
