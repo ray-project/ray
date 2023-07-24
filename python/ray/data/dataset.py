@@ -312,7 +312,7 @@ class Dataset:
                     ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
                     .map(parse_filename)
                 )
-                print(ds.schema)
+                print(ds.schema())
 
             .. testoutput::
 
