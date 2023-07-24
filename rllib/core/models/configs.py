@@ -180,7 +180,9 @@ class MLPHeadConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[4],  # must be 1D tensor
@@ -201,7 +203,9 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(8, 2, bias=True)
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[2],
@@ -548,6 +552,7 @@ class CNNEncoderConfig(ModelConfig):
     Example:
 
     .. testcode::
+
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
