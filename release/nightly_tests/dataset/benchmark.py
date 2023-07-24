@@ -3,8 +3,6 @@ import json
 import os
 import time
 from typing import Callable
-import torch
-import torchvision
 
 from ray.data.dataset import Dataset
 
