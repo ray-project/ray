@@ -259,7 +259,7 @@ class DataIterator(abc.ABC):
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
+        device: str = "auto",
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], "CollatedData"]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -315,9 +315,13 @@ class DataIterator(abc.ABC):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
-                will be inferred from the tensor data.
-            device: The device on which the tensor should be placed; if None, the Torch
-                tensor will be constructed on the CPU.
+                will be inferred from the tensor data. This parameter cannot be used in
+                conjunction with ``collate_fn``.
+            device: The device on which the tensor should be placed. Defaults to
+                "auto" which moves the tensors to the appropriate device when the
+                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
+                Otherwise, defaults to CPU. This parameter cannot be used in
+                conjunction with ``collate_fn``.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
                 When this parameter is specified, the user should manually handle the
                 host to device data transfer outside of collate_fn.
@@ -346,6 +350,7 @@ class DataIterator(abc.ABC):
 
         from ray.air._internal.torch_utils import (
             convert_ndarray_batch_to_torch_tensor_batch,
+            get_device,
         )
 
         if collate_fn is not None and (dtypes is not None or device is not None):
@@ -356,6 +361,13 @@ class DataIterator(abc.ABC):
             )
 
         if collate_fn is None:
+            # Automatically move torch tensors to the appropriate devic
+            # when used with Ray Train.
+            if device == "auto":
+                default_device = get_device()
+                if default_device.type != "cpu":
+                    device = default_device
+
             # The default collate_fn handles formatting and Tensor creation.
             # Here, we set device=None to defer host to device data transfer
             # to the subsequent finalize_fn.

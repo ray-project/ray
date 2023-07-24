@@ -3215,7 +3215,7 @@ class Dataset:
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
+        device: str = "auto",
         collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
@@ -3272,9 +3272,13 @@ class Dataset:
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the dtype
-                is inferred from the tensor data.
-            device: The device on which the tensor should be placed; if ``None``, the
-                torch tensor is constructed on the CPU.
+                is inferred from the tensor data. This parameter cannot be used in
+                conjunction with ``collate_fn``.
+            device: The device on which the tensor should be placed. Defaults to
+                "auto" which moves the tensors to the appropriate device when the
+                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
+                Otherwise, defaults to CPU. This parameter cannot be used in
+                conjunction with ``collate_fn``.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
                 When this parameter is specified, the user should manually handle the
                 host to device data transfer outside of collate_fn.
