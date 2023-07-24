@@ -9,6 +9,7 @@ from ray import air, train, tune
 from ray.air.constants import EXPR_RESULT_FILE
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
 from ray.air._internal.remote_storage import download_from_uri
+from ray.train.data_parallel_trainer import DataParallelTrainer
 
 
 @contextmanager
@@ -168,3 +169,30 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
         assert len(list(trial_dir.glob("checkpoint_*/dummy.pkl"))) == NUM_ITERATIONS
         assert len(list(trial_dir.glob("artifact-*"))) == NUM_ITERATIONS
         assert len(list(trial_dir.glob(EXPR_RESULT_FILE))) == 1
+
+
+def test_trainer(tmp_path):
+    """For now, this is just a dummy test to inspect that the storage context
+    has been passed to the train workers properly."""
+    storage_path = str(tmp_path / "fake_nfs")
+
+    def dummy_train_fn(config):
+        from ray.air._internal.session import _get_session
+        from ray.train._internal.session import _TrainSession
+
+        train_session = _get_session()
+        print(train_session.storage)
+
+        assert isinstance(train_session, _TrainSession)
+        assert train_session.storage
+        assert train_session.checkpoint_uri.startswith(storage_path)
+
+    trainer = DataParallelTrainer(
+        dummy_train_fn,
+        scaling_config=train.ScalingConfig(num_workers=2),
+        run_config=train.RunConfig(
+            storage_path=storage_path,
+            name="trainer_new_persistence",
+        ),
+    )
+    trainer.fit()
