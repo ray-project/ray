@@ -4366,6 +4366,7 @@ class Dataset:
         .. testoutput::
             :options: +MOCK
             
+            Stage 0 Read: 20/20 blocks executed in 0.3s                                                                                                                                        
             * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
             * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
             * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
