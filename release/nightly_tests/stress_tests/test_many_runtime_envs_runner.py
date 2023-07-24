@@ -60,7 +60,8 @@ if __name__ == "__main__":
     print("PASSED.")
 
     logger.info(
-        f"Finished {args.num_runtime_envs} rounds after {end_time - start_time} seconds.")
+        f"Finished {args.num_runtime_envs} rounds "
+        f"after {end_time - start_time} seconds.")
 
     with open(os.environ["TEST_OUTPUT_JSON"], "w") as out_put:
         out_put.write(json.dumps(result))
