@@ -634,16 +634,16 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.schema()
-            Column   Type
-            ------   ----
-            id       int64
+            Column  Type
+            ------  ----
+            id      int64
 
             Add a new column equal to ``id * 2``.
 
             >>> ds.add_column("new_id", lambda df: df["id"] * 2).schema()
-            Column   Type
-            ------   ----
-            id       int64
+            Column  Type
+            ------  ----
+            id      int64
             new_id  int64
 
             Overwrite the existing values with zeros.
@@ -1074,7 +1074,7 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.random_sample(0.1).count()
+            >>> ds.random_sample(0.1).count()  # doctest: +SKIP
             10
 
         Args:
