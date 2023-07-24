@@ -7,10 +7,11 @@ from typing import Any, Dict, Optional, Type
 from pytorch_lightning.plugins.environments import ClusterEnvironment
 
 from ray.air import session
-from ray.air.config import CheckpointConfig, DatasetConfig, RunConfig, ScalingConfig
+from ray.air.config import CheckpointConfig, RunConfig, ScalingConfig
 from ray.air.constants import MODEL_KEY
 from ray.air.checkpoint import Checkpoint
 from ray.data.preprocessor import Preprocessor
+from ray.train import DataConfig
 from ray.train.trainer import GenDataset
 from ray.train.torch import TorchTrainer
 from ray.train.torch.config import TorchConfig
@@ -36,10 +37,11 @@ class LightningConfigBuilder:
     """Configuration Class to pass into LightningTrainer.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn as nn
+            import pytorch_lightning as pl
             from ray.train.lightning import LightningConfigBuilder
 
             class LinearModule(pl.LightningModule):
@@ -62,6 +64,11 @@ class LightningConfigBuilder:
                 def configure_optimizers(self):
                     return torch.optim.SGD(self.parameters(), lr=0.1)
 
+            class MyDataModule(pl.LightningDataModule):
+                def __init__(self, *args, **kwargs):
+                    super().__init__(*args, **kwargs)
+                    # ...
+
             lightning_config = (
                 LightningConfigBuilder()
                 .module(
@@ -70,10 +77,12 @@ class LightningConfigBuilder:
                     output_dim=4,
                 )
                 .trainer(max_epochs=5, accelerator="gpu")
-                .fit_params(datamodule=datamodule)
+                .fit_params(datamodule=MyDataModule())
+                .strategy(name="ddp")
                 .checkpointing(monitor="loss", save_top_k=2, mode="min")
                 .build()
             )
+
     """
 
     def __init__(self) -> None:
@@ -246,7 +255,7 @@ class LightningTrainer(TorchTrainer):
     run ``pytorch_lightning.Trainer.fit``.
 
     Example:
-        .. code-block:: python
+        .. testcode::
 
             import torch
             import torch.nn.functional as F
@@ -265,7 +274,9 @@ class LightningTrainer(TorchTrainer):
                     self.fc1 = torch.nn.Linear(28 * 28, feature_dim)
                     self.fc2 = torch.nn.Linear(feature_dim, 10)
                     self.lr = lr
-                    self.accuracy = Accuracy()
+                    self.accuracy = Accuracy(task="multiclass", num_classes=10, top_k=1)
+                    self.val_loss = []
+                    self.val_acc = []
 
                 def forward(self, x):
                     x = x.view(-1, 28 * 28)
@@ -285,13 +296,17 @@ class LightningTrainer(TorchTrainer):
                     logits = self.forward(x)
                     loss = F.nll_loss(logits, y)
                     acc = self.accuracy(logits, y)
+                    self.val_loss.append(loss)
+                    self.val_acc.append(acc)
                     return {"val_loss": loss, "val_accuracy": acc}
 
-                def validation_epoch_end(self, outputs):
-                    avg_loss = torch.stack([x["val_loss"] for x in outputs]).mean()
-                    avg_acc = torch.stack([x["val_accuracy"] for x in outputs]).mean()
+                def on_validation_epoch_end(self):
+                    avg_loss = torch.stack(self.val_loss).mean()
+                    avg_acc = torch.stack(self.val_acc).mean()
                     self.log("ptl/val_loss", avg_loss)
                     self.log("ptl/val_accuracy", avg_acc)
+                    self.val_acc.clear()
+                    self.val_loss.clear()
 
                 def configure_optimizers(self):
                     optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
@@ -333,6 +348,11 @@ class LightningTrainer(TorchTrainer):
             )
             result = trainer.fit()
             result
+
+        .. testoutput::
+            :hide:
+
+            ...
 
     Args:
         lightning_config: Configuration for setting up the Pytorch Lightning Trainer.
@@ -376,7 +396,7 @@ class LightningTrainer(TorchTrainer):
         *,
         torch_config: Optional[TorchConfig] = None,
         scaling_config: Optional[ScalingConfig] = None,
-        dataset_config: Optional[Dict[str, DatasetConfig]] = None,
+        dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
         datasets: Optional[Dict[str, GenDataset]] = None,
         datasets_iter_config: Optional[Dict[str, Any]] = None,

@@ -225,9 +225,19 @@ class _StatusReporter:
                     "make_checkpoint_dir."
                 )
                 raise
+        previous_checkpoint = self._last_checkpoint
         self._last_checkpoint = checkpoint
         if is_new:
             self._fresh_checkpoint = True
+
+        # Delete temporary checkpoint folder from `restore_from_object`
+        if previous_checkpoint and FuncCheckpointUtil.is_temp_checkpoint_dir(
+            previous_checkpoint
+        ):
+            previous_checkpoint_dir = TrainableUtil.find_checkpoint_dir(
+                previous_checkpoint
+            )
+            shutil.rmtree(previous_checkpoint_dir, ignore_errors=True)
 
     def has_new_checkpoint(self):
         return self._fresh_checkpoint
@@ -281,6 +291,11 @@ class _StatusReporter:
     def trial_resources(self):
         """Resources assigned to the trial of this Trainable."""
         return self._trial_resources
+
+    @property
+    def trial_dir(self) -> str:
+        """Trial-level log directory for the corresponding trial."""
+        return self._logdir
 
 
 @DeveloperAPI

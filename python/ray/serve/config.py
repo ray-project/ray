@@ -175,7 +175,7 @@ class DeploymentConfig(BaseModel):
         default=None, update_type=DeploymentOptionUpdateType.LightWeight
     )
 
-    # This flag is used to let replica know they are deplyed from
+    # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
 
@@ -373,6 +373,11 @@ class ReplicaConfig:
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
+
+    def update_ray_actor_options(self, ray_actor_options):
+        self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
     def create(

@@ -224,8 +224,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                 const Status &status,
                 const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
               if (!status.ok()) {
-                RAY_LOG(ERROR) << "Failed to get is_running_tasks from core worker: "
-                               << status.ToString();
+                RAY_LOG(WARNING) << "Failed to get is_running_tasks from core worker: "
+                                 << status.ToString();
               }
               bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
               reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);

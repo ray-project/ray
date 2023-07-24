@@ -48,15 +48,15 @@ Quick Start
 -----------
 
 Below, we walk through how AIR's unified ML API enables scaling of end-to-end ML workflows, focusing on
-a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow). The ML workflow we're going to build is summarized by the following diagram:
+a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow).
 
 ..
   https://docs.google.com/drawings/d/1z0r_Yc7-0NAPVsP2jWUkLV2jHVHdcJHdt9uN1GDANSY/edit
 
-.. figure:: images/why-air.svg
+.. .. figure:: images/why-air.svg
 
-  AIR provides a unified API for the ML ecosystem.
-  This diagram shows how AIR enables an ecosystem of libraries to be run at scale in just a few lines of code.
+..   AIR provides a unified API for the ML ecosystem.
+..   This diagram shows how AIR enables an ecosystem of libraries to be run at scale in just a few lines of code.
 
 Get started by installing Ray AIR:
 
@@ -177,30 +177,12 @@ Then use the ``Tuner`` to run the search:
 Batch Inference
 ~~~~~~~~~~~~~~~
 
-After running the steps in :ref:`Training <air-getting-started-training>` or :ref:`Tuning <air-getting-started-tuning>`, use the trained model for scalable batch prediction with a ``BatchPredictor``.
+After running the steps in :ref:`Training <air-getting-started-training>` or
+:ref:`Tuning <air-getting-started-tuning>`, use the trained model for scalable batch
+prediction with :meth:`Dataset.map_batches() <ray.data.Dataset.map_batches>`.
 
-.. tabs::
+To learn more, see :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
-    .. group-tab:: XGBoost
-
-        .. literalinclude:: examples/xgboost_starter.py
-            :language: python
-            :start-after: __air_xgb_batchpred_start__
-            :end-before: __air_xgb_batchpred_end__
-
-    .. group-tab:: Pytorch
-
-        .. literalinclude:: examples/pytorch_tabular_starter.py
-            :language: python
-            :start-after: __air_pytorch_batchpred_start__
-            :end-before: __air_pytorch_batchpred_end__
-
-    .. group-tab:: Tensorflow
-
-        .. literalinclude:: examples/tf_tabular_starter.py
-            :language: python
-            :start-after: __air_tf_batchpred_start__
-            :end-before: __air_tf_batchpred_end__
 
 Project Status
 --------------
@@ -216,4 +198,4 @@ Next Steps
 - :ref:`air-examples-ref`
 - :ref:`API reference <air-api-ref>`
 - :ref:`Technical whitepaper <whitepaper>`
-- To check how your application is doing, you can use the :ref:`Ray dashboard<observability-getting-started>`. 
+- To check how your application is doing, you can use the :ref:`Ray dashboard<observability-getting-started>`.

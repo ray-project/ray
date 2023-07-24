@@ -49,6 +49,43 @@ enum TaskType {
   DRIVER_TASK = 3;
 }
 
+message LabelIn {
+  repeated string values = 1;
+}
+
+message LabelNotIn {
+  repeated string values = 1;
+}
+
+message LabelExists {}
+
+message LabelDoesNotExist {}
+
+message LabelOperator {
+  oneof LabelOperator {
+    LabelIn label_in = 1;
+    LabelNotIn label_not_in = 2;
+    LabelExists label_exists = 3;
+    LabelDoesNotExist label_does_not_exist = 4;
+  }
+}
+
+message LabelMatchExpression {
+  string key = 1;
+  LabelOperator operator = 2;
+}
+
+message LabelMatchExpressions {
+  repeated LabelMatchExpression expressions = 1;
+}
+
+message NodeLabelSchedulingStrategy {
+  // Required expressions to be satisfied
+  LabelMatchExpressions hard = 1;
+  // Preferred expressions to be satisfied
+  LabelMatchExpressions soft = 2;
+}
+
 message NodeAffinitySchedulingStrategy {
   bytes node_id = 1;
   bool soft = 2;
@@ -80,6 +117,7 @@ message SchedulingStrategy {
     // Best effort spread scheduling strategy.
     SpreadSchedulingStrategy spread_scheduling_strategy = 3;
     NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
+    NodeLabelSchedulingStrategy node_label_scheduling_strategy = 5;
   }
 }
 
@@ -764,8 +802,7 @@ message ResourceAllocations {
 
 // Debug info returned from the core worker.
 message CoreWorkerStats {
-  // Debug string of the currently executing task.
-  string current_task_desc = 1;
+  reserved 1;
   // Number of pending normal and actor tasks.
   int32 num_pending_tasks = 2;
   // Number of object refs in local scope.
@@ -808,6 +845,10 @@ message CoreWorkerStats {
   int64 objects_total = 24;
   // Number of objects owned by the worker.
   int64 num_owned_objects = 25;
+  // Number of actors owned by the worker.
+  int64 num_owned_actors = 26;
+  // Number of running tasks
+  int64 num_running_tasks = 27;
 }
 
 // Resource usage reported by the node reporter.
