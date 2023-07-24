@@ -1,0 +1,7 @@
+byod:
+  ray_ecr: rayproject
+  ray_cr_repo: ray
+  ray_ml_cr_repo: ray-ml
+  byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
+state_machine:
+  aws_bucket: ray-ci-results

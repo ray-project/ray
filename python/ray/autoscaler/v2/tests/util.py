@@ -1,4 +1,4 @@
-from ray.core.generated.experimental import autoscaler_pb2
+from ray.core.generated import autoscaler_pb2
 
 
 def get_cluster_resource_state(stub) -> autoscaler_pb2.ClusterResourceState:

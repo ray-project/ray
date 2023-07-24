@@ -1,20 +1,14 @@
-- label: ":book: Lint"
-  commands:
-    - export LINT=1
-    - ./ci/env/install-dependencies.sh
-    - ./ci/ci.sh lint
-
 - label: ":java: Java"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   instance_size: medium
   commands:
     - ./java/test.sh
 
-- label: ":java: Java (RAY_SERVE_ENABLE_NEW_ROUTING=1)"
+- label: ":java: Java (streaming and routing FFs off)"
   conditions: ["RAY_CI_JAVA_AFFECTED"]
   instance_size: medium
   commands:
-    - export RAY_SERVE_ENABLE_NEW_ROUTING=1 && ./java/test.sh
+    - export RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0 RAY_SERVE_ENABLE_NEW_ROUTING=0 && ./java/test.sh
 
 - label: ":serverless: Dashboard Tests"
   conditions:
@@ -77,7 +71,7 @@
       --test_env=DOCKER_TLS_CERTDIR=/certs
       $(cat test_shard.txt)
 
-- label: ":serverless: Serve Tests (RAY_SERVE_ENABLE_NEW_ROUTING=1)"
+- label: ":serverless: Serve Tests (streaming FF off)"
   parallelism: 3
   conditions:
     [
@@ -107,7 +101,41 @@
       --test_env=DOCKER_TLS_VERIFY=1
       --test_env=DOCKER_CERT_PATH=/certs/client
       --test_env=DOCKER_TLS_CERTDIR=/certs
-      --test_env=RAY_SERVE_ENABLE_NEW_ROUTING=1
+      --test_env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
+      $(cat test_shard.txt)
+
+- label: ":serverless: Serve Tests (streaming and routing FFs off)"
+  parallelism: 3
+  conditions:
+    [
+        "RAY_CI_SERVE_AFFECTED",
+        "RAY_CI_PYTHON_AFFECTED",
+        "RAY_CI_ML_AFFECTED",
+    ]
+  instance_size: large
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - TORCH_VERSION=1.9.0 ./ci/env/install-dependencies.sh
+    - bash ./ci/ci.sh prepare_docker
+    - 'git clone https://github.com/wg/wrk.git /tmp/wrk && pushd /tmp/wrk && make -j && sudo cp wrk /usr/local/bin && popd'
+    - ./ci/env/env_info.sh
+    - >-
+      set -x;
+      python ./ci/run/bazel_sharding/bazel_sharding.py
+      --exclude_manual
+      --index "\${BUILDKITE_PARALLEL_JOB}" --count "\${BUILDKITE_PARALLEL_JOB_COUNT}"
+      --tag_filters=-post_wheel_build,-gpu
+      python/ray/serve/...
+      > test_shard.txt
+    - cat test_shard.txt
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=-post_wheel_build,-gpu
+      --test_env=DOCKER_HOST=tcp://docker:2376
+      --test_env=DOCKER_TLS_VERIFY=1
+      --test_env=DOCKER_CERT_PATH=/certs/client
+      --test_env=DOCKER_TLS_CERTDIR=/certs
+      --test_env=RAY_SERVE_ENABLE_NEW_ROUTING=0
+      --test_env=RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING=0
       $(cat test_shard.txt)
 
 - label: ":python: Minimal install Python {{matrix}}"
@@ -155,9 +183,9 @@
     - bash ./ci/ci.sh prepare_docker
     - ./ci/env/env_info.sh
     - pip install ray[client]
-    - bazel test --config=ci $(./ci/run/bazel_export_options)
-      --test_tag_filters=client_tests,small_size_python_tests
-      -- python/ray/tests/...
+    - bazel test --config=ci $(./ci/run/bazel_export_options) 
+      --test_tag_filters=client_tests,small_size_python_tests 
+      $(bazel query "attr(tags, civ1, tests(python/ray/tests/...))")
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
       --test_env=DOCKER_HOST=tcp://docker:2376

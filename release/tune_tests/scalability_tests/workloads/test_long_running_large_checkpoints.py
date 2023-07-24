@@ -42,6 +42,7 @@ def main(smoke_test: bool = False):
         resources_per_trial={"cpu": 1},
         sync_config=tune.SyncConfig(syncer="auto"),
         callbacks=[callback],
+        storage_path="/mnt/cluster_storage",
     )
 
 

@@ -118,7 +118,13 @@ To view the full list of supported file formats, see the
 
             print(ds.schema())
 
+        ..
+            The following `testoutput` is mocked because the order of column names can
+            be non-deterministic. For an example, see
+            https://buildkite.com/ray-project/oss-ci-build-branch/builds/4849#01892c8b-0cd0-4432-bc9f-9f86fcd38edd.
+
         .. testoutput::
+            :options: +MOCK
 
             Column  Type
             ------  ----
@@ -257,7 +263,7 @@ see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_parquet("/tmp/simple")
 
 
@@ -269,7 +275,7 @@ see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_numpy("/tmp/simple", column="image")
 
     .. tab-item:: JSON
@@ -280,7 +286,7 @@ see the :ref:`Input/Output reference <input-output>`.
 
             import ray
 
-            ds = ray.data.read_images("example://image-datasets/simple")
+            ds = ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple")
             ds.write_json("/tmp/simple")
 
 For more information on saving data, see :ref:`Saving data <loading_data>`.

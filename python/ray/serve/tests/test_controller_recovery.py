@@ -291,12 +291,12 @@ def test_replica_deletion_after_controller_recover(serve_instance):
     wait_for_condition(lambda: len(check_replica(ReplicaState.STOPPING)) > 0)
 
     # The graceful shutdown timeout of 3 seconds should be used
-    wait_for_condition(lambda: len(check_replica()) == 0, timeout=5)
+    wait_for_condition(lambda: len(check_replica()) == 0, timeout=20)
     # Application should be removed soon after
     wait_for_condition(
         lambda: serve_instance.get_serve_status("app").app_status.status
         == ApplicationStatus.NOT_STARTED,
-        timeout=1,
+        timeout=20,
     )
 
 

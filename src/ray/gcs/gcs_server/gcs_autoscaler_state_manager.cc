@@ -24,11 +24,13 @@ namespace ray {
 namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
+    const std::string &session_name,
     const ClusterResourceManager &cluster_resource_manager,
     const GcsResourceManager &gcs_resource_manager,
     const GcsNodeManager &gcs_node_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager)
-    : cluster_resource_manager_(cluster_resource_manager),
+    : session_name_(session_name),
+      cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       gcs_resource_manager_(gcs_resource_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
@@ -41,15 +43,9 @@ void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::SendReplyCallback send_reply_callback) {
   RAY_CHECK(request.last_seen_cluster_resource_state_version() <=
             last_cluster_resource_state_version_);
-  auto state = reply->mutable_cluster_resource_state();
-  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
-  state->set_cluster_resource_state_version(
-      IncrementAndGetNextClusterResourceStateVersion());
 
-  GetNodeStates(state);
-  GetPendingResourceRequests(state);
-  GetPendingGangResourceRequests(state);
-  GetClusterResourceConstraints(state);
+  auto state = reply->mutable_cluster_resource_state();
+  MakeClusterResourceStateInternal(state);
 
   // We are not using GCS_RPC_SEND_REPLY like other GCS managers to avoid the client
   // having to parse the gcs status code embedded.
@@ -104,8 +100,26 @@ void GcsAutoscalerStateManager::HandleGetClusterStatus(
     rpc::autoscaler::GetClusterStatusRequest request,
     rpc::autoscaler::GetClusterStatusReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // TODO
-  throw std::runtime_error("Unimplemented");
+  auto ray_resource_state = reply->mutable_cluster_resource_state();
+  MakeClusterResourceStateInternal(ray_resource_state);
+
+  if (autoscaling_state_) {
+    reply->mutable_autoscaling_state()->CopyFrom(*autoscaling_state_);
+  }
+  send_reply_callback(ray::Status::OK(), nullptr, nullptr);
+}
+
+void GcsAutoscalerStateManager::MakeClusterResourceStateInternal(
+    rpc::autoscaler::ClusterResourceState *state) {
+  state->set_last_seen_autoscaler_state_version(last_seen_autoscaler_state_version_);
+  state->set_cluster_resource_state_version(
+      IncrementAndGetNextClusterResourceStateVersion());
+  state->set_cluster_session_name(session_name_);
+
+  GetNodeStates(state);
+  GetPendingResourceRequests(state);
+  GetPendingGangResourceRequests(state);
+  GetClusterResourceConstraints(state);
 }
 
 void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
@@ -126,7 +140,11 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         << "Placement group load should only include pending/rescheduling PGs. ";
 
     const auto pg_constraint = GenPlacementConstraintForPlacementGroup(
-        pg_data.placement_group_id(), pg_data.strategy());
+        PlacementGroupID::FromBinary(pg_data.placement_group_id()).Hex(),
+        pg_data.strategy());
+
+    // Add the strategy as detail info for the gang resource request.
+    gang_resource_req->set_details(FormatPlacementGroupDetails(pg_data));
 
     // Copy the PG's bundles to the request.
     for (const auto &bundle : pg_data.bundles()) {
@@ -189,6 +207,8 @@ void GcsAutoscalerStateManager::GetNodeStates(
     node_state_proto->set_instance_id(gcs_node_info.instance_id());
     node_state_proto->set_ray_node_type_name(gcs_node_info.node_type_name());
     node_state_proto->set_node_state_version(last_cluster_resource_state_version_);
+    node_state_proto->set_node_ip_address(gcs_node_info.node_manager_address());
+    node_state_proto->set_instance_type_name(gcs_node_info.instance_type_name());
 
     if (gcs_node_info.state() == rpc::GcsNodeInfo::DEAD) {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::DEAD);
@@ -200,10 +220,21 @@ void GcsAutoscalerStateManager::GetNodeStates(
     auto const &node_resource_data = cluster_resource_manager_.GetNodeResources(
         scheduling::NodeID(node_state_proto->node_id()));
     if (node_resource_data.idle_resource_duration_ms > 0) {
-      // The node is idle.
+      // The node was reported idle.
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::IDLE);
+
+      // We approximate the idle duration by the time since the last idle report
+      // plus the idle duration reported by the node:
+      //  idle_dur = <idle-dur-reported-by-raylet> + <time-since-gcs-gets-last-report>
+      //
+      // This is because with lightweight resource update, we don't keep reporting
+      // the idle time duration when there's no resource change. We also don't want to
+      // use raylet reported idle timestamp since there might be clock skew.
+      RAY_CHECK(node_resource_data.last_resource_update_time != absl::nullopt);
       node_state_proto->set_idle_duration_ms(
-          node_resource_data.idle_resource_duration_ms);
+          node_resource_data.idle_resource_duration_ms +
+          absl::ToInt64Milliseconds(
+              absl::Now() - node_resource_data.last_resource_update_time.value()));
     } else {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
     }
@@ -222,7 +253,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
         NodeID::FromBinary(gcs_node_info.node_id()));
     for (const auto &[pg_id, _bundle_indices] : pgs_on_node) {
       node_state_proto->mutable_dynamic_labels()->insert(
-          {FormatPlacementGroupLabelName(pg_id.Binary()), ""});
+          {FormatPlacementGroupLabelName(pg_id.Hex()), ""});
     }
   };
 

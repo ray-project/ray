@@ -8,12 +8,60 @@ import requests
 import ray
 
 from ray import serve
-from ray.serve.exceptions import RayServeException
-from ray.serve._private.constants import (
-    SERVE_DEFAULT_APP_NAME,
-    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
-)
 from ray.serve.context import get_global_client
+from ray.serve.exceptions import RayServeException
+from ray.serve.handle import HandleOptions, RayServeHandle, RayServeSyncHandle
+from ray.serve._private.constants import (
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
+    SERVE_DEFAULT_APP_NAME,
+)
+
+
+def test_handle_options():
+    default_options = HandleOptions()
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting method name.
+    only_set_method = default_options.copy_and_update(method_name="hi")
+    assert only_set_method.method_name == "hi"
+    assert only_set_method.multiplexed_model_id == ""
+    assert only_set_method.stream is False
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting model ID.
+    only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
+    assert only_set_model_id.method_name == "__call__"
+    assert only_set_model_id.multiplexed_model_id == "hi"
+    assert only_set_model_id.stream is False
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting stream.
+    only_set_stream = default_options.copy_and_update(stream=True)
+    assert only_set_stream.method_name == "__call__"
+    assert only_set_stream.multiplexed_model_id == ""
+    assert only_set_stream.stream is True
+
+    # Existing options should be unmodified.
+    assert default_options.method_name == "__call__"
+    assert default_options.multiplexed_model_id == ""
+    assert default_options.stream is False
+
+    # Test setting multiple.
+    set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
+    assert set_multiple.method_name == "hi"
+    assert set_multiple.multiplexed_model_id == ""
+    assert set_multiple.stream is True
 
 
 @pytest.mark.asyncio
@@ -120,6 +168,9 @@ def test_handle_in_endpoint(serve_instance):
     assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING, reason="Not supported w/ streaming."
+)
 def test_handle_inject_starlette_request(serve_instance):
     @serve.deployment(name="echo")
     def echo_request_type(request):
@@ -261,6 +312,45 @@ async def test_handle_across_loops(serve_instance):
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
         asyncio.run_coroutine_threadsafe(refresh_get(), loop).result()
+
+
+def test_handle_typing(serve_instance):
+    @serve.deployment
+    class DeploymentClass:
+        pass
+
+    @serve.deployment
+    def deployment_func():
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(
+            self, class_downstream: RayServeHandle, func_downstream: RayServeHandle
+        ):
+            # serve.run()'ing this deployment fails if these assertions fail.
+            assert isinstance(class_downstream, RayServeHandle)
+            assert isinstance(func_downstream, RayServeHandle)
+
+    h = serve.run(Ingress.bind(DeploymentClass.bind(), deployment_func.bind()))
+    assert isinstance(h, RayServeSyncHandle)
+
+
+def test_call_function_with_argument(serve_instance):
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, h: RayServeHandle):
+            self._h = h
+
+        async def __call__(self, name: str):
+            return await (await self._h.remote(name))
+
+    h = serve.run(Ingress.bind(echo.bind()))
+    assert ray.get(h.remote("sned")) == "Hi sned"
 
 
 if __name__ == "__main__":
