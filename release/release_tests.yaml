@@ -215,7 +215,6 @@
 
   frequency: nightly
   team: data
-  stable: false
 
   cluster:
     byod:
