@@ -796,7 +796,9 @@ void GcsActorManager::PollOwnerForActorOutOfScope(
           // Only destroy the actor if its owner is still alive. The actor may
           // have already been destroyed if the owner died.
           DestroyActor(
-              actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), /*force_kill=*/true);
+              actor_id,
+              GenActorOutOfScopeCause(GetActor(actor_id)),
+              /*force_kill=*/!RayConfig::instance().graceful_kill_actor_worker());
         }
       });
 }

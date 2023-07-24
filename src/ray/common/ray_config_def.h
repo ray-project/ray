@@ -833,3 +833,7 @@ RAY_CONFIG(bool, kill_child_processes_on_worker_exit, true)
 
 // If autoscaler v2 is enabled.
 RAY_CONFIG(bool, enable_autoscaler_v2, false)
+
+// Kill actor worker gracefully, waiting for owned object references
+// to be released before killing the worker.
+RAY_CONFIG(bool, graceful_kill_actor_worker, false)
