@@ -1987,3 +1987,11 @@ def pasre_pg_formatted_resources_to_original(
         original_resources[key] = value
 
     return original_resources
+
+
+async def get_async_gen_result_from_queue(queue):
+    while True:
+        output = await queue.get()
+        yield output
+        if isinstance(output, StopAsyncIteration):
+            break
