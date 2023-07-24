@@ -1720,8 +1720,8 @@ class Dataset:
                 import ray
 
                 def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
-                    variety = group.drop("variety")
-                    ...  # Separately transform each variety
+                    for feature in group.drop("variety").columns:
+                        group[feature] = group[feature] / group[feature].abs().max()
                     return group
 
                 ds = (
@@ -1797,14 +1797,28 @@ class Dataset:
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
         """Aggregate values using one or more functions.
 
-        Use this method to compute metrics like the mean of a column.
+        Use this method to compute metrics like the product of a column.
 
         Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
-            {'max(id)': 99, 'mean(id)': 49.5}
 
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import AggregateFn
+
+                ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
+                aggregation = AggregateFn(
+                    init=lambda column: 1,
+                    accumulate_row=lambda a, row: a * row["number"],
+                    merge = lambda a1, a2: a1 + a2,
+                    name="prod"
+                )
+                print(ds.aggregate(aggregation))
+
+            .. testoutput::
+
+                {'prod': 45}
+                
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -1893,9 +1907,9 @@ class Dataset:
               column ``"col"``,
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise min of the provided columns.
-
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
+            
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1936,8 +1950,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise max of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1978,8 +1992,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise mean of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -2033,8 +2047,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise std of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is ``None``.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
