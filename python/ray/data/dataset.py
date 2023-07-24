@@ -282,7 +282,8 @@ class Dataset:
     ) -> "Dataset":
         """Apply the given function to each row of this dataset.
 
-        Use this method to transform your data.
+        Use this method to transform your data. To learn more, see 
+        :ref:`Transforming rows <transforming_rows>`.
 
         .. tip::
 
