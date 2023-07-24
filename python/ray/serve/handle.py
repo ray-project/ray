@@ -223,7 +223,6 @@ class RayServeHandle:
         )
 
     def _remote(self, deployment_name, handle_options, args, kwargs) -> Coroutine:
-        print("remote called!!!", deployment_name, handle_options, args, kwargs)
         _request_context = ray.serve.context._serve_request_context.get()
         request_metadata = RequestMetadata(
             _request_context.request_id,

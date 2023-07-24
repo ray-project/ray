@@ -230,7 +230,6 @@ def create_replica_wrapper(name: str):
 
             request_metadata = pickle.loads(pickled_request_metadata)
             if request_metadata.serve_grpc_request:
-                print("handle_request, serve_grpc_request", request_args)
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], GRPCRequest
                 )
@@ -268,7 +267,6 @@ def create_replica_wrapper(name: str):
             This is a generator that yields ASGI-compliant messages sent by user code
             via an ASGI send interface.
             """
-            print("_handle_http_request_generator, request", request, request_metadata)
             receiver_task = None
             call_user_method_task = None
             wait_for_message_task = None
@@ -341,10 +339,7 @@ def create_replica_wrapper(name: str):
         ) -> AsyncGenerator[Any, None]:
             """Generator that is the entrypoint for all `stream=True` handle calls."""
             request_metadata = pickle.loads(pickled_request_metadata)
-            print("handle_request_streaming, request_metadata:", request_metadata)
-
             if request_metadata.serve_grpc_request:
-                print("handle_request_streaming, serve_grpc_request", request_args)
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], GRPCRequest
                 )
@@ -352,7 +347,6 @@ def create_replica_wrapper(name: str):
                     request_metadata, request_args[0]
                 )
             elif request_metadata.is_http_request:
-                print("handle_request_streaming, is_http_request", request_args)
                 assert len(request_args) == 1 and isinstance(
                     request_args[0], StreamingHTTPRequest
                 )
@@ -360,14 +354,10 @@ def create_replica_wrapper(name: str):
                     request_metadata, request_args[0]
                 )
             else:
-                print(
-                    "handle_request_streaming, not grpc nor http request", request_args
-                )
                 generator = self.replica.call_user_method_generator(
                     request_metadata, request_args, request_kwargs
                 )
 
-            print("handle_request_streaming, generator", generator)
             async for result in generator:
                 yield result
 
@@ -733,12 +723,10 @@ class RayServeReplica:
         async with self.wrap_user_method_call(
             request_metadata, acquire_reader_lock=False
         ):
-            print("in call_user_method_with_grpc_stream", request_metadata, request)
             user_method = self.get_runner_method(request_metadata)
             method_to_call = sync_to_async(user_method)
             user_request = request.grpc_user_request
             result_generator = method_to_call(user_request)
-            print("result_generator", result_generator)
             if inspect.iscoroutine(result_generator):
                 result_generator = await result_generator
 
@@ -755,10 +743,7 @@ class RayServeReplica:
                 )
 
     async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
-        print("in call_user_method_grpc_unary", request_metadata, request)
-        print("request.grpc_user_request", request.grpc_user_request)
         user_request = request.grpc_user_request
-        print("user_request", user_request)
 
         runner_method = self.get_runner_method(request_metadata)
         if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
@@ -819,11 +804,6 @@ class RayServeReplica:
                 ):
                     request_args, request_kwargs = tuple(), {}
 
-                print("before call_user_method!!!", request_args, request_kwargs)
-                print(
-                    f"the method to call is {runner_method.__name__} {method_to_call}"
-                )
-                print("request_metadata", request_metadata)
                 result = await method_to_call(*request_args, **request_kwargs)
                 if inspect.isgenerator(result) or inspect.isasyncgen(result):
                     raise TypeError(

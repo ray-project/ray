@@ -210,10 +210,8 @@ class LongestPrefixRouter:
         Returns:
             (route, handle) if found, else None.
         """
-        print("match_target, target", target)
         for route, endpoint_and_app_name in self.route_info.items():
             endpoint, app_name = endpoint_and_app_name
-            print("app_name", app_name, "endpoint", endpoint)
             if target.endswith(endpoint):
                 return route, self.handles[endpoint]
 
@@ -557,7 +555,6 @@ class GenericProxy:
         `disconnected_task` is expected to be done if the client disconnects; in this
         case, we will abort assigning a replica and return `None`.
         """
-        print("in _assign_request_with_timeout")
         assignment_task = None
         if isinstance(serve_request, ASGIServeRequest):
             assignment_task = handle.remote(
@@ -584,7 +581,6 @@ class GenericProxy:
             return_when=FIRST_COMPLETED,
             timeout=timeout_s,
         )
-        print("done", done)
         if assignment_task in done:
             return assignment_task.result()
         elif disconnected_task in done:
@@ -646,13 +642,9 @@ class GenericProxy:
             )
 
         try:
-            print("we are in try!!", route_path)
-            print("sorted_routes", self.prefix_router.sorted_routes)
-            print("route_info", self.prefix_router.route_info)
             self._ongoing_requests_start()
 
             matched_route = self.prefix_router.match_route(route_path)
-            print("matched_route: ", matched_route)
             if matched_route is None and isinstance(serve_request, ASGIServeRequest):
                 self.request_error_counter.inc(
                     tags={
@@ -691,14 +683,8 @@ class GenericProxy:
                 serve_request=serve_request,
             )
 
-            print(
-                "before calling send request: ",
-                RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
-                app_is_cross_language,
-            )
             # Streaming codepath isn't supported for Java.
             if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
-                print("before calling send request to replica streaming")
                 serve_response = await self.send_request_to_replica_streaming(
                     request_id=request_id,
                     handle=handle,
@@ -710,7 +696,6 @@ class GenericProxy:
                     serve_request=serve_request,
                 )
 
-            print("proxy_request status_code: ", serve_response.status_code)
             self.request_counter.inc(
                 tags={
                     "route": route_path,
@@ -817,23 +802,14 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
-        print("in grpc proxy, Predict called!!")
-        print("request", request)
-        print("context.invocation_metadata()", context.invocation_metadata())
-        print("context.details()", context.details())
-        print("context.peer()", context.peer())
-
         app_name = request.application
         route_path, handle = self.prefix_router.match_target(app_name)
-        print("route_path", route_path)
-
         serve_request = GRPCServeRequest(
             request=request,
             route_path=route_path,
             stream=False,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
-        print("Predict, serve_response", serve_response)
         return serve_response.response
 
     async def PredictStreaming(
@@ -845,31 +821,16 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
-        print("in grpc proxy, Predict called!!")
-        print("request", request)
-        print("context.invocation_metadata()", context.invocation_metadata())
-        print("context.details()", context.details())
-        print("context.peer()", context.peer())
-
         app_name = request.application
         route_path, handle = self.prefix_router.match_target(app_name)
-        print("route_path", route_path)
-
         serve_request = GRPCServeRequest(
             request=request,
             route_path=route_path,
             stream=True,
         )
         serve_response = await self.proxy_request(serve_request=serve_request)
-        print("Predict, serve_response", serve_response)
-        print(
-            "Predict, serve_response.streaming_response",
-            serve_response.streaming_response,
-        )
         async for response in serve_response.streaming_response:
             yield response
-
-        print("Predict, done with generator")
 
     @property
     def proxy_name(self) -> str:
@@ -882,7 +843,6 @@ class GRPCProxy(GenericProxy):
         route_path: str,
         serve_request: ServeRequest,
     ) -> Tuple[RayServeHandle, str]:
-        print("in GRPCProxy#setup_request_context_and_handle", app_name, route_path)
         multiplexed_model_id = serve_request.multiplexed_model_id
         request_id = serve_request.request_id
         if not request_id:
@@ -912,12 +872,10 @@ class GRPCProxy(GenericProxy):
         obj_ref_generator: StreamingObjectRefGenerator,
         request_id: str,
     ) -> Generator[serve_pb2.RayServeResponse, None, None]:
-        print("_streaming_generator_helper, obj_ref_generator", obj_ref_generator)
         while True:
             try:
                 obj_ref = await obj_ref_generator._next_async()
                 response = await obj_ref
-                print("_streaming_generator_helper, response", response)
                 yield serve_pb2.RayServeResponse(
                     user_response=response,
                     request_id=request_id,
@@ -930,7 +888,6 @@ class GRPCProxy(GenericProxy):
         obj_ref: StreamingObjectRefGenerator,
         request_id: str,
     ) -> ServeResponse:
-        print("_consume_generator, obj_ref_generator", obj_ref)
         streaming_response = self._streaming_generator_helper(obj_ref, request_id)
         return ServeResponse(status_code="200", streaming_response=streaming_response)
 
@@ -940,12 +897,10 @@ class GRPCProxy(GenericProxy):
         request_id: str,
     ) -> ServeResponse:
         user_response = await obj_ref
-        print("_consume_generator, result", user_response)
         response = serve_pb2.RayServeResponse(
             user_response=user_response,
             request_id=request_id,
         )
-        print("_consume_generator, response", response)
 
         return ServeResponse(status_code="200", response=response)
 
@@ -976,9 +931,6 @@ class GRPCProxy(GenericProxy):
                 )
                 return TIMEOUT_ERROR_CODE, None
 
-            print("obj_ref", obj_ref)
-            print("serve_request", serve_request)
-
             if serve_request.stream:
                 return await self._consume_generator_stream(
                     obj_ref=obj_ref, request_id=request_id
@@ -989,7 +941,6 @@ class GRPCProxy(GenericProxy):
                 )
 
         except Exception as e:
-            print("in GRPCProxy#send_request_to_replica_streaming exception!!", e)
             logger.exception(e)
             return ServeResponse(status_code="500")
 
@@ -1022,8 +973,6 @@ class HTTPProxy(GenericProxy):
         handle: RayServeHandle,
         app_name: str,
     ) -> Tuple[RayServeHandle, str]:
-        print("in HTTPProxy#setup_request_context_and_handle", app_name, route_path)
-
         request_id = self.generate_request_id()
         request_context_info = {
             "route": route_path,
@@ -1064,7 +1013,6 @@ class HTTPProxy(GenericProxy):
         """
         while True:
             msg = await receive()
-            print("proxy_asgi_receive", msg)
             await queue(msg)
 
             if msg["type"] == "http.disconnect":
@@ -1127,7 +1075,6 @@ class HTTPProxy(GenericProxy):
         # Proxy the receive interface by placing the received messages on a queue.
         # The downstream replica must call back into `receive_asgi_messages` on this
         # actor to receive the messages.
-        print("in HTTPProxy#send_request_to_replica_streaming!!")
         receive_queue = ASGIMessageQueue()
         self.asgi_receive_queues[request_id] = receive_queue
         proxy_asgi_receive_task = get_or_create_event_loop().create_task(
@@ -1176,7 +1123,6 @@ class HTTPProxy(GenericProxy):
                 return ServeResponse(status_code=TIMEOUT_ERROR_CODE)
 
         except Exception as e:
-            print("in HTTPProxy#send_request_to_replica_streaming exception!!", e)
             logger.exception(e)
             status_code = "500"
         finally:
