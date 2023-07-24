@@ -60,6 +60,8 @@ For example, use ``ray.data.read_parquet("example://iris.parquet", filter=pyarro
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
+.. _optimizing_shuffles:
+
 Optimizing shuffles
 -------------------
 

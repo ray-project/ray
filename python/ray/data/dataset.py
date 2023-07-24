@@ -909,8 +909,9 @@ class Dataset:
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
-        This method can be useful to tune the performance of your pipeline.
-
+        This method can be useful to tune the performance of your pipeline. To learn 
+        more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
+        
         If you're writing data to files, you can also use this method to change the
         number of output files. To learn more, see
         :ref:`Changing the number of output files <changing-number-output-files>`.
@@ -945,8 +946,7 @@ class Dataset:
                 minimizing data movement.
 
         Returns:
-            The repartitioned :class:`Dataset`. After repartitioning, all blocks have
-            approximately the same number of rows.
+            The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
@@ -974,6 +974,7 @@ class Dataset:
 
             This method can be slow. For better performance, try
             `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+            Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
 
         Examples:
             >>> import ray
@@ -2031,7 +2032,7 @@ class Dataset:
 
         Args:
             key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` and generate a sort key.
+                :meth:`Dataset.map` and generate a new column to sort by.
             descending: Whether to sort in descending order.
 
         Returns:
