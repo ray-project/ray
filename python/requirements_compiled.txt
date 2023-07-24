@@ -203,7 +203,7 @@ importlib-metadata==4.10.0
 importlib-resources==6.0.0
 iniconfig==2.0.0
 ipykernel==6.24.0
-ipython==8.14.0
+ipython==8.12.2
 ipython-genutils==0.2.0
 ipywidgets==7.7.5
 isodate==0.6.1
