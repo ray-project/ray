@@ -64,8 +64,8 @@ class Benchmark:
 
 
 def iterate(dataset, label, metrics):
-    """ Iterate over `dataset`, calculating the throughput and 
-        adds it into the `metrics` dict under the `label` key."""
+    """Iterate over `dataset`, calculating the throughput and
+    adds it into the `metrics` dict under the `label` key."""
     start = time.time()
     it = iter(dataset)
     num_rows = 0
@@ -79,6 +79,7 @@ def iterate(dataset, label, metrics):
 
 # Constants and utility methods for image-based benchmarks.
 DEFAULT_IMAGE_SIZE = 224
+
 
 def get_transform(to_torch_tensor, image_size=DEFAULT_IMAGE_SIZE):
     # Note(swang): This is a different order from tf.data.
@@ -98,6 +99,7 @@ def get_transform(to_torch_tensor, image_size=DEFAULT_IMAGE_SIZE):
         else []
     )
     return transform
+
 
 def crop_and_flip_image_batch(image_batch):
     transform = get_transform(False)

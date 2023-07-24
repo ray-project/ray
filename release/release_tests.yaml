@@ -6205,11 +6205,11 @@
     byod:
       type: gpu
     cluster_env: app_config.yaml
-    cluster_compute: ../../air_tests/air_benchmarks/compute_cpu_4_aws.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_cpu_1_aws.yaml
 
   run:
     timeout: 600
-    script: python train_benchmark.py --num-workers 4
+    script: python train_benchmark.py --num-workers 1
 
   variations:
     - __suffix__: aws
@@ -6218,7 +6218,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: ../../air_tests/air_benchmarks/compute_cpu_4_gce.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_cpu_1_gce.yaml
 
 - name: read_images_train_16_cpu
   group: data-tests
