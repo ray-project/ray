@@ -1,18 +1,24 @@
 Fine-tuning DreamBooth with Ray AIR
 ===================================
 
-This example shows how to fine-tune a DreamBooth model using Ray AIR.
-Because of the large model sizes, you'll need a machine with at least 2 A10G GPUs.
+This example shows how to do DreamBooth fine-tuning of a Stable Diffusion model using Ray AIR.
+See the original `DreamBooth project homepage <https://dreambooth.github.io/>`_ for more details on what this fine-tuning method achieves.
 
-Each training worker uses 2 GPUs, so you'll need ``N * 2`` total GPUs in your
-Ray cluster, if training with ``N`` distributed training workers.
-The example can leverage data-parallel training with more GPUs to speed up training time.
-
-The demo fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
+.. image:: https://dreambooth.github.io/DreamBooth_files/high_level.png
+  :target: https://dreambooth.github.io
+  :alt: DreamBooth fine-tuning overview
 
 This example is built on top of `this HuggingFace 🤗 tutorial <https://huggingface.co/docs/diffusers/training/dreambooth>`_.
 See the HuggingFace tutorial for useful explanations and suggestions on hyperparameters.
-**Running this example with Ray AIR allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
+**Adapting this example to Ray AIR allows you to easily scale up the fine-tuning to an arbitrary number of distributed training workers.**
+
+**Compute requirements:**
+
+* Because of the large model sizes, you'll need a machine with at least 2 A10G GPUs.
+* Each training worker uses 2 GPUs, so you'll need ``N * 2`` total GPUs in your Ray cluster, if training with ``N`` distributed training workers. The example can leverage data-parallel training with more GPUs to speed up training time.
+
+This example fine-tunes both the ``text_encoder`` and ``unet`` models used in the Stable Diffusion process, with respect to a prior preserving loss.
+
 
 .. image:: images/dreambooth_example.png
    :target: images/dreambooth_example.png
