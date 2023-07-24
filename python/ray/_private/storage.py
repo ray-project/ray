@@ -299,36 +299,33 @@ class KVClient:
         """List blobs and sub-dirs in the given path, if possible.
 
         Examples:
-            .. testcode::
+        
+            >>> import ray
+            >>> from ray._private import storage
+            >>> ray.shutdown()
+            
+            Normal usage.
 
-                import ray
-                from ray._private import storage
+            >>> ray.init(storage="/tmp/storage/cluster_1/storage")
+            RayContext(...)
+            >>> client = storage.get_client("my_app")
+            >>> client.put("path/foo.txt", b"bar")
+            >>> client.list("path")
+            [<FileInfo for '.../my_app/path/foo.txt': type=FileType.File, size=3>]
 
-                ray.shutdown()
+            Non-existent path.
 
-                ray.init(storage="/tmp/storage/cluster_1/storage")
+            >>> client.list("does_not_exist")
+            Traceback (most recent call last):
+                ...
+            FileNotFoundError: ... No such file or directory
 
-                client = storage.get_client("my_app")
-                client.put("path/foo.txt", b"bar")
-                print(client.list("path"))
+            Not a directory.
 
-                # Non-existent path.
-                try:
-                    client.list("does_not_exist")
-                except FileNotFoundError:
-                    print("FileNotFoundError")
-
-                # Not a directory.
-                try:
-                    client.list("path/foo.txt")
-                except NotADirectoryError:
-                    print("NotADirectoryError")
-
-            .. testoutput::
-
-                [<FileInfo for '.../my_app/path/foo.txt': type=FileType.File, size=3>]
-                FileNotFoundError
-                NotADirectoryError
+            >>> client.list("path/foo.txt")
+            Traceback (most recent call last):
+                ...
+            NotADirectoryError: ... Not a directory
 
         Args:
             path: Relative directory to list from.
