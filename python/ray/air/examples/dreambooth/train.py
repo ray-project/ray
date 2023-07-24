@@ -129,6 +129,10 @@ def train_fn(config):
 
     global_step = 0
     for epoch in range(num_train_epochs):
+        if global_step >= config["max_train_steps"]:
+            print(f"Stopping training after reaching {global_step} steps...")
+            break
+
         for step, batch in enumerate(
             train_dataset.iter_torch_batches(
                 batch_size=config["train_batch_size"], device=cuda[1]
@@ -189,6 +193,10 @@ def train_fn(config):
                 "loss": loss.detach().item(),
             }
             session.report(results)
+
+            if global_step >= config["max_train_steps"]:
+                break
+    # END: Training loop
 
     # Create pipeline using the trained modules and save it.
     if session.get_world_rank() == 0:
