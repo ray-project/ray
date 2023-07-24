@@ -441,7 +441,7 @@ class Dataset:
             :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
         Args:
-            fn: The function or generator to apply to record batch, or a class type
+            fn: The function or generator to apply to a record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy. Note ``fn`` must be
                 pickle-able.
