@@ -462,7 +462,7 @@ def test_lightweight_config_options(manage_ray, lightweight_option, value):
     client.deploy_apps(ServeDeploySchema(**config))
     wait_for_condition(
         lambda: client.get_serve_status("receiver_app").app_status.status
-        == ApplicationStatus.DEPLOYING,
+        == ApplicationStatus.RUNNING,
         timeout=15,
     )
     wait_for_condition(
