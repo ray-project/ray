@@ -10,16 +10,15 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import (
-    BatchUDF,
     Block,
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
     CallableClass,
-    RowUDF,
+    UserDefinedFunction,
 )
-from ray.data.context import DEFAULT_SCHEDULING_STRATEGY, DataContext
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -36,14 +35,11 @@ BlockTransform = Union[
     # TODO(Clark): Once Ray only supports Python 3.8+, use protocol to constrain block
     # transform type.
     # Callable[[Block, ...], Iterable[Block]]
-    # Callable[[Block, BatchUDF, ...], Iterable[Block]],
+    # Callable[[Block, UserDefinedFunction, ...], Iterable[Block]],
     Callable[[Iterable[Block], TaskContext], Iterable[Block]],
-    Callable[[Iterable[Block], TaskContext, Union[BatchUDF, RowUDF]], Iterable[Block]],
+    Callable[[Iterable[Block], TaskContext, UserDefinedFunction], Iterable[Block]],
     Callable[..., Iterable[Block]],
 ]
-
-# UDF on a batch or row.
-UDF = Union[BatchUDF, RowUDF]
 
 
 @DeveloperAPI
@@ -68,7 +64,7 @@ class TaskPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -177,7 +173,7 @@ class TaskPoolStrategy(ComputeStrategy):
         )
 
     def __eq__(self, other: Any) -> bool:
-        return isinstance(other, TaskPoolStrategy)
+        return isinstance(other, TaskPoolStrategy) or other == "tasks"
 
 
 @PublicAPI
@@ -223,15 +219,10 @@ class ActorPoolStrategy(ComputeStrategy):
                 queueing delay.
         """
         if legacy_min_size is not None or legacy_max_size is not None:
-            # TODO: make this an error in Ray 2.5.
-            logger.warning(
-                "DeprecationWarning: ActorPoolStrategy will require min_size and "
-                "max_size to be explicit kwargs in a future release"
+            raise ValueError(
+                "In Ray 2.5, ActorPoolStrategy requires min_size and "
+                "max_size to be explicit kwargs."
             )
-            if legacy_min_size is not None:
-                min_size = legacy_min_size
-            if legacy_max_size is not None:
-                max_size = legacy_max_size
         if size:
             if size < 1:
                 raise ValueError("size must be >= 1", size)
@@ -270,7 +261,7 @@ class ActorPoolStrategy(ComputeStrategy):
         clear_input_blocks: bool,
         name: Optional[str] = None,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -385,10 +376,7 @@ class ActorPoolStrategy(ComputeStrategy):
 
         if "scheduling_strategy" not in remote_args:
             ctx = DataContext.get_current()
-            if ctx.scheduling_strategy == DEFAULT_SCHEDULING_STRATEGY:
-                remote_args["scheduling_strategy"] = "SPREAD"
-            else:
-                remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
         BlockWorker = ray.remote(**remote_args)(BlockWorker)
 
@@ -495,7 +483,12 @@ class ActorPoolStrategy(ComputeStrategy):
 
 
 def get_compute(compute_spec: Union[str, ComputeStrategy]) -> ComputeStrategy:
-    if not compute_spec or compute_spec == "tasks":
+    if not isinstance(compute_spec, (TaskPoolStrategy, ActorPoolStrategy)):
+        raise ValueError(
+            "In Ray 2.5, the compute spec must be either "
+            f"TaskPoolStrategy or ActorPoolStategy, was: {compute_spec}."
+        )
+    elif not compute_spec or compute_spec == "tasks":
         return TaskPoolStrategy()
     elif compute_spec == "actors":
         return ActorPoolStrategy()
@@ -516,7 +509,7 @@ def is_task_compute(compute_spec: Union[str, ComputeStrategy]) -> bool:
 def _map_block_split(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,
@@ -544,7 +537,7 @@ def _map_block_split(
 def _map_block_nosplit(
     block_fn: BlockTransform,
     input_files: List[str],
-    fn: Optional[UDF],
+    fn: Optional[UserDefinedFunction],
     num_blocks: int,
     *blocks_and_fn_args: Union[Block, Any],
     **fn_kwargs,

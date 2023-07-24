@@ -240,6 +240,27 @@ def test_actor_stats_async_actor(ray_start_regular):
     assert max(result["AysncActor.func"]["pending"] for result in results) == 3
 
 
+def test_actor_stats_async_actor_generator(ray_start_regular):
+    signal = SignalActor.remote()
+
+    @ray.remote
+    class AysncActor:
+        async def func(self):
+            await signal.wait.remote()
+            yield ray.get_runtime_context()._get_actor_call_stats()
+
+    actor = AysncActor.options(max_concurrency=3).remote()
+    gens = [actor.func.options(num_returns="streaming").remote() for _ in range(6)]
+    time.sleep(1)
+    signal.send.remote()
+    results = []
+    for gen in gens:
+        for ref in gen:
+            results.append(ray.get(ref))
+    assert max(result["AysncActor.func"]["running"] for result in results) == 3
+    assert max(result["AysncActor.func"]["pending"] for result in results) == 3
+
+
 # Use default filterwarnings behavior for this test
 @pytest.mark.filterwarnings("default")
 def test_ids(ray_start_regular):
@@ -323,19 +344,10 @@ def test_ids(ray_start_regular):
     ray.get(actor.foo.remote())
 
 
-# get_runtime_context() can be called outside of Ray so it should not start
-# Ray automatically.
-def test_no_auto_init(shutdown_only):
+def test_auto_init(shutdown_only):
     assert not ray.is_initialized()
     ray.get_runtime_context()
-    assert not ray.is_initialized()
-
-
-def test_errors_when_ray_not_initialized():
-    with pytest.raises(AssertionError, match="Ray has not been initialized"):
-        ray.get_runtime_context().get_job_id()
-    with pytest.raises(AssertionError, match="Ray has not been initialized"):
-        ray.get_runtime_context().get_node_id()
+    assert ray.is_initialized()
 
 
 if __name__ == "__main__":

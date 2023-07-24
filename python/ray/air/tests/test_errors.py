@@ -111,7 +111,7 @@ def test_trainable_error_with_trainer(ray_start_4_cpus, tmp_path, fail_fast):
     name = f"test_trainer_errors-fail_fast={fail_fast}"
     trainer = FailingTrainer(
         run_config=RunConfig(
-            local_dir=str(tmp_path),
+            storage_path=str(tmp_path),
             name=name,
             failure_config=FailureConfig(fail_fast=fail_fast),
         ),
@@ -168,7 +168,7 @@ def test_driver_error_with_trainer(ray_start_4_cpus, tmp_path, error_on):
         train_loop_per_worker=passing_fn,
         scaling_config=ScalingConfig(num_workers=1),
         run_config=RunConfig(
-            local_dir=str(tmp_path),
+            storage_path=str(tmp_path),
             name=name,
             callbacks=[FailingCallback(error_on=error_on)],
         ),

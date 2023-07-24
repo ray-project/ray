@@ -9,12 +9,19 @@ from ray.serve.drivers import DAGDriver
 from ray.dag.input_node import InputNode
 from ray.serve._private.common import ReplicaState
 from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.serve._private.constants import (
+    SERVE_DEFAULT_APP_NAME,
+    DEPLOYMENT_NAME_PREFIX_SEPARATOR,
+)
 
 # Magic number to use for speed up scale from 0 replica
 serve_constants.HANDLE_METRIC_PUSH_INTERVAL_S = 1
 
 
 def get_num_running_replicas(controller, deployment_name):
+    deployment_name = (
+        SERVE_DEFAULT_APP_NAME + DEPLOYMENT_NAME_PREFIX_SEPARATOR + deployment_name
+    )
     replicas = ray.get(
         controller._dump_replica_states_for_testing.remote(deployment_name)
     )

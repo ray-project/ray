@@ -21,6 +21,7 @@ These are the environment variables Ray Tune currently considers:
 * **TUNE_DISABLE_DATED_SUBDIR**: Ray Tune automatically adds a date string to experiment
   directories when the name is not specified explicitly or the trainable isn't passed
   as a string. Setting this environment variable to ``1`` disables adding these date strings.
+* **TUNE_NEW_EXECUTION**: Disable `Ray Tune's new execution engine <https://github.com/ray-project/ray/issues/36949>`_.
 * **TUNE_DISABLE_STRICT_METRIC_CHECKING**: When you report metrics to Tune via
   ``session.report()`` and passed a ``metric`` parameter to ``Tuner()``, a scheduler,
   or a search algorithm, Tune will error
@@ -89,13 +90,15 @@ These are the environment variables Ray Tune currently considers:
   repeatedly every this amount of seconds. Defaults to 60 (seconds).
 * **TUNE_WARN_EXCESSIVE_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state is synced
   multiple times in that many seconds. Defaults to 30 (seconds).
+* **TUNE_WARN_SLOW_EXPERIMENT_CHECKPOINT_SYNC_THRESHOLD_S**: Threshold for throwing a warning if the experiment state syncing
+  takes longer than this time in seconds. Defaults to 30 (seconds).
 * **TUNE_STATE_REFRESH_PERIOD**: Frequency of updating the resource tracking from Ray. Defaults to 10 (seconds).
 * **TUNE_RESTORE_RETRY_NUM**: The number of retries that are done before a particular trial's restore is determined
   unsuccessful. After that, the trial is not restored to its previous checkpoint but rather from scratch.
   Default is ``0``. While this retry counter is taking effect, per trial failure number will not be incremented, which
   is compared against ``max_failures``.
 * **TUNE_CHECKPOINT_CLOUD_RETRY_NUM**: The number of retries that are done if a cloud checkpoint operation (uploading, downloading, removing)
-  fails. Default is ``3``.
+  fails. Default is ``2``.
 * **TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S**: The amount of time in seconds spent on waiting between cloud checkpoint operation retries. Default is
   ``1``.
 

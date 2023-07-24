@@ -10,7 +10,7 @@ from ray.dashboard.modules.metrics.dashboards.common import (
 SERVE_DEPLOYMENT_GRAFANA_PANELS = [
     Panel(
         id=1,
-        title="Deployments",
+        title="Replicas per deployment",
         description='Number of replicas per deployment. Ignores "Route" variable.',
         unit="replicas",
         targets=[
@@ -28,7 +28,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_request_counter{{route=~"$Route",{global_filters}}}[5m])) by (deployment, replica)',
+                expr='sum(rate(ray_serve_deployment_request_counter{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, replica)',
                 legend="{{replica}}",
             ),
         ],
@@ -41,7 +41,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="qps",
         targets=[
             Target(
-                expr='sum(rate(ray_serve_deployment_error_counter{{route=~"$Route",{global_filters}}}[5m])) by (deployment, replica)',
+                expr='sum(rate(ray_serve_deployment_error_counter{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, replica)',
                 legend="{{replica}}",
             ),
         ],
@@ -54,11 +54,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, replica, le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, replica, le))',
                 legend="{{replica}}",
             ),
             Target(
-                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.5, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -73,11 +73,11 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, replica, le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, replica, le))',
                 legend="{{replica}}",
             ),
             Target(
-                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (le))',
+                expr='histogram_quantile(0.9, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (le))',
                 legend="Total",
             ),
         ],
@@ -92,7 +92,7 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         unit="ms",
         targets=[
             Target(
-                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",{global_filters}}}[5m])) by (deployment, replica, le))',
+                expr='histogram_quantile(0.99, sum(rate(ray_serve_deployment_processing_latency_ms_bucket{{route=~"$Route",route!~"/-/.*",{global_filters}}}[5m])) by (deployment, replica, le))',
                 legend="{{replica}}",
             ),
             Target(
@@ -118,6 +118,36 @@ SERVE_DEPLOYMENT_GRAFANA_PANELS = [
         fill=0,
         stack=False,
         grid_pos=GridPos(0, 2, 8, 8),
+    ),
+    Panel(
+        id=8,
+        title="Pending requests per replica",
+        description="Pending requests for each replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_replica_pending_queries{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(8, 2, 8, 8),
+    ),
+    Panel(
+        id=9,
+        title="Running requests per replica",
+        description="Current running requests for each replica.",
+        unit="requests",
+        targets=[
+            Target(
+                expr="sum(ray_serve_replica_processing_queries{{{global_filters}}}) by (deployment, replica)",
+                legend="{{replica}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+        grid_pos=GridPos(16, 2, 8, 8),
     ),
 ]
 

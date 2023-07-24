@@ -338,15 +338,41 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   auto limit = request.has_limit() ? request.limit() : -1;
   RAY_LOG(DEBUG) << "Getting all actor info.";
   ++counts_[CountType::GET_ALL_ACTOR_INFO_REQUEST];
+
+  const auto filter_fn = [](const rpc::GetAllActorInfoRequest::Filters &filters,
+                            const rpc::ActorTableData &data) {
+    if (filters.has_actor_id() &&
+        ActorID::FromBinary(filters.actor_id()) != ActorID::FromBinary(data.actor_id())) {
+      return false;
+    }
+    if (filters.has_job_id() &&
+        JobID::FromBinary(filters.job_id()) != JobID::FromBinary(data.job_id())) {
+      return false;
+    }
+    if (filters.has_state() && filters.state() != data.state()) {
+      return false;
+    }
+    return true;
+  };
+
   if (request.show_dead_jobs() == false) {
     auto total_actors = registered_actors_.size() + destroyed_actors_.size();
     reply->set_total(total_actors);
 
     auto count = 0;
+    auto num_filtered = 0;
     for (const auto &iter : registered_actors_) {
       if (limit != -1 && count >= limit) {
         break;
       }
+
+      // With filters, skip the actor if it doesn't match the filter.
+      if (request.has_filters() &&
+          !filter_fn(request.filters(), iter.second->GetActorTableData())) {
+        ++num_filtered;
+        continue;
+      }
+
       count += 1;
       *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
@@ -355,9 +381,17 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
       if (limit != -1 && count >= limit) {
         break;
       }
+      // With filters, skip the actor if it doesn't match the filter.
+      if (request.has_filters() &&
+          !filter_fn(request.filters(), iter.second->GetActorTableData())) {
+        ++num_filtered;
+        continue;
+      }
+
       count += 1;
       *reply->add_actor_table_data() = iter.second->GetActorTableData();
     }
+    reply->set_num_filtered(num_filtered);
     RAY_LOG(DEBUG) << "Finished getting all actor info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
     return;
@@ -367,7 +401,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   // We don't maintain an in-memory cache of all actors which belong to dead
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback, limit](
+      [reply, send_reply_callback, limit, request, filter_fn](
           absl::flat_hash_map<ActorID, rpc::ActorTableData> &&result) {
         auto total_actors = result.size();
 
@@ -377,9 +411,15 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
         auto ptr = google::protobuf::Arena::Create<
             absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
         auto count = 0;
+        auto num_filtered = 0;
         for (const auto &pair : *ptr) {
           if (limit != -1 && count >= limit) {
             break;
+          }
+          // With filters, skip the actor if it doesn't match the filter.
+          if (request.has_filters() && !filter_fn(request.filters(), pair.second)) {
+            ++num_filtered;
+            continue;
           }
           count += 1;
 
@@ -387,6 +427,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
           reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
               const_cast<rpc::ActorTableData *>(&pair.second));
         }
+        reply->set_num_filtered(num_filtered);
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
         RAY_LOG(DEBUG) << "Finished getting all actor info.";
       });
@@ -550,38 +591,41 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
 
   // The backend storage is supposed to be reliable, so the status must be ok.
   RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Put(
-      actor_id, request.task_spec(), [](const Status &status) {}));
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
-      actor->GetActorID(),
-      *actor->GetMutableActorTableData(),
-      [this, actor](const Status &status) {
-        // The backend storage is supposed to be reliable, so the status must be ok.
-        RAY_CHECK_OK(status);
-        // If a creator dies before this callback is called, the actor could have been
-        // already destroyed. It is okay not to invoke a callback because we don't need
-        // to reply to the creator as it is already dead.
-        auto registered_actor_it = registered_actors_.find(actor->GetActorID());
-        if (registered_actor_it == registered_actors_.end()) {
-          // NOTE(sang): This logic assumes that the ordering of backend call is
-          // guaranteed. It is currently true because we use a single TCP socket to call
-          // the default Redis backend. If ordering is not guaranteed, we should overwrite
-          // the actor state to DEAD to avoid race condition.
-          return;
-        }
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor->GetActorID(), actor->GetActorTableData(), nullptr));
-        // Invoke all callbacks for all registration requests of this actor (duplicated
-        // requests are included) and remove all of them from
-        // actor_to_register_callbacks_.
-        // Reply to the owner to indicate that the actor has been registered.
-        auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
-        RAY_CHECK(iter != actor_to_register_callbacks_.end() && !iter->second.empty());
-        auto callbacks = std::move(iter->second);
-        actor_to_register_callbacks_.erase(iter);
-        for (auto &callback : callbacks) {
-          callback(actor);
-        }
+      actor_id, request.task_spec(), [this, actor](const Status &status) {
+        RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
+            actor->GetActorID(),
+            *actor->GetMutableActorTableData(),
+            [this, actor](const Status &status) {
+              // The backend storage is supposed to be reliable, so the status must be ok.
+              RAY_CHECK_OK(status);
+              // If a creator dies before this callback is called, the actor could have
+              // been already destroyed. It is okay not to invoke a callback because we
+              // don't need to reply to the creator as it is already dead.
+              auto registered_actor_it = registered_actors_.find(actor->GetActorID());
+              if (registered_actor_it == registered_actors_.end()) {
+                // NOTE(sang): This logic assumes that the ordering of backend call is
+                // guaranteed. It is currently true because we use a single TCP socket to
+                // call the default Redis backend. If ordering is not guaranteed, we
+                // should overwrite the actor state to DEAD to avoid race condition.
+                return;
+              }
+              RAY_CHECK_OK(gcs_publisher_->PublishActor(
+                  actor->GetActorID(), actor->GetActorTableData(), nullptr));
+              // Invoke all callbacks for all registration requests of this actor
+              // (duplicated requests are included) and remove all of them from
+              // actor_to_register_callbacks_.
+              // Reply to the owner to indicate that the actor has been registered.
+              auto iter = actor_to_register_callbacks_.find(actor->GetActorID());
+              RAY_CHECK(iter != actor_to_register_callbacks_.end() &&
+                        !iter->second.empty());
+              auto callbacks = std::move(iter->second);
+              actor_to_register_callbacks_.erase(iter);
+              for (auto &callback : callbacks) {
+                callback(actor);
+              }
+            }));
       }));
+
   return Status::OK();
 }
 
@@ -646,6 +690,9 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
       request.task_spec(), actor_namespace, actor_state_counter_);
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
+  actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
+      current_sys_time_ms());
+
   // Pub this state for dashboard showing.
   RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
   RemoveUnresolvedActor(actor);

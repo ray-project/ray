@@ -17,10 +17,12 @@ const basicTheme: ThemeOptions = {
       '"Segoe UI Symbol"',
     ].join(","),
     h1: {
-      fontSize: "2rem",
+      fontSize: "1.5rem",
+      fontWeight: 500,
     },
     h2: {
-      fontSize: "1.5rem",
+      fontSize: "1.25rem",
+      fontWeight: 500,
     },
     h3: {
       fontSize: "1rem",
@@ -81,7 +83,7 @@ export const lightTheme = createTheme({
   ...basicTheme,
   palette: {
     primary: {
-      main: "#538DF9",
+      main: "#036DCF",
     },
     secondary: lightBlue,
     success: {

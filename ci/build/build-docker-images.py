@@ -1,16 +1,18 @@
 import datetime
+import io
 import json
 import functools
 import glob
 import itertools
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
+import tarfile
 from collections import defaultdict
-from typing import List, Optional, Tuple
+from pathlib import Path
+from typing import List, Optional, Tuple, Dict
 
 import click
 import docker
@@ -21,55 +23,53 @@ DOCKER_CLIENT = docker.from_env()
 PYTHON_WHL_VERSION = "cp3"
 ADDITIONAL_PLATFORMS = ["aarch64"]
 
+DOCKER_HUB_REPO = "rayproject"
+
 DOCKER_HUB_DESCRIPTION = {
     "base-deps": (
-        "Internal Image, refer to " "https://hub.docker.com/r/rayproject/ray"
+        f"Internal Image, refer to https://hub.docker.com/r/{DOCKER_HUB_REPO}/ray"
     ),
-    "ray-deps": ("Internal Image, refer to " "https://hub.docker.com/r/rayproject/ray"),
+    "ray-deps": (
+        f"Internal Image, refer to https://hub.docker.com/r/{DOCKER_HUB_REPO}/ray"
+    ),
     "ray": "Official Docker Images for Ray, the distributed computing API.",
     "ray-ml": "Developer ready Docker Image for Ray.",
     "ray-worker-container": "Internal Image for CI test",
 }
 
 PY_MATRIX = {
-    "py36": "3.6",
     "py37": "3.7",
     "py38": "3.8",
     "py39": "3.9",
     "py310": "3.10",
+    "py311": "3.11",
 }
+
+# Versions for which we build the ray-ml image
+ML_IMAGES_PY_VERSIONS = {"py38", "py39", "py310"}
 
 BASE_IMAGES = {
     "cu118": "nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04",
-    "cu116": "nvidia/cuda:11.6.1-cudnn8-devel-ubuntu20.04",
-    "cu113": "nvidia/cuda:11.3.1-cudnn8-devel-ubuntu20.04",
-    "cu112": "nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04",
-    "cu111": "nvidia/cuda:11.1.1-cudnn8-devel-ubuntu20.04",
-    "cu110": "nvidia/cuda:11.0.3-cudnn8-devel-ubuntu20.04",
-    # there is no ubuntu20.04 image for cuda 10.2 and 10.1
-    "cu102": "nvidia/cuda:10.2-cudnn8-devel-ubuntu18.04",
-    "cu101": "nvidia/cuda:10.1-cudnn8-devel-ubuntu18.04",
+    "cu117": "nvidia/cuda:11.7.1-cudnn8-devel-ubuntu20.04",
+    "cu116": "nvidia/cuda:11.6.2-cudnn8-devel-ubuntu20.04",
+    "cu115": "nvidia/cuda:11.5.2-cudnn8-devel-ubuntu20.04",
     "cpu": "ubuntu:focal",
 }
 
 CUDA_FULL = {
     "cu118": "CUDA 11.8",
+    "cu117": "CUDA 11.7",
     "cu116": "CUDA 11.6",
-    "cu113": "CUDA 11.3",
-    "cu112": "CUDA 11.2",
-    "cu111": "CUDA 11.1",
-    "cu110": "CUDA 11.0",
-    "cu102": "CUDA 10.2",
-    "cu101": "CUDA 10.1",
+    "cu115": "CUDA 11.5",
 }
 
 # The CUDA version to use for the ML Docker image.
 # If changing the CUDA version in the below line, you should also change the base Docker
 # image being used in ~/ci/docker/Dockerfile.base.gpu to match the same image being used
 # here.
-ML_CUDA_VERSION = "cu116"
+ML_CUDA_VERSION = "cu118"
 
-DEFAULT_PYTHON_VERSION = "py37"
+DEFAULT_PYTHON_VERSION = "py38"
 
 IMAGE_NAMES = list(DOCKER_HUB_DESCRIPTION.keys())
 
@@ -91,16 +91,11 @@ def _get_branch():
 
 def _release_build():
     branch = _get_branch()
-    if branch is None:
-        return False
-    return branch != "master" and branch.startswith("releases")
+    return branch and branch.startswith("releases/")
 
 
 def _valid_branch():
-    branch = _get_branch()
-    if branch is None:
-        return False
-    return branch == "master" or _release_build()
+    return _get_branch() == "master" or _release_build()
 
 
 def _get_curr_dir():
@@ -234,7 +229,7 @@ def _build_docker_image(
         # can be found.
         build_args["FIND_LINKS_PATH"] = ".whl"
 
-    tagged_name = f"rayproject/{image_name}:nightly-{py_version}-{device_tag}"
+    tagged_name = f"{DOCKER_HUB_REPO}/{image_name}:nightly-{py_version}-{device_tag}"
 
     tagged_name = _with_suffix(tagged_name, suffix=suffix)
 
@@ -293,6 +288,43 @@ def _build_docker_image(
             break
 
     print("BUILT: ", tagged_name)
+    return tagged_name
+
+
+def _extract_files_from_docker(docker_image: str, files: Dict[str, str]):
+    """Extract files from docker container image and save to local disk.
+
+    ``files`` is a dict mapping from paths inside the docker container to
+    local paths on the host system.
+    """
+    # Create container
+    container = DOCKER_CLIENT.containers.create(docker_image)
+    for container_path, local_path in files.items():
+        # Get tar stream of file
+        stream, stat = container.get_archive(f"{container_path}")
+        # Create local directory containing target file
+        local_path = Path(local_path)
+        local_path.parent.mkdir(exist_ok=True)
+        # Read tar stream into bytes IO
+        with tarfile.open(fileobj=io.BytesIO(b"".join(d for d in stream))) as tar:
+            # Extract file from tar archive into local path
+            with open(local_path, "wb") as f:
+                for r in tar.extractfile(os.path.basename(container_path)):
+                    f.write(r)
+    container.remove()
+
+
+def extract_image_infos(images: List[str], target_dir: str):
+    for image in images:
+        image_basename = image.replace("rayproject/", "")
+        _extract_files_from_docker(
+            image,
+            {
+                "/home/ray/pip-freeze.txt": (
+                    f"{target_dir}/{image_basename}_" f"pip-freeze.txt"
+                )
+            },
+        )
 
 
 def copy_wheels(human_build):
@@ -327,17 +359,22 @@ def check_staleness(repository, tag):
     return is_stale
 
 
-def build_for_all_versions(image_name, py_versions, image_types, suffix, **kwargs):
+def build_for_all_versions(
+    image_name, py_versions, image_types, suffix, **kwargs
+) -> List[str]:
     """Builds the given Docker image for all Python & CUDA versions"""
+    tagged_names = []
     for py_version in py_versions:
         for image_type in image_types:
-            _build_docker_image(
+            tagged_name = _build_docker_image(
                 image_name,
                 py_version=py_version,
                 image_type=image_type,
                 suffix=suffix,
                 **kwargs,
             )
+            tagged_names.append(tagged_name)
+    return tagged_names
 
 
 def build_base_images(py_versions, image_types, suffix):
@@ -356,7 +393,7 @@ def build_or_pull_base_images(
     suffix: Optional[str] = None,
 ) -> bool:
     """Returns images to tag and build."""
-    repositories = ["rayproject/base-deps", "rayproject/ray-deps"]
+    repositories = [f"{DOCKER_HUB_REPO}/base-deps", f"{DOCKER_HUB_REPO}/ray-deps"]
     tags = [
         f"nightly-{py_version}-{image_type}"
         for py_version, image_type in itertools.product(py_versions, image_types)
@@ -385,22 +422,32 @@ def build_or_pull_base_images(
 def prep_ray_ml():
     root_dir = _get_root_dir()
 
-    requirements_files = ["python/requirements.txt"]
-    ml_requirements_files = [
-        "python/requirements/ml/requirements_ml_docker.txt",
-        "python/requirements/ml/requirements_dl.txt",
-        "python/requirements/ml/requirements_tune.txt",
-        "python/requirements/ml/requirements_rllib.txt",
-        "python/requirements/ml/requirements_train.txt",
-        "python/requirements/ml/requirements_upstream.txt",
+    requirements_files = [
+        "python/requirements.txt",
+        "python/requirements_compiled.txt",
     ]
-    # We don't need these in the ml docker image
+    ml_requirements_files = [
+        "python/requirements/docker/ray-docker-requirements.txt",
+        "python/requirements/ml/core-requirements.txt",
+        "python/requirements/ml/data-requirements.txt",
+        "python/requirements/ml/dl-gpu-requirements.txt",
+        "python/requirements/ml/dl-cpu-requirements.txt",
+        "python/requirements/ml/tune-requirements.txt",
+        "python/requirements/ml/tune-test-requirements.txt",
+        "python/requirements/ml/rllib-requirements.txt",
+        "python/requirements/ml/rllib-test-requirements.txt",
+        "python/requirements/ml/train-requirements.txt",
+        "python/requirements/ml/train-test-requirements.txt",
+    ]
+    # We don't need these in the ml docker image (or they are installed elsewhere)
     ignore_requirements = [
         "python/requirements/compat/requirements_legacy_compat.txt",
-        "python/requirements/compat/requirements_py36_compat.txt",
+        "python/requirements/ml/data-test-requirements.txt",
     ]
 
-    files_on_disk = glob.glob(f"{root_dir}/python/**/requirements*.txt", recursive=True)
+    files_on_disk = glob.glob(
+        f"{root_dir}/python/**/*-requirements.txt", recursive=True
+    )
     for file_on_disk in files_on_disk:
         rel = os.path.relpath(file_on_disk, start=root_dir)
         print(rel)
@@ -484,15 +531,22 @@ def create_image_tags(
     tag_mapping = defaultdict(list)
     for py_name in py_versions:
         for image_type in image_types:
-            if image_name == "ray-ml" and image_type not in [
-                ML_CUDA_VERSION,
-                "cpu",
-            ]:
-                print(
-                    "ML Docker image is not built for the following "
-                    f"device type: {image_type}"
-                )
-                continue
+            if image_name == "ray-ml":
+                if image_type not in [
+                    ML_CUDA_VERSION,
+                    "cpu",
+                ]:
+                    print(
+                        "ML Docker image is not built for the following "
+                        f"device type: {image_type}"
+                    )
+                    continue
+                if py_name not in ML_IMAGES_PY_VERSIONS:
+                    print(
+                        "ML Docker iamge is not build for the following "
+                        f"python version: {py_name}"
+                    )
+                    continue
 
             tag = _with_suffix(f"{version}-{py_name}-{image_type}", suffix=suffix)
 
@@ -551,13 +605,12 @@ def push_and_tag_images(
     image_list: Optional[List[str]] = None,
     suffix: Optional[str] = None,
 ):
-
     date_tag = datetime.datetime.now().strftime("%Y-%m-%d")
     sha_tag = _get_commit_sha()
     if _release_build():
-        release_name = re.search("[0-9]+\.[0-9]+\.[0-9].*", _get_branch()).group(0)
-        date_tag = release_name
-        sha_tag = release_name
+        release_name = _get_branch()[len("releases/") :]
+        date_tag = release_name + "." + date_tag
+        sha_tag = release_name + "." + sha_tag
 
     for image_name in image_list:
         full_image_name = f"rayproject/{image_name}"
@@ -674,7 +727,7 @@ def push_readmes(merge_build: bool):
             "PUSHRM_DEBUG": 1,
             "PUSHRM_SHORT": tag_line,
         }
-        cmd_string = f"rayproject/{image}"
+        cmd_string = f"{DOCKER_HUB_REPO}/{image}"
 
         print(
             DOCKER_CLIENT.containers.run(
@@ -698,7 +751,7 @@ def push_readmes(merge_build: bool):
 
 # Build base-deps/ray-deps only on file change, 2 weeks, per release
 # Build ray, ray-ml every time
-# build-docker-images.py --py-versions PY37 --build-type PR --rebuild-all
+# build-docker-images.py --py-versions py38 --build-type PR --rebuild-all
 MERGE = "MERGE"
 HUMAN = "HUMAN"
 PR = "PR"
@@ -711,11 +764,11 @@ BUILD_TYPES = [MERGE, HUMAN, PR, BUILDKITE, LOCAL]
 @click.option(
     "--py-versions",
     "-V",
-    default=["py37"],
+    default=["py38"],
     type=click.Choice(list(PY_MATRIX.keys())),
     multiple=True,
     help="Which python versions to build. "
-    "Must be in (py36, py37, py38, py39, py310, py311)",
+    "Must be in (py37, py38, py39, py310, py311)",
 )
 @click.option(
     "--device-types",
@@ -832,7 +885,11 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
-            build_for_all_versions("ray", py_versions, image_types, suffix=suffix)
+            all_tagged_images = []
+
+            all_tagged_images += build_for_all_versions(
+                "ray", py_versions, image_types, suffix=suffix
+            )
 
             # List of images to tag and push to docker hub
             images_to_tag_and_push = []
@@ -854,15 +911,27 @@ def main(
                 # Do not build ray-ml e.g. for arm64
                 ml_image_types = []
 
+            # Only build ray-ml image for pythons in ML_IMAGES_PY_VERSIONS
+            ml_py_versions = [
+                py_version
+                for py_version in py_versions
+                if py_version in ML_IMAGES_PY_VERSIONS
+            ]
+
             if len(ml_image_types) > 0:
                 prep_ray_ml()
-                build_for_all_versions(
+                all_tagged_images += build_for_all_versions(
                     "ray-ml",
-                    py_versions,
+                    ml_py_versions,
                     image_types=ml_image_types,
                     suffix=suffix,
                 )
                 images_to_tag_and_push += ["ray-ml"]
+
+            if is_buildkite:
+                extract_image_infos(
+                    all_tagged_images, target_dir="/artifact-mount/.image-info"
+                )
 
             if build_type in {MERGE, PR}:
                 valid_branch = _valid_branch()
@@ -881,5 +950,72 @@ def main(
         # push_readmes(build_type is MERGE)
 
 
+def fix_docker_images(
+    image: str = "ray-ml",
+    version: str = "nightly",
+    repo: str = DOCKER_HUB_REPO,
+):
+    """Print commands to manually update docker images post-release.
+
+    This function prints commands that can be run to add new layers to
+    fix docker images post-release, e.g. when dependencies have to be fixed
+    or public keys expired.
+
+    The commands can be copied/pasted and executed in a shell.
+
+    Example:
+        FIX_IMAGE=ray-ml FIX_VERSION=2.3.0 python build-docker-images.py
+
+    """
+    tags = create_image_tags(
+        image_name=image,
+        py_versions=list(PY_MATRIX.keys()),
+        image_types=list(BASE_IMAGES.keys()),
+        specific_tag=None,  # Set to `latest` for latest image fixes
+        version=version,
+        suffix=None,
+    )
+    print(dict(tags))
+
+    # Pull images we want to rebuild
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+
+        print(f"docker pull {base_image}")
+
+    # Re-tag these base images as e.g. pinned/ray-ml:tag
+    # This is so we can re-run the build command safely.
+    pinned_base_image = {}
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+        pinned_image = f"pinned/{image}:{base_tag}"
+
+        pinned_base_image[base_image] = pinned_image
+
+        print(f"docker tag {base_image} {pinned_image}")
+
+    # Create commands to build the new layer for the base images.
+    for base_tag in tags:
+        base_image = f"{repo}/{image}:{base_tag}"
+        pinned_image = pinned_base_image[base_image]
+
+        print(f"docker build --build-arg BASE_IMAGE={pinned_image} -t {base_image} .")
+        for subtag in tags[base_tag]:
+            if subtag == base_tag:
+                continue
+
+            # This will overwrite the rayproject/ray-ml:tag image
+            # - but we still have the pinned/ image if we want to re-run!
+            target_image = f"{repo}/{image}:{subtag}"
+            print(f"docker tag {base_image} {target_image}")
+
+    # Lastly, push new layers
+    print(f"docker push --all-tags {repo}/{image}")
+
+
 if __name__ == "__main__":
-    main()
+    fix_image = os.environ.get("FIX_IMAGE")
+    if not fix_image:
+        main()
+    else:
+        fix_docker_images(fix_image, os.environ.get("FIX_VERSION"))

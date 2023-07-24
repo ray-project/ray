@@ -12,6 +12,7 @@ from pydantic import (
     NonNegativeInt,
     PositiveInt,
     validator,
+    Field,
 )
 
 from ray import cloudpickle
@@ -22,8 +23,9 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
+    DEFAULT_MAX_CONCURRENT_QUERIES,
 )
-from ray.serve._private.utils import DEFAULT
+from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.generated.serve_pb2 import (
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
@@ -141,23 +143,39 @@ class DeploymentConfig(BaseModel):
             The names of options manually configured by the user.
     """
 
-    num_replicas: NonNegativeInt = 1
-    max_concurrent_queries: Optional[int] = None
-    user_config: Any = None
-
-    graceful_shutdown_timeout_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S  # noqa: E501
+    num_replicas: NonNegativeInt = Field(
+        default=1, update_type=DeploymentOptionUpdateType.LightWeight
     )
-    graceful_shutdown_wait_loop_s: NonNegativeFloat = (
-        DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S  # noqa: E501
+    max_concurrent_queries: Optional[int] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsReconfigure
+    )
+    user_config: Any = Field(
+        default=None, update_type=DeploymentOptionUpdateType.NeedsActorReconfigure
     )
 
-    health_check_period_s: PositiveFloat = DEFAULT_HEALTH_CHECK_PERIOD_S
-    health_check_timeout_s: PositiveFloat = DEFAULT_HEALTH_CHECK_TIMEOUT_S
+    graceful_shutdown_timeout_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    graceful_shutdown_wait_loop_s: NonNegativeFloat = Field(
+        default=DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S,
+        update_type=DeploymentOptionUpdateType.NeedsActorReconfigure,
+    )
 
-    autoscaling_config: Optional[AutoscalingConfig] = None
+    health_check_period_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_PERIOD_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
+    health_check_timeout_s: PositiveFloat = Field(
+        default=DEFAULT_HEALTH_CHECK_TIMEOUT_S,
+        update_type=DeploymentOptionUpdateType.NeedsReconfigure,
+    )
 
-    # This flag is used to let replica know they are deplyed from
+    autoscaling_config: Optional[AutoscalingConfig] = Field(
+        default=None, update_type=DeploymentOptionUpdateType.LightWeight
+    )
+
+    # This flag is used to let replica know they are deployed from
     # a different language.
     is_cross_language: bool = False
 
@@ -165,7 +183,10 @@ class DeploymentConfig(BaseModel):
     # the deploymnent use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
-    version: Optional[str] = None
+    version: Optional[str] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
@@ -179,7 +200,7 @@ class DeploymentConfig(BaseModel):
     @validator("max_concurrent_queries", always=True)
     def set_max_queries_by_mode(cls, v, values):  # noqa 805
         if v is None:
-            v = 100
+            v = DEFAULT_MAX_CONCURRENT_QUERIES
         else:
             if v <= 0:
                 raise ValueError("max_concurrent_queries must be >= 0")
@@ -352,6 +373,11 @@ class ReplicaConfig:
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
+
+    def update_ray_actor_options(self, ray_actor_options):
+        self.ray_actor_options = ray_actor_options
+        self._validate_ray_actor_options()
+        self.resource_dict = resources_from_ray_options(self.ray_actor_options)
 
     @classmethod
     def create(
@@ -539,6 +565,7 @@ class HTTPOptions(pydantic.BaseModel):
     root_path: str = ""
     fixed_number_replicas: Optional[int] = None
     fixed_number_selection_seed: int = 0
+    request_timeout_s: Optional[float] = None
 
     @validator("location", always=True)
     def location_backfill_no_server(cls, v, values):

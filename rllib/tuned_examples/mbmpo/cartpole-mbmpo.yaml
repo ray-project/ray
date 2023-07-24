@@ -2,7 +2,7 @@ cartpole-mbmpo:
     env: ray.rllib.examples.env.mbmpo_env.CartPoleWrapper
     run: MBMPO
     stop:
-        episode_reward_mean: 190
+        sampler_results/episode_reward_mean: 190
         training_iteration: 20
     config:
         # Only supported in torch right now.

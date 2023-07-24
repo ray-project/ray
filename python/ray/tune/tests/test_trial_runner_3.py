@@ -15,13 +15,13 @@ from freezegun import freeze_time
 import ray
 from ray.air import CheckpointConfig
 from ray.air.execution import PlacementGroupResourceManager, FixedResourceManager
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 
 from ray.tune import TuneError, PlacementGroupFactory
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
-from ray.tune.result import TRAINING_ITERATION
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.experiment import Experiment
 from ray.tune.search import BasicVariantGenerator
@@ -751,7 +751,7 @@ class TrialRunnerTest3(unittest.TestCase):
         # for more details.
         trial = Trial(
             "__fake",
-            local_dir=tmpdir,
+            experiment_path=tmpdir,
             checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
         )
         runner = TrialRunner(
@@ -889,7 +889,11 @@ class TrialRunnerTest3(unittest.TestCase):
         # See `test_trial_runner2.TrialRunnerTest2.testPauseResumeCheckpointCount`
         # for more details.
         runner.add_trial(
-            Trial("__fake", local_dir=self.tmpdir, config={"user_checkpoint_freq": 2})
+            Trial(
+                "__fake",
+                experiment_path=self.tmpdir,
+                config={"user_checkpoint_freq": 2},
+            )
         )
         trials = runner.get_trials()
 
@@ -990,11 +994,9 @@ class TrialRunnerTest3(unittest.TestCase):
                 pass
 
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
             checkpoint_period="auto",
-            sync_config=SyncConfig(
-                upload_dir="fake://somewhere", syncer=CustomSyncer(), sync_period=0
-            ),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=CustomSyncer(), sync_period=0),
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
         )
         runner.add_trial(Trial("__fake", config={"user_checkpoint_freq": 1}))
@@ -1038,8 +1040,8 @@ class TrialRunnerTest3(unittest.TestCase):
         syncer = CustomSyncer()
 
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
+            experiment_path="fake://somewhere",
+            sync_config=SyncConfig(syncer=syncer),
             trial_checkpoint_config=checkpoint_config,
             checkpoint_period=100,  # Only rely on forced syncing
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager()),
@@ -1105,8 +1107,8 @@ class TrialRunnerTest3(unittest.TestCase):
 
         syncer = self.getHangingSyncer(sync_period=60, sync_timeout=0.5)
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=syncer),
         )
         # Checkpoint for the first time starts the first sync in the background
         runner.checkpoint(force=True)
@@ -1118,10 +1120,7 @@ class TrialRunnerTest3(unittest.TestCase):
             # The second checkpoint will log a warning about the previous sync
             # timing out. Then, it will launch a new sync process in the background.
             runner.checkpoint(force=True)
-        assert any(
-            "sync of the experiment checkpoint to the cloud timed out" in x
-            for x in buffer
-        )
+        assert any("timed out" in x for x in buffer)
         assert syncer.sync_up_counter == 2
 
     def testPeriodicCloudCheckpointSyncTimeout(self):
@@ -1132,8 +1131,8 @@ class TrialRunnerTest3(unittest.TestCase):
         sync_period = 60
         syncer = self.getHangingSyncer(sync_period=sync_period, sync_timeout=0.5)
         runner = TrialRunner(
-            local_checkpoint_dir=self.tmpdir,
-            sync_config=SyncConfig(upload_dir="fake://somewhere", syncer=syncer),
+            experiment_path="fake://somewhere/exp",
+            sync_config=SyncConfig(syncer=syncer),
         )
 
         with freeze_time() as frozen:
@@ -1157,7 +1156,7 @@ class TrialRunnerTest3(unittest.TestCase):
             assert syncer.sync_up_counter == 2
 
     def testExperimentCheckpointWithDatasets(self):
-        """Test trial runner checkpointing where trials contain Ray Datasets.
+        """Test trial runner checkpointing where trials contain Datasets.
         When possible, a dataset plan should be saved (for read_* APIs).
         See `Dataset.serialize_lineage` for more information.
 
@@ -1523,4 +1522,4 @@ class SearchAlgorithmTest(unittest.TestCase):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

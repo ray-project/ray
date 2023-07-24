@@ -15,21 +15,42 @@ import {
 } from "../../../type/job";
 import { TypeTaskStatus } from "../../../type/task";
 
-const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<
-  TypeTaskStatus,
+export enum TaskStatus {
+  PENDING_ARGS_AVAIL = "PENDING_ARGS_AVAIL",
+  PENDING_NODE_ASSIGNMENT = "PENDING_NODE_ASSIGNMENT",
+  SUBMITTED_TO_WORKER = "SUBMITTED_TO_WORKER",
+  RUNNING = "RUNNING",
+  FINISHED = "FINISHED",
+  FAILED = "FAILED",
+  UNKNOWN = "UNKNOWN",
+}
+
+const TASK_STATE_NAME_TO_PROGRESS_KEY: Record<TypeTaskStatus, TaskStatus> = {
+  [TypeTaskStatus.PENDING_ARGS_AVAIL]: TaskStatus.PENDING_ARGS_AVAIL,
+  [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: TaskStatus.PENDING_NODE_ASSIGNMENT,
+  [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]:
+    TaskStatus.PENDING_NODE_ASSIGNMENT,
+  [TypeTaskStatus.PENDING_ARGS_FETCH]: TaskStatus.PENDING_NODE_ASSIGNMENT,
+  [TypeTaskStatus.SUBMITTED_TO_WORKER]: TaskStatus.SUBMITTED_TO_WORKER,
+  [TypeTaskStatus.RUNNING]: TaskStatus.RUNNING,
+  [TypeTaskStatus.RUNNING_IN_RAY_GET]: TaskStatus.RUNNING,
+  [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: TaskStatus.RUNNING,
+  [TypeTaskStatus.FINISHED]: TaskStatus.FINISHED,
+  [TypeTaskStatus.FAILED]: TaskStatus.FAILED,
+  [TypeTaskStatus.NIL]: TaskStatus.UNKNOWN,
+};
+
+export const TaskStatusToTaskProgressMapping: Record<
+  TaskStatus,
   keyof TaskProgress
 > = {
-  [TypeTaskStatus.PENDING_ARGS_AVAIL]: "numPendingArgsAvail",
-  [TypeTaskStatus.PENDING_NODE_ASSIGNMENT]: "numPendingNodeAssignment",
-  [TypeTaskStatus.PENDING_OBJ_STORE_MEM_AVAIL]: "numPendingNodeAssignment",
-  [TypeTaskStatus.PENDING_ARGS_FETCH]: "numPendingNodeAssignment",
-  [TypeTaskStatus.SUBMITTED_TO_WORKER]: "numSubmittedToWorker",
-  [TypeTaskStatus.RUNNING]: "numRunning",
-  [TypeTaskStatus.RUNNING_IN_RAY_GET]: "numRunning",
-  [TypeTaskStatus.RUNNING_IN_RAY_WAIT]: "numRunning",
-  [TypeTaskStatus.FINISHED]: "numFinished",
-  [TypeTaskStatus.FAILED]: "numFailed",
-  [TypeTaskStatus.NIL]: "numUnknown",
+  [TaskStatus.PENDING_ARGS_AVAIL]: "numPendingArgsAvail",
+  [TaskStatus.PENDING_NODE_ASSIGNMENT]: "numPendingNodeAssignment",
+  [TaskStatus.SUBMITTED_TO_WORKER]: "numSubmittedToWorker",
+  [TaskStatus.RUNNING]: "numRunning",
+  [TaskStatus.FINISHED]: "numFinished",
+  [TaskStatus.FAILED]: "numFailed",
+  [TaskStatus.UNKNOWN]: "numUnknown",
 };
 
 const useFetchStateApiProgressByTaskName = (
@@ -52,7 +73,7 @@ const useFetchStateApiProgressByTaskName = (
         const summary = formatSummaryToTaskProgress(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.total };
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);
@@ -82,7 +103,7 @@ export const useJobProgress = (
   const [error, setError] = useState(false);
   const [isRefreshing, setRefresh] = useState(true);
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
-  const { data } = useFetchStateApiProgressByTaskName(
+  const { data, isLoading } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
@@ -104,6 +125,7 @@ export const useJobProgress = (
   return {
     progress: summed,
     totalTasks: data?.totalTasks,
+    isLoading,
     msg,
     error,
     driverExists,
@@ -128,7 +150,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     setRefresh(event.target.checked);
   };
 
-  const { data } = useFetchStateApiProgressByTaskName(
+  const { data, isLoading } = useFetchStateApiProgressByTaskName(
     jobId,
     isRefreshing,
     setMsg,
@@ -167,6 +189,7 @@ export const useJobProgressByTaskName = (jobId: string) => {
     page: { pageNo: page, pageSize: 10 },
     total: formattedTasks.length,
     totalTasks: data?.totalTasks,
+    isLoading,
     setPage,
     msg,
     error,
@@ -179,8 +202,11 @@ const formatStateCountsToProgress = (stateCounts: {
 }) => {
   const formattedProgress: TaskProgress = {};
   Object.entries(stateCounts).forEach(([state, count]) => {
+    const taskStatus: TaskStatus =
+      TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus];
+
     const key: keyof TaskProgress =
-      TASK_STATE_NAME_TO_PROGRESS_KEY[state as TypeTaskStatus] ?? "numUnknown";
+      TaskStatusToTaskProgressMapping[taskStatus] ?? "numUnknown";
 
     formattedProgress[key] = (formattedProgress[key] ?? 0) + count;
   });
@@ -252,7 +278,7 @@ export const useJobProgressByLineage = (
   const [isRefreshing, setRefresh] = useState(true);
   const [latestFetchTimestamp, setLatestFetchTimestamp] = useState(0);
 
-  const { data } = useSWR(
+  const { data, isLoading } = useSWR(
     jobId ? ["useJobProgressByLineageAndName", jobId] : null,
     async ([_, jobId]) => {
       const rsp = await getStateApiJobProgressByLineage(jobId);
@@ -263,7 +289,7 @@ export const useJobProgressByLineage = (
         const summary = formatNestedJobProgressToJobProgressGroup(
           rsp.data.data.result.result,
         );
-        return { summary, totalTasks: rsp.data.data.result.total };
+        return { summary, totalTasks: rsp.data.data.result.num_filtered };
       } else {
         setError(true);
         setRefresh(false);
@@ -280,6 +306,7 @@ export const useJobProgressByLineage = (
     progressGroups: data?.summary?.progressGroups,
     total: data?.summary?.total,
     totalTasks: data?.totalTasks,
+    isLoading,
     msg,
     error,
     latestFetchTimestamp,

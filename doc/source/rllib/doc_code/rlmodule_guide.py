@@ -1,13 +1,7 @@
 # flake8: noqa
 from ray.rllib.utils.annotations import override
-
-# TODO (Kourosh): Remove this when the location of the import is fixed.
-try:
-    from ray.rllib.models.specs.typing import SpecType
-    from ray.rllib.models.specs.specs_torch import TorchTensorSpec
-except ImportError:
-    from ray.rllib.core.models.specs.typing import SpecType
-    from ray.rllib.core.models.specs.specs_torch import TorchTensorSpec
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 
 # __enabling-rlmodules-in-configs-begin__
@@ -21,6 +15,7 @@ config = (
     .framework("torch")
     .environment("CartPole-v1")
     .rl_module(_enable_rl_module_api=True)
+    .training(_enable_learner_api=True)
 )
 
 algorithm = config.build()
@@ -91,7 +86,10 @@ config = (
         _enable_rl_module_api=True,
         rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
+    .training(
+        model={"fcnet_hiddens": [32, 32]},
+        _enable_learner_api=True,
+    )
 )
 
 algo = config.build()
@@ -116,7 +114,10 @@ config = (
             module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
         ),
     )
-    .training(model={"fcnet_hiddens": [32, 32]})
+    .training(
+        model={"fcnet_hiddens": [32, 32]},
+        _enable_learner_api=True,
+    )
 )
 # __pass-specs-to-configs-ma-end__
 
@@ -267,7 +268,7 @@ class DiscreteBCTorchModule(TorchRLModule):
         # and its value is a torch.Tensor with shape (b, h) where b is the
         # batch size (determined at run-time) and h is the hidden size
         # (fixed at 10).
-        return {"obs": TorchTensorSpec("b, h", h=10)}
+        return {"obs": TensorSpec("b, h", h=10, framework="torch")}
 
 
 # __extend-spec-checking-torch-specs-end__
@@ -398,3 +399,50 @@ spec = MultiAgentRLModuleSpec(
 
 module = spec.build()
 # __pass-custom-marlmodule-shared-enc-end__
+
+
+# __checkpointing-begin__
+import gymnasium as gym
+import shutil
+import tempfile
+from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+
+config = PPOConfig().environment("CartPole-v1")
+env = gym.make("CartPole-v1")
+# Create an RL Module that we would like to checkpoint
+module_spec = SingleAgentRLModuleSpec(
+    module_class=PPOTorchRLModule,
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    model_config_dict={"fcnet_hiddens": [32]},
+    catalog_class=PPOCatalog,
+)
+module = module_spec.build()
+
+# Create the checkpoint
+module_ckpt_path = tempfile.mkdtemp()
+module.save_to_checkpoint(module_ckpt_path)
+
+# Create a new RL Module from the checkpoint
+module_to_load_spec = SingleAgentRLModuleSpec(
+    module_class=PPOTorchRLModule,
+    observation_space=env.observation_space,
+    action_space=env.action_space,
+    model_config_dict={"fcnet_hiddens": [32]},
+    catalog_class=PPOCatalog,
+    load_state_path=module_ckpt_path,
+)
+
+# Train with the checkpointed RL Module
+config.rl_module(
+    rl_module_spec=module_to_load_spec,
+    _enable_rl_module_api=True,
+)
+algo = config.build()
+algo.train()
+# __checkpointing-end__
+algo.stop()
+shutil.rmtree(module_ckpt_path)

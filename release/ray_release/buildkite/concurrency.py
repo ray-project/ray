@@ -1,9 +1,9 @@
 import csv
-import os
 from collections import namedtuple
 from typing import Tuple, Optional, Dict
 
-from ray_release.config import Test, RELEASE_PACKAGE_DIR
+from ray_release.bazel import bazel_runfile
+from ray_release.test import Test
 from ray_release.template import load_test_cluster_compute
 from ray_release.logger import logger
 
@@ -25,16 +25,17 @@ aws_gpu_cpu_to_concurrency_groups = [
     ),
     Condition(min_gpu=0, max_gpu=0, min_cpu=513, max_cpu=1024, group="large", limit=8),
     Condition(min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium", limit=6),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=9, max_cpu=32, group="tiny", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=8, group="minuscule", limit=128),
     # Make sure "small" is the last in the list, because it is the fallback.
     Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small", limit=16),
 ]
 
 gce_gpu_cpu_to_concurrent_groups = [
-    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
-    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=1),
-    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=3),
-    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=8, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=4),
+    Condition(min_gpu=4, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=8),
+    Condition(min_gpu=2, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=16),
+    Condition(min_gpu=1, max_gpu=-1, min_cpu=0, max_cpu=-1, group="gpu-gce", limit=32),
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=1025, max_cpu=-1, group="enormous-gce", limit=1
     ),
@@ -44,7 +45,10 @@ gce_gpu_cpu_to_concurrent_groups = [
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=129, max_cpu=512, group="medium-gce", limit=6
     ),
-    Condition(min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=32, group="tiny-gce", limit=32),
+    Condition(min_gpu=0, max_gpu=0, min_cpu=9, max_cpu=32, group="tiny-gce", limit=32),
+    Condition(
+        min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=8, group="minuscule-gce", limit=128
+    ),
     Condition(
         min_gpu=0, max_gpu=0, min_cpu=0, max_cpu=128, group="small-gce", limit=16
     ),
@@ -61,14 +65,16 @@ gcp_gpu_instances = {
     "n1-standard-16-nvidia-tesla-t4-1": (16, 1),
     "n1-standard-64-nvidia-tesla-t4-4": (64, 4),
     "n1-standard-32-nvidia-tesla-t4-2": (32, 2),
+    "n1-highmem-64-nvidia-tesla-v100-8": {64, 8},
     "n1-highmem-96-nvidia-tesla-v100-8": {96, 8},
 }
 
 
 def load_instance_types(path: Optional[str] = None) -> Dict[str, Tuple[int, int]]:
-    path = path or os.path.join(
-        RELEASE_PACKAGE_DIR, "ray_release", "buildkite", "aws_instance_types.csv"
-    )
+    if not path:
+        path = bazel_runfile(
+            "release/ray_release/buildkite/aws_instance_types.csv",
+        )
 
     instance_to_resources = {}
     with open(path, "rt") as fp:

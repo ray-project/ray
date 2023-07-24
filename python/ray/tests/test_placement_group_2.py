@@ -89,6 +89,9 @@ def test_pending_placement_group_wait(ray_start_cluster, connect_to_client):
         assert len(ready) == 0
         table = ray.util.placement_group_table(placement_group)
         assert table["state"] == "PENDING"
+        for i in range(3):
+            assert len(table["bundles_to_node_id"][i]) == 0
+
         with pytest.raises(ray.exceptions.GetTimeoutError):
             ray.get(placement_group.ready(), timeout=0.1)
 
@@ -115,10 +118,23 @@ def test_placement_group_wait(ray_start_cluster, connect_to_client):
         assert len(ready) == 1
         table = ray.util.placement_group_table(placement_group)
         assert table["state"] == "CREATED"
-
         pg = ray.get(placement_group.ready())
         assert pg.bundle_specs == placement_group.bundle_specs
         assert pg.id.binary() == placement_group.id.binary()
+
+        @ray.remote
+        def get_node_id():
+            return ray.get_runtime_context().get_node_id()
+
+        for i in range(2):
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group=placement_group,
+                placement_group_bundle_index=i,
+            )
+            node_id = ray.get(
+                get_node_id.options(scheduling_strategy=scheduling_strategy).remote()
+            )
+            assert node_id == table["bundles_to_node_id"][i]
 
 
 @pytest.mark.parametrize("connect_to_client", [False, True])

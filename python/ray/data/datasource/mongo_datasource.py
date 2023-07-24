@@ -1,16 +1,11 @@
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
-from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
-from ray.data.block import (
-    Block,
-    BlockAccessor,
-    BlockMetadata,
-)
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.datasource.datasource import Datasource, Reader, ReadTask, WriteResult
 from ray.util.annotations import PublicAPI
-from typing import Iterable
 
 if TYPE_CHECKING:
     import pymongoarrow.api

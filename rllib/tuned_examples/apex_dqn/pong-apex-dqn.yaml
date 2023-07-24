@@ -5,13 +5,16 @@ pong-apex:
     env: ALE/Pong-v5
     run: APEX
     stop:
-        episode_reward_mean: 19.0
+        sampler_results/episode_reward_mean: 19.0
         timesteps_total: 4000000
     config:
         # Works for both torch and tf.
         framework: torch
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
-            frameskip: 1  # no frameskip
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         target_network_update_freq: 20000
         num_workers: 4
         num_envs_per_worker: 8

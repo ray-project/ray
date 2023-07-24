@@ -4,6 +4,7 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces import MapTransformFn
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 
@@ -15,13 +16,16 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
     This is used by random_shuffle() and repartition().
     """
 
+    SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME = "Split Repartition"
+
     def __init__(
         self,
         random_shuffle: bool = False,
         random_seed: Optional[int] = None,
+        upstream_map_fn: Optional[MapTransformFn] = None,
     ):
         super().__init__(
-            map_args=[random_shuffle, random_seed],
+            map_args=[upstream_map_fn, random_shuffle, random_seed],
             reduce_args=[random_shuffle, random_seed],
         )
 
@@ -30,11 +34,21 @@ class ShuffleTaskSpec(ExchangeTaskSpec):
         idx: int,
         block: Block,
         output_num_blocks: int,
+        upstream_map_fn: Optional[MapTransformFn],
         random_shuffle: bool,
         random_seed: Optional[int],
     ) -> List[Union[BlockMetadata, Block]]:
         # TODO: Support fusion with other upstream operators.
         stats = BlockExecStats.builder()
+        if upstream_map_fn:
+            mapped_blocks = list(upstream_map_fn([block]))
+            if len(mapped_blocks) > 1:
+                builder = BlockAccessor.for_block(mapped_blocks[0]).builder()
+                for b in mapped_blocks:
+                    builder.add_block(b)
+                block = builder.build()
+            else:
+                block = mapped_blocks[0]
         block = BlockAccessor.for_block(block)
 
         # Randomize the distribution of records to blocks.

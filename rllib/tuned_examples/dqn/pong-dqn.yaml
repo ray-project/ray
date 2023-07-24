@@ -3,13 +3,16 @@ pong-deterministic-dqn:
     env: ALE/Pong-v5
     run: DQN
     stop:
-        episode_reward_mean: 20
+        sampler_results/episode_reward_mean: 20
         time_total_s: 7200
     config:
         # Works for both torch and tf.
         framework: torch
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
-            nondeterministic: False  # deterministic
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         num_gpus: 1
         gamma: 0.99
         lr: .0001

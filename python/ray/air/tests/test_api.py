@@ -61,6 +61,36 @@ def test_checkpointing_config():
     assert checkpointing._tune_legacy_checkpoint_score_attr == "min-metric"
 
 
+def test_checkpointing_config_deprecated():
+    def resolve(checkpoint_score_attr):
+        # Copied from tune.tun()
+        checkpoint_config = CheckpointConfig()
+
+        if checkpoint_score_attr.startswith("min-"):
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
+            checkpoint_config.checkpoint_score_order = "min"
+        else:
+            checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr
+            checkpoint_config.checkpoint_score_order = "max"
+
+        return checkpoint_config
+
+    cc = resolve("loss")
+    assert cc._tune_legacy_checkpoint_score_attr == "loss"
+    assert cc.checkpoint_score_attribute == "loss"
+    assert cc.checkpoint_score_order == "max"
+
+    cc = resolve("min-loss")
+    assert cc._tune_legacy_checkpoint_score_attr == "min-loss"
+    assert cc.checkpoint_score_attribute == "loss"
+    assert cc.checkpoint_score_order == "min"
+
+    cc = resolve("min-min-loss")
+    assert cc._tune_legacy_checkpoint_score_attr == "min-min-loss"
+    assert cc.checkpoint_score_attribute == "min-loss"
+    assert cc.checkpoint_score_order == "min"
+
+
 def test_scaling_config():
     with pytest.raises(ValueError):
         DummyTrainer(scaling_config="invalid")

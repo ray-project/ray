@@ -1,45 +1,49 @@
+import os
 import threading
 import time
-import os
 import uuid
 from typing import Iterator, Optional
 
 import ray
-from ray.data.context import DataContext
 from ray.data._internal.dataset_logger import DatasetLogger
-from ray.data._internal.execution.interfaces import (
-    Executor,
-    ExecutionOptions,
-    ExecutionResources,
-    OutputIterator,
-    RefBundle,
-    PhysicalOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.streaming_executor_state import (
-    AutoscalingState,
-    Topology,
-    TopologyResourceUsage,
-    OpState,
-    build_streaming_topology,
-    process_completed_tasks,
-    select_operator_to_run,
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
-)
 from ray.data._internal.execution.autoscaling_requester import (
     get_or_create_autoscaling_requester_actor,
 )
+from ray.data._internal.execution.interfaces import (
+    ExecutionOptions,
+    ExecutionResources,
+    Executor,
+    OutputIterator,
+    PhysicalOperator,
+    RefBundle,
+)
+from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
+from ray.data._internal.execution.streaming_executor_state import (
+    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION,
+    AutoscalingState,
+    OpState,
+    Topology,
+    TopologyResourceUsage,
+    build_streaming_topology,
+    process_completed_tasks,
+    select_operator_to_run,
+    update_operator_states,
+)
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import DatasetStats
+from ray.data.context import DataContext
 
 logger = DatasetLogger(__name__)
 
 # Set this environment variable for detailed scheduler debugging logs.
-DEBUG_TRACE_SCHEDULING = "RAY_DATASET_TRACE_SCHEDULING" in os.environ
+DEBUG_TRACE_SCHEDULING = "RAY_DATA_TRACE_SCHEDULING" in os.environ
 
 # Force a progress bar update after this many events processed . This avoids the
 # progress bar seeming to stall for very large scale workloads.
 PROGRESS_BAR_UPDATE_INTERVAL = 50
+
+# Visible for testing.
+_num_shutdown = 0
 
 
 class StreamingExecutor(Executor, threading.Thread):
@@ -70,7 +74,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._output_node: Optional[OpState] = None
 
         Executor.__init__(self, options)
-        threading.Thread.__init__(self)
+        threading.Thread.__init__(self, daemon=True)
 
     def execute(
         self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
@@ -80,12 +84,19 @@ class StreamingExecutor(Executor, threading.Thread):
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
             logger.get_logger().info("Executing DAG %s", dag)
             logger.get_logger().info("Execution config: %s", self._options)
+            if not self._options.verbose_progress:
+                logger.get_logger().info(
+                    "Tip: For detailed progress reporting, run "
+                    "`ray.data.DataContext.get_current()."
+                    "execution_options.verbose_progress = True`"
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
         _validate_dag(dag, self._get_or_refresh_resource_limits())
@@ -110,7 +121,10 @@ class StreamingExecutor(Executor, threading.Thread):
                     # Translate the special sentinel values for MaybeRefBundle into
                     # exceptions.
                     if item is None:
-                        raise StopIteration
+                        if self._outer._shutdown:
+                            raise StopIteration(f"{self._outer} is shutdown.")
+                        else:
+                            raise StopIteration
                     elif isinstance(item, Exception):
                         raise item
                     else:
@@ -118,16 +132,29 @@ class StreamingExecutor(Executor, threading.Thread):
                         if self._outer._global_info:
                             self._outer._global_info.update(1)
                         return item
-                except Exception:
+                # Needs to be BaseException to catch KeyboardInterrupt. Otherwise we
+                # can leave dangling progress bars by skipping shutdown.
+                except BaseException:
                     self._outer.shutdown()
                     raise
 
+            def __del__(self):
+                self._outer.shutdown()
+
         return StreamIterator(self)
 
+    def __del__(self):
+        self.shutdown()
+
     def shutdown(self):
+        context = DataContext.get_current()
+        global _num_shutdown
+
         with self._shutdown_lock:
             if self._shutdown:
                 return
+            logger.get_logger().debug(f"Shutting down {self}.")
+            _num_shutdown += 1
             self._shutdown = True
             # Give the scheduling loop some time to finish processing.
             self.join(timeout=2.0)
@@ -136,7 +163,6 @@ class StreamingExecutor(Executor, threading.Thread):
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            context = DataContext.get_current()
             logger.get_logger(log_to_stdout=context.enable_auto_log_stats).info(
                 stats_summary_string,
             )
@@ -237,6 +263,8 @@ class StreamingExecutor(Executor, threading.Thread):
                 execution_id=self._execution_id,
                 autoscaling_state=self._autoscaling_state,
             )
+
+        update_operator_states(topology)
 
         # Update the progress bar to reflect scheduling decisions.
         for op_state in topology.values():

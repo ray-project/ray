@@ -5,27 +5,29 @@ from typing import TypeVar, Union
 
 import numpy as np
 import requests
+import starlette.requests
 
 import ray
 from ray import serve
-from ray.serve.application import Application
 from ray.serve.api import build as build_app
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve.deployment_graph import ClassNode, InputNode
+from ray.serve.built_application import BuiltApplication
+from ray.serve.deployment import Application
+from ray.serve.deployment_graph import InputNode, RayServeDAGHandle
 from ray.serve.drivers import DAGDriver
-import starlette.requests
+from ray.serve._private.deployment_graph_build import build as pipeline_build
 
 
 RayHandleLike = TypeVar("RayHandleLike")
 NESTED_HANDLE_KEY = "nested_handle"
 
 
-def maybe_build(node: ClassNode, use_build: bool) -> Union[Application, ClassNode]:
+def maybe_build(
+    app: Application, use_build: bool
+) -> Union[Application, BuiltApplication]:
     if use_build:
-        return build_app(node)
+        return build_app(app)
     else:
-        return node
+        return app
 
 
 @serve.deployment
@@ -166,8 +168,14 @@ def test_chained_function(serve_instance, use_build):
         output_2 = func_2.bind(dag_input)
         output_3 = func_3.bind(output_2)
         ray_dag = combine.bind(output_1, output_2, kwargs_output=output_3)
-    with pytest.raises(ValueError, match="Please provide a driver class"):
-        _ = serve.run(ray_dag)
+    with pytest.raises(
+        ValueError,
+        match=(
+            "The ingress deployment to your application cannot be a "
+            "function if there are multiple deployment"
+        ),
+    ):
+        serve.run(ray_dag)
 
     serve_dag = DAGDriver.bind(ray_dag, http_adapter=json_resolver)
 
@@ -476,12 +484,13 @@ def test_suprious_call(serve_instance):
 
     tracker = CallTracker.bind()
     with InputNode() as inp:
-        dag = DAGDriver.bind(tracker.predict.bind(inp))
+        dag = DAGDriver.bind(
+            {"/get": tracker.get.bind(), "/predict": tracker.predict.bind(inp)}
+        )
     handle = serve.run(dag)
-    ray.get(handle.predict.remote(1))
+    ray.get(handle.predict_with_route.remote("/predict", 1))
 
-    call_tracker = CallTracker.get_handle()
-    assert ray.get(call_tracker.get.remote()) == ["predict"]
+    assert ray.get(handle.predict_with_route.remote("/get", 1)) == ["predict"]
 
 
 def test_sharing_call_for_broadcast(serve_instance):

@@ -44,6 +44,10 @@ DEBUG_AUTOSCALING_ERROR = "__autoscaling_error"
 DEBUG_AUTOSCALING_STATUS = "__autoscaling_status"
 DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 
+# Sync with src/ray/common/constants.h
+AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
+AUTOSCALER_NAMESPACE = "__autoscaler"
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -173,7 +177,10 @@ EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 # Used in gpu detection
 RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 
+# Used by autoscaler to set the node custom resources and labels
+# from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
+LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
 
 # The reporter will report its statistics this often (milliseconds).
 REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
@@ -284,6 +291,10 @@ LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 LOG_PREFIX_TASK_NAME = ":task_name:"
 # Job ids are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_JOB_ID = ":job_id:"
+# Task attempts magic token marked the beginning of the task logs
+LOG_PREFIX_TASK_ATTEMPT_START = ":task_attempt_start:"
+# Task attempts magic token marked the beginning of the task logs
+LOG_PREFIX_TASK_ATTEMPT_END = ":task_attempt_end:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -378,6 +389,7 @@ KV_NAMESPACE_FUNCTION_TABLE = b"fun"
 LANGUAGE_WORKER_TYPES = ["python", "java", "cpp"]
 
 NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES"
+RAY_WORKER_NICENESS = "RAY_worker_niceness"
 
 # Default max_retries option in @ray.remote for non-actor
 # tasks.
@@ -389,6 +401,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Please keep this in sync with the definition kRayInternalNamespacePrefix
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
+RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
 
 def gcs_actor_scheduling_enabled():
@@ -400,7 +413,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -424,4 +437,15 @@ RAY_ALLOWED_CACHED_PORTS = {
     "gcs_server_port",  # the `port` option for gcs port.
 }
 
-RAY_ENABLE_RECORD_TASK_LOGGING = env_bool("RAY_ENABLE_RECORD_TASK_LOGGING", False)
+# Turn this on if actor task log's offsets are expected to be recorded.
+# With this enabled, actor tasks' log could be queried with task id.
+RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
+    "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
+)
+
+WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
+RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
+    "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa
+)
+
+RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"

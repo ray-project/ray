@@ -16,30 +16,31 @@ from typing import (
 )
 
 import ray
-from ray.data.block import BlockMetadata
-from ray.data._internal.util import capitalize
-from ray.types import ObjectRef
-from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.compute import (
-    UDF,
     ActorPoolStrategy,
     BlockTransform,
     CallableClass,
     ComputeStrategy,
+    TaskPoolStrategy,
+    UserDefinedFunction,
     get_compute,
     is_task_compute,
 )
 from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.lazy_block_list import LazyBlockList
+from ray.data._internal.logical.rules.operator_fusion import _are_remote_args_compatible
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary
-from ray.data.block import Block
+from ray.data._internal.util import capitalize, unify_block_metadata_schema
+from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
+from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data._internal.execution.interfaces import Executor
 
 
@@ -124,12 +125,23 @@ class ExecutionPlan:
         self._stages_after_snapshot = []
         # Cache of optimized stages.
         self._last_optimized_stages = None
+        # Cached schema.
+        self._schema = None
 
         self._dataset_uuid = dataset_uuid or uuid.uuid4().hex
         if not stats.dataset_uuid:
             stats.dataset_uuid = self._dataset_uuid
 
         self._run_by_consumer = run_by_consumer
+
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = copy.deepcopy(DataContext.get_current())
+
+        # Whether the corresponding dataset is generated from a pipeline.
+        # Currently, when this is True, this skips the new execution plan optimizer.
+        # TODO(scottjlee): remove this once we remove DatasetPipeline.
+        self._generated_from_pipeline = False
 
     def __repr__(self) -> str:
         return (
@@ -211,7 +223,7 @@ class ExecutionPlan:
         if dataset_blocks is None:
             num_blocks = "?"
         else:
-            num_blocks = dataset_blocks.initial_num_blocks()
+            num_blocks = dataset_blocks.estimated_num_blocks()
         dataset_str = "{}(num_blocks={}, num_rows={}, schema={})".format(
             classname, num_blocks, count, schema_str
         )
@@ -301,6 +313,7 @@ class ExecutionPlan:
         plan_copy = ExecutionPlan(
             self._in_blocks, self._in_stats, run_by_consumer=self._run_by_consumer
         )
+        plan_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks is not None:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks
@@ -332,6 +345,7 @@ class ExecutionPlan:
             dataset_uuid=dataset_uuid,
             run_by_consumer=self._run_by_consumer,
         )
+        plan_copy._generated_from_pipeline = self._generated_from_pipeline
         if self._snapshot_blocks:
             # Copy over the existing snapshot.
             plan_copy._snapshot_blocks = self._snapshot_blocks.copy()
@@ -369,7 +383,14 @@ class ExecutionPlan:
         """
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
+        if self._schema is not None:
+            return self._schema
+
         if self._stages_after_snapshot:
+            # TODO(swang): There are several other stage types that could
+            # inherit the schema or we can compute the schema without having to
+            # execute any of the dataset: limit, filter, map_batches for
+            # add/drop columns, etc.
             if fetch_if_missing:
                 if isinstance(self._stages_after_snapshot[-1], RandomizeBlocksStage):
                     # TODO(ekl): this is a hack to optimize the case where we have a
@@ -393,14 +414,18 @@ class ExecutionPlan:
                 return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset from
-            # read, and output datasets of Dataset.split().
+            # This applies to newly created dataset. For example, initial dataset
+            # from read, and output datasets of Dataset.split().
             self.execute()
         # Snapshot is now guaranteed to be the output of the final stage or None.
         blocks = self._snapshot_blocks
         if not blocks:
             return None
-        return self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        self._schema = self._get_unified_blocks_schema(blocks, fetch_if_missing)
+        return self._schema
+
+    def cache_schema(self, schema: Union[type, "pyarrow.lib.Schema"]):
+        self._schema = schema
 
     def _get_unified_blocks_schema(
         self, blocks: BlockList, fetch_if_missing: bool = False
@@ -412,36 +437,17 @@ class ExecutionPlan:
             fetch_if_missing: Whether to execute the blocks to fetch the schema.
         """
 
-        # Only trigger the execution of first block in case it's a lazy block list.
-        # Don't trigger full execution for a schema read.
+        # Ensure the first block has schema information available in the metadata.
+        # Otherwise, this will trigger computation on the first block
+        # for a schema read.
         if isinstance(blocks, LazyBlockList):
-            blocks.compute_first_block()
             blocks.ensure_metadata_for_first_block()
 
         metadata = blocks.get_metadata(fetch_if_missing=False)
-        # Some blocks could be empty, in which case we cannot get their schema.
-        # TODO(ekl) validate schema is the same across different blocks.
 
-        # First check if there are blocks with computed schemas, then unify
-        # valid schemas from all such blocks.
-        schemas_to_unify = []
-        for m in metadata:
-            if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
-                schemas_to_unify.append(m.schema)
-        if schemas_to_unify:
-            # Check valid pyarrow installation before attempting schema unification
-            try:
-                import pyarrow as pa
-            except ImportError:
-                pa = None
-            # If the result contains PyArrow schemas, unify them
-            if pa is not None and any(
-                isinstance(s, pa.Schema) for s in schemas_to_unify
-            ):
-                return unify_schemas(schemas_to_unify)
-            # Otherwise, if the resulting schemas are simple types (e.g. int),
-            # return the first schema.
-            return schemas_to_unify[0]
+        unified_schema = unify_block_metadata_schema(metadata)
+        if unified_schema is not None:
+            return unified_schema
         if not fetch_if_missing:
             return None
         # Synchronously fetch the schema.
@@ -465,8 +471,8 @@ class ExecutionPlan:
             return None
         elif self._in_blocks is not None and self._snapshot_blocks is None:
             # If the plan only has input blocks, we execute it, so snapshot has output.
-            # This applies to newly created dataset. For example, initial dataset from
-            # read, and output datasets of Dataset.split().
+            # This applies to newly created dataset. For example, initial dataset
+            # from read, and output datasets of Dataset.split().
             self.execute()
         # Snapshot is now guaranteed to be the final block or None.
         return self._get_num_rows_from_blocks_metadata(self._snapshot_blocks)
@@ -501,7 +507,9 @@ class ExecutionPlan:
             Tuple of iterator over output blocks and the executor.
         """
 
-        ctx = DataContext.get_current()
+        # Always used the saved context for execution.
+        ctx = self._context
+
         if not ctx.use_streaming_executor or self.has_computed_output():
             return (
                 self.execute(
@@ -511,10 +519,10 @@ class ExecutionPlan:
                 None,
             )
 
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
         from ray.data._internal.execution.legacy_compat import (
             execute_to_legacy_block_iterator,
         )
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         executor = StreamingExecutor(copy.deepcopy(ctx.execution_options))
         block_iter = execute_to_legacy_block_iterator(
@@ -550,7 +558,10 @@ class ExecutionPlan:
         Returns:
             The blocks of the output dataset.
         """
-        context = DataContext.get_current()
+
+        # Always used the saved context for execution.
+        context = self._context
+
         if not ray.available_resources().get("CPU"):
             if log_once("cpu_warning"):
                 logger.get_logger().warning(
@@ -564,11 +575,11 @@ class ExecutionPlan:
         if not self.has_computed_output():
             if self._run_with_new_execution_backend():
                 from ray.data._internal.execution.bulk_executor import BulkExecutor
-                from ray.data._internal.execution.streaming_executor import (
-                    StreamingExecutor,
-                )
                 from ray.data._internal.execution.legacy_compat import (
                     execute_to_legacy_block_list,
+                )
+                from ray.data._internal.execution.streaming_executor import (
+                    StreamingExecutor,
                 )
 
                 if context.use_streaming_executor:
@@ -690,7 +701,7 @@ class ExecutionPlan:
         """Apply stage fusion optimizations, returning an updated source block list and
         associated stats, and a set of optimized stages.
         """
-        context = DataContext.get_current()
+        context = self._context
         blocks, stats, stages = self._get_source_blocks_and_stages()
         if context.optimize_reorder_stages:
             stages = _reorder_stages(stages)
@@ -746,7 +757,7 @@ class ExecutionPlan:
         """Return whether this plan can be executed as only a read stage."""
         from ray.data._internal.stage_impl import RandomizeBlocksStage
 
-        context = DataContext.get_current()
+        context = self._context
         remaining_stages = self._stages_after_snapshot
         if (
             context.optimize_fuse_stages
@@ -782,7 +793,7 @@ class ExecutionPlan:
         # - Read only: handle with legacy backend
         # - Read->randomize_block_order: handle with new backend
         # Note that both are considered read equivalent, hence this extra check.
-        context = DataContext.get_current()
+        context = self._context
         trailing_randomize_block_order_stage = (
             self._stages_after_snapshot
             and len(self._stages_after_snapshot) == 1
@@ -893,7 +904,7 @@ class OneToOneStage(Stage):
         compute: Union[str, ComputeStrategy],
         ray_remote_args: dict,
         target_block_size: Optional[int] = None,
-        fn: Optional[UDF] = None,
+        fn: Optional[UserDefinedFunction] = None,
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
         fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -901,7 +912,7 @@ class OneToOneStage(Stage):
     ):
         super().__init__(name, None)
         self.block_fn = block_fn
-        self.compute = compute or "tasks"
+        self.compute = compute or TaskPoolStrategy()
         self.ray_remote_args = ray_remote_args or {}
         self.target_block_size = target_block_size
         self.fn = fn
@@ -981,7 +992,7 @@ class OneToOneStage(Stage):
         def block_fn(
             blocks: Iterable[Block],
             ctx: TaskContext,
-            fn: UDF,
+            fn: UserDefinedFunction,
             *fn_args,
             **fn_kwargs,
         ) -> Iterable[Block]:
@@ -1211,7 +1222,7 @@ def _rewrite_read_stage(
     stage = OneToOneStage(
         name,
         block_fn,
-        "tasks",
+        TaskPoolStrategy(),
         remote_args,
     )
     stats = DatasetStats(stages={}, parent=None)
@@ -1273,34 +1284,6 @@ def _fuse_one_to_one_stages(stages: List[Stage]) -> List[Stage]:
         fused_stages.append(prev_stage)
         prev_stage = None
     return fused_stages
-
-
-def _are_remote_args_compatible(prev_args, next_args):
-    """Check if Ray remote arguments are compatible for merging."""
-    prev_args = _canonicalize(prev_args)
-    next_args = _canonicalize(next_args)
-    remote_args = next_args.copy()
-    for key in INHERITABLE_REMOTE_ARGS:
-        if key in prev_args:
-            remote_args[key] = prev_args[key]
-    if prev_args != remote_args:
-        return False
-    return True
-
-
-def _canonicalize(remote_args: dict) -> dict:
-    """Returns canonical form of given remote args."""
-    remote_args = remote_args.copy()
-    if "num_cpus" not in remote_args or remote_args["num_cpus"] is None:
-        remote_args["num_cpus"] = 1
-    if "num_gpus" not in remote_args or remote_args["num_gpus"] is None:
-        remote_args["num_gpus"] = 0
-    resources = remote_args.get("resources", {})
-    for k, v in list(resources.items()):
-        if v is None or v == 0.0:
-            del resources[k]
-    remote_args["resources"] = resources
-    return remote_args
 
 
 def _is_lazy(blocks: BlockList) -> bool:

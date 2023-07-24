@@ -5,15 +5,15 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import numpy as np
 
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import _check_import
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import BlockMetadata
 from ray.data.datasource.binary_datasource import BinaryDatasource
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
-    _FileBasedDatasourceReader,
     FileBasedDatasource,
+    _FileBasedDatasourceReader,
 )
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.file_meta_provider import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
@@ -23,6 +23,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
     from ray.data.block import T
 
 
@@ -65,15 +66,6 @@ class ImageDatasource(BinaryDatasource):
         return _ImageDatasourceReader(
             self, size=size, mode=mode, include_paths=include_paths, **reader_args
         )
-
-    def _convert_block_to_tabular_block(
-        self, block: Block, column_name: Optional[str] = None
-    ) -> Block:
-        import pandas as pd
-        import pyarrow as pa
-
-        assert isinstance(block, (pa.Table, pd.DataFrame))
-        return block
 
     def _read_file(
         self,

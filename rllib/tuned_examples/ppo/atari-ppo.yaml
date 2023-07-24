@@ -11,8 +11,11 @@ atari-ppo:
     config:
         # Works for both torch and tf.
         framework: torch
+        # Make analogous to old v4 + NoFrameskip.
         env_config:
-            frameskip: 1  # no frameskip
+            frameskip: 1
+            full_action_space: false
+            repeat_action_probability: 0.0
         lambda: 0.95
         kl_coeff: 0.5
         clip_rewards: True

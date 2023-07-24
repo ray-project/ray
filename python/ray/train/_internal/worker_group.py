@@ -1,4 +1,5 @@
 import logging
+import os
 import socket
 from dataclasses import dataclass
 from typing import Callable, List, TypeVar, Optional, Dict, Type, Tuple, Union
@@ -42,13 +43,15 @@ class WorkerMetadata:
         node_id: ID of the node this worker is on.
         node_ip: IP address of the node this worker is on.
         hostname: Hostname that this worker is on.
-        gpu_ids (List[int]): List of CUDA IDs available to this worker.
+        gpu_ids: List of CUDA IDs available to this worker.
+        pid: Process ID of this worker.
     """
 
     node_id: str
     node_ip: str
     hostname: str
     gpu_ids: Optional[List[str]]
+    pid: int
 
 
 @dataclass
@@ -83,9 +86,14 @@ def construct_metadata() -> WorkerMetadata:
     node_ip = ray.util.get_node_ip_address()
     hostname = socket.gethostname()
     gpu_ids = [str(gpu_id) for gpu_id in ray.get_gpu_ids()]
+    pid = os.getpid()
 
     return WorkerMetadata(
-        node_id=node_id, node_ip=node_ip, hostname=hostname, gpu_ids=gpu_ids
+        node_id=node_id,
+        node_ip=node_ip,
+        hostname=hostname,
+        gpu_ids=gpu_ids,
+        pid=pid,
     )
 
 

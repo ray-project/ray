@@ -55,11 +55,12 @@ class StableDiffusionV2:
     def generate(self, prompt: str, img_size: int = 512):
         assert len(prompt), "prompt parameter cannot be empty"
 
-        image = self.pipe(prompt, height=img_size, width=img_size).images[0]
-        return image
+        with torch.autocast("cuda"):
+            image = self.pipe(prompt, height=img_size, width=img_size).images[0]
+            return image
 
 
-my_first_deployment = APIIngress.bind(StableDiffusionV2.bind())
+entrypoint = APIIngress.bind(StableDiffusionV2.bind())
 
 # __example_code_end__
 
@@ -88,7 +89,7 @@ if __name__ == "__main__":
         }
     )
 
-    with serve_session(my_first_deployment) as handle:
+    with serve_session(entrypoint) as handle:
         ray.get(handle.generate.remote("hi"))
 
         prompt = "a cute cat is dancing on the grass."

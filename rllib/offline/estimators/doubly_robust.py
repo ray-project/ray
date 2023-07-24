@@ -199,6 +199,7 @@ class DoublyRobust(OffPolicyEstimator):
         updated_ds = dataset.map_batches(
             compute_is_weights,
             batch_size=batch_size,
+            batch_format="pandas",
             fn_kwargs={
                 "policy_state": self.policy.get_state(),
                 "estimator_class": self.__class__,
@@ -210,6 +211,7 @@ class DoublyRobust(OffPolicyEstimator):
         updated_ds = updated_ds.map_batches(
             compute_q_and_v_values,
             batch_size=batch_size,
+            batch_format="pandas",
             fn_kwargs={
                 "model_class": self.model.__class__,
                 "model_state": self.model.get_state(),
@@ -229,6 +231,7 @@ class DoublyRobust(OffPolicyEstimator):
         updated_ds = updated_ds.map_batches(
             compute_v_target,
             batch_size=batch_size,
+            batch_format="pandas",
             fn_kwargs={"normalizer": normalizer},
         )
 

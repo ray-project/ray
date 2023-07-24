@@ -12,7 +12,6 @@ Synthetic Data
    :toctree: doc/
 
    range
-   range_table
    range_tensor
 
 Python Objects
@@ -134,7 +133,7 @@ SQL Databases
    :toctree: doc/
 
    read_sql
-   
+
 Dask
 ----
 
@@ -217,25 +216,6 @@ Datasource API
    ReadTask
    datasource.Reader
 
-
-Built-in Datasources
-####################
-
-.. autosummary::
-   :toctree: doc/
-
-   datasource.BinaryDatasource
-   datasource.CSVDatasource
-   datasource.FileBasedDatasource
-   datasource.ImageDatasource
-   datasource.JSONDatasource
-   datasource.NumpyDatasource
-   datasource.ParquetDatasource
-   datasource.RangeDatasource
-   datasource.TFRecordDatasource
-   datasource.MongoDatasource
-   datasource.WebDatasetDatasource
-
 Partitioning API
 ----------------
 
@@ -244,9 +224,11 @@ Partitioning API
 
    datasource.Partitioning
    datasource.PartitionStyle
-   datasource.PathPartitionEncoder
    datasource.PathPartitionParser
    datasource.PathPartitionFilter
+   datasource.FileExtensionFilter
+
+.. _metadata_provider:
 
 MetadataProvider API
 --------------------
@@ -260,3 +242,16 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.DefaultParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+
+.. _block_write_path_provider:
+
+BlockWritePathProvider API
+--------------------------
+
+.. autosummary::
+   :toctree: doc/
+
+   datasource.BlockWritePathProvider
+   datasource.DefaultBlockWritePathProvider
+   

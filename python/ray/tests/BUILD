@@ -4,7 +4,9 @@ py_library(
   name = "conftest",
   srcs = glob(["**/conftest.py"]),
   visibility = [
+    "//dashboard:__pkg__",
     "//python/ray/tests:__subpackages__",
+    "//python/ray/autoscaler/v2:__pkg__",
     "//python/ray/dashboard:__pkg__",
     "//python/ray/data:__pkg__",
   ],
@@ -45,7 +47,6 @@ py_test_module_list(
     "test_dashboard_profiler.py",
     "test_gcs_fault_tolerance.py",
     "test_gcs_utils.py",
-    "test_generators.py",
     "test_metrics_agent.py",
     "test_metrics_head.py",
     "test_component_failures_2.py",
@@ -60,6 +61,8 @@ py_test_module_list(
     "test_healthcheck.py",
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
+    "test_node_label_scheduling_strategy.py",
+    "test_protobuf_compatibility.py"
   ],
   size = "medium",
   tags = ["medium_size_python_tests_a_to_j", "team:core"],
@@ -97,10 +100,18 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_client_builder.py",
-    "test_client_compat.py",
     "test_client_init.py",
-    "test_client_multi.py",
     "test_client_proxy.py",
+  ],
+  size = "medium",
+  tags = ["exclusive", "client_tests", "team:serverless", "civ1"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
+    "test_client_compat.py",
+    "test_client_multi.py",
     "test_client_references.py",
     "test_client_warnings.py",
     "test_client_library_integration.py",
@@ -159,6 +170,7 @@ py_test_module_list(
     "test_runtime_env_env_vars.py",
     "test_runtime_env_packaging.py",
     "test_runtime_env_plugin.py",
+    "test_runtime_env_setup_func.py",
     "test_runtime_env_strong_type.py",
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
@@ -205,13 +217,17 @@ py_test_module_list(
     "test_metrics_agent_2.py",
     "test_microbenchmarks.py",
     "test_mini.py",
+    "test_minimal_install.py",
     "test_numba.py",
+    "test_runtime_env_agent.py",
     "test_redis_tls.py",
     "test_raylet_output.py",
     "test_scheduling_performance.py",
     "test_top_level_api.py",
     "test_unhandled_error.py",
     "test_utils.py",
+    "test_widgets.py",
+    "test_node_labels.py",
   ],
   size = "small",
   tags = ["small_size_python_tests", "team:core"],
@@ -223,12 +239,13 @@ py_test_module_list(
     "test_gcs_ha_e2e.py",
   ],
   size = "medium",
-  tags = ["exclusive", "ray_ha", "team:core"],
+  tags = ["exclusive", "ray_ha", "team:core", "xcommit"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
 py_test_module_list(
   files = [
+    "test_autoscaler_e2e.py",
     "test_monitor_service.py",
   ],
   size = "medium",
@@ -238,11 +255,19 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
+    "test_autoscaler.py",
+  ],
+  size = "small",
+  tags = ["exclusive", "small_size_python_tests", "team:serverless", "civ1"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_batch_node_provider_unit.py",
     "test_batch_node_provider_integration.py",
-    "test_autoscaler.py",
     "test_autoscaler_drain_node_api.py",
-    "test_autoscaler_e2e.py",
+    "test_autoscaler_util.py",
     "test_autoscaler_gcp.py",
     "test_cli_logger.py",
     "test_client_metadata.py",
@@ -296,6 +321,8 @@ py_test_module_list(
     "test_actor_advanced.py",
     "test_multi_node.py",
     "test_threaded_actor.py",
+    "test_generators.py",
+    "test_streaming_generator.py",
     "test_stress_failure.py",
     "test_state_api.py",
     "test_state_api_2.py",
@@ -363,7 +390,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
-  tags = ["large_size_python_tests_shard_2", "team:serve"],
+  tags = ["large_size_python_tests_shard_2", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["pip_install_test-0.5-py3-none-any.whl"],
 )
@@ -377,7 +404,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_5.py",
   ],
   size = "large",
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -385,7 +412,7 @@ py_test(
   name = "test_runtime_env_complicated",
   size = "large",
   srcs = ["test_runtime_env_complicated.py"],
-  tags = ["exclusive", "post_wheel_build", "team:serve"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["//python/ray/experimental/packaging/example_pkg"],
 )
@@ -394,7 +421,7 @@ py_test(
     name = "test_actor_group",
     size = "medium",
     srcs = ["test_actor_group.py"],
-    tags = ["medium_size_python_tests_a_to_j", "team:serve"],
+    tags = ["medium_size_python_tests_a_to_j", "team:core"],
     deps = ["//:ray_lib", ":conftest"]
 )
 
@@ -460,7 +487,7 @@ py_test(
         "test_runtime_env_validation_1_schema.json",
         "test_runtime_env_validation_2_schema.json",
     ],
-    tags = ["small_size_python_tests", "team:serve"],
+    tags = ["small_size_python_tests", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -468,7 +495,7 @@ py_test(
     name = "test_runtime_env_ray_minimal",
     size = "medium",
     srcs = ["test_runtime_env_ray_minimal.py"],
-    tags = ["medium_size_python_tests_k_to_z", "team:serve"],
+    tags = ["medium_size_python_tests_k_to_z", "team:core"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -492,15 +519,25 @@ py_test(
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
+    "test_basic_3.py",
+    "test_asyncio.py",
+    "test_object_assign_owner.py",
+  ],
+  size = "large",
+  name_suffix = "_client_mode",
+  env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
+  tags = ["exclusive", "client_tests", "team:serverless", "civ1"],
+  deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test_module_list(
+  files = [
     "test_actor.py",
     "test_advanced.py",
     "test_basic.py",
     "test_basic_2.py",
-    "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
-    "test_asyncio.py",
-    "test_object_assign_owner.py",
     "test_multiprocessing.py",
     "test_list_actors.py",
     "test_list_actors_2.py",

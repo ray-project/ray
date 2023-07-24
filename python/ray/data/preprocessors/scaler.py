@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data.aggregate import Mean, Std, Min, Max, AbsMax
+from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 

@@ -73,9 +73,8 @@ def read_numpy():
     # __read_numpy2_start__
     dataset = images.zip(labels)
     dataset = dataset.map_batches(
-        lambda batch: batch.rename(
-            columns={"__value__": "image", "__value___1": "label"}
-        )
+        lambda batch: batch.rename(columns={"data": "image", "data_1": "label"}),
+        batch_format="pandas",
     )
     # __read_numpy2_stop__
     return dataset
@@ -188,7 +187,7 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
 
     from ray import train
     from ray.air import session
-    from ray.air.config import DatasetConfig, ScalingConfig
+    from ray.air.config import ScalingConfig
     from ray.train.torch import TorchCheckpoint, TorchTrainer
 
     def train_one_epoch(model, *, criterion, optimizer, batch_size, epoch):
@@ -238,13 +237,11 @@ def train_torch_model(dataset, preprocessor, per_epoch_preprocessor):
     # __torch_training_loop_stop__
 
     # __torch_trainer_start__
+    dataset = per_epoch_preprocessor.transform(dataset)
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 32, "lr": 0.02, "epochs": 1},
         datasets={"train": dataset},
-        dataset_config={
-            "train": DatasetConfig(per_epoch_preprocessor=per_epoch_preprocessor)
-        },
         scaling_config=ScalingConfig(num_workers=2),
         preprocessor=preprocessor,
     )
@@ -289,16 +286,16 @@ def train_tensorflow_model(dataset, preprocessor, per_epoch_preprocessor):
     # __tensorflow_training_loop_stop__
 
     # __tensorflow_trainer_start__
-    from ray.air import DatasetConfig, ScalingConfig
+    from ray.air import ScalingConfig
     from ray.train.tensorflow import TensorflowTrainer
 
+    # The following transform operation is lazy.
+    # It will be re-run every epoch.
+    dataset = per_epoch_preprocessor.transform(dataset)
     trainer = TensorflowTrainer(
         train_loop_per_worker=train_loop_per_worker,
         train_loop_config={"batch_size": 32, "lr": 0.02, "epochs": 1},
         datasets={"train": dataset},
-        dataset_config={
-            "train": DatasetConfig(per_epoch_preprocessor=per_epoch_preprocessor)
-        },
         scaling_config=ScalingConfig(num_workers=2),
         preprocessor=preprocessor,
     )

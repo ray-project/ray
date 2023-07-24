@@ -1,25 +1,25 @@
 import copy
 import os
 import posixpath
+import time
 
-import pytest
-import pyarrow as pa
-import pandas as pd
 import numpy as np
+import pandas as pd
+import pyarrow as pa
+import pytest
 
 import ray
-
-from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
-from ray.data.tests.mock_server import *  # noqa
-from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
-from ray._private.utils import _get_pyarrow_version
+from ray.data.block import BlockAccessor, BlockExecStats, BlockMetadata
+from ray.data.datasource.file_based_datasource import BlockWritePathProvider
+from ray.data.tests.mock_server import *  # noqa
 
 # Trigger pytest hook to automatically zip test cluster logs to archive dir on failure
+from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
 from ray.tests.conftest import _ray_start
-from ray.tests.conftest import *  # noqa
 
 
 @pytest.fixture(scope="module")
@@ -113,8 +113,9 @@ def s3_fs_with_anonymous_crendential(
 
 
 def _s3_fs(aws_credentials, s3_server, s3_path):
-    from pkg_resources._vendor.packaging.version import parse as parse_version
     import urllib.parse
+
+    from pkg_resources._vendor.packaging.version import parse as parse_version
 
     kwargs = aws_credentials.copy()
 
@@ -262,12 +263,12 @@ def assert_base_partitioned_ds():
                 ds_str = ds_str.replace(c, "")
             return ds_str
 
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
         ) == _remove_whitespace(str(ds)), ds
-        assert "Datastream(num_blocks={},num_rows={},schema={})".format(
+        assert "Dataset(num_blocks={},num_rows={},schema={})".format(
             num_input_files,
             num_rows,
             _remove_whitespace(schema),
@@ -293,7 +294,7 @@ def assert_base_partitioned_ds():
 
 
 @pytest.fixture
-def restore_dataset_context(request):
+def restore_data_context(request):
     """Restore any DataContext changes after the test runs"""
     original = copy.deepcopy(ray.data.context.DataContext.get_current())
     yield
@@ -465,9 +466,16 @@ def stage_two_block():
         "cpu_time": [1.2, 3.4],
         "node_id": ["a1", "b2"],
     }
+
+    block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
         block_exec_stats = BlockExecStats()
+        # The blocks are executing from [0, 5] and [20, 30].
+        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
+        block_exec_stats.end_time_s = (
+            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        )
         block_exec_stats.wall_time_s = block_params["wall_time"][i]
         block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
         block_exec_stats.node_id = block_params["node_id"][i]

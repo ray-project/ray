@@ -11,10 +11,12 @@ from ray.serve._private.common import (
     DeploymentInfo,
     ReplicaState,
     ServeDeployMode,
+    HTTPProxyStatus,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def _route_prefix_format(cls, v):
@@ -271,12 +273,10 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
     codepath)
     """
 
-    return DeploymentSchema(
+    schema = DeploymentSchema(
         name=name,
-        num_replicas=info.deployment_config.num_replicas,
         max_concurrent_queries=info.deployment_config.max_concurrent_queries,
         user_config=info.deployment_config.user_config,
-        autoscaling_config=info.deployment_config.autoscaling_config,
         graceful_shutdown_wait_loop_s=(
             info.deployment_config.graceful_shutdown_wait_loop_s
         ),
@@ -286,6 +286,13 @@ def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSch
         ray_actor_options=info.replica_config.ray_actor_options,
         is_driver_deployment=info.is_driver_deployment,
     )
+
+    if info.deployment_config.autoscaling_config is not None:
+        schema.autoscaling_config = info.deployment_config.autoscaling_config
+    else:
+        schema.num_replicas = info.deployment_config.num_replicas
+
+    return schema
 
 
 @PublicAPI(stability="beta")
@@ -299,9 +306,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     """
 
     name: str = Field(
-        # TODO(cindy): eventually we should set the default app name to a non-empty
-        # string and forbid empty app names.
-        default="",
+        default=SERVE_DEFAULT_APP_NAME,
         description=(
             "Application name, the name should be unique within the serve instance"
         ),
@@ -315,6 +320,7 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
         ),
     )
     import_path: str = Field(
+        ...,
         description=(
             "An import path to a bound deployment node. Should be of the "
             'form "module.submodule_1...submodule_n.'
@@ -352,8 +358,16 @@ class ServeApplicationSchema(BaseModel, extra=Extra.forbid):
     )
     deployments: List[DeploymentSchema] = Field(
         default=[],
-        description=("Deployment options that override options specified in the code."),
+        description="Deployment options that override options specified in the code.",
     )
+    args: Dict = Field(
+        default={},
+        description="Arguments that will be passed to the application builder.",
+    )
+
+    @property
+    def deployment_names(self) -> List[str]:
+        return [d.name for d in self.deployments]
 
     @validator("runtime_env")
     def runtime_env_contains_remote_uris(cls, v):
@@ -502,6 +516,10 @@ class HTTPOptionsSchema(BaseModel, extra=Extra.forbid):
             'deployment routes will be prefixed with this path. Defaults to "".'
         ),
     )
+    request_timeout_s: float = Field(
+        default=None,
+        description="The timeout for HTTP requests. Defaults to no timeout.",
+    )
 
 
 @PublicAPI(stability="alpha")
@@ -527,8 +545,7 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
         default=HTTPOptionsSchema(), description="Options to start the HTTP Proxy with."
     )
     applications: List[ServeApplicationSchema] = Field(
-        default=[],
-        description=("The set of Serve applications to run on the Ray cluster."),
+        ..., description=("The set of Serve applications to run on the Ray cluster.")
     )
 
     @validator("applications")
@@ -599,7 +616,26 @@ class ServeDeploySchema(BaseModel, extra=Extra.forbid):
 
 
 @PublicAPI(stability="alpha")
-class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
+class ServeActorDetails(BaseModel, frozen=True):
+    node_id: Optional[str] = Field(
+        description="ID of the node that the actor is running on."
+    )
+    node_ip: Optional[str] = Field(
+        description="IP address of the node that the actor is running on."
+    )
+    actor_id: Optional[str] = Field(description="Actor ID.")
+    actor_name: Optional[str] = Field(description="Actor name.")
+    worker_id: Optional[str] = Field(description="Worker ID.")
+    log_file_path: Optional[str] = Field(
+        description=(
+            "The relative path to the Serve actor's log file from the ray logs "
+            "directory."
+        )
+    )
+
+
+@PublicAPI(stability="alpha")
+class ReplicaDetails(ServeActorDetails, frozen=True):
     """Detailed info about a single deployment replica."""
 
     replica_id: str = Field(
@@ -611,14 +647,6 @@ class ReplicaDetails(BaseModel, extra=Extra.forbid, frozen=True):
     )
     state: ReplicaState = Field(description="Current state of the replica.")
     pid: Optional[int] = Field(description="PID of the replica actor process.")
-    actor_name: str = Field(description="Name of the replica actor.")
-    actor_id: Optional[str] = Field(description="ID of the replica actor.")
-    node_id: Optional[str] = Field(
-        description="ID of the node that the replica actor is running on."
-    )
-    node_ip: Optional[str] = Field(
-        description="IP address of the node that the replica actor is running on."
-    )
     start_time_s: float = Field(
         description=(
             "The time at which the replica actor was started. If the controller dies, "
@@ -751,6 +779,11 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 
 @PublicAPI(stability="alpha")
+class HTTPProxyDetails(ServeActorDetails, frozen=True):
+    status: HTTPProxyStatus = Field(description="Current status of the HTTP Proxy.")
+
+
+@PublicAPI(stability="alpha")
 class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     """
     Serve metadata with system-level info and details on all applications deployed to
@@ -759,6 +792,9 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
     This is the response JSON schema for v2 REST API `GET /api/serve/applications`.
     """
 
+    controller_info: ServeActorDetails = Field(
+        description="Details about the Serve controller actor."
+    )
     proxy_location: Optional[DeploymentMode] = Field(
         description=(
             "The location of HTTP servers.\n"
@@ -768,6 +804,11 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
+    http_proxies: Optional[Dict[str, HTTPProxyDetails]] = Field(
+        description=(
+            "Mapping from node_id to details about the HTTP Proxy running on that node."
+        )
+    )
     deploy_mode: ServeDeployMode = Field(
         description=(
             "Whether a single-app config of format ServeApplicationSchema or multi-app "
@@ -785,7 +826,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"deploy_mode": "UNSET", "applications": {}}
+        return {"deploy_mode": "UNSET", "controller_info": {}, "applications": {}}
 
 
 @PublicAPI(stability="beta")

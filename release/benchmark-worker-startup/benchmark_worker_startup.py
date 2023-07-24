@@ -172,7 +172,10 @@ def generate_test_matrix(
 
     for with_tasks in [True, False]:
         for with_gpu in [True, False]:
-            for with_runtime_env in [True, False]:
+            # Do not run without runtime env. TODO(cade) Infra team added cgroups to
+            # default runtime env, need to find some way around that if we want
+            # "pure" (non-runtime-env) measurements.
+            for with_runtime_env in [True]:
                 for import_to_try in imports_to_try:
                     for num_jobs in num_jobs_per_type.values():
 

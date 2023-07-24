@@ -3,7 +3,7 @@ pendulum-ddpg:
     env: Pendulum-v1
     run: DDPG
     stop:
-      episode_reward_mean: -320
+      sampler_results/episode_reward_mean: -320
       timesteps_total: 30000
     config:
         # Works for both torch and tf.

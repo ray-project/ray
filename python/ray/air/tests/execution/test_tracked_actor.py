@@ -1,3 +1,4 @@
+import threading
 import time
 from collections import Counter
 import gc
@@ -8,6 +9,7 @@ import pytest
 import ray
 from ray.air import ResourceRequest
 from ray.air.execution import FixedResourceManager, PlacementGroupResourceManager
+from ray.air.execution._internal import Barrier
 from ray.air.execution._internal.actor_manager import RayActorManager
 
 
@@ -283,6 +285,79 @@ def test_stop_actor_before_start(
         actor_manager.next(0.05)
 
     assert actor_manager.num_live_actors == 0
+
+
+@pytest.mark.parametrize(
+    "resource_manager_cls", [FixedResourceManager, PlacementGroupResourceManager]
+)
+@pytest.mark.parametrize("start_thread", [False, True])
+def test_stop_actor_custom_future(
+    ray_start_4_cpus, tmp_path, cleanup, resource_manager_cls, start_thread
+):
+    """If we pass a custom stop future, the actor should still be shutdown by GC.
+
+    This should also be the case when we start a thread in the background, as we
+    do e.g. in Ray Tune's function runner.
+    """
+    actor_manager = RayActorManager(resource_manager=resource_manager_cls())
+
+    hang_marker = tmp_path / "hang.txt"
+
+    actor_name = f"stopping_actor_{resource_manager_cls.__name__}_{start_thread}"
+
+    @ray.remote(name=actor_name)
+    class HangingStopActor:
+        def __init__(self):
+            self._thread = None
+            self._stop_event = threading.Event()
+            if start_thread:
+
+                def entrypoint():
+                    while True:
+                        print("Thread!")
+                        time.sleep(1)
+                        if self._stop_event.is_set():
+                            sys.exit(0)
+
+                self._thread = threading.Thread(target=entrypoint)
+                self._thread.start()
+
+        def stop(self):
+            print("Waiting")
+            while not hang_marker.exists():
+                time.sleep(0.05)
+            self._stop_event.set()
+            print("stopped")
+
+    start_barrier = Barrier(max_results=1)
+    stop_barrier = Barrier(max_results=1)
+
+    tracked_actor = actor_manager.add_actor(
+        HangingStopActor,
+        kwargs={},
+        resource_request=ResourceRequest([{"CPU": 1}]),
+        on_start=start_barrier.arrive,
+        on_stop=stop_barrier.arrive,
+    )
+    while not start_barrier.completed:
+        actor_manager.next(0.05)
+
+    # Actor is alive
+    assert ray.get_actor(actor_name)
+
+    stop_future = actor_manager.schedule_actor_task(tracked_actor, "stop")
+    actor_manager.remove_actor(tracked_actor, kill=False, stop_future=stop_future)
+
+    assert not stop_barrier.completed
+
+    hang_marker.write_text("!")
+
+    while not stop_barrier.completed:
+        actor_manager.next(0.05)
+
+    # Actor should have stopped now and should get cleaned up
+    with pytest.raises(ValueError):
+        ray.get_actor(actor_name)
 
 
 if __name__ == "__main__":

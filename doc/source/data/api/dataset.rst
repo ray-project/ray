@@ -1,7 +1,7 @@
 .. _dataset-api:
 
 Dataset API
-===========
+==============
 
 .. currentmodule:: ray.data
 
@@ -41,7 +41,7 @@ Sorting, Shuffling, Repartitioning
    Dataset.repartition
 
 Splitting and Merging Datasets
-------------------------------
+---------------------------------
 
 .. autosummary::
    :toctree: doc/
@@ -61,6 +61,7 @@ Grouped and Global Aggregations
    :toctree: doc/
 
    Dataset.groupby
+   Dataset.unique
    Dataset.aggregate
    Dataset.sum
    Dataset.min
@@ -68,17 +69,8 @@ Grouped and Global Aggregations
    Dataset.mean
    Dataset.std
 
-Converting to Pipeline
-----------------------
-
-.. autosummary::
-   :toctree: doc/
-
-   Dataset.repeat
-   Dataset.window
-
-Consuming Datasets
-------------------
+Consuming Data
+---------------------
 
 .. autosummary::
    :toctree: doc/
@@ -126,8 +118,8 @@ Inspecting Metadata
    :toctree: doc/
 
    Dataset.count
+   Dataset.columns
    Dataset.schema
-   Dataset.default_batch_format
    Dataset.num_blocks
    Dataset.size_bytes
    Dataset.input_files
@@ -138,9 +130,10 @@ Execution
 ---------
 
 .. autosummary::
-   :toctree: doc/
+    :toctree: doc/
 
-   Dataset.materialize
+    Dataset.materialize
+    ActorPoolStrategy
 
 Serialization
 -------------
@@ -152,14 +145,15 @@ Serialization
    Dataset.serialize_lineage
    Dataset.deserialize_lineage
 
+.. _block-api:
+
 Internals
 ---------
 
 .. autosummary::
    :toctree: doc/
 
-   Dataset.__init__
-   Dataset.dataset_format
-   Dataset.fully_executed
-   Dataset.is_fully_executed
-   Dataset.lazy
+   block.Block
+   block.BlockExecStats
+   block.BlockMetadata
+   block.BlockAccessor

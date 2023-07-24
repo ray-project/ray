@@ -150,6 +150,7 @@ class Node:
         self._config = ray_params._system_config or {}
 
         self._dashboard_agent_listen_port = ray_params.dashboard_agent_listen_port
+        self._dashboard_grpc_port = ray_params.dashboard_grpc_port
 
         # Configure log rotation parameters.
         self.max_bytes = int(
@@ -239,9 +240,9 @@ class Node:
                     self.gcs_address,
                     self._raylet_ip_address,
                 )
-                self._plasma_store_socket_name = node_info.object_store_socket_name
-                self._raylet_socket_name = node_info.raylet_socket_name
-                self._ray_params.node_manager_port = node_info.node_manager_port
+                self._plasma_store_socket_name = node_info["object_store_socket_name"]
+                self._raylet_socket_name = node_info["raylet_socket_name"]
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -272,7 +273,7 @@ class Node:
         if head:
             gcs_server_port = os.getenv(ray_constants.GCS_PORT_ENVIRONMENT_VARIABLE)
             if gcs_server_port:
-                ray_params.update_if_absent(gcs_server_port=gcs_server_port)
+                ray_params.update_if_absent(gcs_server_port=int(gcs_server_port))
             if ray_params.gcs_server_port is None or ray_params.gcs_server_port == 0:
                 ray_params.gcs_server_port = self._get_cached_port("gcs_server_port")
 
@@ -304,7 +305,7 @@ class Node:
                 self._raylet_ip_address,
             )
             if self._ray_params.node_manager_port == 0:
-                self._ray_params.node_manager_port = node_info.node_manager_port
+                self._ray_params.node_manager_port = node_info["node_manager_port"]
 
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
@@ -414,6 +415,41 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
 
+    def _get_node_labels(self):
+        def merge_labels(env_override_labels, params_labels):
+            """Merges two dictionaries, picking from the
+            first in the event of a conflict. Also emit a warning on every
+            conflict.
+            """
+
+            result = params_labels.copy()
+            result.update(env_override_labels)
+
+            for key in set(env_override_labels.keys()).intersection(
+                set(params_labels.keys())
+            ):
+                if params_labels[key] != env_override_labels[key]:
+                    logger.warning(
+                        "Autoscaler is overriding your label:"
+                        f"{key}: {params_labels[key]} to "
+                        f"{key}: {env_override_labels[key]}."
+                    )
+            return result
+
+        env_override_labels = {}
+        env_override_labels_string = os.getenv(
+            ray_constants.LABELS_ENVIRONMENT_VARIABLE
+        )
+        if env_override_labels_string:
+            try:
+                env_override_labels = json.loads(env_override_labels_string)
+            except Exception:
+                logger.exception(f"Failed to load {env_override_labels_string}")
+                raise
+            logger.info(f"Autoscaler overriding labels: {env_override_labels}.")
+
+        return merge_labels(env_override_labels, self._ray_params.labels or {})
+
     def get_resource_spec(self):
         """Resolve and return the current resource spec for the node."""
 
@@ -485,7 +521,7 @@ class Node:
     @property
     def address(self):
         """Get the address for bootstrapping, e.g. the address to pass to
-        `ray start` or `ray.int()` to start worker nodes, that has been
+        `ray start` or `ray.init()` to start worker nodes, that has been
         converted to ip:port format.
         """
         return self._gcs_address
@@ -545,6 +581,11 @@ class Node:
     def dashboard_agent_listen_port(self):
         """Get the dashboard agent's listen port"""
         return self._dashboard_agent_listen_port
+
+    @property
+    def dashboard_grpc_port(self):
+        """Get the dashboard head grpc port"""
+        return self._dashboard_grpc_port
 
     @property
     def logging_config(self):
@@ -927,13 +968,15 @@ class Node:
             raise_on_failure,
             self._ray_params.dashboard_host,
             self.gcs_address,
+            self._node_ip_address,
             self._temp_dir,
             self._logs_dir,
             self._session_dir,
+            port=self._ray_params.dashboard_port,
+            dashboard_grpc_port=self._ray_params.dashboard_grpc_port,
             fate_share=self.kernel_fate_share,
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
-            port=self._ray_params.dashboard_port,
             redirect_logging=self.should_redirect_logs(),
             stdout_file=stderr_file,
             stderr_file=stderr_file,
@@ -1040,6 +1083,7 @@ class Node:
             env_updates=self._ray_params.env_vars,
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
+            labels=self._get_node_labels(),
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]

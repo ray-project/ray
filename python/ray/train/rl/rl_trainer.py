@@ -37,7 +37,7 @@ class RLTrainer(BaseTrainer):
             (e.g. ``"PPO"``) or a RLlib trainer class.
         scaling_config: Configuration for how to scale training.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use the key "train"
+        datasets: Any Datasets to use for training. Use the key "train"
             to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed
@@ -50,7 +50,7 @@ class RLTrainer(BaseTrainer):
     Example:
         Online training:
 
-        .. code-block:: python
+        .. testcode::
 
             from ray.air.config import RunConfig, ScalingConfig
             from ray.train.rl import RLTrainer
@@ -69,11 +69,16 @@ class RLTrainer(BaseTrainer):
             )
             result = trainer.fit()
 
+        .. testoutput::
+            :hide:
+
+            ...
 
     Example:
         Offline training (assumes data is stored in ``/tmp/data-dir``):
 
-        .. code-block:: python
+        .. testcode::
+            :skipif: True
 
             import ray
             from ray.air.config import RunConfig, ScalingConfig

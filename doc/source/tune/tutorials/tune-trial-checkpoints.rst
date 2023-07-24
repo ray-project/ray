@@ -27,24 +27,26 @@ To create an AIR checkpoint, one can either use :meth:`~ray.air.checkpoint.Check
     checkpoint is synced to driver node or the cloud. We are planning to work on it to address the
     issue.
 
-.. tabbed:: Checkpoint a dictionary
+.. tab-set::
 
-    .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-        :language: python
-        :start-after: __function_api_checkpointing_start__
-        :end-before: __function_api_checkpointing_end__
+    .. tab-item:: Checkpoint a dictionary
 
-.. tabbed:: Checkpoint a directory
+        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
+            :language: python
+            :start-after: __function_api_checkpointing_start__
+            :end-before: __function_api_checkpointing_end__
 
-    .. literalinclude:: /tune/doc_code/trial_checkpoint.py
-        :language: python
-        :start-after: __function_api_checkpointing_from_dir_start__
-        :end-before: __function_api_checkpointing_from_dir_end__
+    .. tab-item:: Checkpoint a directory
+
+        .. literalinclude:: /tune/doc_code/trial_checkpoint.py
+            :language: python
+            :start-after: __function_api_checkpointing_from_dir_start__
+            :end-before: __function_api_checkpointing_from_dir_end__
 
 In the above code snippet:
 
 - We implement *checkpoint saving* with :meth:`session.report(..., checkpoint=checkpoint) <ray.air.session.report>`. Note that every checkpoint must be reported alongside a set of metrics -- this way, checkpoints can be ordered with respect to a specified metric.
-- The saved checkpoint during training iteration `epoch` is saved to the path ``<local_dir>/<exp_name>/<trial_name>/checkpoint_<epoch>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
+- The saved checkpoint during training iteration `epoch` is saved to the path ``<storage_path>/<exp_name>/<trial_name>/checkpoint_<epoch>`` on the node on which training happens and can be further synced to a consolidated storage location depending on the :ref:`storage configuration <tune-storage-options>`.
 - We implement *checkpoint loading* with :meth:`session.get_checkpoint() <ray.air.session.get_checkpoint>`. This will be populated with a trial's latest checkpoint whenever Tune restores a trial. This happens when (1) a trial is configured to retry after encountering a failure, (2) the experiment is being restored, and (3) the trial is being resumed after a pause (ex: :doc:`PBT </tune/examples/pbt_guide>`).
 
   .. TODO: for (1), link to tune fault tolerance guide. For (2), link to tune restore guide.

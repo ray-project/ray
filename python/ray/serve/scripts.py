@@ -3,7 +3,7 @@ import os
 import pathlib
 import sys
 import time
-from typing import Optional, Union, Tuple
+from typing import Dict, Optional, Tuple
 
 import click
 import yaml
@@ -26,8 +26,7 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
 )
 from ray.serve._private.common import ServeDeployMode
-from ray.serve.deployment import deployment_to_schema
-from ray.serve.deployment_graph import ClassNode, FunctionNode
+from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve._private import api as _private_api
 from ray.serve.schema import (
     ServeApplicationSchema,
@@ -100,18 +99,38 @@ def process_dict_for_yaml_dump(data):
     for k, v in data.items():
         if isinstance(v, dict):
             data[k] = process_dict_for_yaml_dump(v)
+        if isinstance(v, list):
+            data[k] = [process_dict_for_yaml_dump(item) for item in v]
         elif isinstance(v, str):
             data[k] = remove_ansi_escape_sequences(v)
 
     return data
 
 
-@click.group(help="CLI for managing Serve instances on a Ray cluster.")
+def convert_args_to_dict(args: Tuple[str]) -> Dict[str, str]:
+    args_dict = dict()
+    for arg in args:
+        split = arg.split("=")
+        if len(split) != 2:
+            raise click.ClickException(
+                f"Invalid application argument '{arg}', "
+                "must be of the form '<key>=<val>'."
+            )
+
+        args_dict[split[0]] = split[1]
+
+    return args_dict
+
+
+@click.group(
+    help="CLI for managing Serve applications on a Ray cluster.",
+    context_settings=dict(help_option_names=["-h", "--help"]),
+)
 def cli():
     pass
 
 
-@cli.command(help="Start a detached Serve instance on the Ray cluster.")
+@cli.command(help="Start Serve on the Ray cluster.")
 @click.option(
     "--address",
     "-a",
@@ -125,21 +144,21 @@ def cli():
     default=DEFAULT_HTTP_HOST,
     required=False,
     type=str,
-    help="Host for HTTP servers to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
+    help="Host for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_HOST}.",
 )
 @click.option(
     "--http-port",
     default=DEFAULT_HTTP_PORT,
     required=False,
     type=int,
-    help="Port for HTTP servers to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
+    help="Port for HTTP proxies to listen on. " f"Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--http-location",
     default=DeploymentMode.HeadOnly,
     required=False,
     type=click.Choice(list(DeploymentMode)),
-    help="Location of the HTTP servers. Defaults to HeadOnly.",
+    help="Location of the HTTP proxies. Defaults to HeadOnly.",
 )
 def start(address, http_host, http_port, http_location):
     ray.init(
@@ -204,28 +223,30 @@ def deploy(config_file_name: str, address: str):
         # Error deploying application
         raise
 
-    cli_logger.newline()
     cli_logger.success(
-        "\nSent deploy request successfully!\n "
-        "* Use `serve status` to check deployments' statuses.\n "
-        "* Use `serve config` to see the current config(s).\n"
+        "\nSent deploy request successfully.\n "
+        "* Use `serve status` to check applications' statuses.\n "
+        "* Use `serve config` to see the current application config(s).\n"
     )
-    cli_logger.newline()
 
 
 @cli.command(
     short_help="Run Serve application(s).",
     help=(
-        "Runs the Serve application from the specified import path (e.g. my_script:"
-        "my_bound_deployment) or application(s) from a YAML config.\n\n"
-        "If using a YAML config, existing deployments with no code changes in an "
-        "application will not be redeployed.\n\n"
-        "Any import path must lead to a FunctionNode or ClassNode object. "
-        "By default, this will block and periodically log status. If you "
-        "Ctrl-C the command, it will tear down the app."
+        "Runs an application from the specified import path (e.g., my_script:"
+        "app) or application(s) from a YAML config.\n\n"
+        "If passing an import path, it must point to a Serve Application or "
+        "a function that returns one. If a function is used, arguments can be "
+        "passed to it in 'key=val' format after the import path, for example:\n\n"
+        "serve run my_script:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
+        "If passing a YAML config, existing applications with no code changes will not "
+        "be updated.\n\n"
+        "By default, this will block and stream logs to the console. If you "
+        "Ctrl-C the command, it will shut down Serve on the cluster."
     ),
 )
 @click.argument("config_or_import_path")
+@click.argument("arguments", nargs=-1, required=False)
 @click.option(
     "--runtime-env",
     type=str,
@@ -282,7 +303,7 @@ def deploy(config_file_name: str, address: str):
     "-p",
     required=False,
     type=int,
-    help=f"Port for HTTP servers to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
+    help=f"Port for HTTP proxies to listen on. Defaults to {DEFAULT_HTTP_PORT}.",
 )
 @click.option(
     "--blocking/--non-blocking",
@@ -303,6 +324,7 @@ def deploy(config_file_name: str, address: str):
 )
 def run(
     config_or_import_path: str,
+    arguments: Tuple[str],
     runtime_env: str,
     runtime_env_json: str,
     working_dir: str,
@@ -314,7 +336,7 @@ def run(
     gradio: bool,
 ):
     sys.path.insert(0, app_dir)
-
+    args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
         runtime_env=runtime_env,
         runtime_env_json=runtime_env_json,
@@ -322,9 +344,14 @@ def run(
     )
 
     if pathlib.Path(config_or_import_path).is_file():
+        if len(args_dict) > 0:
+            cli_logger.warning(
+                "Application arguments are ignored when running a config file."
+            )
+
         is_config = True
         config_path = config_or_import_path
-        cli_logger.print(f'Deploying from config file: "{config_path}".')
+        cli_logger.print(f"Running config file: '{config_path}'.")
 
         with open(config_path, "r") as config_file:
             config_dict = yaml.safe_load(config_file)
@@ -377,15 +404,38 @@ def run(
         if port is None:
             port = DEFAULT_HTTP_PORT
         import_path = config_or_import_path
-        cli_logger.print(f'Deploying from import path: "{import_path}".')
-        node = import_attr(import_path)
+        cli_logger.print(f"Running import path: '{import_path}'.")
+        app = _private_api.call_app_builder_with_args_if_necessary(
+            import_attr(import_path), args_dict
+        )
 
-    # Setting the runtime_env here will set defaults for the deployments.
-    ray.init(address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env)
-    client = _private_api.serve_start(
-        detached=True,
-        http_options={"host": host, "port": port, "location": "EveryNode"},
-    )
+    # Only initialize ray if it has not happened yet.
+    if not ray.is_initialized():
+        # Setting the runtime_env here will set defaults for the deployments.
+        ray.init(
+            address=address, namespace=SERVE_NAMESPACE, runtime_env=final_runtime_env
+        )
+    elif (
+        address is not None
+        and address != "auto"
+        and address != ray.get_runtime_context().gcs_address
+    ):
+        # Warning users the address they passed is different from the existing ray
+        # instance.
+        ray_address = ray.get_runtime_context().gcs_address
+        cli_logger.warning(
+            "An address was passed to `serve run` but the imported module also "
+            f"connected to Ray at a different address: '{ray_address}'. You do not "
+            "need to call `ray.init` in your code when using `serve run`."
+        )
+
+    http_options = {"host": host, "port": port, "location": "EveryNode"}
+    # Merge http_options with the ones on ServeDeploySchema. If host and/or port is
+    # passed by cli, those continue to take the priority
+    if is_config and isinstance(config, ServeDeploySchema):
+        config_http_options = config.http_options.dict()
+        http_options = {**config_http_options, **http_options}
+    client = _private_api.serve_start(detached=True, http_options=http_options)
 
     try:
         if is_config:
@@ -394,7 +444,7 @@ def run(
             if gradio:
                 handle = serve.get_deployment("DAGDriver").get_handle()
         else:
-            handle = serve.run(node, host=host, port=port)
+            handle = serve.run(app, host=host, port=port)
             cli_logger.success("Deployed Serve app successfully.")
 
         if gradio:
@@ -464,22 +514,22 @@ def config(address: str, name: Optional[str]):
                     sort_keys=False,
                 )
                 for app in serve_details.applications.values()
+                if app.deployed_app_config is not None
             ),
             end="",
         )
     # Fetch a specific app config by name.
     else:
-        if name not in serve_details.applications:
-            config = ServeApplicationSchema.get_empty_schema_dict()
+        app = serve_details.applications.get(name)
+        if app is None or app.deployed_app_config is None:
+            print(f'No config has been deployed for application "{name}".')
         else:
-            config = serve_details.applications.get(name).deployed_app_config.dict(
-                exclude_unset=True
-            )
-        print(yaml.safe_dump(config, sort_keys=False), end="")
+            config = app.deployed_app_config.dict(exclude_unset=True)
+            print(yaml.safe_dump(config, sort_keys=False), end="")
 
 
 @cli.command(
-    short_help="Get the current status of all live Serve applications and deployments.",
+    short_help="Get the current status of all Serve applications on the cluster.",
     help=(
         "Prints status information about all applications on the cluster.\n\n"
         "An application may be:\n\n"
@@ -558,7 +608,7 @@ def status(address: str, name: Optional[str]):
 
 
 @cli.command(
-    help="Deletes the Serve app.",
+    help="Shuts down Serve on the cluster, deleting all applications.",
 )
 @click.option(
     "--address",
@@ -572,25 +622,25 @@ def status(address: str, name: Optional[str]):
 def shutdown(address: str, yes: bool):
     if not yes:
         click.confirm(
-            f"\nThis will shutdown the Serve application at address "
-            f'"{address}" and delete all deployments there. Do you '
+            f"This will shut down Serve on the cluster at address "
+            f'"{address}" and delete all applications there. Do you '
             "want to continue?",
             abort=True,
         )
 
     ServeSubmissionClient(address).delete_application()
 
-    cli_logger.newline()
-    cli_logger.success("\nSent delete request successfully!\n")
-    cli_logger.newline()
+    cli_logger.success(
+        "Sent shutdown request; applications will be deleted asynchronously."
+    )
 
 
 @cli.command(
-    short_help="Writes a Serve Deployment Graph's config file.",
+    short_help="Generate a config file for the specified applications.",
     help=(
-        "Imports the ClassNode(s) or FunctionNode(s) at IMPORT_PATH(S) and generates a "
-        "structured config for it. If the flag --multi-app is set, accepts multiple "
-        "ClassNode/FunctionNodes and generates a multi-application config. Config "
+        "Imports the applications at IMPORT_PATHS and generates a structured, multi-"
+        "application config for them. If the flag --single-app is set, accepts one "
+        "application and generates a single-application config. Config "
         "outputted from this command can be used by `serve deploy` or the REST API. "
     ),
 )
@@ -606,7 +656,10 @@ def shutdown(address: str, yes: bool):
     "--kubernetes_format",
     "-k",
     is_flag=True,
-    help="Print Serve config in Kubernetes format.",
+    help=(
+        "Print a single-application Serve config in Kubernetes format. Must be used "
+        "with the flag `--single-app`."
+    ),
 )
 @click.option(
     "--output-path",
@@ -620,46 +673,62 @@ def shutdown(address: str, yes: bool):
 )
 @click.option(
     "--multi-app",
-    "-m",
     is_flag=True,
     help="Generate a multi-application config from multiple targets.",
+)
+@click.option(
+    "--single-app",
+    is_flag=True,
+    help="Generate a single-application config from one target.",
 )
 def build(
     import_paths: Tuple[str],
     app_dir: str,
     kubernetes_format: bool,
     output_path: Optional[str],
+    # This is no longer used, it is only kept here to avoid breaking existing CLI usage
     multi_app: bool,
+    single_app: bool,
 ):
-    sys.path.insert(0, app_dir)
-
-    def build_app_config(import_path: str, name: str = None):
-        node: Union[ClassNode, FunctionNode] = import_attr(import_path)
-        if not isinstance(node, (ClassNode, FunctionNode)):
-            raise TypeError(
-                f"Expected '{import_path}' to be ClassNode or "
-                f"FunctionNode, but got {type(node)}."
+    # Add logger messages for users who are still using --multi-app
+    if multi_app:
+        cli_logger.warning(
+            "`serve build` now generates a config in multi-application format by "
+            "default. The flag `--multi-app` is now redundant and will be removed soon."
+        )
+        if single_app:
+            raise click.ClickException(
+                "You cannot specify both `--single-app` and `--multi-app`."
             )
 
-        app = build_app(node)
+    sys.path.insert(0, app_dir)
+
+    def build_app_config(import_path: str, _kubernetes_format: bool, name: str = None):
+        app: Application = import_attr(import_path)
+        if not isinstance(app, Application):
+            raise TypeError(
+                f"Expected '{import_path}' to be an Application but got {type(app)}."
+            )
+
+        app = build_app(app)
         schema = ServeApplicationSchema(
             import_path=import_path,
             runtime_env={},
             deployments=[
-                deployment_to_schema(d, not multi_app) for d in app.deployments.values()
+                deployment_to_schema(d, single_app) for d in app.deployments.values()
             ],
         )
         # If building a multi-app config, auto-generate names for each application.
         # Also, each ServeApplicationSchema should not have host and port set, it should
         # be set at the top level of ServeDeploySchema.
-        if multi_app:
-            schema.name = name
-            schema.route_prefix = app.ingress.route_prefix
-        else:
+        if single_app:
             schema.host = "0.0.0.0"
             schema.port = 8000
+        else:
+            schema.name = name
+            schema.route_prefix = app.ingress.route_prefix
 
-        if kubernetes_format:
+        if _kubernetes_format:
             return schema.kubernetes_dict(exclude_unset=True)
         else:
             return schema.dict(exclude_unset=True)
@@ -669,16 +738,15 @@ def build(
         f"on Ray v{ray.__version__}.\n\n"
     )
 
-    if not multi_app:
+    if single_app:
         if len(import_paths) > 1:
             raise click.ClickException(
-                "Got more than one argument. If you want to generate a multi-"
-                "application config, please rerun the command with the feature flag "
-                "`--multi-app`."
+                "Got more than one argument. Only one import path is accepted when "
+                "using the flag `--single-app`."
             )
 
         config_str += yaml.dump(
-            build_app_config(import_paths[0]),
+            build_app_config(import_paths[0], kubernetes_format),
             Dumper=ServeApplicationSchemaDumper,
             default_flow_style=False,
             sort_keys=False,
@@ -686,12 +754,14 @@ def build(
     else:
         if kubernetes_format:
             raise click.ClickException(
-                "Multi-application config is not supported in Kubernetes format yet."
+                "Multi-application config does not support Kubernetes format."
             )
 
         app_configs = []
         for app_index, import_path in enumerate(import_paths):
-            app_configs.append(build_app_config(import_path, f"app{app_index + 1}"))
+            app_configs.append(
+                build_app_config(import_path, False, f"app{app_index + 1}")
+            )
 
         deploy_config = {
             "proxy_location": "EveryNode",

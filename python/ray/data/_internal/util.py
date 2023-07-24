@@ -1,24 +1,27 @@
 import importlib
 import logging
 import os
-from typing import Any, List, Union, Optional, TYPE_CHECKING
-from types import ModuleType
+import pathlib
 import sys
+import urllib.parse
+from types import ModuleType
+from typing import TYPE_CHECKING, Any, List, Optional, Union
 
 import numpy as np
 
 import ray
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.data.context import DataContext
 from ray._private.utils import _get_pyarrow_version
+from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
+    import pandas
+    import pyarrow
+
+    from ray.data._internal.compute import ComputeStrategy
+    from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Reader
     from ray.util.placement_group import PlacementGroup
-    import pyarrow
-    import pandas
-    from ray.data._internal.arrow_block import ArrowRow
-    from ray.data.block import Block, BlockMetadata
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +66,7 @@ def _check_pyarrow_version():
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
-                    f"Datasets requires pyarrow >= {MIN_PYARROW_VERSION}, but "
+                    f"Dataset requires pyarrow >= {MIN_PYARROW_VERSION}, but "
                     f"{version} is installed. Reinstall with "
                     f'`pip install -U "pyarrow"`. '
                     "If you want to disable this pyarrow version check, set the "
@@ -74,7 +77,7 @@ def _check_pyarrow_version():
                 "You are using the 'pyarrow' module, but the exact version is unknown "
                 "(possibly carried as an internal component by another module). Please "
                 f"make sure you are using pyarrow >= {MIN_PYARROW_VERSION} to ensure "
-                "compatibility with Ray Datasets. "
+                "compatibility with Ray Dataset. "
                 "If you want to disable this pyarrow version check, set the "
                 f"environment variable {RAY_DISABLE_PYARROW_VERSION_CHECK}=1."
             )
@@ -87,7 +90,7 @@ def _autodetect_parallelism(
     ctx: DataContext,
     reader: Optional["Reader"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, int):
+) -> (int, int, Optional[int]):
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
@@ -108,8 +111,9 @@ def _autodetect_parallelism(
         avail_cpus: Override avail cpus detection (for testing only).
 
     Returns:
-        Tuple of detected parallelism (only if -1 was specified), and the min safe
-        parallelism (which can be used to generate warnings about large blocks).
+        Tuple of detected parallelism (only if -1 was specified), the min safe
+        parallelism (which can be used to generate warnings about large blocks),
+        and the estimated inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -137,7 +141,7 @@ def _autodetect_parallelism(
             f"estimated_available_cpus={avail_cpus} and "
             f"estimated_data_size={mem_size}."
         )
-    return parallelism, min_safe_parallelism
+    return parallelism, min_safe_parallelism, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
@@ -208,9 +212,6 @@ def _resolve_custom_scheme(path: str) -> str:
 
     The supported custom schemes are: "local", "example".
     """
-    import pathlib
-    import urllib.parse
-
     parsed_uri = urllib.parse.urlparse(path)
     if parsed_uri.scheme == _LOCAL_SCHEME:
         path = parsed_uri.netloc + parsed_uri.path
@@ -226,9 +227,6 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     Note: The paths must be in same scheme, i.e. it's invalid and
     will raise error if paths are mixed with different schemes.
     """
-    import pathlib
-    import urllib.parse
-
     if isinstance(paths, str):
         paths = [paths]
     if isinstance(paths, pathlib.Path):
@@ -246,8 +244,12 @@ def _is_local_scheme(paths: Union[str, List[str]]) -> bool:
     return num == len(paths)
 
 
-def _is_tensor_schema(column_names: List[str]):
-    return column_names == [TENSOR_COLUMN_NAME]
+def _truncated_repr(obj: Any) -> str:
+    """Utility to return a truncated object representation for error messages."""
+    msg = str(obj)
+    if len(msg) > 200:
+        msg = msg[:200] + "..."
+    return msg
 
 
 def _insert_doc_at_pattern(
@@ -343,7 +345,7 @@ def _consumption_api(
     insert_after=False,
 ):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datasets execution.
+    will trigger Dataset execution.
     """
     base = (
         " will trigger execution of the lazy transformations performed on "
@@ -379,7 +381,7 @@ def _consumption_api(
 
 def ConsumptionAPI(*args, **kwargs):
     """Annotate the function with an indication that it's a consumption API, and that it
-    will trigger Datasets execution.
+    will trigger Dataset execution.
     """
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
         return _consumption_api()(args[0])
@@ -401,6 +403,23 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
         arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
     ]
     return splits
+
+
+def validate_compute(
+    fn: "UserDefinedFunction", compute: Optional[Union[str, "ComputeStrategy"]]
+) -> None:
+    # Lazily import these objects to avoid circular imports.
+    from ray.data._internal.compute import TaskPoolStrategy
+    from ray.data.block import CallableClass
+
+    if isinstance(fn, CallableClass) and (
+        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
+    ):
+        raise ValueError(
+            "``compute`` must be specified when using a CallableClass, and must "
+            f"specify the actor compute strategy, but got: {compute}. "
+            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
+        )
 
 
 def capfirst(s: str):
@@ -427,7 +446,7 @@ def capitalize(s: str):
     return "".join(capfirst(x) for x in s.split("_"))
 
 
-def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
+def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
@@ -442,11 +461,13 @@ def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block[ArrowRow]":
     )
 
 
-def ndarray_to_block(ndarray: np.ndarray) -> "Block[np.ndarray]":
+def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    DataContext._set_current(ctx)
+
     stats = BlockExecStats.builder()
-    block = BlockAccessor.batch_to_block(ndarray)
+    block = BlockAccessor.batch_to_block({"data": ndarray})
     metadata = BlockAccessor.for_block(block).get_metadata(
         input_files=None, exec_stats=stats.build()
     )
@@ -462,3 +483,33 @@ def get_table_block_metadata(
     return BlockAccessor.for_block(table).get_metadata(
         input_files=None, exec_stats=stats.build()
     )
+
+
+def unify_block_metadata_schema(
+    metadata: List["BlockMetadata"],
+) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+    """For the input list of BlockMetadata, return a unified schema of the
+    corresponding blocks. If the metadata have no valid schema, returns None.
+    """
+    # Some blocks could be empty, in which case we cannot get their schema.
+    # TODO(ekl) validate schema is the same across different blocks.
+
+    # First check if there are blocks with computed schemas, then unify
+    # valid schemas from all such blocks.
+    schemas_to_unify = []
+    for m in metadata:
+        if m.schema is not None and (m.num_rows is None or m.num_rows > 0):
+            schemas_to_unify.append(m.schema)
+    if schemas_to_unify:
+        # Check valid pyarrow installation before attempting schema unification
+        try:
+            import pyarrow as pa
+        except ImportError:
+            pa = None
+        # If the result contains PyArrow schemas, unify them
+        if pa is not None and any(isinstance(s, pa.Schema) for s in schemas_to_unify):
+            return unify_schemas(schemas_to_unify)
+        # Otherwise, if the resulting schemas are simple types (e.g. int),
+        # return the first schema.
+        return schemas_to_unify[0]
+    return None

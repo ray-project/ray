@@ -26,13 +26,13 @@
 #include "ray/common/client_connection.h"
 #include "ray/common/task/task_common.h"
 #include "ray/common/task/task_util.h"
-#include "ray/common/task/scheduling_resources.h"
+#include "ray/common/scheduling/scheduling_resources.h"
 #include "ray/pubsub/subscriber.h"
 #include "ray/object_manager/object_manager.h"
 #include "ray/raylet/agent_manager.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
-#include "ray/raylet/scheduling/scheduling_ids.h"
+#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
@@ -76,7 +76,7 @@ struct NodeManagerConfig {
   /// on. This takes precedence over min_worker_port and max_worker_port.
   std::vector<int> worker_ports;
   /// The soft limit of the number of workers.
-  int num_workers_soft_limit;
+  int64_t num_workers_soft_limit;
   /// Number of initial Python workers to start when raylet starts.
   int num_prestart_python_workers;
   /// The maximum number of workers that can be started concurrently by a
@@ -110,6 +110,10 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The minimum object size that can be spilled by each spill operation.
   int64_t min_spilling_size;
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
+
+  void AddDefaultLabels(const std::string &self_node_id);
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
@@ -826,9 +830,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
-
-  /// Resource message updated
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> resource_message_udpated_;
 
   /// RaySyncerService for gRPC
   syncer::RaySyncerService ray_syncer_service_;

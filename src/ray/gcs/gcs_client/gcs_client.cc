@@ -49,11 +49,14 @@ void GcsSubscriberClient::PubsubLongPolling(
     const rpc::ClientCallback<rpc::PubsubLongPollingReply> &callback) {
   rpc::GcsSubscriberPollRequest req;
   req.set_subscriber_id(request.subscriber_id());
+  req.set_max_processed_sequence_id(request.max_processed_sequence_id());
+  req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
       req,
       [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
         rpc::PubsubLongPollingReply reply;
         *reply.mutable_pub_messages() = poll_reply.pub_messages();
+        *reply.mutable_publisher_id() = poll_reply.publisher_id();
         callback(status, reply);
       });
 }
@@ -125,7 +128,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service) {
   internal_kv_accessor_ = std::make_unique<InternalKVAccessor>(this);
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
 
-  RAY_LOG(DEBUG) << "GcsClient connected.";
+  RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
+                 << options_.gcs_port_;
   return Status::OK();
 }
 
@@ -142,15 +146,13 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
 PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
 
 Status PythonGcsClient::Connect() {
-  grpc::ChannelArguments arguments;
-  arguments.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, 512 * 1024 * 1024);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS, 60 * 1000);
-  arguments.SetInt(GRPC_ARG_KEEPALIVE_TIMEOUT_MS, 60 * 1000);
-  channel_ = rpc::BuildChannel(options_.gcs_address_, options_.gcs_port_, arguments);
+  channel_ =
+      rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
   runtime_env_stub_ = rpc::RuntimeEnvGcsService::NewStub(channel_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
+  autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
   return Status::OK();
 }
 
@@ -393,6 +395,97 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
     return HandleGcsError(reply.status());
   }
   return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::RequestClusterResourceConstraint(
+    int64_t timeout_ms,
+    const std::vector<std::unordered_map<std::string, double>> &bundles) {
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  rpc::autoscaler::RequestClusterResourceConstraintRequest request;
+  rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+
+  for (auto bundle : bundles) {
+    request.mutable_cluster_resource_constraint()
+        ->add_min_bundles()
+        ->mutable_resources_bundle()
+        ->insert(bundle.begin(), bundle.end());
+  }
+
+  grpc::Status status =
+      autoscaler_stub_->RequestClusterResourceConstraint(&context, request, &reply);
+
+  if (status.ok()) {
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+Status PythonGcsClient::GetClusterStatus(int64_t timeout_ms,
+                                         std::string &serialized_reply) {
+  rpc::autoscaler::GetClusterStatusRequest request;
+  rpc::autoscaler::GetClusterStatusReply reply;
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+
+  grpc::Status status = autoscaler_stub_->GetClusterStatus(&context, request, &reply);
+
+  if (status.ok()) {
+    if (!reply.SerializeToString(&serialized_reply)) {
+      return Status::IOError("Failed to serialize GetClusterStatusReply");
+    }
+    return Status::OK();
+  }
+  return Status::RpcError(status.error_message(), status.error_code());
+}
+
+std::unordered_map<std::string, double> PythonGetResourcesTotal(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, double>(node_info.resources_total().begin(),
+                                                 node_info.resources_total().end());
+}
+
+std::unordered_map<std::string, std::string> PythonGetNodeLabels(
+    const rpc::GcsNodeInfo &node_info) {
+  return std::unordered_map<std::string, std::string>(node_info.labels().begin(),
+                                                      node_info.labels().end());
+}
+
+Status PythonCheckGcsHealth(const std::string &gcs_address,
+                            const int gcs_port,
+                            const int64_t timeout_ms,
+                            const std::string &ray_version,
+                            const bool skip_version_check,
+                            bool &is_healthy) {
+  auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
+  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
+  grpc::ClientContext context;
+  GrpcClientContextWithTimeoutMs(context, timeout_ms);
+  rpc::CheckAliveRequest request;
+  rpc::CheckAliveReply reply;
+  grpc::Status status = stub->CheckAlive(&context, request, &reply);
+  if (!status.ok()) {
+    is_healthy = false;
+    return Status::RpcError(status.error_message(), status.error_code());
+  }
+  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
+    is_healthy = false;
+    return HandleGcsError(reply.status());
+  }
+  if (!skip_version_check) {
+    // Check for Ray version match
+    if (reply.ray_version() != ray_version) {
+      is_healthy = false;
+      std::ostringstream ss;
+      ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
+         << reply.ray_version() << ", but this process"
+         << "is running Ray version " << ray_version << ".";
+      return Status::Invalid(ss.str());
+    }
+  }
+  is_healthy = true;
+  return Status::OK();
 }
 
 }  // namespace gcs

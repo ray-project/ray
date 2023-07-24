@@ -15,6 +15,7 @@
 #include <iostream>
 
 #include "gflags/gflags.h"
+#include "nlohmann/json.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
@@ -24,6 +25,8 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+
+using json = nlohmann::json;
 
 DEFINE_string(raylet_socket_name, "", "The socket name of raylet.");
 DEFINE_string(store_socket_name, "", "The socket name of object store.");
@@ -74,7 +77,34 @@ DEFINE_string(plasma_directory,
               "The shared memory directory of the object store.");
 #endif
 DEFINE_bool(huge_pages, false, "Enable huge pages.");
+DEFINE_string(labels,
+              "",
+              "Define the key-value format of node labels, which is a serialized JSON.");
+
 #ifndef RAYLET_TEST
+
+absl::flat_hash_map<std::string, std::string> parse_node_labels(
+    const std::string &labels_json_str) {
+  absl::flat_hash_map<std::string, std::string> labels;
+  if (labels_json_str.empty()) {
+    return labels;
+  }
+  try {
+    json j = json::parse(labels_json_str);
+    for (auto &el : j.items()) {
+      if (el.value().is_string()) {
+        labels.emplace(el.key(), el.value());
+      } else {
+        throw std::invalid_argument(
+            "The value of the '" + el.key() +
+            "' field in the node labels configuration is not string type.");
+      }
+    }
+  } catch (const std::exception &e) {
+    RAY_LOG(FATAL) << "Failed to parse node labels json string for " << e.what();
+  }
+  return labels;
+}
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -118,6 +148,7 @@ int main(int argc, char *argv[]) {
   const int metrics_export_port = FLAGS_metrics_export_port;
   const std::string session_name = FLAGS_session_name;
   const bool is_head_node = FLAGS_head;
+  const std::string labels_json_str = FLAGS_labels;
   gflags::ShutDownCommandLineFlags();
 
   // Configuration for the node manager.
@@ -176,14 +207,14 @@ int main(int argc, char *argv[]) {
                        << node_manager_config.resource_config.DebugString();
         node_manager_config.node_manager_address = node_ip_address;
         node_manager_config.node_manager_port = node_manager_port;
-        auto soft_limit_config = RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_workers_soft_limit =
-            soft_limit_config >= 0 ? soft_limit_config : num_cpus;
+            RayConfig::instance().num_workers_soft_limit();
         node_manager_config.num_prestart_python_workers = num_prestart_python_workers;
         node_manager_config.maximum_startup_concurrency = maximum_startup_concurrency;
         node_manager_config.min_worker_port = min_worker_port;
         node_manager_config.max_worker_port = max_worker_port;
         node_manager_config.worker_ports = worker_ports;
+        node_manager_config.labels = parse_node_labels(labels_json_str);
 
         if (!python_worker_command.empty()) {
           node_manager_config.worker_commands.emplace(
@@ -263,8 +294,15 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
+        ray::NodeID raylet_node_id{
+            (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty())
+                ? ray::NodeID::FromHex(
+                      RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
+                : ray::NodeID::FromRandom()};
+        node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,
+                                                       raylet_node_id,
                                                        raylet_socket_name,
                                                        node_ip_address,
                                                        node_name,

@@ -17,6 +17,13 @@
 #include <limits.h>
 #include <stdint.h>
 
+/// The precision of fractional resource quantity.
+constexpr int kResourceUnitScaling = 10000;
+
+constexpr char kWorkerSetupHookKeyName[] = "FunctionsToRun";
+
+constexpr int kStreamingGeneratorReturn = -2;
+
 /// Length of Ray full-length IDs in bytes.
 constexpr size_t kUniqueIDSize = 28;
 
@@ -31,6 +38,8 @@ constexpr int kRayletStoreErrorExitCode = 100;
 
 /// Prefix for the object table keys in redis.
 constexpr char kObjectTablePrefix[] = "ObjectTable";
+
+constexpr char kClusterIdKey[] = "ray_cluster_id";
 
 constexpr char kWorkerDynamicOptionPlaceholder[] =
     "RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER";
@@ -54,6 +63,28 @@ constexpr char kSetupWorkerFilename[] = "setup_worker.py";
 /// The version of Ray
 constexpr char kRayVersion[] = "3.0.0.dev0";
 
+/*****************************/
+/* ENV labels for autoscaler */
+/*****************************/
+// Sync with python/ray/_private/ray_constants.py
+constexpr char kGcsAutoscalerStateNamespace[] = "__autoscaler";
+constexpr char kGcsAutoscalerV2EnabledKey[] = "__autoscaler_v2_enabled";
+
+/// Name for cloud instance id env
+constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
+
+constexpr char kNodeTypeNameEnv[] = "RAY_NODE_TYPE_NAME";
+
+constexpr char kNodeCloudInstanceTypeNameEnv[] = "RAY_CLOUD_INSTANCE_TYPE_NAME";
+
+/**********************************/
+/* ENV labels for autoscaler ends */
+/**********************************/
+
+/// Key for the placement group's bundle placement constraint.
+/// Used by FormatPlacementGroupLabelName()
+constexpr char kPlacementGroupConstraintKeyPrefix[] = "_PG_";
+
 #if defined(__APPLE__)
 constexpr char kLibraryPathEnvName[] = "DYLD_LIBRARY_PATH";
 #elif defined(_WIN32)
@@ -61,3 +92,8 @@ constexpr char kLibraryPathEnvName[] = "PATH";
 #else
 constexpr char kLibraryPathEnvName[] = "LD_LIBRARY_PATH";
 #endif
+
+#define RAY_LABEL_KEY_PREFIX "ray.io/"
+/// Default node label key: node_id
+constexpr char kLabelKeyNodeID[] = RAY_LABEL_KEY_PREFIX "node_id";
+#undef RAY_LABEL_KEY_PREFIX

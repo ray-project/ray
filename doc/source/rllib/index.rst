@@ -83,7 +83,7 @@ The `framework` config lets you choose between "tf2", "tf" and "torch" for execu
 You can also tweak RLlib's default `model` config,and set up a separate config for `evaluation`.
 
 If you want to learn more about the RLlib training API,
-`you can learn more about it here <rllib-training-api>`_.
+`you can learn more about it here <rllib-training.html#using-the-python-api>`_.
 Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
@@ -171,42 +171,51 @@ click on the dropdowns below:
 Feature Overview
 ----------------
 
-.. panels::
-    :container: text-center
-    :column: col-lg-4 px-2 py-2
-    :card:
+.. grid:: 1 2 3 3
+    :gutter: 1
+    :class-container: container pb-4
 
-    **RLlib Key Concepts**
-    ^^^
-    Learn more about the core concepts of RLlib, such as environments, algorithms and
-    policies.
-    +++
-    .. link-button:: rllib-core-concepts
-        :type: ref
-        :text: Key Concepts
-        :classes: btn-outline-info btn-block
-    ---
+    .. grid-item-card::
 
-    **RLlib Algorithms**
-    ^^^
-    Check out the many available RL algorithms of RLlib for model-free and model-based
-    RL, on-policy and off-policy training, multi-agent RL, and more.
-    +++
-    .. link-button:: rllib-algorithms-doc
-        :type: ref
-        :text: Algorithms
-        :classes: btn-outline-info btn-block
-    ---
+        **RLlib Key Concepts**
+        ^^^
+        Learn more about the core concepts of RLlib, such as environments, algorithms and
+        policies.
+        +++
+        .. button-ref:: rllib-core-concepts
+            :color: primary
+            :outline:
+            :expand:
 
-    **RLlib Environments**
-    ^^^
-    Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
-    and many custom formats for vectorized and multi-agent environments.
-    +++
-    .. link-button:: rllib-environments-doc
-        :type: ref
-        :text: Environments
-        :classes: btn-outline-info btn-block
+            Key Concepts
+
+    .. grid-item-card::
+
+        **RLlib Algorithms**
+        ^^^
+        Check out the many available RL algorithms of RLlib for model-free and model-based
+        RL, on-policy and off-policy training, multi-agent RL, and more.
+        +++
+        .. button-ref:: rllib-algorithms-doc
+            :color: primary
+            :outline:
+            :expand:
+
+            Algorithms
+
+    .. grid-item-card::
+
+        **RLlib Environments**
+        ^^^
+        Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
+        and many custom formats for vectorized and multi-agent environments.
+        +++
+        .. button-ref:: rllib-environments-doc
+            :color: primary
+            :outline:
+            :expand:
+
+            Environments
 
 
 The following is a summary of RLlib's most striking features.

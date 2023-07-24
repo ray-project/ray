@@ -123,6 +123,16 @@ std::string WorkerOwnerString(std::shared_ptr<WorkerInterface> &worker) {
   return buffer.str();
 }
 
+void NodeManagerConfig::AddDefaultLabels(const std::string &self_node_id) {
+  std::vector<std::string> default_keys = {kLabelKeyNodeID};
+
+  for (const auto &key : default_keys) {
+    RAY_CHECK(!labels.contains(key))
+        << "The label key name " << key << " should never be set by the user.";
+  }
+  labels[kLabelKeyNodeID] = self_node_id;
+}
+
 NodeManager::NodeManager(instrumented_io_context &io_service,
                          const NodeID &self_node_id,
                          const std::string &self_node_name,
@@ -137,7 +147,23 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           io_service,
           self_node_id_,
           config.node_manager_address,
-          config.num_workers_soft_limit,
+          [this, config]() {
+            // Callback to determine the maximum number of idle workers to keep
+            // around.
+            if (config.num_workers_soft_limit >= 0) {
+              return config.num_workers_soft_limit;
+            }
+            // If no limit is provided, use the available number of CPUs,
+            // assuming that each incoming task will likely require 1 CPU.
+            // We floor the available CPUs to the nearest integer to avoid starting too
+            // many workers when there is less than 1 CPU left. Otherwise, we could end
+            // up repeatedly starting the worker, then killing it because it idles for
+            // too long. The downside is that we will be slower to schedule tasks that
+            // could use a fraction of a CPU.
+            return static_cast<int64_t>(
+                cluster_resource_scheduler_->GetLocalResourceManager()
+                    .GetLocalAvailableCpus());
+          },
           config.num_prestart_python_workers,
           config.maximum_startup_concurrency,
           config.min_worker_port,
@@ -240,7 +266,8 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
                     },
                     /*delay_executor*/
                     [this](std::function<void()> fn, int64_t delay_ms) {
-                      RAY_UNUSED(execute_after(io_service_, fn, delay_ms));
+                      RAY_UNUSED(execute_after(
+                          io_service_, fn, std::chrono::milliseconds(delay_ms)));
                     }),
       node_manager_server_("NodeManager",
                            config.node_manager_port,
@@ -293,6 +320,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           CreateMemoryUsageRefreshCallback())) {
   RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
+      io_service,
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
       /*is_node_available_fn*/
@@ -316,7 +344,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
         }
       },
       /*get_pull_manager_at_capacity*/
-      [this]() { return object_manager_.PullManagerHasPullsQueued(); });
+      [this]() { return object_manager_.PullManagerHasPullsQueued(); },
+      /*labels*/
+      config.labels);
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -370,26 +400,9 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
 
   RAY_CHECK_OK(store_client_.Connect(config.store_socket_name.c_str()));
   // Run the node manger rpc server.
-  node_manager_server_.RegisterService(node_manager_service_);
-  node_manager_server_.RegisterService(agent_manager_service_);
+  node_manager_server_.RegisterService(node_manager_service_, false /* token_auth */);
+  node_manager_server_.RegisterService(agent_manager_service_, false /* token_auth */);
   if (RayConfig::instance().use_ray_syncer()) {
-    periodical_runner_.RunFnPeriodically(
-        [this]() {
-          auto now = absl::Now();
-          auto threshold =
-              now - absl::Milliseconds(
-                        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
-          auto &resource_manager =
-              cluster_resource_scheduler_->GetClusterResourceManager();
-          for (auto &[node_id, resource] : resource_message_udpated_) {
-            auto modified_ts = resource_manager.GetNodeResourceModifiedTs(
-                scheduling::NodeID(node_id.Binary()));
-            if (modified_ts && *modified_ts < threshold) {
-              UpdateResourceUsage(node_id, resource);
-            }
-          }
-        },
-        RayConfig::instance().ray_syncer_message_refresh_interval_ms());
     node_manager_server_.RegisterService(ray_syncer_service_);
   }
   node_manager_server_.Run();
@@ -414,7 +427,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
       std::move(options),
       /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_service_, task, delay_ms);
+        return execute_after(io_service_, task, std::chrono::milliseconds(delay_ms));
       },
       /*runtime_env_agent_factory=*/
       [this](const std::string &ip_address, int port) {
@@ -441,10 +454,44 @@ ray::Status NodeManager::RegisterGcs() {
 
   // If the node resource message is received first and then the node message is received,
   // ForwardTask will throw exception, because it can't get node info.
-  auto on_done = [](Status status) { RAY_CHECK_OK(status); };
+  auto on_node_change_subscribe_done = [this](Status status) {
+    RAY_CHECK_OK(status);
+
+    if (RayConfig::instance().use_ray_syncer()) {
+      // Register resource manager and scheduler
+      ray_syncer_.Register(
+          /* message_type */ syncer::MessageType::RESOURCE_VIEW,
+          /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
+          /* receiver */ this,
+          /* pull_from_reporter_interval_ms */
+          RayConfig::instance().raylet_report_resources_period_milliseconds());
+
+      // Register a commands channel.
+      // It's only used for GC right now.
+      ray_syncer_.Register(
+          /* message_type */ syncer::MessageType::COMMANDS,
+          /* reporter */ this,
+          /* receiver */ this,
+          /* pull_from_reporter_interval_ms */ 0);
+
+      auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
+      ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
+      periodical_runner_.RunFnPeriodically(
+          [this] {
+            auto triggered_by_global_gc = TryLocalGC();
+            // If plasma store is under high pressure, we should try to schedule a global
+            // gc.
+            if (triggered_by_global_gc) {
+              ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
+            }
+          },
+          RayConfig::instance().raylet_check_gc_period_milliseconds(),
+          "NodeManager.CheckGC");
+    }
+  };
   // Register a callback to monitor new nodes and a callback to monitor removed nodes.
-  RAY_RETURN_NOT_OK(
-      gcs_client_->Nodes().AsyncSubscribeToNodeChange(on_node_change, on_done));
+  RAY_RETURN_NOT_OK(gcs_client_->Nodes().AsyncSubscribeToNodeChange(
+      on_node_change, on_node_change_subscribe_done));
 
   // Subscribe to all unexpected failure notifications from the local and
   // remote raylets. Note that this does not include workers that failed due to
@@ -509,38 +556,6 @@ ray::Status NodeManager::RegisterGcs() {
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
   }
-
-  if (RayConfig::instance().use_ray_syncer()) {
-    // Register resource manager and scheduler
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::RESOURCE_VIEW,
-        /* reporter */ &cluster_resource_scheduler_->GetLocalResourceManager(),
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */
-        RayConfig::instance().raylet_report_resources_period_milliseconds());
-
-    // Register a commands channel.
-    // It's only used for GC right now.
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::COMMANDS,
-        /* reporter */ this,
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */ 0);
-
-    auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
-    ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-    periodical_runner_.RunFnPeriodically(
-        [this] {
-          auto triggered_by_global_gc = TryLocalGC();
-          // If plasma store is under high pressure, we should try to schedule a global
-          // gc.
-          if (triggered_by_global_gc) {
-            ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-          }
-        },
-        RayConfig::instance().raylet_check_gc_period_milliseconds(),
-        "NodeManager.CheckGC");
-  }
   // Raylet periodically check whether it's alive in GCS.
   // For failure cases, GCS might think this raylet dead, but this
   // raylet still think it's alive. This could happen when the cluster setup is wrong,
@@ -564,8 +579,8 @@ ray::Status NodeManager::RegisterGcs() {
                       << "GCS is not backed by a DB and restarted or there is data loss "
                       << "in the DB.";
                 }
-                *checking_ptr = false;
               }
+              *checking_ptr = false;
             },
             /* timeout_ms = */ 30000));
       },
@@ -619,7 +634,7 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
   RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
                 << job_data.driver_pid() << " is dead: " << job_data.is_dead()
-                << " driver address: " << job_data.driver_ip_address();
+                << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -879,10 +894,13 @@ void NodeManager::QueryAllWorkerStates(
   // Query all workers.
   auto rpc_replied = std::make_shared<size_t>(0);
   auto num_workers = all_workers.size();
+  bool all_dead = true;
   for (const auto &worker : all_workers) {
     if (worker->IsDead()) {
+      *rpc_replied += 1;
       continue;
     }
+    all_dead = false;
     rpc::GetCoreWorkerStatsRequest request;
     request.set_intended_worker_id(worker->WorkerId().Binary());
     request.set_include_memory_info(include_memory_info);
@@ -906,6 +924,9 @@ void NodeManager::QueryAllWorkerStates(
             send_reply_callback(Status::OK(), nullptr, nullptr);
           }
         });
+  }
+  if (all_dead) {
+    send_reply_callback(Status::OK(), nullptr, nullptr);
   }
 }
 
@@ -1001,23 +1022,30 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   remote_node_manager_addresses_[node_id] =
       std::make_pair(node_info.node_manager_address(), node_info.node_manager_port());
 
-  // Fetch resource info for the remote node and update cluster resource map.
-  RAY_CHECK_OK(gcs_client_->NodeResources().AsyncGetResources(
-      node_id,
-      [this, node_id](
-          Status status,
-          const boost::optional<gcs::NodeResourceInfoAccessor::ResourceMap> &data) {
-        if (data) {
-          ResourceRequest resources;
-          for (auto &resource_entry : *data) {
-            resources.Set(scheduling::ResourceID(resource_entry.first),
-                          FixedPoint(resource_entry.second->resource_capacity()));
-          }
-          if (ResourceCreateUpdated(node_id, resources)) {
-            cluster_task_manager_->ScheduleAndDispatchTasks();
-          }
-        }
-      }));
+  // Set node labels when node added.
+  absl::flat_hash_map<std::string, std::string> labels(node_info.labels().begin(),
+                                                       node_info.labels().end());
+  cluster_resource_scheduler_->GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id.Binary()), labels);
+
+  // TODO: Always use the message from ray syncer.
+  ResourceRequest resources;
+  for (auto &resource_entry : node_info.resources_total()) {
+    resources.Set(scheduling::ResourceID(resource_entry.first),
+                  FixedPoint(resource_entry.second));
+  }
+  if (ResourceCreateUpdated(node_id, resources)) {
+    cluster_task_manager_->ScheduleAndDispatchTasks();
+  }
+  // Update the resource view if a new message has been sent.
+  if (RayConfig::instance().use_ray_syncer()) {
+    if (auto sync_msg = ray_syncer_.GetSyncMessage(node_id.Binary(),
+                                                   syncer::MessageType::RESOURCE_VIEW)) {
+      if (sync_msg) {
+        ConsumeSyncMessage(sync_msg);
+      }
+    }
+  }
 }
 
 void NodeManager::NodeRemoved(const NodeID &node_id) {
@@ -1048,10 +1076,6 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Below, when we remove node_id from all of these data structures, we could
   // check that it is actually removed, or log a warning otherwise, but that may
   // not be necessary.
-
-  // Remove the messages received
-  resource_message_udpated_.erase(node_id);
-
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
           scheduling::NodeID(node_id.Binary()))) {
@@ -1375,6 +1399,7 @@ void NodeManager::ProcessRegisterClientRequestMessage(
     // Send the reply callback only after registration fully completes at the GCS.
     auto cb = [this,
                worker_ip_address,
+               worker_id,
                pid,
                job_id,
                job_config,
@@ -1382,8 +1407,15 @@ void NodeManager::ProcessRegisterClientRequestMessage(
                send_reply_callback = std::move(send_reply_callback)](const Status &status,
                                                                      int assigned_port) {
       if (status.ok()) {
+        rpc::Address driver_address;
+        // Assume raylet ID is the same as the node ID.
+        driver_address.set_raylet_id(self_node_id_.Binary());
+        driver_address.set_ip_address(worker_ip_address);
+        driver_address.set_port(assigned_port);
+        driver_address.set_worker_id(worker_id.Binary());
         auto job_data_ptr = gcs::CreateJobTableData(
-            job_id, /*is_dead*/ false, worker_ip_address, pid, entrypoint, job_config);
+            job_id, /*is_dead*/ false, driver_address, pid, entrypoint, job_config);
+
         RAY_CHECK_OK(gcs_client_->Jobs().AsyncAdd(
             job_data_ptr,
             [send_reply_callback = std::move(send_reply_callback), assigned_port](
@@ -1749,6 +1781,13 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest request,
                                             rpc::UpdateResourceUsageReply *reply,
                                             rpc::SendReplyCallback send_reply_callback) {
+  if (RayConfig::instance().use_ray_syncer()) {
+    RAY_LOG(WARNING)
+        << "There is a GCS outside of this cluster sending message to this raylet.";
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+    return;
+  }
+
   rpc::ResourceUsageBroadcastData resource_usage_batch;
   resource_usage_batch.ParseFromString(request.serialized_resource_usage_batch());
   // When next_resource_seq_no_ == 0 it means it just started.
@@ -1765,6 +1804,7 @@ void NodeManager::HandleUpdateResourceUsage(rpc::UpdateResourceUsageRequest requ
         << next_resource_seq_no_ << ", but got: " << resource_usage_batch.seq_no() << ".";
     if (resource_usage_batch.seq_no() < next_resource_seq_no_) {
       RAY_LOG(WARNING) << "Discard the the resource update since local version is newer";
+      send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
     }
   }
@@ -1859,14 +1899,7 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   }
 
   auto task_spec = task.GetTaskSpecification();
-  // We floor the available CPUs to the nearest integer to avoid starting too
-  // many workers when there is less than 1 CPU left. Otherwise, we could end
-  // up repeatedly starting the worker, then killing it because it idles for
-  // too long. The downside is that we will be slower to schedule tasks that
-  // could use a fraction of a CPU.
-  int64_t available_cpus = static_cast<int64_t>(
-      cluster_resource_scheduler_->GetLocalResourceManager().GetLocalAvailableCpus());
-  worker_pool_.PrestartWorkers(task_spec, request.backlog_size(), available_cpus);
+  worker_pool_.PrestartWorkers(task_spec, request.backlog_size());
 
   auto send_reply_callback_wrapper =
       [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
@@ -2028,7 +2061,7 @@ void NodeManager::HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
     return;
   }
   auto shutdown_after_reply = []() {
-    rpc::DrainAndResetServerCallExecutor();
+    rpc::DrainServerCallExecutor();
     // Note that the callback is posted to the io service after the shutdown GRPC request
     // is replied. Otherwise, the RPC might not be replied to GCS before it shutsdown
     // itself. Implementation note: When raylet is shutdown by ray stop, the CLI sends a
@@ -2510,7 +2543,7 @@ void NodeManager::HandleGetNodeStats(rpc::GetNodeStatsRequest node_stats_request
                                      rpc::GetNodeStatsReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) {
   // Report object spilling stats.
-  local_object_manager_.FillObjectSpillingStats(reply);
+  local_object_manager_.FillObjectStoreStats(reply);
   // Report object store stats.
   object_manager_.FillObjectStoreStats(reply);
   // As a result of the HandleGetNodeStats, we are collecting information from all
@@ -2790,7 +2823,6 @@ void NodeManager::ConsumeSyncMessage(
     }
     // Message view shouldn't carry this field.
     RAY_CHECK(!data.should_global_gc());
-    resource_message_udpated_[node_id] = std::move(data);
   } else if (message->message_type() == syncer::MessageType::COMMANDS) {
     rpc::ResourcesData data;
     data.ParseFromString(message->sync_message());

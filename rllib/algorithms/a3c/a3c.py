@@ -6,6 +6,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated, ALGO_DEPRECATION_WARNING
 from ray.rllib.utils.metrics import (
     APPLY_GRADS_TIMER,
     GRAD_WAIT_TIMER,
@@ -67,7 +68,13 @@ class A3CConfig(AlgorithmConfig):
         self.use_critic = True
         self.use_gae = True
         self.lambda_ = 1.0
+
         self.grad_clip = 40.0
+        # Note: Only when using _enable_learner_api=True can the clipping mode be
+        # configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
         self.lr_schedule = None
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
@@ -168,6 +175,12 @@ class A3CConfig(AlgorithmConfig):
             raise ValueError("`num_workers` for A3C must be >= 1!")
 
 
+@Deprecated(
+    old="rllib/algorithms/a3c/",
+    new="rllib_contrib/a3c/",
+    help=ALGO_DEPRECATION_WARNING,
+    error=False,
+)
 class A3C(Algorithm):
     @classmethod
     @override(Algorithm)

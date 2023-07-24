@@ -21,6 +21,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/grpc_util.h"
+#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/stats/metric.h"
 #include "ray/stats/metric_defs.h"
@@ -32,9 +33,14 @@ namespace rpc {
 /// This pool is shared across gRPC servers.
 boost::asio::thread_pool &GetServerCallExecutor();
 
-/// For testing
-/// Drain the executor and reset it.
-void DrainAndResetServerCallExecutor();
+/// Drain the executor.
+void DrainServerCallExecutor();
+
+/// Reset the server call executor.
+/// Testing only. After you drain the executor
+/// you need to regenerate the executor
+/// because they are global.
+void ResetServerCallExecutor();
 
 /// Represents the callback function to be called when a `ServiceHandler` finishes
 /// handling a request.
@@ -57,6 +63,16 @@ enum class ServerCallState {
 };
 
 class ServerCallFactory;
+
+/// Represents a service handler that might not
+/// be ready to serve RPCs immediately after construction.
+class DelayedServiceHandler {
+ public:
+  virtual ~DelayedServiceHandler() = default;
+
+  /// Blocks until the service is ready to serve RPCs.
+  virtual void WaitUntilInitialized() = 0;
+};
 
 /// Represents an incoming request of a gRPC server.
 ///
@@ -142,13 +158,17 @@ class ServerCallImpl : public ServerCall {
   /// \param[in] io_service The event loop.
   /// \param[in] call_name The name of the RPC call.
   /// \param[in] record_metrics If true, it records and exports the gRPC server metrics.
+  /// \param[in] preprocess_function If not nullptr, it will be called before handling
+  /// request.
   ServerCallImpl(
       const ServerCallFactory &factory,
       ServiceHandler &service_handler,
       HandleRequestFunction<ServiceHandler, Request, Reply> handle_request_function,
       instrumented_io_context &io_service,
       std::string call_name,
-      bool record_metrics)
+      const ClusterID &cluster_id,
+      bool record_metrics,
+      std::function<void()> preprocess_function = nullptr)
       : state_(ServerCallState::PENDING),
         factory_(factory),
         service_handler_(service_handler),
@@ -156,6 +176,7 @@ class ServerCallImpl : public ServerCall {
         response_writer_(&context_),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
@@ -188,6 +209,9 @@ class ServerCallImpl : public ServerCall {
   }
 
   void HandleRequestImpl() {
+    if constexpr (std::is_base_of_v<DelayedServiceHandler, ServiceHandler>) {
+      service_handler_.WaitUntilInitialized();
+    }
     state_ = ServerCallState::PROCESSING;
     // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
     // a different thread, and will cause `this` to be deleted.
@@ -250,6 +274,7 @@ class ServerCallImpl : public ServerCall {
   /// Tell gRPC to finish this request and send reply asynchronously.
   void SendReply(const Status &status) {
     if (io_service_.stopped()) {
+      RAY_LOG_EVERY_N(WARNING, 100) << "Not sending reply because executor stopped.";
       return;
     }
     state_ = ServerCallState::SENDING_REPLY;
@@ -292,6 +317,10 @@ class ServerCallImpl : public ServerCall {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  const ClusterID &cluster_id_;
 
   /// The callback when sending reply successes.
   std::function<void()> send_reply_success_callback_ = nullptr;
@@ -355,6 +384,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       instrumented_io_context &io_service,
       std::string call_name,
+      const ClusterID &cluster_id,
       int64_t max_active_rpcs,
       bool record_metrics)
       : service_(service),
@@ -364,6 +394,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
         cq_(cq),
         io_service_(io_service),
         call_name_(std::move(call_name)),
+        cluster_id_(cluster_id),
         max_active_rpcs_(max_active_rpcs),
         record_metrics_(record_metrics) {}
 
@@ -376,6 +407,7 @@ class ServerCallFactoryImpl : public ServerCallFactory {
                                                            handle_request_function_,
                                                            io_service_,
                                                            call_name_,
+                                                           cluster_id_,
                                                            record_metrics_);
     /// Request gRPC runtime to starting accepting this kind of request, using the call as
     /// the tag.
@@ -410,6 +442,10 @@ class ServerCallFactoryImpl : public ServerCallFactory {
 
   /// Human-readable name for this RPC call.
   std::string call_name_;
+
+  /// ID of the cluster to check incoming RPC calls against.
+  /// Check skipped if empty.
+  const ClusterID cluster_id_;
 
   /// Maximum request number to handle at the same time.
   /// -1 means no limit.

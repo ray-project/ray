@@ -369,7 +369,7 @@ class TrialRunnerTest2(unittest.TestCase):
         #         checkpoint_00000/
         trial = Trial(
             "__fake",
-            local_dir=tempdir,
+            experiment_path=tempdir,
             checkpoint_config=CheckpointConfig(num_to_keep=2),
         )
         trial.init_local_path()
@@ -467,4 +467,4 @@ class FixedResourceTrialRunnerTest2(TrialRunnerTest2):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

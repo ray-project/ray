@@ -9,13 +9,12 @@ import re
 import shutil
 import time
 import traceback
-from typing import Callable, List, Set
+from typing import Callable, List, Optional, Set
 
-import ray._private.gcs_pubsub as gcs_pubsub
+from ray._raylet import GcsClient
 import ray._private.ray_constants as ray_constants
 import ray._private.services as services
 import ray._private.utils
-from ray._private.gcs_pubsub import GcsPublisher
 from ray._private.ray_logging import setup_component_logger
 
 # Logger for this module. It should be configured at the entry point
@@ -135,9 +134,10 @@ class LogMonitor:
     def __init__(
         self,
         logs_dir,
-        gcs_publisher: gcs_pubsub.GcsPublisher,
+        gcs_publisher,
         is_proc_alive_fn: Callable[[int], bool],
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
+        gcs_address: Optional[str] = None,
     ):
         """Initialize the log monitor object."""
         self.ip: str = services.get_node_ip_address()
@@ -149,6 +149,24 @@ class LogMonitor:
         self.can_open_more_files: bool = True
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
+        self.is_autoscaler_v2: bool = self.get_is_autoscaler_v2(gcs_address)
+
+        logger.info(
+            f"Starting log monitor with [max open files={max_files_open}],"
+            f" [is_autoscaler_v2={self.is_autoscaler_v2}]"
+        )
+
+    def get_is_autoscaler_v2(self, gcs_address: Optional[str]) -> bool:
+        """Check if autoscaler v2 is enabled."""
+        if gcs_address is None:
+            return False
+
+        if not ray.experimental.internal_kv._internal_kv_initialized():
+            gcs_client = GcsClient(address=gcs_address)
+            ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+        return is_autoscaler_v2()
 
     def _close_all_files(self):
         """Close all open files (so that we can open more)."""
@@ -196,27 +214,31 @@ class LogMonitor:
 
     def update_log_filenames(self):
         """Update the list of log files to monitor."""
+        monitor_log_paths = []
         # output of user code is written here
-        log_file_paths = glob.glob(f"{self.logs_dir}/worker*[.out|.err]") + glob.glob(
-            f"{self.logs_dir}/java-worker*.log"
-        )
+        monitor_log_paths += glob.glob(
+            f"{self.logs_dir}/worker*[.out|.err]"
+        ) + glob.glob(f"{self.logs_dir}/java-worker*.log")
         # segfaults and other serious errors are logged here
-        raylet_err_paths = glob.glob(f"{self.logs_dir}/raylet*.err")
+        monitor_log_paths += glob.glob(f"{self.logs_dir}/raylet*.err")
         # monitor logs are needed to report autoscaler events
-        monitor_log_paths = glob.glob(f"{self.logs_dir}/monitor.log")
+        # TODO(rickyx): remove this after migration.
+        if not self.is_autoscaler_v2:
+            # We publish monitor logs in autoscaler v1
+            monitor_log_paths += glob.glob(f"{self.logs_dir}/monitor.log")
+        else:
+            # We publish autoscaler events directly in autoscaler v2
+            monitor_log_paths += glob.glob(
+                f"{self.logs_dir}/events/event_AUTOSCALER.log"
+            )
+
         # If gcs server restarts, there can be multiple log files.
-        gcs_err_path = glob.glob(f"{self.logs_dir}/gcs_server*.err")
+        monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.err")
+
         # runtime_env setup process is logged here
-        runtime_env_setup_paths = []
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
-            runtime_env_setup_paths = glob.glob(f"{self.logs_dir}/runtime_env*.log")
-        for file_path in (
-            log_file_paths
-            + raylet_err_paths
-            + gcs_err_path
-            + monitor_log_paths
-            + runtime_env_setup_paths
-        ):
+            monitor_log_paths += glob.glob(f"{self.logs_dir}/runtime_env*.log")
+        for file_path in monitor_log_paths:
             if os.path.isfile(file_path) and file_path not in self.log_filenames:
                 worker_match = WORKER_LOG_PATTERN.match(file_path)
                 if worker_match:
@@ -369,6 +391,13 @@ class LogMonitor:
                             ray_constants.LOG_PREFIX_JOB_ID, 1
                         )[1]
                     elif next_line.startswith(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_START
+                    ) or next_line.startswith(
+                        ray_constants.LOG_PREFIX_TASK_ATTEMPT_END
+                    ):
+                        # Ignore these magic tokens for task logs.
+                        pass
+                    elif next_line.startswith(
                         "Windows fatal exception: access violation"
                     ):
                         # We are suppressing the
@@ -399,7 +428,7 @@ class LogMonitor:
                     file_info.worker_pid = "raylet"
                 elif "/gcs_server" in filename:
                     file_info.worker_pid = "gcs_server"
-                elif "/monitor" in filename:
+                elif "/monitor" in filename or "event_AUTOSCALER" in filename:
                     file_info.worker_pid = "autoscaler"
                 elif "/runtime_env" in filename:
                     file_info.worker_pid = "runtime_env"
@@ -525,14 +554,17 @@ if __name__ == "__main__":
     )
 
     log_monitor = LogMonitor(
-        args.logs_dir, gcs_pubsub.GcsPublisher(address=args.gcs_address), is_proc_alive
+        args.logs_dir,
+        ray._raylet.GcsPublisher(address=args.gcs_address),
+        is_proc_alive,
+        gcs_address=args.gcs_address,
     )
 
     try:
         log_monitor.run()
     except Exception as e:
         # Something went wrong, so push an error to all drivers.
-        gcs_publisher = GcsPublisher(address=args.gcs_address)
+        gcs_publisher = ray._raylet.GcsPublisher(address=args.gcs_address)
         traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
         message = (
             f"The log monitor on node {platform.node()} "

@@ -7,7 +7,6 @@ import time
 import traceback
 from collections import deque
 from enum import Enum
-from functools import partial
 from typing import Callable, Dict, Iterable, Optional, Set, Union
 
 import ray
@@ -57,6 +56,10 @@ ENV_VARS_TO_PROPAGATE = {
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     "TUNE_CHECKPOINT_CLOUD_RETRY_NUM",
     "TUNE_CHECKPOINT_CLOUD_RETRY_WAIT_TIME_S",
+    "AWS_ACCESS_KEY_ID",
+    "AWS_SECRET_ACCESS_KEY",
+    "AWS_SECURITY_TOKEN",
+    "AWS_SESSION_TOKEN",
 }
 
 
@@ -239,15 +242,10 @@ class RayTrialExecutor:
             os.getenv("TUNE_RESULT_BUFFER_MAX_TIME_S", 100.0)
         )
 
-        # Default kwargs to pass to trainable
-        self._trainable_kwargs = {}
-
         # Trial dir behavior
         self._chdir_to_trial_dir = chdir_to_trial_dir
 
-    def setup(
-        self, max_pending_trials: int, trainable_kwargs: Optional[Dict] = None
-    ) -> None:
+    def setup(self, max_pending_trials: int) -> None:
         if self._actor_cache.num_cached_objects:
             logger.warning(
                 "Cannot update maximum number of queued actors for reuse "
@@ -255,8 +253,6 @@ class RayTrialExecutor:
             )
         else:
             self._max_staged_actors = max_pending_trials
-
-        self._trainable_kwargs = trainable_kwargs or {}
 
     def set_status(self, trial: Trial, status: str) -> None:
         """Sets status and checkpoints metadata if needed.
@@ -382,7 +378,6 @@ class RayTrialExecutor:
 
         trainable_kwargs = _get_trainable_kwargs(
             trial,
-            additional_kwargs=self._trainable_kwargs,
             should_chdir=self._chdir_to_trial_dir,
         )
         logger_creator = trainable_kwargs["logger_creator"]
@@ -946,13 +941,6 @@ class RayTrialExecutor:
                     dir_or_data=value,
                     storage_mode=storage,
                     metrics=result,
-                    local_to_remote_path_fn=partial(
-                        TrainableUtil.get_remote_storage_path,
-                        logdir=trial.local_path,
-                        remote_checkpoint_dir=trial.remote_path,
-                    )
-                    if trial.uses_cloud_checkpointing
-                    else None,
                 )
                 trial.saving_to = checkpoint
                 self._futures[value] = (_ExecutorEventType.SAVING_RESULT, trial)
