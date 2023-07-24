@@ -135,9 +135,11 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
     int64_t *total_violations,
     bool *is_infeasible) {
   // The zero cpu actor is a special case that must be handled the same way by all
-  // scheduling policies, except for HARD node affnity scheduling policy.
+  // scheduling policies, except for HARD node affinity scheduling policy,
+  // and placement group scheduling policty.
   if (actor_creation && resource_request.IsEmpty() &&
-      !IsHardNodeAffinitySchedulingStrategy(scheduling_strategy)) {
+      !IsHardNodeAffinitySchedulingStrategy(scheduling_strategy) &&
+      !IsAffinityWithBundleSchedule(scheduling_strategy)) {
     return scheduling_policy_->Schedule(resource_request, SchedulingOptions::Random());
   }
 
