@@ -353,7 +353,7 @@ class DataIterator(abc.ABC):
             get_device,
         )
 
-        if collate_fn is not None and (dtypes is not None or device is not None):
+        if collate_fn is not None and (dtypes is not None or device != "auto"):
             raise ValueError(
                 "collate_fn cannot be used with dtypes and device."
                 "You should manually move the output Torch tensors to the"
@@ -361,7 +361,7 @@ class DataIterator(abc.ABC):
             )
 
         if collate_fn is None:
-            # Automatically move torch tensors to the appropriate devic
+            # Automatically move torch tensors to the appropriate device
             # when used with Ray Train.
             if device == "auto":
                 default_device = get_device()
