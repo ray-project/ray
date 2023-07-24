@@ -11,6 +11,7 @@ from pathlib import Path
 import torch.nn as nn
 from ray import tune
 import tqdm
+import tempfile
 
 from accelerate import Accelerator, DeepSpeedPlugin
 from accelerate.utils import DummyOptim, DummyScheduler, set_seed
@@ -179,7 +180,7 @@ def training_function(kwargs: dict):
     # Get the trial directory from Ray Train
     # This will be local to every node (and will get synced to remote storage if
     # provided.)
-    ckpt_path = session.get_trial_dir()
+    ckpt_path = tempfile.mkdtemp()
 
     pretrained_path = get_pretrained_path(model_id)
     print(f"Loading model from {pretrained_path} ...")
@@ -391,7 +392,7 @@ def training_function(kwargs: dict):
             # will include the checkpoint files created by the Rank_0.
             # Note that this will not delete the checkpoints from the previous
             # iterations.
-            # checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
+            checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
 
 
@@ -533,7 +534,7 @@ def main():
             # Turn off syncing artifact as as of 2.6 it introduces a resource
             # contention between checkpoint syncronizer and artifact syncronizer that
             # can sometimes result in failed checkpoint syncing
-            sync_config=tune.SyncConfig(sync_artifacts=False),
+            # sync_config=tune.SyncConfig(sync_artifacts=False),
             storage_path=storage_path,
             checkpoint_config=air.CheckpointConfig(
                 num_to_keep=1,
@@ -563,10 +564,10 @@ def main():
         # ),
     )
 
-    trainer.fit()
+    results = trainer.fit()
 
-    # print("results are stored in:")
-    # print(results.checkpoint.uri)
+    print("results are stored in:")
+    print(results.checkpoint.uri)
 
 
 if __name__ == "__main__":
