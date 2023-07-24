@@ -3,6 +3,8 @@ import os
 import time
 import signal
 import sys
+import asyncio
+import async_timeout
 
 import grpc
 import pytest
@@ -242,6 +244,23 @@ async def test_check_liveness(monkeypatch, ray_start_cluster):
     await async_wait_for_condition_async_predicate(
         check, expect_liveness=[True, False, False]
     )
+
+
+@pytest.mark.asyncio
+async def test_gcs_aio_client_is_async(ray_start_regular):
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    gcs_client = gcs_utils.GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+
+    await gcs_client.internal_kv_put(b"A", b"B", False, b"NS", timeout=2)
+    with async_timeout.timeout(3):
+        none, result = await asyncio.gather(
+            asyncio.sleep(2),
+            gcs_client.internal_kv_get(b"A", b"NS", timeout=2))
+        assert result == b"B"
+
+    await gcs_client.internal_kv_keys(b"A", b"NS", timeout=2)
+
+    await gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
 @pytest.fixture(params=[True, False])

@@ -54,18 +54,17 @@ EVENT_LOOP = get_or_create_event_loop()
 
 def get_node_id_for_supervisor_actor_for_job(
         address: str, job_submission_id: str) -> str:
-    actor = list_actors(address=address,
-                        filters=[
-                            ("job_id", "=", JOB_ACTOR_NAME_TEMPLATE.format(
-                                job_id=job_submission_id)),  # job_id
-                            ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE),
-                        ]
-                        )[0]
-    return actor.node_id
+    actors = list_actors(address=address,
+                         filters=[
+                             ("ray_namespace", "=", SUPERVISOR_ACTOR_RAY_NAMESPACE)])
+    for actor in actors:
+        if actor.name == JOB_ACTOR_NAME_TEMPLATE.format(job_id=job_submission_id):
+            return actor.node_id
+    raise ValueError(f"actor not found for job_submission_id {job_submission_id}")
 
 
-def get_node_ip_by_id(address: str, node_id: str) -> str:
-    node = get_node(id=node_id, address=address)
+def get_node_ip_by_id(node_id: str) -> str:
+    node = get_node(id=node_id)
     return node.node_ip
 
 
