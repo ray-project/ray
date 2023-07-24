@@ -31,9 +31,6 @@ from ray.dashboard.modules.job.common import (
     JOB_ACTOR_NAME_TEMPLATE,
     SUPERVISOR_ACTOR_RAY_NAMESPACE,
 )
-from ray.dashboard.modules.job.utils import (
-    validate_request_type,
-)
 from ray.dashboard.tests.conftest import *  # noqa
 from ray.runtime_env.runtime_env import RuntimeEnv, RuntimeEnvConfig
 from ray.util.state import (

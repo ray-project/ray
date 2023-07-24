@@ -6,7 +6,6 @@ import sys
 import asyncio
 import async_timeout
 
-import grpc
 import pytest
 import ray
 import redis
