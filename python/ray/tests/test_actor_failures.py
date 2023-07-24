@@ -935,6 +935,38 @@ def test_exit_actor_queued(shutdown_only):
     assert " Worker unexpectedly exits" not in str(exc_info.value)
 
 
+def test_actor_graceful_shutdown(shutdown_only):
+    ray.init(
+        _system_config={
+            "graceful_actor_worker_shutdown": True,
+        },
+    )
+
+    @ray.remote()
+    class Consumer:
+        def consume(self, refs):
+            self.refs = refs
+
+        def read(self):
+            return ray.get(self.refs[0])
+
+    @ray.remote(max_restarts=1)
+    class Producer:
+        def __init__(self, consumer):
+            self.consumer = consumer
+
+        def produce(self):
+            obj_ref = ray.put(1)
+            self.consumer.consume.remote([obj_ref])
+
+    consumer = Consumer.remote()
+    producer = Producer.remote(consumer)
+    ray.get(producer.produce.remote())
+    del producer
+
+    assert ray.get(consumer.read.remote()) == 1
+
+
 if __name__ == "__main__":
     import pytest
 
