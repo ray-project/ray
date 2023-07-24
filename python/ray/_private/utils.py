@@ -1989,9 +1989,18 @@ def pasre_pg_formatted_resources_to_original(
     return original_resources
 
 
-async def get_async_gen_result_from_queue(queue):
+async def get_async_gen_result_from_queue(queue: asyncio.Queue):
+    """Keep getting the result from the asyncio queue.
+
+    This method should be only used for streaming generator.
+    When the queue wouldn't have any item anymore, it will
+    contain the `StopAsyncIteration` exception.
+    """
     while True:
         output = await queue.get()
-        yield output
+
         if isinstance(output, StopAsyncIteration):
             break
+        elif isinstance(output, Exception):
+            raise output
+        yield output

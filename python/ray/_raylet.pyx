@@ -347,12 +347,10 @@ class StreamingObjectRefGenerator:
             return ObjectRef.nil()
 
         try:
-            print("SANG-TODO next async")
             ref = core_worker.try_read_next_object_ref_stream(
                 self._generator_ref)
             assert not ref.is_nil()
         except ObjectRefStreamEndOfStreamError:
-            print("SANG-TODO end of the stream")
             if self._generator_task_exception:
                 # Exception has been returned. raise StopIteration.
                 raise StopAsyncIteration
@@ -946,21 +944,16 @@ cdef execute_streaming_generator(
                     function_descriptor,
                     name_of_concurrency_group_to_execute,
                     True)
-                print("SANG-TODO Output!", output)
             else:
                 output = next(generator)
         except AsyncioActorExit:
             # Make the task handle this exception.
-            print("SANG-TODO AsyncioActorExit!")
             raise
         except StopAsyncIteration:
-            print("SANG-TODO Finished!")
             break
         except StopIteration:
-            print("SANG-TODO StopIteration!")
             break
         except Exception as e:
-            print("SANG-TODO Exception!")
             create_generator_error_object(
                 e,
                 worker,
@@ -1452,16 +1445,19 @@ cdef void execute_task(
                             # We are using a queue to get the result to avoid
                             # the issue https://github.com/ray-project/ray/issues/37147.
                             # The logic is as follow.
-                            # - Run an async generator and put the result (including the
-                            #   exception) to the queue. It has to be none-blocking. 
-                            # - Create a separate async generator that that get() the
-                            #   value from the queue until there's StopAsyncIteration.
+                            # - Run an async generator and put the result
+                            #  (including the exception) to the queue.
+                            # It has to be none-blocking.
+                            # - Create a separate async generator that that
+                            #   get() the value from the queue until there's
+                            #   StopAsyncIteration.
 
                             async def create_queue():
                                 return asyncio.Queue()
 
-                            # NOTE: queue is not thread safe. It should be only used
-                            # within the event loop from run_async_func_or_coro_in_event_loop.
+                            # NOTE: queue is not thread safe.
+                            # It should be only used within the event loop from
+                            # run_async_func_or_coro_in_event_loop.
                             queue = core_worker.run_async_func_or_coro_in_event_loop(
                                 create_queue,
                                 function_descriptor,
@@ -1472,8 +1468,8 @@ cdef void execute_task(
                                 while True:
                                     try:
                                         output = await outputs.__anext__()
-                                        # We need it to force context switch so that queue can
-                                        # pick up the result.
+                                        # We need it to force context
+                                        # switch so that queue can pick up the result.
                                         await asyncio.sleep(0)
                                     except StopAsyncIteration as e:
                                         output = e
@@ -1490,8 +1486,9 @@ cdef void execute_task(
                                 False)
 
                             # Looks like you cannot define async generator from
-                            # Cython, so you have to import get_async_gen_result_from_queue.
-                            outputs = ray._private.utils.get_async_gen_result_from_queue(queue)
+                            # Cython, so you have to import
+                            # get_async_gen_result_from_queue.
+                            outputs = ray._private.utils.get_async_gen_result_from_queue(queue) # noqa
 
                         execute_streaming_generator(
                                 outputs,
