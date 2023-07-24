@@ -20,6 +20,7 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
@@ -118,7 +119,14 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
-      exiting_detail_(std::nullopt) {
+      exiting_detail_(std::nullopt),
+      pid_(getpid()) {
+  // Notify that core worker is initialized.
+  auto initialzed_scope_guard = absl::MakeCleanup([this] {
+    absl::MutexLock lock(&initialize_mutex_);
+    initialized_ = true;
+    intialize_cv_.SignalAll();
+  });
   RAY_LOG(DEBUG) << "Constructing CoreWorker, worker_id: " << worker_id;
 
   // Initialize task receivers.
@@ -206,7 +214,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       std::make_unique<rpc::GrpcServer>(WorkerTypeString(options_.worker_type),
                                         assigned_port,
                                         options_.node_ip_address == "127.0.0.1");
-  core_worker_server_->RegisterService(grpc_service_);
+  core_worker_server_->RegisterService(grpc_service_, false /* token_auth */);
   core_worker_server_->Run();
 
   // Set our own address.
@@ -321,6 +329,13 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
+        rpc::ErrorType error_type;
+        if (obj.IsException(&error_type) &&
+            error_type == rpc::ErrorType::END_OF_STREAMING_GENERATOR) {
+          // End-of-stream ObjectRefs are sentinels and should never get
+          // returned to the caller.
+          return;
+        }
         // Run this on the event loop to avoid calling back into the language runtime
         // from the middle of user operations.
         io_service_.post(
@@ -916,7 +931,7 @@ void CoreWorker::RegisterToGcs(int64_t worker_launch_time_ms,
   worker_data->mutable_worker_info()->insert(worker_info.begin(), worker_info.end());
 
   worker_data->set_is_alive(true);
-  worker_data->set_pid(getpid());
+  worker_data->set_pid(pid_);
   worker_data->set_start_time_ms(current_sys_time_ms());
   worker_data->set_worker_launch_time_ms(worker_launch_time_ms);
   worker_data->set_worker_launched_time_ms(worker_launched_time_ms);
@@ -1942,7 +1957,6 @@ Status CoreWorker::CreateActor(const RayFunction &function,
   const JobID job_id = worker_context_.GetCurrentJobID();
   // Propagate existing environment variable overrides, but override them with any new
   // ones
-  std::vector<ObjectID> return_ids;
   TaskSpecBuilder builder;
   auto new_placement_resources =
       AddPlacementGroupConstraint(actor_creation_options.placement_resources,
@@ -2544,10 +2558,14 @@ Status CoreWorker::ExecuteTask(
           task_spec,
           rpc::TaskStatus::RUNNING,
           /* include_task_info */ false,
-          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name));
+          worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_));
     } else {
       task_manager_->RecordTaskStatusEvent(
-          task_spec.AttemptNumber(), task_spec, rpc::TaskStatus::RUNNING);
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::RUNNING,
+          /* include_task_info */ false,
+          worker::TaskStatusEvent::TaskStateUpdate(pid_));
     }
 
     worker_context_.SetCurrentTask(task_spec);
@@ -3600,7 +3618,8 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_task_queue_length(task_queue_length_);
   stats->set_num_executed_tasks(num_executed_tasks_);
   stats->set_num_object_refs_in_scope(reference_counter_->NumObjectIDsInScope());
-  stats->set_num_owned_objects(reference_counter_->NumObjectOwnedByUs());
+  stats->set_num_owned_objects(reference_counter_->NumObjectsOwnedByUs());
+  stats->set_num_owned_actors(reference_counter_->NumActorsOwnedByUs());
   stats->set_ip_address(rpc_address_.ip_address());
   stats->set_port(rpc_address_.port());
   stats->set_pid(getpid());
@@ -3609,6 +3628,7 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_worker_id(worker_context_.GetWorkerID().Binary());
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
+  stats->set_num_running_tasks(current_tasks_.size());
   auto used_resources_map = stats->mutable_used_resources();
   for (auto const &it : *resource_ids_) {
     rpc::ResourceAllocations allocations;

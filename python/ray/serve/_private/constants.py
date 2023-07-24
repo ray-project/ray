@@ -1,5 +1,4 @@
 import os
-from enum import Enum
 
 #: Used for debugging to turn on DEBUG-level logs
 DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
@@ -142,20 +141,12 @@ RAY_SERVE_KV_TIMEOUT_S = float(os.environ.get("RAY_SERVE_KV_TIMEOUT_S", "0")) or
 # Timeout for GCS RPC request
 RAY_GCS_RPC_TIMEOUT_S = 3.0
 
-# Env var to control legacy sync deployment handle behavior in DAG.
-SYNC_HANDLE_IN_DAG_FEATURE_FLAG_ENV_KEY = "SERVE_DEPLOYMENT_HANDLE_IS_SYNC"
-
 # Maximum duration to wait until broadcasting a long poll update if there are
 # still replicas in the RECOVERING state.
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 # Minimum duration to wait until broadcasting model IDs.
 PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
-
-
-class ServeHandleType(str, Enum):
-    SYNC = "SYNC"
-    ASYNC = "ASYNC"
 
 
 # Deprecation message for V1 migrations.
@@ -205,7 +196,7 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # When turned on, *all* HTTP responses will use Ray streaming object refs.
 # Turning this FF on also enables RAY_SERVE_ENABLE_NEW_ROUTING.
 RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING = (
-    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING", "1") == "1"
 )
 
 # Request ID used for logging. Can be provided as a request
@@ -214,7 +205,7 @@ RAY_SERVE_REQUEST_ID_HEADER = "RAY_SERVE_REQUEST_ID"
 
 # Feature flag to enable power of two choices routing.
 RAY_SERVE_ENABLE_NEW_ROUTING = (
-    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "0") == "1"
+    os.environ.get("RAY_SERVE_ENABLE_NEW_ROUTING", "1") == "1"
     or RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 )
 

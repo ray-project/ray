@@ -129,7 +129,7 @@ class TuneController(_TuneControllerBase):
         self._actor_force_cleanup_timeout: int = 10
 
         # Reuse actors
-        self._reuse_actors = reuse_actors  # reuse_actors
+        self._reuse_actors = reuse_actors
         self._actor_cache = _ObjectCache(may_keep_one=True)
 
         # General trial behavior
@@ -549,6 +549,12 @@ class TuneController(_TuneControllerBase):
                 )
                 if not self._maybe_reuse_cached_actor(start_trial):
                     self._resources_to_pending_trials[resource].add(start_trial)
+                else:
+                    if start_trial not in self._staged_trials:
+                        self._staged_trials.add(start_trial)
+                        self._actor_cache.increase_max(
+                            start_trial.placement_group_factory
+                        )
 
     def _maybe_reuse_cached_actor(self, trial: Trial) -> bool:
         """Maybe reuse a cached actor for a trial.
