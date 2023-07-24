@@ -26,7 +26,7 @@ def test_python_version_default_cpu():
     env = populate_cluster_env_variables(test, ray_wheels_url="")
     result = render_yaml_template(TEST_APP_CONFIG_CPU, env=env)
 
-    assert result["base_image"] == "anyscale/ray:nightly-py37"
+    assert result["base_image"] == "anyscale/ray:nightly-py38"
 
 
 def test_python_version_39_cpu():
@@ -44,7 +44,7 @@ def test_python_version_default_gpu():
     env = populate_cluster_env_variables(test, ray_wheels_url="")
     result = render_yaml_template(TEST_APP_CONFIG_GPU, env=env)
 
-    assert result["base_image"] == "anyscale/ray-ml:nightly-py37-gpu"
+    assert result["base_image"] == "anyscale/ray-ml:nightly-py38-gpu"
 
 
 def test_python_version_39_gpu():

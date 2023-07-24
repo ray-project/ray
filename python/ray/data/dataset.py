@@ -2513,7 +2513,7 @@ class Dataset:
         ray_remote_args: Dict[str, Any] = None,
         **pandas_json_args,
     ) -> None:
-        """Writes the :class:`~ray.data.Dataset` to JSON files.
+        """Writes the :class:`~ray.data.Dataset` to JSON and JSONL files.
 
         The number of files is determined by the number of blocks in the dataset.
         To control the number of number of blocks, call
@@ -2529,10 +2529,16 @@ class Dataset:
         and pass it in as the ``block_path_provider`` argument.
 
         Examples:
-            Write the dataset as JSON files to a local directory.
+            Write the dataset as JSON file to a local directory.
 
             >>> import ray
-            >>> ds = ray.data.range(100)
+            >>> import pandas as pd
+            >>> ds = ray.data.from_pandas([pd.DataFrame({"one": [1], "two": ["a"]})])
+            >>> ds.write_json("local:///tmp/data")
+
+            Write the dataset as JSONL files to a local directory.
+
+            >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl")
             >>> ds.write_json("local:///tmp/data")
 
         Time complexity: O(dataset size / parallelism)
