@@ -150,6 +150,7 @@ from ray.exceptions import (
     AsyncioActorExit,
     PendingCallsLimitExceeded,
     RpcError,
+    ObjectRefStreamEndOfStreamError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -218,10 +219,6 @@ class ObjectRefGenerator:
 
     def __len__(self):
         return len(self._refs)
-
-
-class ObjectRefStreamEndOfStreamError(RayError):
-    pass
 
 
 class StreamingObjectRefGenerator:
@@ -323,6 +320,16 @@ class StreamingObjectRefGenerator:
                 raise StopIteration
         return ref
 
+    async def suppress_exceptions(self, ref: ObjectRef):
+        # Wrap a streamed ref to avoid asyncio warnings about not retrieving
+        # the exception when we are just waiting for the ref to become ready.
+        # The exception will get returned (or warned) to the user once they
+        # actually await the ref.
+        try:
+            await ref
+        except Exception:
+            pass
+
     async def _next_async(
             self,
             timeout_s: Optional[float] = None,
@@ -334,7 +341,8 @@ class StreamingObjectRefGenerator:
         ref = core_worker.peek_object_ref_stream(
             self._generator_ref)
         # TODO(swang): Avoid fetching the value.
-        ready, unready = await asyncio.wait([ref], timeout=timeout_s)
+        ready, unready = await asyncio.wait([self.suppress_exceptions(ref)],
+                                            timeout=timeout_s)
         if len(unready) > 0:
             return ObjectRef.nil()
 
@@ -2311,12 +2319,25 @@ cdef class GcsClient:
     def request_cluster_resource_constraint(
             self,
             bundles: c_vector[unordered_map[c_string, double]],
-            timeout=None):
+            timeout_s=None):
         cdef:
-            int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
         with nogil:
             check_status(self.inner.get().RequestClusterResourceConstraint(
                 timeout_ms, bundles))
+
+    @_auto_reconnect
+    def get_cluster_status(
+            self,
+            timeout_s=None):
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            c_string serialized_reply
+        with nogil:
+            check_status(self.inner.get().GetClusterStatus(timeout_ms,
+                         serialized_reply))
+
+        return serialized_reply
 
     #############################################################
     # Interface for rpc::autoscaler::AutoscalerStateService ends

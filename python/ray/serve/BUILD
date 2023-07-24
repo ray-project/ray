@@ -262,6 +262,15 @@ py_test(
 
 
 py_test(
+    name = "test_handle_streaming",
+    size = "medium",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+
+py_test(
     name = "test_kv_store",
     size = "small",
     srcs = serve_tests_srcs,
@@ -337,7 +346,7 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone2",
+    name = "test_standalone_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -345,7 +354,7 @@ py_test(
 )
 
 py_test(
-    name = "test_standalone3",
+    name = "test_standalone_3",
     size = "medium",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -403,6 +412,15 @@ py_test(
 
 py_test(
     name = "test_cli",
+    size = "large",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+    data = [":test_config_files"],
+)
+
+py_test(
+    name = "test_cli_2",
     size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
@@ -602,14 +620,6 @@ py_test(
 )
 
 py_test(
-    name = "test_json_serde",
-    size = "medium",
-    srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
-    deps = [":serve_lib"],
-)
-
-py_test(
     name = "test_gradio",
     size = "medium",
     srcs = serve_tests_srcs,
@@ -653,7 +663,7 @@ py_test(
     name = "test_serve_ha",
     size = "medium",
     srcs = serve_tests_srcs,
-    tags = ["exclusive", "team:serve"],
+    tags = ["exclusive", "team:serve", "xcommit"],
     deps = [":serve_lib"],
 )
 
@@ -668,6 +678,22 @@ py_test(
 py_test(
     name = "test_http_headers",
     size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_endpoint_state",
+    size = "small",
+    srcs = serve_tests_srcs,
+    tags = ["exclusive", "team:serve"],
+    deps = [":serve_lib"],
+)
+
+py_test(
+    name = "test_deploy_app",
+    size = "large",
     srcs = serve_tests_srcs,
     tags = ["exclusive", "team:serve"],
     deps = [":serve_lib"],
