@@ -1783,26 +1783,53 @@ autoscaler_log_fyi_printed = False
 def filter_autoscaler_events(lines: List[str]) -> Iterator[str]:
     """Given raw log lines from the monitor, return only autoscaler events.
 
-    Autoscaler events are denoted by the ":event_summary:" magic token.
+    For Autoscaler V1:
+        Autoscaler events are denoted by the ":event_summary:" magic token.
+    For Autoscaler V2:
+        Autoscaler events are published from log_monitor.py which read
+        them from the `event_AUTOSCALER.log`.
     """
-    global autoscaler_log_fyi_printed
 
     if not ray_constants.AUTOSCALER_EVENTS:
         return
 
-    # Print out autoscaler events only, ignoring other messages.
-    for line in lines:
-        if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
-            if not autoscaler_log_fyi_printed:
-                yield (
-                    "Tip: use `ray status` to view detailed "
-                    "cluster status. To disable these "
-                    "messages, set RAY_SCHEDULER_EVENTS=0."
-                )
-                autoscaler_log_fyi_printed = True
-            # The event text immediately follows the ":event_summary:"
-            # magic token.
-            yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
+    AUTOSCALER_LOG_FYI = (
+        "Tip: use `ray status` to view detailed "
+        "cluster status. To disable these "
+        "messages, set RAY_SCHEDULER_EVENTS=0."
+    )
+
+    def autoscaler_log_fyi_needed() -> bool:
+        global autoscaler_log_fyi_printed
+        if not autoscaler_log_fyi_printed:
+            autoscaler_log_fyi_printed = True
+            return True
+        return False
+
+    from ray.autoscaler.v2.utils import is_autoscaler_v2
+
+    if is_autoscaler_v2():
+        from ray._private.event.event_logger import parse_event
+
+        for event_line in lines:
+            if autoscaler_log_fyi_needed():
+                yield AUTOSCALER_LOG_FYI
+
+            event = parse_event(event_line)
+            if not event or not event.message:
+                continue
+            # We need to filter anything below Event.Severity.INFO if
+            # there's any more verbose.
+            yield event.message
+    else:
+        # Print out autoscaler events only, ignoring other messages.
+        for line in lines:
+            if ray_constants.LOG_PREFIX_EVENT_SUMMARY in line:
+                if autoscaler_log_fyi_needed():
+                    yield AUTOSCALER_LOG_FYI
+                # The event text immediately follows the ":event_summary:"
+                # magic token.
+                yield line.split(ray_constants.LOG_PREFIX_EVENT_SUMMARY)[1]
 
 
 def time_string() -> str:
