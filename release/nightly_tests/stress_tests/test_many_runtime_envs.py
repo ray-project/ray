@@ -17,9 +17,7 @@ def assert_file_content(file_name, expected_content):
     with open(file_name, 'r') as file:
         actual_content = file.read()
     if actual_content != expected_content:
-        raise ValueError(
-            f"expected {expected_content}, got {actual_content}")
-
+        raise ValueError(f"expected {expected_content}, got {actual_content}")
 
 @ray.remote
 def assert_n_files_in_working_dir(n):
@@ -27,7 +25,8 @@ def assert_n_files_in_working_dir(n):
     num_files = len(files)
     if num_files != n:
         raise ValueError(
-            f"Expected {n} files in working dir, but found {num_files} files.")
+            f"Expected {n} files in working dir, but found {num_files} files."
+        )
 
 
 def parse_script_args():
@@ -41,7 +40,11 @@ def parse_script_args():
 if __name__ == "__main__":
     args, unknown = parse_script_args()
 
-    ray.get([
-        assert_file_content.remote(args.file_name, args.expected_content),
-        assert_n_files_in_working_dir.remote(args.expected_file_count_in_working_dir)
-    ])
+    ray.get(
+        [
+            assert_file_content.remote(args.file_name, args.expected_content),
+            assert_n_files_in_working_dir.remote(
+                args.expected_file_count_in_working_dir
+            ),
+        ]
+    )
