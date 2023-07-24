@@ -517,10 +517,8 @@ def main():
     with open(args.special_token_path, "r") as json_file:
         special_tokens = json.load(json_file)["tokens"]
 
-    # TODO: Choose the storage path based on your account settings (e.g. AWS vs. GCP)
     storage_path = (
-        "s3://anyscale-staging-data-cld-kvedzwag2qa8i5bjxuevf5i7/"
-        "templates-release-tests/04_finetuning_llms"
+        f"{os.environ['ANYSCALE_ARTIFACT_STORAGE']}/finetuning_llms_with_deepspeed"
     )
 
     trainer = TorchTrainer(
