@@ -172,9 +172,7 @@ def transform_ray_dag_to_serve_dag(
         # deployment handles (executable and picklable) in ray serve DAG to make
         # serve DAG end to end executable.
         def replace_with_handle(node):
-            if isinstance(node, DeploymentNode) or isinstance(
-                node, DeploymentFunctionNode
-            ):
+            if isinstance(node, DeploymentNode):
                 return RayServeDeploymentHandle(node._deployment.name)
             elif isinstance(node, DeploymentExecutorNode):
                 return node._deployment_handle
