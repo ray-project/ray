@@ -1703,7 +1703,7 @@ class Dataset:
     def groupby(self, key: Optional[str]) -> "GroupedData":
         """Group rows of a :class:`Dataset` according to a column.
 
-        This method is useful if you want to transform data differently depending on a
+        Use this method to transform data based on a
         categorical variable.
 
         Examples:
@@ -1828,9 +1828,9 @@ class Dataset:
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values are ignored when computing the sum; if ``False``,
-                if a null value is encountered, the output is ``None``.
-                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
+                values are ignored when computing the sum. If ``False``,
+                when a null value is encountered, the output is ``None``.
+                Ray Data considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1871,8 +1871,8 @@ class Dataset:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the min; if ``False``,
-                if a null value is encountered, the output is ``None``.
-                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1913,8 +1913,8 @@ class Dataset:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the max; if ``False``,
-                if a null value is encountered, the output is ``None``.
-                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1955,8 +1955,8 @@ class Dataset:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the mean; if ``False``,
-                if a null value is encountered, the output is ``None``.
-                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1988,8 +1988,8 @@ class Dataset:
 
         .. note::
             This method uses Welford's online method for an accumulator-style
-            computation  of the standard deviation. This method was chosen due to it's
-            numerical stability, and it being computable in a single pass. This may give
+            computation of the standard deviation. This method has
+            numerical stability, and is computable in a single pass. This may give
             different (but more accurate) results than NumPy, Pandas, and sklearn, which
             use a less numerically stable two-pass algorithm.
             To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
@@ -2010,8 +2010,8 @@ class Dataset:
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the std; if ``False``,
-                if a null value is encountered, the output is ``None``.
-                We consider ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
