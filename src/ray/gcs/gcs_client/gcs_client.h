@@ -242,7 +242,7 @@ class RAY_EXPORT PythonGcsClient {
                    int64_t timeout_ms,
                    bool &is_accepted);
 
-  ClusterID GetClusterId() const { return cluster_id_; }
+  const ClusterID &GetClusterId() const { return cluster_id_; }
 
  private:
   void PrepareContext(grpc::ClientContext &context, int64_t timeout_ms) {

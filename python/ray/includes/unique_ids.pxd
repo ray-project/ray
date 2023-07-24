@@ -165,8 +165,6 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         const CClusterID Nil()
 
-#        c_bool IsNil() const
-
     cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
 
         @staticmethod

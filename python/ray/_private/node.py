@@ -83,7 +83,6 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
-        self.cluster_id = ray_params.cluster_id
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -649,7 +648,9 @@ class Node:
             last_ex = None
             try:
                 gcs_address = self.gcs_address
-                client = GcsClient(address=gcs_address, cluster_id=self.cluster_id)
+                client = GcsClient(
+                    address=gcs_address, cluster_id=self._ray_params.cluster_id
+                )
                 self.cluster_id = client.get_cluster_id()
                 if self.head:
                     # Send a simple request to make sure GCS is alive
