@@ -72,6 +72,7 @@ tuner = Tuner(
         failure_config=FailureConfig(max_failures=-1),
         checkpoint_config=CheckpointConfig(num_to_keep=10),
         callbacks=[FailureInjectorCallback(time_between_checks=90), ProgressCallback()],
+        storage_path="/mnt/cluster_storage",
     ),
 )
 
