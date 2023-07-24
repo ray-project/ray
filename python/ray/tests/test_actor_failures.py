@@ -942,7 +942,7 @@ def test_actor_graceful_shutdown(shutdown_only):
         },
     )
 
-    @ray.remote()
+    @ray.remote
     class Consumer:
         def consume(self, refs):
             self.refs = refs
@@ -950,7 +950,7 @@ def test_actor_graceful_shutdown(shutdown_only):
         def read(self):
             return ray.get(self.refs[0])
 
-    @ray.remote(max_restarts=1)
+    @ray.remote
     class Producer:
         def __init__(self, consumer):
             self.consumer = consumer
@@ -963,6 +963,8 @@ def test_actor_graceful_shutdown(shutdown_only):
     producer = Producer.remote(consumer)
     ray.get(producer.produce.remote())
     del producer
+
+    time.sleep(5)
 
     assert ray.get(consumer.read.remote()) == 1
 
