@@ -1,8 +1,6 @@
-torch==2.0.0+cu117
-torchvision==0.15.1+cu117
+torch==2.0.0
+torchvision==0.15.1
 torchaudio==2.0.1
-flash-attn==1.0.3.post0
-git+https://github.com/EleutherAI/lm_dataformat.git@4eec05349977071bf67fc072290b95e31c8dd836
 deepspeed
 fairscale
 transformers
