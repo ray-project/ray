@@ -1067,7 +1067,7 @@ class Node:
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
-            self.cluster_id.decode(),
+            self.cluster_id,
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.storage,
