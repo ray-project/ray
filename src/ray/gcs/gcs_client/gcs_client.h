@@ -232,7 +232,7 @@ class RAY_EXPORT PythonGcsClient {
       const std::vector<std::unordered_map<std::string, double>> &bundles);
   Status GetClusterStatus(int64_t timeout_ms, std::string &serialized_reply);
 
-  ClusterID GetClusterId() const { return cluster_id_; }
+  const ClusterID &GetClusterId() const { return cluster_id_; }
 
  private:
   void PrepareContext(grpc::ClientContext &context, int64_t timeout_ms) {
