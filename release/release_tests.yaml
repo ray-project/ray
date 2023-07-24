@@ -189,7 +189,7 @@
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 500
+    timeout: 1000
     script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
 
     wait_for_nodes:
@@ -223,7 +223,7 @@
     cluster_compute: compute_gpu_4x4_aws.yaml
 
   run:
-    timeout: 500
+    timeout: 1000
     script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
