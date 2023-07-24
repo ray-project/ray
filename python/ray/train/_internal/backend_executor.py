@@ -346,6 +346,7 @@ class BackendExecutor:
         datasets: Dict[str, Dataset],
         data_config: DataConfig,
         checkpoint: Optional[Checkpoint] = None,
+        on_session_init: Callable[[], None] = None,
     ) -> None:
         """Executes a training function on all workers in a separate thread.
 
@@ -451,6 +452,9 @@ class BackendExecutor:
         self._backend.on_training_start(self.worker_group, self._backend_config)
 
         self.get_with_failure_handling(futures)
+
+        if on_session_init:
+            on_session_init()
 
         # Run the training function asynchronously in its own thread.
         def train_async():
