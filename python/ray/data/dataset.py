@@ -73,6 +73,7 @@ from ray.data._internal.planner.map_rows import generate_map_rows_fn
 from ray.data._internal.planner.write import generate_write_fn
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.sort import SortKey
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stage_impl import (
     LimitStage,
@@ -2043,14 +2044,14 @@ class Dataset:
             A new, sorted dataset.
         """
 
-        plan = self._plan.with_stage(SortStage(self, key, descending))
+        sort_key = SortKey(key, descending)
+        plan = self._plan.with_stage(SortStage(self, sort_key))
 
         logical_plan = self._logical_plan
         if logical_plan is not None:
             op = Sort(
                 logical_plan.dag,
-                key=key,
-                descending=descending,
+                sort_key=sort_key,
             )
             logical_plan = LogicalPlan(op)
         return Dataset(plan, self._epoch, self._lazy, logical_plan)

@@ -46,7 +46,7 @@ except ImportError:
 if TYPE_CHECKING:
     import pandas
 
-    from ray.data._internal.sort import SortKeyT
+    from ray.data._internal.sort import SortKey
 
 
 T = TypeVar("T")
@@ -327,9 +327,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             )
         return self._table.select(columns)
 
-    def _sample(self, n_samples: int, key: "SortKeyT") -> "pyarrow.Table":
+    def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
-        table = self._table.select([k[0] for k in key])
+        table = self._table.select(sort_key.get_columns())
         return transform_pyarrow.take_table(table, indices)
 
     def count(self, on: str) -> Optional[U]:
@@ -412,9 +412,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
         )
 
     def sort_and_partition(
-        self, boundaries: List[T], key: "SortKeyT", descending: bool
+        self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
-        if len(key) > 1:
+        columns, ascending = sort_key.to_pandas_sort_args()
+        if len(columns) > 1:
             raise NotImplementedError(
                 "sorting by multiple columns is not supported yet"
             )
@@ -426,8 +427,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         context = DataContext.get_current()
         sort = get_sort_transform(context)
-        col, _ = key[0]
-        table = sort(self._table, key, descending)
+        col = columns[0]
+        table = sort(self._table, sort_key)
         if len(boundaries) == 0:
             return [table]
 
@@ -438,7 +439,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # partition[i]. If `descending` is true, `boundaries` would also be
         # in descending order and we only need to count the number of items
         # *greater than* the boundary value instead.
-        if descending:
+        if not ascending:
             num_rows = len(table[col])
             bounds = num_rows - np.searchsorted(
                 table[col], boundaries, sorter=np.arange(num_rows - 1, -1, -1)
@@ -531,7 +532,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def merge_sorted_blocks(
-        blocks: List[Block], key: "SortKeyT", _descending: bool
+        blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:
         stats = BlockExecStats.builder()
         blocks = [b for b in blocks if b.num_rows > 0]
@@ -539,7 +540,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             ret = ArrowBlockAccessor._empty_table()
         else:
             concat_and_sort = get_concat_and_sort_transform(DataContext.get_current())
-            ret = concat_and_sort(blocks, key, _descending)
+            ret = concat_and_sort(blocks, sort_key)
         return ret, ArrowBlockAccessor(ret).get_metadata(None, exec_stats=stats.build())
 
     @staticmethod
