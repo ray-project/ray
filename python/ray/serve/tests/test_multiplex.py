@@ -135,8 +135,8 @@ class TestMultiplexWrapper:
             def __del__(self):
                 raise Exception(f"{self.model_id} is dead")
 
-            def __eq__(self, other):
-                return self.model_id == other.model_id
+            def __eq__(self, model):
+                return model.model_id == self.model_id
 
         async def model_load_func(model_id: str) -> MyModel:
             return MyModel(model_id)
