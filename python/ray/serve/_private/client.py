@@ -480,8 +480,8 @@ class ServeControllerClient:
             if cached_handle._is_same_loop:
                 return cached_handle
 
-        all_endpoints = ray.get(self._controller.get_all_endpoints.remote())
-        if not missing_ok and deployment_name not in all_endpoints:
+        all_deployments = self.list_deployments()
+        if not missing_ok and deployment_name not in all_deployments:
             raise KeyError(f"Deployment '{deployment_name}' does not exist.")
 
         if sync:
