@@ -430,7 +430,7 @@ restrictedpython==6.0
 retry-decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
-rich==12.0.1
+rich==12.6.0
 rsa==4.7.2
 s3fs==2023.5.0 ; python_version >= "3.8"
 s3transfer==0.6.1

@@ -1,0 +1,13 @@
+rules:
+  - id: code-block-python
+    paths:
+      include:
+        - "python/ray/data/**/*.py"
+        - "doc/source/data/**/*.rst"
+    languages:
+      - generic
+    message: > 
+      Don't use 'code-block:: python', it's not tested! Use 'testcode' instead! For more 
+      information, see https://docs.ray.io/en/master/ray-contribute/writing-code-snippets.html.
+    pattern: "code-block:: python"
+    severity: ERROR
