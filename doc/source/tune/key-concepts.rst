@@ -17,7 +17,7 @@ Then you select a `search algorithm` to effectively optimize your parameters and
 `scheduler` to stop searches early and speed up your experiments.
 Together with other configuration, your `trainable`, search algorithm, and scheduler are passed into ``Tuner``,
 which runs your experiments and creates `trials`.
-These trials can then be used in `analyses` to inspect your experiment results.
+The `Tuner` returns a `ResultGrid` to inspect your experiment results.
 The following figure shows an overview of these components, which we cover in detail in the next sections.
 
 .. image:: images/tune_flow.png
@@ -338,8 +338,8 @@ Learn more about trial schedulers in :ref:`the scheduler API documentation <sche
 
 .. _tune-concepts-analysis:
 
-Tune Run Analyses
------------------
+Tune ResultGrid
+---------------
 
 ``Tuner.fit()`` returns an :ref:`ResultGrid <tune-analysis-docs>` object which has methods you can use for
 analyzing your training.

@@ -1,5 +1,6 @@
-.. _air-checkpoint-ref:
 .. _checkpoint-api-ref:
+
+.. _air-checkpoint-ref:
 
 Ray AIR Checkpoint
 ==================

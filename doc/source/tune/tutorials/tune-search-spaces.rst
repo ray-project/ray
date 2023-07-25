@@ -134,6 +134,9 @@ for a total of 90 trials, each with randomly sampled values of ``alpha`` and ``b
     from disk (making sure that all nodes have access to the files) or cloud storage.
     See :ref:`tune-bottlenecks` for more information.
 
+Note that when using Ray Train with Ray Tune, certain config objects can also be included
+as part of the search space, thereby allowing you to tune things like number of workers for a trainer.
+
 .. _tune_custom-search:
 
 How to use Custom and Conditional Search Spaces in Tune?

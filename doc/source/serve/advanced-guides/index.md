@@ -1,7 +1,7 @@
 (serve-advanced-guides)=
 # Advanced Guides
 
-If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quickstart](getting-started).
+If you’re new to Ray Serve, we recommend starting with the [Ray Serve Quickstart](serve-getting-started).
 
 Use these advanced guides for more options and configurations:
 - [Pass Arguments to Applications](app-builder-guide)

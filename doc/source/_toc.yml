@@ -45,15 +45,6 @@ parts:
         title: "Ray AI Runtime (AIR)"
         sections:
           - file: ray-air/key-concepts
-          - file: ray-air/user-guides
-            sections:
-              - file: ray-air/preprocessors
-              - file: ray-air/trainers
-              - file: ray-air/check-ingest
-              - file: ray-air/tuner
-              - file: ray-air/predictors
-              - file: ray-air/computer-vision
-              - file: ray-air/deployment
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
@@ -82,10 +73,17 @@ parts:
                 title: "Configuring Ray Train"
               - file: train/dl_guide
                 title: "Deep Learning Guide"
+              - file: train/hf_trainers
+                title: "Hugging Face Trainers"
               - file: train/gbdt
                 title: "XGBoost/LightGBM guide"
               - file: train/architecture
                 title: "Ray Train Architecture"
+              - file: train/train-with-tune
+                title: "Using Ray Train with Ray Tune"
+              - file: train/check-ingest
+                title: "Configuring Training Datasets"
+              - file: train/predictors
           - file: train/examples
             title: "Examples"
             sections:

@@ -3,8 +3,6 @@ Tune Execution (tune.Tuner)
 
 .. _tune-run-ref:
 
-.. _air-tuner-ref:
-
 Tuner
 -----
 

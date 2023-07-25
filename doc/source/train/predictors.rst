@@ -13,19 +13,19 @@ Using Predictors for Inference
 
 
 After you train a model, you will often want to use the model to do inference and prediction.
-To do so, you can use a Ray AIR Predictor. In this guide, we'll cover how to use the Predictor
+To do so, you can use a Predictor. In this guide, we'll cover how to use the Predictor
 on different types of data.
 
 
 What are predictors?
 --------------------
 
-Ray AIR Predictors are a class that loads models from `Checkpoint` to perform inference.
+Predictors are a class that loads models from `Checkpoint` to perform inference.
 
 Predictors are used by `BatchPredictor` and `PredictorDeployment` to do large-scale scoring or online inference.
 
 Let's walk through a basic usage of the Predictor. In the below example, we create `Checkpoint` object from a model definition.
-Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <air-checkpoints-doc>` user guide for more details.
+Checkpoints can be generated from a variety of different ways -- see the :ref:`Checkpoints <checkpoint-api-ref>` user guide for more details.
 
 The checkpoint then is used to create a framework specific Predictor (in our example, a `TensorflowPredictor`), which then can be used for inference:
 
@@ -40,7 +40,7 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 **Life of a prediction:** Underneath the hood, when the ``Predictor.predict`` method is called the following occurs:
 
 - The input batch is converted into a Pandas DataFrame. Tensor input (like a ``np.ndarray``) will be converted into a single-column Pandas Dataframe.
-- If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <air-checkpoint-ref>`, the preprocessor will be used to transform the DataFrame.
+- If there is a :ref:`Preprocessor <air-preprocessor-ref>` saved in the provided :ref:`Checkpoint <checkpoint-api-ref>`, the preprocessor will be used to transform the DataFrame.
 - The transformed DataFrame will be passed to the model for inference.
 - The predictions will be outputted by ``predict`` in the same type as the original input.
 
@@ -50,7 +50,7 @@ Predictors expose a ``predict`` method that accepts an input batch of type ``Dat
 Batch Prediction
 ----------------
 
-Ray AIR provides a ``BatchPredictor`` utility for large-scale batch inference.
+Ray provides a ``BatchPredictor`` utility for large-scale batch inference.
 
 The BatchPredictor takes in a checkpoint and a predictor class and executes
 large-scale batch prediction on a given dataset in a parallel/distributed fashion when calling ``predict()``.

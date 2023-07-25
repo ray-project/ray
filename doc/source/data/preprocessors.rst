@@ -15,7 +15,7 @@ Ray AIR provides several common preprocessors out of the box and interfaces to d
 Overview
 --------
 
-The most common way of using a preprocessor is by passing it as an argument to the constructor of a :ref:`Trainer <air-trainers>` in conjunction with a :ref:`Ray Data <data>`.
+The most common way of using a preprocessor is by passing it as an argument to the constructor of a Ray Train :ref:`Trainer <train-getting-started>` in conjunction with a :ref:`Ray Data dataset <data>`.
 For example, the following code trains a model with a preprocessor that normalizes the data.
 
 .. literalinclude:: doc_code/preprocessors.py
@@ -119,7 +119,7 @@ Predictor
 A ``Predictor`` can be constructed from a saved ``Checkpoint``. If the ``Checkpoint`` contains a ``Preprocessor``,
 then the ``Preprocessor`` calls ``transform_batch`` on input batches prior to performing inference.
 
-In the following example, we show the Batch Predictor flow. The same logic applies to the :ref:`Online Inference flow <air-key-concepts-online-inference>`.
+In the following example, we show the Batch Predictor flow.
 
 .. literalinclude:: doc_code/preprocessors.py
     :language: python
