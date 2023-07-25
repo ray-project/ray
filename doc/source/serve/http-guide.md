@@ -198,37 +198,10 @@ You can specify different type signatures to facilitate the extraction of HTTP f
 
 For more details, you can take a look at the [FastAPI documentation](https://fastapi.tiangolo.com/).
 
-In addition to above adapters, you also use other adapters. Below we examine at least three:
+In addition to above adapters, you also use other adapters. Below we examine at least two:
 
-- Ray AIR `Predictor`
 - Serve Deployment Graph `DAGDriver`
 - Embedded in Bring Your Own `FastAPI` Application
-
-### Ray AIR `Predictor`
-
-Ray Serve provides a suite of adapters to convert HTTP requests to ML inputs like `numpy` arrays.
-You can use them together with the [Ray AI Runtime (AIR) model wrapper](air-serving-guide) feature
-to one-click deploy pre-trained models.
-
-As an example, we provide a simple adapter for an *n*-dimensional array.
-
-When using [model wrappers](air-serving-guide), you can specify your HTTP adapter via the `http_adapter` field:
-
-```python
-from ray import serve
-from ray.serve.http_adapters import json_to_ndarray
-from ray.serve import PredictorDeployment
-
-serve.run(PredictorDeployment.options(name="my_model").bind(
-    my_ray_air_predictor,
-    my_ray_air_checkpoint,
-    http_adapter=json_to_ndarray
-))
-```
-
-:::{note}
-`my_ray_air_predictor` and `my_ray_air_checkpoint` are two arguments int `PredictorDeployment` constructor. For detailed usage, please checkout [Ray AI Runtime (AIR) model wrapper](air-serving-guide)
-:::
 
 ### Serve Deployment Graph `DAGDriver`
 
@@ -280,8 +253,6 @@ class User(BaseModel):
 
 # ...
 
-PredictorDeployment.deploy(..., http_adapter=User)
-# Or:
 DAGDriver.bind(other_node, http_adapter=User)
 
 ```

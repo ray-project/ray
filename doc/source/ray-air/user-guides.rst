@@ -74,18 +74,6 @@ AIR User Guides
             Using Predictors for Inference
 
     .. grid-item-card::
-        :img-top: /ray-air/images/serve-icon.svg
-        :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
-
-        +++
-        .. button-ref:: /ray-air/examples/serving_guide
-            :color: primary
-            :outline:
-            :expand:
-
-            Deploying Predictors with Serve
-
-    .. grid-item-card::
         :img-top: /ray-air/images/air-deploy.svg
         :class-img-top: pt-5 w-75 d-block mx-auto fixed-height-img
 
