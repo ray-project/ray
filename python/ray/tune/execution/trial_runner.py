@@ -154,10 +154,10 @@ class _TuneControllerBase:
 
         if _use_storage_context():
             assert storage
-            self._experiment_dir_name = storage.experiment_dir_name
-            self._local_experiment_path = storage.experiment_cache_path
-            self._remote_experiment_path = storage.experiment_fs_path
-            self._sync_config = storage.sync_config
+            self._experiment_dir_name = None
+            self._local_experiment_path = None
+            self._remote_experiment_path = None
+            self._sync_config = None
         else:
             # Rename for better code readability
             local_experiment_path, remote_experiment_path = _split_remote_local_path(
@@ -203,6 +203,9 @@ class _TuneControllerBase:
                     )
 
             self._local_experiment_path = local_experiment_path
+            if self._local_experiment_path:
+                os.makedirs(self._local_experiment_path, exist_ok=True)
+
             self._remote_experiment_path = remote_experiment_path
 
         self._metric = metric
@@ -242,9 +245,6 @@ class _TuneControllerBase:
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
-
-        if self._local_experiment_path:
-            os.makedirs(self._local_experiment_path, exist_ok=True)
 
         self._stopper = stopper or NoopStopper()
 
@@ -332,22 +332,29 @@ class _TuneControllerBase:
     @property
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
+        if _use_storage_context():
+            return os.path.join(
+                self._storage.experiment_cache_path, self.experiment_state_file_name
+            )
         return os.path.join(
             self._local_experiment_path, self.experiment_state_file_name
         )
 
     @property
     def experiment_path(self) -> str:
+        if _use_storage_context():
+            return self._storage.experiment_fs_path
         return self._remote_experiment_path or self._local_experiment_path
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
-            local_checkpoint_dir=self._local_experiment_path,
-            remote_checkpoint_dir=self._remote_experiment_path,
             checkpoint_period=self._checkpoint_period,
-            sync_config=self._sync_config,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
             storage=self._storage,
+            # TODO(justinvyu): Remove these.
+            local_checkpoint_dir=self._local_experiment_path,
+            remote_checkpoint_dir=self._remote_experiment_path,
+            sync_config=self._sync_config,
         )
 
     @classmethod
@@ -366,7 +373,11 @@ class _TuneControllerBase:
         This method will save the trial runner state, the searcher state,
         and the callback states into the experiment directory.
         """
-        experiment_dir = experiment_dir or self._local_experiment_path
+        if _use_storage_context():
+            assert not experiment_dir, "Remove the `experiment_dir` argument."
+            experiment_dir = self._storage.experiment_cache_path
+        else:
+            experiment_dir = experiment_dir or self._local_experiment_path
 
         # Get state from trial executor and runner
         runner_state = {
@@ -393,12 +404,8 @@ class _TuneControllerBase:
             os.path.join(experiment_dir, self.experiment_state_file_name),
         )
 
-        self._search_alg.save_to_dir(
-            self._local_experiment_path, session_str=self._session_str
-        )
-        self._callbacks.save_to_dir(
-            self._local_experiment_path, session_str=self._session_str
-        )
+        self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
+        self._callbacks.save_to_dir(experiment_dir, session_str=self._session_str)
 
     def restore_from_dir(self, experiment_dir: Optional[str] = None) -> List[Trial]:
         """Restore TrialRunner state from experiment directory.
@@ -410,26 +417,31 @@ class _TuneControllerBase:
         and the callback states. It will then parse the trial states
         and return them as a list of Trial objects.
         """
-        experiment_dir = experiment_dir or self._local_experiment_path
+        if _use_storage_context():
+            raise NotImplementedError(
+                "Restoration is not fully working. TODO for a follow-up PR."
+            )
+            assert not experiment_dir, "Remove the `experiment_dir` argument."
+            experiment_dir = self._storage.experiment_cache_path
+        else:
+            experiment_dir = experiment_dir or self._local_experiment_path
 
-        # Update local checkpoint dir
-        self._local_experiment_path = experiment_dir
+            # Update local checkpoint dir
+            self._local_experiment_path = experiment_dir
 
         # Find newest state file
-        newest_state_path = _find_newest_experiment_checkpoint(
-            self._local_experiment_path
-        )
+        newest_state_path = _find_newest_experiment_checkpoint(experiment_dir)
 
         if not newest_state_path:
             raise ValueError(
                 f"Tried to resume experiment from directory "
-                f"`{self._local_experiment_path}`, but no "
+                f"`{experiment_dir}`, but no "
                 f"experiment checkpoint data was found."
             )
 
         # Set checkpoint file to load
         logger.warning(
-            f"Attempting to resume experiment from {self._local_experiment_path}. "
+            f"Attempting to resume experiment from {experiment_dir}. "
             "This will ignore any new changes to the specification."
         )
         logger.info(
@@ -445,11 +457,11 @@ class _TuneControllerBase:
         self.__setstate__(runner_state["runner_data"])
 
         # 2. Restore search algorithm and callback state
-        if self._search_alg.has_checkpoint(self._local_experiment_path):
-            self._search_alg.restore_from_dir(self._local_experiment_path)
+        if self._search_alg.has_checkpoint(experiment_dir):
+            self._search_alg.restore_from_dir(experiment_dir)
 
-        if self._callbacks.can_restore(self._local_experiment_path):
-            self._callbacks.restore_from_dir(self._local_experiment_path)
+        if self._callbacks.can_restore(experiment_dir):
+            self._callbacks.restore_from_dir(experiment_dir)
 
         # 3. Load trials
         trials = []
@@ -1174,6 +1186,7 @@ class _TuneControllerBase:
             "_pending_trial_queue_times",
             "_callbacks",
             "_checkpoint_manager",
+            "_storage",
             "_local_experiment_path",
             "_remote_experiment_path",
             "_sync_config",
