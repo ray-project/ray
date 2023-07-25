@@ -674,8 +674,7 @@ message JobTableData {
   // The UNIX timestamp corresponding to this event (job added or removed).
   int64 timestamp = 3;
   // IP address of the driver that started this job.
-  // Deprecated
-  string driver_ip_address = 4;
+  string driver_ip_address = 4 [deprecated = true];
   // Process ID of the driver running this job.
   int64 driver_pid = 5;
   // The config of this job.
