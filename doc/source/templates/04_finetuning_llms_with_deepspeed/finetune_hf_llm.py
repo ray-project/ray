@@ -21,7 +21,8 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
-
+import peft
+from peft import LoraConfig, get_peft_model
 import ray
 from ray import air
 from ray.air import session
@@ -193,6 +194,24 @@ def training_function(kwargs: dict):
         use_cache=False,
     )
     print(f"Done loading model in {time.time() - s} seconds.")
+
+    if config["lora"]:
+        # Apply LoRA
+        print(f"Modifying model to enable LoRA...")
+        s = time.time()
+        assert "lora" in config, "No LoRA config provided."
+        lora_config = LoraConfig(**config["lora_config"])
+
+        if config["as_test"]:
+            # If we execute this as a test, be more verbose about what we attempt to lora-ify
+            print(f"Model has sub-models: {list(model.named_modules())}")
+            print(f"Attempting to apply LoRA to {lora_config.target_modules}")
+
+        model = get_peft_model(model, lora_config)
+        print(f"LoRA-ification done in {time.time() - s} seconds.")
+
+    raise ValueError()
+
     model.resize_token_embeddings(len(tokenizer))
     print("Model initialized with pretrained weights. Training starting...")
     if not args.no_grad_ckpt:
@@ -465,6 +484,14 @@ def parse_args():
         default="./deepspeed_configs/zero_3_llama_2_7b.json",
         help="Deepspeed config json to use.",
     )
+
+    parser.add_argument(
+        "--lora",
+        action="store_true",
+        default=False,
+        help="If passed, will enable parameter efficient fine-tuning with LoRA (https://arxiv.org/pdf/2106.09685.pdf).",
+    )
+
     args = parser.parse_args()
 
     return args
@@ -491,6 +518,12 @@ def main():
             "eval_batch_size": args.eval_batch_size_per_device,
         }
     )
+
+    # Add LoRA config if needed
+    if args.lora:
+        with open("./lora_configs/lora.json", "r") as json_file:
+            lora_config = json.load(json_file)
+        config["lora_config"] = lora_config
 
     # Add deepspeed plugin to the config
     ds_plugin = DeepSpeedPlugin(hf_ds_config=config.get("ds_config"))

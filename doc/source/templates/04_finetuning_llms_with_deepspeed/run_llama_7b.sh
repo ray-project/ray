@@ -32,6 +32,9 @@ for arg in "$@"; do
         --as-test)
             args[--as-test]="--as-test"
             ;;
+        --lora)
+            args[--lora]="--lora"
+            ;;
         # Here you can add more command-line arguments
         # For example:
         # --another-argument)

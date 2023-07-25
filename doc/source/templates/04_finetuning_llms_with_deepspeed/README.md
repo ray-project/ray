@@ -1,33 +1,33 @@
 # Finetuning Llama-2 series models with Deepspeed, Accelerate, and Ray Train TorchTrainer
 | Template Specification | Description |
 | ---------------------- | ----------- |
-| Summary | This template, demonstrates how to perform full parameter fine-tuning for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
+| Summary | This template, demonstrates how to perform fine-tuning (full parameter and LoRA) for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
 | Time to Run | Around 15 min. for 7B for 1 epoch on 3.5M tokens. |
 | Minimum Compute Requirements | At least 1xg5.16xlarge for head-node and 15xg5.4xlarge for worker nodes |
 | Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu116`](https://docs.anyscale.com/reference/base-images/overview). |
 
 ## Getting Started
 
-For 7B, set up a cluster on AWS with the following settings:
+For 7B- or 13B-parameter models, set up a cluster on AWS with the following settings:
 
 |            | num | instance type | GPU per node | GPU Memory | CPU Memory |
 |------------|-----|---------------|--------------|------------|------------|
 | Head node  | 1   | g5.16xlarge   | 1 x A10G     | 24 GB      | 256 GB     |
 | Worker node| 15  | g5.4xlarge    | 1 x A10G     | 24 GB      | 64 GB      |
 
-And launch the following script:
+And launch the following script to finetune LLaMA 2 7B:
 
 ```
-./run_llama_7b_chat.sh [--as-test]
+./run_llama_7b.sh --as-test
 ```
 
-The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
+The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing will still run.
 
 ## What is happening under the hood?
 
 ### Downloading the pre-trained checkpoint on to all GPU nodes. 
 
-The pre-trained models for these models is quite large (12.8G for 7B model and 128G for 70B model). In order to make loading these models faster, we have mirrored the weights on to an AWS S3 bucket which can result in up 10GB/s download speed if the aws configs are setup correctly. We have a default setup that can provide 1.5GB/s download speed. Therefore we do not have to wait long for the model weights to get downloaded. 
+The pre-trained models are quite large (12.8G for 7B model and 128G for 70B model). In order to make loading these models faster, we have mirrored the weights on to an AWS S3 bucket which can result in up 10GB/s download speed if the aws configs are setup correctly. We have a default setup that can provide 1.5GB/s download speed. Therefore we do not have to wait long for the model weights to get downloaded. 
 
 ### Cloud storage
 
@@ -86,9 +86,9 @@ This dataset is trained with a context length of 512 which includes excessive pa
 
 ### Launching fine-tuning
 
-The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of Llama-2 models. 
+The script is written using Ray Train + Deepspeed integration via accelerate API. The script is general enough that it can be used to fine-tune all released sizes of LLaMA 2 models. 
 
-The CLI for seeing all the options is:
+The command for seeing all the options is:
 
 ```
 python finetune_hf_llm.py --help
@@ -102,3 +102,17 @@ This script was tested across three model sizes on the following cluster configu
 | 7B         | `meta-llama/Llama-2-7b-hf`   | 16                    | 16x `g5.xlarge`  | 16x A10G (24G) | ~14 min.              |
 | 13B        | `meta-llama/Llama-2-13b-hf`  | 16                    | 16x `g5.xlarge`  | 16x A10G (24G) | ~20 min.              |
 | 70B        | `meta-llama/Llama-2-70b-hf`  | 4                     | 4x  `g5.24xlarge`| 32x A10G (24G) |                       |
+
+
+### Launching LoRA fine-tuning
+
+You can utilize [LoRA](https://arxiv.org/abs/2106.09685) to achieve similar (or better) finetuning results than vanilla finetuning while using less compute during training and enabling quick swapping of finetuned parameters.
+
+
+The command for testing a lora fine-tuning is:
+
+```
+python finetune_hf_llm.py --as-test --lora 
+```
+
+When adapting the LoRA config (at lora_configs/lora.json)

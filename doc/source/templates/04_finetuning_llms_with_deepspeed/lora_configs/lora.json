@@ -1,0 +1,11 @@
+{   
+    "r": 8,
+    "lora_alpha": 16,
+    "lora_dropout": 0.05,
+    "target_modules": ["query_key_value"],
+    "task_type": "CAUSAL_LM",
+    "modules_to_save": [],
+    "bias": "none",
+    "fan_in_fan_out": false,
+    "init_lora_weights": true
+}
