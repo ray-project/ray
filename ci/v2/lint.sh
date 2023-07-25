@@ -28,6 +28,10 @@ annotations() {
   "${ROOT_DIR}"/lint/check_api_annotations.py
 }
 
+run_semgrep() {
+  semgrep ci --config "${WORKSPACE_DIR}/semgrep.yml"
+}
+
 bazel_buildifier() {
   LINT_BAZEL_TMP="$(mktemp -d)"
   curl -sl "https://github.com/bazelbuild/buildtools/releases/download/v6.1.2/buildifier-linux-amd64" \
