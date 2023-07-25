@@ -6206,7 +6206,7 @@
     byod:
       type: gpu
     cluster_env: app_config.yaml
-    cluster_compute: ../../air_tests/air_benchmarks/mlperf-train/compute_gpu_4x4_aws.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
 
   run:
     timeout: 600
@@ -6219,7 +6219,7 @@
       frequency: manual
       cluster:
         cluster_env: app_config.yaml
-        cluster_compute: ../../air_tests/air_benchmarks/mlperf-train/compute_gpu_4x4_gce.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
