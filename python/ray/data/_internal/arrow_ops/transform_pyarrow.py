@@ -31,7 +31,8 @@ def take_table(
         _concatenate_extension_column,
         _is_column_extension_type,
     )
-
+    if len(indices) == 0:
+        return table
     if any(_is_column_extension_type(col) for col in table.columns):
         new_cols = []
         for col in table.columns:
