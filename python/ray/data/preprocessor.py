@@ -221,7 +221,21 @@ class Preprocessor(abc.ABC):
 
         return self._transform(pipeline)
 
-    def inverse_transform(self, dataset: "Dataset") -> "Dataset":
+    def inverse_transform(self, ds: "Dataset") -> "Dataset":
+        """Returns the original values of a transform operation.
+
+        Args:
+            ds: A transformed dataset.
+
+        Returns:
+            ray.data.Dataset: The Dataset with its original values.
+
+        Raises:
+            RuntimeError: If the preprocessor does not have a a defined
+            `inverse_transform` method or `transform` has not been called
+            first.
+        """
+
         if not self._is_inverse_transformable:
             raise RuntimeError(
                 "An inverse transform method has not been defined on"
@@ -232,7 +246,7 @@ class Preprocessor(abc.ABC):
         if transform_status == Preprocessor.TransformStatus.NOT_TRANSFORMED:
             raise RuntimeError("`transform` must be called before `inverse_transform`")
 
-        return self._inverse_transform(dataset)
+        return self._inverse_transform(ds)
 
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
