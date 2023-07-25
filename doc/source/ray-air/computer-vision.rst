@@ -204,11 +204,7 @@ Training vision models
             :end-before: __tensorflow_trainer_stop__
             :dedent:
 
-<<<<<<< HEAD
         For more information, check out :ref:`the Ray Train documentation <train-getting-started>`.
-=======
-        For more information, read :ref:`Using Trainers <train-getting-started>`.
->>>>>>> feca9b497618808fad08023b869ce19afaee2c65
 
 Creating checkpoints
 --------------------
@@ -320,12 +316,8 @@ To NumPy ndarrays like this:
             :end-before: __torch_online_predict_stop__
             :dedent:
 
-<<<<<<< HEAD
-        For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example`
-        and :ref:`Ray Serve <serve-getting-started>`
+        For more in-depth examples, read about :ref:`Ray Serve <serve-getting-started>`.
 
-=======
->>>>>>> 5f1e2747cc80ea0083b090942809192c09619399
     .. tab-item:: TensorFlow
 
         To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
@@ -343,8 +335,5 @@ To NumPy ndarrays like this:
             :start-after: __tensorflow_online_predict_start__
             :end-before: __tensorflow_online_predict_stop__
             :dedent:
-<<<<<<< HEAD
 
         For more information, see :ref:`Ray Serve <serve-getting-started>`.
-=======
->>>>>>> 5f1e2747cc80ea0083b090942809192c09619399

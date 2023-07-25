@@ -246,7 +246,6 @@ parts:
               - file: serve/advanced-guides/managing-java-deployments
               - file: serve/advanced-guides/migration
               - file: serve/advanced-guides/deploy-vm
-              - file: serve/advanced-guides/from-predictor
           - file: serve/architecture
           - file: serve/tutorials/index
             sections:
