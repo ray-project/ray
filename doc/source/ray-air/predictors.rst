@@ -307,9 +307,3 @@ Execution can be triggered by pulling from the pipeline, as shown in the example
     :language: python
     :start-after: __pipelined_prediction_start__
     :end-before: __pipelined_prediction_end__
-
-
-Online Inference
-----------------
-
-Check out the :ref:`air-serving-guide` for details on how to perform online inference with AIR.

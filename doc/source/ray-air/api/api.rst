@@ -17,4 +17,3 @@ Ray AIR API
     Results (Ray Train + Ray Tune)<../../tune/api/result_grid>
     AIR Checkpoint (All Libraries)<checkpoint.rst>
     Predictors (Ray Data + Ray Train)<predictor.rst>
-    Model Serving in AIR (Ray Serve)<serve.rst>

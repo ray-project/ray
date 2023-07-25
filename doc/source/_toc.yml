@@ -53,7 +53,6 @@ parts:
               - file: ray-air/tuner
               - file: ray-air/predictors
               - file: ray-air/computer-vision
-              - file: ray-air/examples/serving_guide
               - file: ray-air/deployment
           - file: ray-air/examples/index
             sections:
@@ -67,7 +66,6 @@ parts:
               - file: ray-air/examples/analyze_tuning_results
               - file: ray-air/examples/lightgbm_example
               - file: ray-air/examples/torch_incremental_learning
-              - file: ray-air/examples/rl_serving_example
               - file: ray-air/examples/rl_online_example
               - file: ray-air/examples/rl_offline_example
               - file: ray-air/examples/upload_to_comet_ml
