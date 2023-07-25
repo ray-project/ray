@@ -7,7 +7,7 @@ aim==3.17.5
 aim-ui==3.17.5
 aimrecords==0.0.7
 aimrocks==0.4.0
-aioboto3==11.2.0 ; python_version >= "3.8"
+aioboto3==11.2.0; python_version >= "3.8"
 aiobotocore==2.5.0
 aiofiles==22.1.0
 aiohttp==3.8.4
