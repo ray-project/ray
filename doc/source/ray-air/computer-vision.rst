@@ -1,3 +1,5 @@
+:orphan:
+
 .. _computer-vision:
 
 Computer Vision
@@ -181,8 +183,7 @@ Training vision models
             :end-before: __torch_trainer_stop__
             :dedent:
 
-        For more in-depth examples, see
-        :ref:`Using Trainers <air-trainers>`.
+        For more in-depth examples, see :ref:`Using Trainers <train-getting-started>`.
 
     .. tab-item:: TensorFlow
 
@@ -201,7 +202,7 @@ Training vision models
             :end-before: __tensorflow_trainer_stop__
             :dedent:
 
-        For more information, read :ref:`Using Trainers <air-trainers>`.
+        For more information, read :ref:`Using Trainers <train-getting-started>`.
 
 Creating checkpoints
 --------------------

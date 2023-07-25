@@ -1,4 +1,8 @@
+(serve-getting-started)=
+<<<<<<< HEAD
+=======
 (getting-started)=
+>>>>>>> 5f1e2747cc80ea0083b090942809192c09619399
 
 # Getting Started
 
@@ -220,7 +224,7 @@ translation = await translation_ref
 We define the full application as follows:
 
 ```python
-deployment_graph = Summarizer.bind(Translator.bind())
+app = Summarizer.bind(Translator.bind())
 ```
 
 Here, we bind `Translator` to its (empty) constructor arguments, and then we pass in the bound `Translator` as the constructor argument for the `Summarizer`. We can run this deployment graph using the `serve run` CLI command. Make sure to run this command from a directory containing a local copy of the `serve_quickstart_composed.py` code:

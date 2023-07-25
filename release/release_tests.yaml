@@ -110,6 +110,160 @@
 
   alert: default
 
+############################
+# Batch Inference Benchmarks
+############################
+
+# 10 GB image classification raw images with 1 GPU.
+# 1 g4dn.4xlarge
+- name: torch_batch_inference_1_gpu_10gb_raw
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1_cpu_16_aws.yaml
+  
+  run:
+    timeout: 500
+    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gpu_1_cpu_16_gce.yaml
+
+# 10 GB image classification parquet with 1 GPU.
+# 1 g4dn.4xlarge
+- name: torch_batch_inference_1_gpu_10gb_parquet
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: data
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_1_cpu_16_aws.yaml
+  
+  run:
+    timeout: 500
+    script: python workloads/gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gpu_1_cpu_16_gce.yaml
+
+
+# 300 GB image classification raw images with 16 GPUs
+# 4 g4dn.12xlarge
+- name: torch_batch_inference_16_gpu_300gb_raw
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1000
+    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+
+    wait_for_nodes:
+        num_nodes: 4
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gpu_4x4_gce.yaml
+
+
+# 300 GB image classification parquet data with 16 GPUs
+# 4 g4dn.12xlarge
+- name: torch_batch_inference_16_gpu_300gb_parquet
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 1000
+    script: python workloads/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+    wait_for_nodes:
+        num_nodes: 4
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: compute_gpu_4x4_gce.yaml
+
+# 10 TB image classification parquet data with heterogenous cluster
+# 10 g4dn.12xlarge, 10 m5.16xlarge
+- name: torch_batch_inference_hetero_10tb_parquet
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  frequency: weekly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: compute_hetero_10x10_aws.yaml
+
+  run:
+    timeout: 2000
+    script: python workloads/gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+
+    wait_for_nodes:
+      num_nodes: 20
+  
+  alert: default
+
 
 #########################
 # AIR release tests
@@ -361,68 +515,6 @@
 
   alert: default
 
-
-- name: air_benchmark_torch_batch_prediction_gpu_1x1_20gb
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-
-  run:
-    timeout: 3600
-    script: python workloads/gpu_batch_prediction.py --data-size-gb 20
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_gpu_1_cpu_16_gce.yaml
-
-
-- name: air_benchmark_torch_batch_prediction_gpu_4x4_100gb
-  group: AIR tests
-  working_dir: air_tests/air_benchmarks
-
-  frequency: nightly
-  team: ml
-
-  stable: false
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_env: app_config.yaml
-    cluster_compute: compute_gpu_4x4_aws.yaml
-
-  run:
-    timeout: 10800
-    script: python workloads/gpu_batch_prediction.py --data-size-gb 100
-
-    wait_for_nodes:
-        num_nodes: 4
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_env: app_config.yaml
-        cluster_compute: compute_gpu_4x4_gce.yaml
 
 - name: air_benchmark_torch_mnist_cpu_4x4
   group: AIR tests
@@ -875,6 +967,27 @@
 
   # variations: TODO(jungong): add GCP variation.
 
+- name: air_example_vicuna_13b_lightning_deepspeed_finetuning
+  group: AIR examples
+  working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
+
+  python: "3.8"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+      pip:
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
+    cluster_env: vicuna_13b_deepspeed_env.yaml
+    cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
+
+  run:
+    timeout: 4700
+    script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
 #####################################
 # Workspace templates release tests #
@@ -6168,6 +6281,58 @@
       cluster:
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: read_images_train_4_cpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+
+  run:
+    timeout: 600
+    script: python image_train_benchmark.py --num-workers 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_images_train_16_cpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 600
+    script: python image_train_benchmark.py --num-workers 16
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
