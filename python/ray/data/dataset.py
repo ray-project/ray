@@ -1707,24 +1707,41 @@ class Dataset:
         )
 
     def groupby(self, key: Optional[str]) -> "GroupedData":
-        """Group the dataset by the key function or column name.
+        """Group rows of a :class:`Dataset` according to a column.
+
+        Use this method to transform data based on a
+        categorical variable.
 
         Examples:
-            >>> import ray
-            >>> # Group by a table column and aggregate.
-            >>> ray.data.from_items([
-            ...     {"A": x % 3, "B": x} for x in range(100)]).groupby(
-            ...     "A").count()
-            Aggregate
-            +- Dataset(num_blocks=..., num_rows=100, schema={A: int64, B: int64})
+
+            .. testcode::
+
+                import pandas as pd
+                import ray
+
+                def normalize_variety(group: pd.DataFrame) -> pd.DataFrame:
+                    for feature in group.drop("variety").columns:
+                        group[feature] = group[feature] / group[feature].abs().max()
+                    return group
+
+                ds = (
+                    ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+                    .groupby("variety")
+                    .map_groups(normalize_variety, batch_format="pandas")
+                )
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: A column name. If this is None, the grouping is global.
+            key: A column name. If this is ``None``, place all rows in a single group.
 
         Returns:
-            A lazy GroupedData that can be aggregated later.
+            A lazy :class:`~ray.data.grouped_data.GroupedData`.
+
+        .. seealso::
+
+            :meth:`~ray.data.grouped_data.GroupedData.map_groups`
+                Call this method to transform groups of data.
         """
         from ray.data.grouped_data import GroupedData
 
@@ -1736,7 +1753,7 @@ class Dataset:
         return GroupedData(self, key)
 
     def unique(self, column: str) -> List[Any]:
-        """List of unique elements in the given column.
+        """List the unique elements in a given column.
 
         Examples:
 
@@ -1778,26 +1795,37 @@ class Dataset:
 
     @ConsumptionAPI
     def aggregate(self, *aggs: AggregateFn) -> Union[Any, Dict[str, Any]]:
-        """Aggregate the entire dataset as one group.
+        """Aggregate values using one or more functions.
+
+        Use this method to compute metrics like the product of a column.
 
         Examples:
-            >>> import ray
-            >>> from ray.data.aggregate import Max, Mean
-            >>> ray.data.range(100).aggregate(Max("id"), Mean("id"))
-            {'max(id)': 99, 'mean(id)': 49.5}
 
+            .. testcode::
+
+                import ray
+                from ray.data.aggregate import AggregateFn
+
+                ds = ray.data.from_items([{"number": i} for i in range(1, 10)])
+                aggregation = AggregateFn(
+                    init=lambda column: 1,
+                    accumulate_row=lambda a, row: a * row["number"],
+                    merge = lambda a1, a2: a1 + a2,
+                    name="prod"
+                )
+                print(ds.aggregate(aggregation))
+
+            .. testoutput::
+
+                {'prod': 45}
+                
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            aggs: Aggregations to do.
+            *aggs: :class:`Aggregations <ray.data.aggregate.AggregateFn>` to perform.
 
         Returns:
-            If the input dataset is a simple dataset then the output is
-            a tuple of ``(agg1, agg2, ...)`` where each tuple element is
-            the corresponding aggregation result.
-            If the input dataset is an Arrow dataset then the output is
-            an dict where each column is the corresponding aggregation result.
-            If the dataset is empty, return ``None``.
+            A ``dict`` where each each value is an aggregation for a given column.
         """
         ret = self.groupby(None).aggregate(*aggs).take(1)
         return ret[0] if len(ret) > 0 else None
@@ -1806,7 +1834,7 @@ class Dataset:
     def sum(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute sum over entire dataset.
+        """Compute the sum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1814,15 +1842,16 @@ class Dataset:
             4950
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).sum(["A", "B"])
+            ...     for i in range(100)
+            ... ]).sum(["A", "B"])
             {'sum(A)': 4950, 'sum(B)': 328350}
 
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
-                values are ignored when computing the sum; if ``False``,
-                if a null value is encountered, the output is None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                values are ignored when computing the sum. If ``False``,
+                when a null value is encountered, the output is ``None``.
+                Ray Data considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1837,8 +1866,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column ``dict``
               containing the column-wise sum of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is None.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Sum, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1847,7 +1876,7 @@ class Dataset:
     def min(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute minimum over entire dataset.
+        """Return the minimum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1855,15 +1884,16 @@ class Dataset:
             0
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).min(["A", "B"])
+            ...     for i in range(100)
+            ... ]).min(["A", "B"])
             {'min(A)': 0, 'min(B)': 0}
 
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the min; if ``False``,
-                if a null value is encountered, the output is None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1877,9 +1907,9 @@ class Dataset:
               column ``"col"``,
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise min of the provided columns.
-
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is None.
+            
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Min, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1888,7 +1918,7 @@ class Dataset:
     def max(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute maximum over entire dataset.
+        """Return the maximum of one or more columns.
 
         Examples:
             >>> import ray
@@ -1896,15 +1926,16 @@ class Dataset:
             99
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).max(["A", "B"])
+            ...     for i in range(100)
+            ... ]).max(["A", "B"])
             {'max(A)': 99, 'max(B)': 9801}
 
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the max; if ``False``,
-                if a null value is encountered, the output is None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1919,8 +1950,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise max of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is None.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Max, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1929,7 +1960,7 @@ class Dataset:
     def mean(
         self, on: Optional[Union[str, List[str]]] = None, ignore_nulls: bool = True
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute mean over entire dataset.
+        """Compute the mean of one or more columns.
 
         Examples:
             >>> import ray
@@ -1937,15 +1968,16 @@ class Dataset:
             49.5
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).mean(["A", "B"])
+            ...     for i in range(100)
+            ... ]).mean(["A", "B"])
             {'mean(A)': 49.5, 'mean(B)': 3283.5}
 
         Args:
             on: a column name or a list of column names to aggregate.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the mean; if ``False``,
-                if a null value is encountered, the output is None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -1960,8 +1992,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise mean of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is None.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Mean, on, ignore_nulls)
         return self._aggregate_result(ret)
@@ -1973,7 +2005,15 @@ class Dataset:
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Union[Any, Dict[str, Any]]:
-        """Compute standard deviation over entire dataset.
+        """Compute the standard deviation of one or more columns.
+
+        .. note::
+            This method uses Welford's online method for an accumulator-style
+            computation of the standard deviation. This method has
+            numerical stability, and is computable in a single pass. This may give
+            different (but more accurate) results than NumPy, Pandas, and sklearn, which
+            use a less numerically stable two-pass algorithm.
+            To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
 
         Examples:
             >>> import ray
@@ -1981,16 +2021,9 @@ class Dataset:
             28.86607
             >>> ray.data.from_items([
             ...     {"A": i, "B": i**2}
-            ...     for i in range(100)]).std(["A", "B"])
+            ...     for i in range(100)
+            ... ]).std(["A", "B"])
             {'std(A)': 29.011491975882016, 'std(B)': 2968.1748039269296}
-
-        .. note:: This uses Welford's online method for an accumulator-style computation
-            of the standard deviation. This method was chosen due to it's numerical
-            stability, and it being computable in a single pass. This may give different
-            (but more accurate) results than NumPy, Pandas, and sklearn, which use a
-            less numerically stable two-pass algorithm.
-            See
-            https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm
 
         Args:
             on: a column name or a list of column names to aggregate.
@@ -1998,8 +2031,8 @@ class Dataset:
                 is ``N - ddof``, where ``N`` represents the number of elements.
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the std; if ``False``,
-                if a null value is encountered, the output is None.
-                We consider np.nan, None, and pd.NaT to be null values.
+                when a null value is encountered, the output is ``None``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
                 Default is ``True``.
 
         Returns:
@@ -2014,8 +2047,8 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise std of the provided columns.
 
-            If the dataset is empty, all values are null, or any value is null
-            AND ``ignore_nulls`` is ``False``, then the output is None.
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
