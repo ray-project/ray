@@ -404,7 +404,7 @@ def online_predict_tensorflow(checkpoint):
 
         async def __call__(self, request):
             image = Image.open(BytesIO(await request.body()))
-            return self.predictor.predict(np.array(image)[np.newaxis])
+            return self.predictor.predict({"image": np.array(image)[np.newaxis]})
 
     serve.run(TensorflowService.bind(checkpoint))
     # __tensorflow_serve_stop__
