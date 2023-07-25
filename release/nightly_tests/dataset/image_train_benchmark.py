@@ -104,7 +104,7 @@ if __name__ == "__main__":
             for batch in it.iter_batches(
                 batch_size=args.batch_size, prefetch_batches=10
             ):
-                num_rows += len(batch[0])
+                num_rows += len(batch["image"])
             end_t = time.time()
             # Record throughput per epoch.
             epoch_tput = num_rows / (end_t - start_t)
