@@ -235,7 +235,7 @@ def test_unique_name_reset_upon_build(serve_instance):
 def test_deployment_function_node_build(serve_instance):
     @serve.deployment
     class Forward:
-        def __init__(self, handle: RayServeHandle):
+        def __init__(self, handle):
             self.handle = handle
 
         async def __call__(self, *args, **kwargs):
