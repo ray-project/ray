@@ -269,9 +269,9 @@ class DataIterator(abc.ABC):
     ) -> Iterator["TorchBatchType"]:
         """Return a batched iterator of Torch Tensors over the dataset.
 
-        This iterator will will yield a dictionary of column-tensors. If looking for
+        This iterator yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
-        format, try using `.iter_batches` directly.
+        format, try using :meth:`~ray.data.iterator.DataIterator.iter_batches` directly.
 
         Examples:
             >>> import ray
@@ -315,23 +315,23 @@ class DataIterator(abc.ABC):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The Torch dtype(s) for the created tensor(s); if None, the dtype
-                will be inferred from the tensor data. This parameter cannot be used in
-                conjunction with ``collate_fn``.
+                will be inferred from the tensor data. You can't use this parameter
+                with ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
                 Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. This parameter cannot be used in
-                conjunction with ``collate_fn``.
+                Otherwise, defaults to CPU. You can't use this parameter with
+                ``collate_fn``.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
                 When this parameter is specified, the user should manually handle the
-                host to device data transfer outside of collate_fn.
+                host to device data transfer outside of ``collate_fn``.
                 This is useful for further processing the data after it has been
                 batched. Potential use cases include collating along a dimension other
                 than the first, padding sequences of various lengths, or generally
                 handling batches of different length tensors. If not provided, the
                 default collate function is used which simply converts the batch of
                 numpy arrays to a batch of PyTorch tensors. This API is still
-                experimental and is subject to change. This parameter cannot be used in
+                experimental and is subject to change. You can't use this parameter in
                 conjunction with ``dtypes`` or ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data will be randomly shuffled

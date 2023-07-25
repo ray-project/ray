@@ -3233,7 +3233,7 @@ class Dataset:
             >>> import ray
             >>> for batch in ray.data.range(
             ...     12,
-            ... ).iterator().iter_torch_batches(batch_size=4):
+            ... ).iter_torch_batches(batch_size=4):
             ...     print(batch.shape)
             {'id': tensor([ 0, 10,  1,  2])}
             {'id': tensor([3, 4, 5, 6])}
@@ -3249,10 +3249,10 @@ class Dataset:
             ...         [torch.as_tensor(array) for array in batch.values()],
             ...         axis=1
             ...     )
-            >>> iterator = ray.data.from_items([
+            >>> dataset = ray.data.from_items([
             ...     {"col_1": 1, "col_2": 2},
-            ...     {"col_1": 3, "col_2": 4}]).iterator()
-            >>> for batch in iterator.iter_torch_batches(collate_fn=collate_fn):
+            ...     {"col_1": 3, "col_2": 4}])
+            >>> for batch in dataset.iter_torch_batches(collate_fn=collate_fn):
             ...     print(batch)
             tensor([[1, 2],
                     [3, 4]])
@@ -3272,13 +3272,13 @@ class Dataset:
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the dtype
-                is inferred from the tensor data. This parameter cannot be used in
-                conjunction with ``collate_fn``.
+                is inferred from the tensor data. You can't use this parameter with
+                ``collate_fn``.
             device: The device on which the tensor should be placed. Defaults to
                 "auto" which moves the tensors to the appropriate device when the
                 Dataset is passed to Ray Train and ``collate_fn`` is not provided.
-                Otherwise, defaults to CPU. This parameter cannot be used in
-                conjunction with ``collate_fn``.
+                Otherwise, defaults to CPU. You can't use this parameter with
+                ``collate_fn``.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
                 When this parameter is specified, the user should manually handle the
                 host to device data transfer outside of collate_fn.
@@ -3288,7 +3288,7 @@ class Dataset:
                 handling batches of different length tensors. If not provided, the
                 default collate function is used which simply converts the batch of
                 numpy arrays to a batch of PyTorch tensors. This API is still
-                experimental and is subject to change. This parameter cannot be used in
+                experimental and is subject to change. You can't use this parameter in
                 conjunction with ``dtypes`` or ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If non-None, the data is randomly shuffled
