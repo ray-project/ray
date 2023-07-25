@@ -340,7 +340,7 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
     if not base_usage.satisfies_limit(limits):
         error_message = (
             "The current cluster doesn't have the required resources to execute your "
-            "pipeline:\n"
+            "Dataset pipeline:\n"
         )
         if (
             base_usage.cpu is not None
