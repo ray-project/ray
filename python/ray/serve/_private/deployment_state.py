@@ -765,6 +765,7 @@ class DeploymentReplica(VersionedReplica):
         detached: bool,
         replica_tag: ReplicaTag,
         deployment_name: str,
+        app_name: Optional[str],
         version: DeploymentVersion,
     ):
         self._actor = ActorReplicaWrapper(
@@ -776,6 +777,7 @@ class DeploymentReplica(VersionedReplica):
             version,
         )
         self._controller_name = controller_name
+        self._app_name = app_name
         self._deployment_name = deployment_name
         self._replica_tag = replica_tag
         self._start_time = None
@@ -790,6 +792,7 @@ class DeploymentReplica(VersionedReplica):
 
     def get_running_replica_info(self) -> RunningReplicaInfo:
         return RunningReplicaInfo(
+            app_name=self._app_name,
             deployment_name=self._deployment_name,
             replica_tag=self._replica_tag,
             actor_handle=self._actor.actor_handle,
@@ -1186,12 +1189,13 @@ class DeploymentState:
         )
         # All current states use default value, only attach running replicas.
         for replica_actor_name in replica_actor_names:
-            replica_name: ReplicaName = ReplicaName.from_str(replica_actor_name)
+            replica_name: ReplicaName = ReplicaName.from_actor_name(replica_actor_name)
             new_deployment_replica = DeploymentReplica(
                 self._controller_name,
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
+                self._target_state.info.app_name,
                 self._target_state.version,
             )
             new_deployment_replica.recover()
@@ -1589,13 +1593,15 @@ class DeploymentState:
                 )
                 for _ in range(to_add):
                     version = self._target_state.version
-                    suffix = version.code_version[:6] + "-" + get_random_letters()
-                    replica_name = ReplicaName(self._name, suffix)
+                    replica_name = ReplicaName(
+                        self._name, version.code_version[:6], get_random_letters()
+                    )
                     new_deployment_replica = DeploymentReplica(
                         self._controller_name,
                         self._detached,
                         replica_name.replica_tag,
                         replica_name.deployment_tag,
+                        self._target_state.info.app_name,
                         version,
                     )
                     upscale.append(
@@ -2043,13 +2049,15 @@ class DriverDeploymentState(DeploymentState):
         num_existing_replicas = self._replicas.count()
         for _ in range(self._target_state.num_replicas - num_existing_replicas):
             version = self._target_state.version
-            suffix = version.code_version[:6] + "-" + get_random_letters()
-            replica_name = ReplicaName(self._name, suffix)
+            replica_name = ReplicaName(
+                self._name, version.code_version[:6], get_random_letters()
+            )
             new_deployment_replica = DeploymentReplica(
                 self._controller_name,
                 self._detached,
                 replica_name.replica_tag,
                 replica_name.deployment_tag,
+                self._target_state.info.app_name,
                 version,
             )
             upscale.append(new_deployment_replica.start(self._target_state.info))
@@ -2227,7 +2235,7 @@ class DeploymentStateManager:
         if len(all_replica_names) > 0:
             # Each replica tag is formatted as "deployment_name#random_letter"
             for replica_name in all_replica_names:
-                replica_tag = ReplicaName.from_str(replica_name)
+                replica_tag = ReplicaName.from_actor_name(replica_name)
                 deployment_to_current_replicas[replica_tag.deployment_tag].append(
                     replica_name
                 )

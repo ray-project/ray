@@ -30,7 +30,7 @@ from ray.exceptions import RayActorError, RayTaskError
 from ray.util import metrics
 from ray._private.utils import make_asyncio_event_version_compat
 
-from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
+from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo, ReplicaName
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
@@ -385,26 +385,38 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         """Shim for compatibility with the existing round robin scheduler."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
-    def _filter_replicas_code_version(self, replica_ids: Set[str]) -> Set[str]:
+    def _check_valid_candidate(self, replica_id: str) -> bool:
+        """Checks if the replica is a valid candidate based on its code version."""
         internal_replica_context = ray.serve.context.get_internal_replica_context()
         if (
             internal_replica_context is None
             or internal_replica_context.replica_tag is None
         ):
-            return replica_ids
+            return True
 
-        current_replica_suffix = internal_replica_context.replica_tag.split("#")[1]
-        current_replica_version = current_replica_suffix.split("-")[0]
+        current_app = internal_replica_context.app_name
+        # NOTE(zcin): This is a slightly hacky way of getting the application
+        # of the deployment to which this router sends requests. We include
+        # application info in RunningReplicaInfo, and fetch it from there.
+        # A better solution would be to separate deployment names from app
+        # names and have Serve handles take a deployment name and application
+        # name as input upon initialization.
+        target_app = {
+            replica._replica_info.app_name for replica in self._replicas.values()
+        }.pop()
 
-        filtered = set()
-        for id in replica_ids:
-            target_replica_suffix = id.split("#")[1]
-            target_replica_version = target_replica_suffix.split("-")[0]
+        # If we are inside a Serve application, and the request is being
+        # sent outside of the current application, we don't need to do
+        # version checking.
+        if current_app != target_app:
+            return True
 
-            if target_replica_version == current_replica_version:
-                filtered.add(id)
+        current_replica_version = ReplicaName.from_tag(
+            internal_replica_context.replica_tag
+        ).code_version
+        target_replica_version = ReplicaName.from_tag(replica_id).code_version
 
-        return filtered
+        return target_replica_version == current_replica_version
 
     def _get_candidate_replica_ids(
         self,
@@ -425,13 +437,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 request_metadata.multiplexed_model_id
             ].difference(blacklist_replica_ids)
             # Filter by replica code version if calling inside a deployment
-            candidates = self._filter_replicas_code_version(candidates)
+            candidates = list(filter(self._check_valid_candidate, candidates))
             if len(candidates) > 0:
                 return candidates
 
         # Filter by replica code version if calling inside a deployment
         candidates = self._replica_id_set.difference(blacklist_replica_ids)
-        return self._filter_replicas_code_version(candidates)
+        return list(filter(self._check_valid_candidate, candidates))
         return candidates
 
     async def choose_two_replicas_with_backoff(
@@ -449,17 +461,20 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         replica_ids_attempted = set()
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
-            while len(self._replicas) == 0:
+            while (
+                len(list(filter(self._check_valid_candidate, self._replica_id_set)))
+                == 0
+            ):
                 logger.info(
-                    "Tried to assign replica for deployment "
-                    f"{self._deployment_name} but none are available. "
+                    f"Tried to assign replica for deployment {self._deployment_name} "
+                    f"but none are available with the matching code version. "
                     "Waiting for new replicas to be added.",
                     extra={"log_to_stderr": False},
                 )
                 self._replicas_updated_event.clear()
                 await self._replicas_updated_event.wait()
                 logger.info(
-                    "Got replicas for deployment {self._deployment_name}, waking up.",
+                    f"Got replicas for deployment {self._deployment_name}, waking up.",
                     extra={"log_to_stderr": False},
                 )
 
@@ -471,7 +486,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             chosen_ids = random.sample(
                 candidate_replica_ids, k=min(2, len(candidate_replica_ids))
             )
-            print("chosen_ids", chosen_ids)
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 
             # If another iteration occurrs, the chosen replicas did not accept the
@@ -786,6 +800,39 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
             self.in_flight_queries[replica].add(tracker_ref)
         return user_ref
 
+    def _check_valid_candidate(self, replica_id: str) -> bool:
+        """Checks if the replica is a valid candidate based on its code version."""
+        internal_replica_context = ray.serve.context.get_internal_replica_context()
+        if (
+            internal_replica_context is None
+            or internal_replica_context.replica_tag is None
+        ):
+            return True
+
+        current_app = internal_replica_context.app_name
+        # NOTE(zcin): This is a slightly hacky way of getting the application
+        # of the deployment to which this router sends requests. We include
+        # application info in RunningReplicaInfo, and fetch it from there.
+        # A better solution would be to separate deployment names from app
+        # names and have Serve handles take a deployment name and application
+        # name as input upon initialization.
+        target_app = {
+            replica_info.app_name for replica_info in self.in_flight_queries.keys()
+        }.pop()
+
+        # If we are inside a Serve application, and the request is being
+        # sent outside of the current application, we don't need to do
+        # version checking.
+        if current_app != target_app:
+            return True
+
+        current_replica_version = ReplicaName.from_tag(
+            internal_replica_context.replica_tag
+        ).code_version
+        target_replica_version = ReplicaName.from_tag(replica_id).code_version
+
+        return target_replica_version == current_replica_version
+
     def _try_assign_replica(self, query: Query) -> Optional[ray.ObjectRef]:
         """Try to assign query to a replica, return the object ref if succeeded
         or return None if it can't assign this query to any replicas.
@@ -813,6 +860,10 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
                 ):
                     # This replica is overloaded, try next one
                     continue
+
+                if not self._check_valid_candidate(replica.replica_tag):
+                    continue
+
                 logger.debug(
                     f"Assigned query {query.metadata.request_id} "
                     f"to replica {replica.replica_tag}."
@@ -823,6 +874,9 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
             replica = next(self.replica_iterator)
             if len(self.in_flight_queries[replica]) >= replica.max_concurrent_queries:
                 # This replica is overloaded, try next one
+                continue
+
+            if not self._check_valid_candidate(replica.replica_tag):
                 continue
 
             if query.metadata.multiplexed_model_id:

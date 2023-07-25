@@ -1,4 +1,3 @@
-import asyncio
 from concurrent.futures.thread import ThreadPoolExecutor
 import functools
 import os
@@ -6,16 +5,18 @@ import sys
 import time
 from typing import Dict
 
+from pydantic import ValidationError
 import pytest
 import requests
 
 import ray
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray import serve
-from pydantic import ValidationError
 from ray.serve.drivers import DAGDriver
-from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.common import ApplicationStatus, ReplicaName
+from ray.serve._private.constants import SERVE_NAMESPACE
 from ray.serve._private.utils import check_obj_ref_ready_nowait
+from ray.util.state import list_actors
 
 
 class TestGetDeployment:
@@ -429,21 +430,27 @@ def test_deploy_application_unhealthy(serve_instance):
         time.sleep(0.1)
 
 
-def test_communication_during_upgrade(serve_instance):
-    """When upgrading an application, deployments with different code versions
-    should not communicate with each other.
-    """
+def test_communication_during_app_upgrade_1(serve_instance):
+    """Ensure deployments with distinct code versions don't communicate
+    with each other.
 
-    @serve.deployment(graceful_shutdown_timeout_s=10)
+    When an application is upgrading and no new replicas with the
+    correct target version has been brought up yet, requests should
+    hang.
+    """
+    signal = SignalActor.remote()
+    signal.send.remote()
+
+    @serve.deployment(
+        num_replicas=2,
+        ray_actor_options={"num_cpus": 0.1},
+    )
     class SignalDeployment:
         def __init__(self):
-            self.ready_event = asyncio.Event()
+            ray.get(signal.wait.remote())
 
         async def __call__(self, val):
             return val + 1
-
-        async def block(self):
-            await self.ready_event.wait()
 
     @serve.deployment
     class Driver:
@@ -457,22 +464,18 @@ def test_communication_during_upgrade(serve_instance):
         async def pid(self):
             return os.getpid()
 
-        async def block_downstream(self):
-            self.handle.block.remote()
-
     handle = serve.run(Driver.bind(SignalDeployment.bind()))
     driver_pid = ray.get(handle.pid.remote())
     assert ray.get(handle.remote(6)) == "The answer is 7"
 
     # Block before upgrade
-    ray.get(handle.block_downstream.remote())
-    assert ray.get(handle.remote(6)) == "The answer is 7"
+    ray.get(signal.send.remote(clear=True))
     handle = serve.run(Driver.bind(SignalDeployment.bind()), _blocking=False)
 
     # Wait for the Driver replica to be teared down and a new one to come up
     wait_for_condition(lambda: ray.get(handle.pid.remote()) != driver_pid)
     # Send a request to the new Driver replica
-    ref = handle.remote(6)
+    ref = handle.remote(26)
 
     # The ref should be blocked because Driver should refuse to send request
     # to the outdated SignalDeployment replica
@@ -480,9 +483,108 @@ def test_communication_during_upgrade(serve_instance):
         assert not check_obj_ref_ready_nowait(ref)
         time.sleep(0.1)
 
-    # Now just wait for SignalDeployment replica to be force-killed and for
-    # the request to be fulfilled
-    assert ray.get(ref) == "The answer is 7"
+    # Unblock the new replica initialization and wait for request to be fulfilled
+    signal.send.remote()
+    assert ray.get(ref) == "The answer is 27"
+
+
+def test_communication_during_app_upgrade_2(serve_instance):
+    """Ensure deployments with distinct code versions don't communicate
+    with each other.
+
+    When an application is upgrading and there is a mix of replicas with
+    the new version and replicas with the old version that haven't been
+    updated yet, requests should only be sent to replicas with the new
+    version.
+    """
+
+    signal = SignalActor.remote()
+    signal.send.remote()
+
+    @serve.deployment(num_replicas=50, ray_actor_options={"num_cpus": 0.01})
+    class Model:
+        def __init__(self):
+            ray.get(signal.wait.remote())
+
+        async def __call__(self):
+            tag = ray.serve.context.get_internal_replica_context().replica_tag
+            return ReplicaName.from_tag(tag).code_version
+
+    @serve.deployment
+    class Driver:
+        def __init__(self, handle):
+            self.handle = handle
+
+        async def __call__(self):
+            return await (await self.handle.remote())
+
+        async def pid(self):
+            return os.getpid()
+
+        async def version(self):
+            tag = ray.serve.context.get_internal_replica_context().replica_tag
+            return ReplicaName.from_tag(tag).code_version
+
+    handle = serve.run(Driver.bind(Model.bind()))
+    driver_pid = ray.get(handle.pid.remote())
+    model_version = ray.get(handle.remote())
+
+    # Redeploy
+    handle = serve.run(Driver.bind(Model.bind()), _blocking=False)
+
+    # Wait for the Driver replica to be teared down and a new one to come up
+    wait_for_condition(lambda: ray.get(handle.pid.remote()) != driver_pid)
+
+    # Since we do a rolling update, i.e. we only tear down and replace
+    # 20% of the replicas at a time, there should still be replicas with
+    # the old version alive. Confirm this.
+    serve_actors = list_actors(
+        filters=[
+            ("ray_namespace", "=", SERVE_NAMESPACE),
+            ("state", "=", "ALIVE"),
+        ]
+    )
+    outdated_replicas = [
+        actor
+        for actor in serve_actors
+        if actor["name"].startswith(f"SERVE_REPLICA::default_Model#{model_version}")
+    ]
+    assert len(outdated_replicas) > 0
+    print(f"Number of outdated replicas still alive: {len(outdated_replicas)}")
+
+    # Send requests to the new Driver replica, and check that it only
+    # sends requests to downstream Model replicas that have the new
+    # target code version.
+    refs = [handle.remote() for _ in range(100)]
+    results = ray.get(refs)
+    assert all(result != model_version for result in results)
+
+    # Last sanity check, make sure the results returned match the code
+    # version of the new Driver replica
+    driver_version = ray.get(handle.version.remote())
+    assert all(result == driver_version for result in results)
+
+
+def test_communication_between_applications(serve_instance):
+    """Communication between applications should not be restricted."""
+    from ray.serve.context import get_global_client
+
+    @serve.deployment
+    class A:
+        async def __call__(self, val):
+            client = get_global_client()
+            handle = client.get_handle("default_B")
+            return await handle.remote(val)
+
+    @serve.deployment
+    class B:
+        async def __call__(self, val):
+            return val + 2
+
+    handle_1 = serve.run(A.bind(), name="caller")
+    serve.run(B.bind(), name="default", route_prefix="/serve")
+
+    assert ray.get(handle_1.remote(6)) == 8
 
 
 if __name__ == "__main__":

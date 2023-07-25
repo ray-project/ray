@@ -316,22 +316,26 @@ class DeploymentInfo:
 @dataclass
 class ReplicaName:
     deployment_tag: str
-    replica_suffix: str
+    code_version: str
+    unique_suffix: str
     replica_tag: ReplicaTag = ""
     delimiter: str = "#"
     prefix: str = "SERVE_REPLICA::"
 
-    def __init__(self, deployment_tag: str, replica_suffix: str):
+    def __init__(self, deployment_tag: str, code_version: str, unique_suffix: str):
         self.deployment_tag = deployment_tag
-        self.replica_suffix = replica_suffix
-        self.replica_tag = f"{deployment_tag}{self.delimiter}{replica_suffix}"
+        self.code_version = code_version
+        self.unique_suffix = unique_suffix
+        self.replica_tag = (
+            f"{deployment_tag}{self.delimiter}{code_version}-{unique_suffix}"
+        )
 
     @staticmethod
     def is_replica_name(actor_name: str) -> bool:
         return actor_name.startswith(ReplicaName.prefix)
 
     @classmethod
-    def from_str(cls, actor_name):
+    def from_actor_name(cls, actor_name):
         assert ReplicaName.is_replica_name(actor_name)
         # TODO(simon): this currently conforms the tag and suffix logic. We
         # can try to keep the internal name always hard coded with the prefix.
@@ -341,7 +345,22 @@ class ReplicaName:
             f"Given replica name {replica_name} didn't match pattern, please "
             f"ensure it has exactly two fields with delimiter {cls.delimiter}"
         )
-        return cls(deployment_tag=parsed[0], replica_suffix=parsed[1])
+        code_version, unique_suffix = parsed[1].split("-")
+        return cls(
+            deployment_tag=parsed[0],
+            code_version=code_version,
+            unique_suffix=unique_suffix,
+        )
+
+    @classmethod
+    def from_tag(cls, replica_tag):
+        parsed = replica_tag.split(cls.delimiter)
+        code_version, unique_suffix = parsed[1].split("-")
+        return cls(
+            deployment_tag=parsed[0],
+            code_version=code_version,
+            unique_suffix=unique_suffix,
+        )
 
     def __str__(self):
         return self.replica_tag
@@ -349,6 +368,7 @@ class ReplicaName:
 
 @dataclass(frozen=True)
 class RunningReplicaInfo:
+    app_name: Optional[str]
     deployment_name: str
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
