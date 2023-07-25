@@ -2,9 +2,6 @@ rules:
   - id: code-block-python
     paths:
       include:
-        # Ray Data
-        - "python/ray/data/**/*.py"
-        - "doc/source/data/**/*.rst"
         # Ray Core
         - "python/ray/util/**/*.py"
         - "python/ray/_private/**/*.py"
@@ -12,6 +9,9 @@ rules:
         - "doc/source/ray-core/**/*.rst"
         - "doc/source/ray-overview/**/*.rst"
         - "doc/source/ray-observability/**/*.rst"
+        # Ray Data
+        - "python/ray/data/**/*.py"
+        - "doc/source/data/**/*.rst"
         # Ray Train
         - "python/ray/train/**/*.py"
         - "doc/source/train/**/*.rst"
