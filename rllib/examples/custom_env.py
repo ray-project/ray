@@ -1,9 +1,9 @@
 """
-Example of a custom gym environment. Run this for a demo.
+Example of a custom gym environment. Run this example for a demo.
 
-This example shows:
-  - using a custom environment
-  - using Tune for grid search to try different learning rates
+This example shows the usage of:
+  - a custom environment
+  - Ray Tune for grid search to try different learning rates
 
 You can visualize experiment results in ~/ray_results using TensorBoard.
 

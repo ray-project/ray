@@ -1018,7 +1018,7 @@ class AlgorithmConfig(_Config):
                 "API. You can either deactivate the RLModule "
                 "API by setting `config.rl_module( "
                 "_enable_rl_module_api=False)` and "
-                "`config.training(_enable_learner_api=False)` "
+                "`config.training(_enable_learner_api=False)` ,"
                 "or use the RLModule API and implement your "
                 "custom model as an RLModule."
             )
