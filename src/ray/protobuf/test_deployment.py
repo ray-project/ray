@@ -1,11 +1,14 @@
 import pickle
+import struct
 import time
-from typing import Generator
+from typing import Dict, Generator
 
 from starlette.requests import Request
 
+import ray
 from ray import serve
 from ray.serve.generated import serve_pb2
+from ray.serve.handle import RayServeDeploymentHandle
 
 
 @serve.deployment
@@ -62,6 +65,60 @@ class GrpcDeploymentStreamingResponse:
 g3 = GrpcDeploymentStreamingResponse.options(
     name="grpc-deployment-streaming-response"
 ).bind()
+
+
+@serve.deployment
+class FruitMarket:
+    def __init__(
+        self,
+        _orange_stand: RayServeDeploymentHandle,
+        _apple_stand: RayServeDeploymentHandle,
+    ):
+        self.directory = {
+            "ORANGE": _orange_stand,
+            "APPLE": _apple_stand,
+        }
+
+    async def __call__(self, inputs: bytes) -> bytes:
+        fruit_amounts = pickle.loads(inputs)
+        costs = await self.check_price(fruit_amounts)
+        return struct.pack("f", costs)
+
+    async def check_price(self, inputs: Dict[str, int]) -> float:
+        costs = 0
+        for fruit, amount in inputs.items():
+            if fruit not in self.directory:
+                return
+            fruit_stand = self.directory[fruit]
+            ref: ray.ObjectRef = await fruit_stand.remote(int(amount))
+            result = await ref
+            costs += result
+        return costs
+
+
+@serve.deployment
+class OrangeStand:
+    def __init__(self):
+        self.price = 2.0
+
+    def __call__(self, num_oranges: int):
+        return num_oranges * self.price
+
+
+@serve.deployment
+class AppleStand:
+    def __init__(self):
+        self.price = 3.0
+
+    def __call__(self, num_oranges: int):
+        return num_oranges * self.price
+
+
+orange_stand = OrangeStand.bind()
+apple_stand = AppleStand.bind()
+g4 = FruitMarket.options(name="grpc-deployment-multi-app").bind(
+    orange_stand, apple_stand
+)
 
 
 @serve.deployment
