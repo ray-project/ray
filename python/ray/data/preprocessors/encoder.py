@@ -400,6 +400,8 @@ class LabelEncoder(Preprocessor):
             :class:`LabelEncoder`.
     """
 
+    _is_inverse_transformable = True
+
     def __init__(self, label_column: str):
         self.label_column = label_column
 
@@ -415,6 +417,19 @@ class LabelEncoder(Preprocessor):
             return s.map(s_values)
 
         df[self.label_column] = df[self.label_column].transform(column_label_encoder)
+        return df
+
+    def _inverse_transform_pandas(self, df: pd.DataFrame):
+        def column_label_decoder(s: pd.Series):
+            inverse_values = {
+                value: key
+                for key, value in self.stats_[
+                    f"unique_values({self.label_column})"
+                ].items()
+            }
+            return s.map(inverse_values)
+
+        df[self.label_column] = df[self.label_column].transform(column_label_decoder)
         return df
 
     def __repr__(self):

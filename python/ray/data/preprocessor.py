@@ -58,8 +58,16 @@ class Preprocessor(abc.ABC):
         PARTIALLY_FITTED = "PARTIALLY_FITTED"
         FITTED = "FITTED"
 
+    class TransformStatus(str, Enum):
+        """The transform status of preprocessor."""
+
+        NOT_TRANSFORMED = "NOT_TRANSFORMED"
+        TRANSFORMED = "TRANSFORMED"
+
     # Preprocessors that do not need to be fitted must override this.
     _is_fittable = True
+    # Overide this if an _inverse_transform method is defined in the preprocessor.
+    _is_inverse_transformable = False
 
     def fit_status(self) -> "Preprocessor.FitStatus":
         if not self._is_fittable:
@@ -68,6 +76,12 @@ class Preprocessor(abc.ABC):
             return Preprocessor.FitStatus.FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTED
+
+    def transform_status(self) -> "Preprocessor.TransformStatus":
+        if hasattr(self, "_transformed") and self._transformed:
+            return Preprocessor.TransformStatus.TRANSFORMED
+        else:
+            return Preprocessor.TransformStatus.NOT_TRANSFORMED
 
     @Deprecated
     def transform_stats(self) -> Optional[str]:
@@ -154,6 +168,7 @@ class Preprocessor(abc.ABC):
                 "or simply use fit_transform() to run both steps"
             )
         transformed_ds = self._transform(ds)
+        self._transformed = True
         return transformed_ds
 
     def transform_batch(self, data: "DataBatchType") -> "DataBatchType":
@@ -205,6 +220,19 @@ class Preprocessor(abc.ABC):
             )
 
         return self._transform(pipeline)
+
+    def inverse_transform(self, dataset: "Dataset") -> "Dataset":
+        if not self._is_inverse_transformable:
+            raise RuntimeError(
+                "An inverse transform method has not been defined on"
+                "this preprocessor."
+            )
+
+        transform_status = self.transform_status()
+        if transform_status == Preprocessor.TransformStatus.NOT_TRANSFORMED:
+            raise RuntimeError("`transform` must be called before `inverse_transform`")
+
+        return self._inverse_transform(dataset)
 
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
@@ -262,6 +290,30 @@ class Preprocessor(abc.ABC):
             raise ValueError(
                 "Invalid transform type returned from _determine_transform_to_use; "
                 f'"pandas" and "numpy" allowed, but got: {transform_type}'
+            )
+
+    def _inverse_transform(
+        self,
+        ds: Union["Dataset", "DatasetPipeline"],
+    ) -> Union["Dataset", "DatasetPipeline"]:
+
+        inverse_transform_type = self._determine_transform_to_use()
+
+        kwargs = self._get_transform_config()
+        if inverse_transform_type == BatchFormat.PANDAS:
+            return ds.map_batches(
+                self._inverse_transform_pandas,
+                batch_format=BatchFormat.PANDAS,
+                **kwargs,
+            )
+        elif inverse_transform_type == BatchFormat.NUMPY:
+            return ds.map_batches(
+                self._inverse_transform_numpy, batch_format=BatchFormat.NUMPY, **kwargs
+            )
+        else:
+            raise ValueError(
+                "Invalid inverse transform type returned from _determine_transform_to_use; "
+                f'"pandas" and "numpy" allowed, but got: {inverse_transform_type}'
             )
 
     def _get_transform_config(self) -> Dict[str, Any]:
