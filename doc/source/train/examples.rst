@@ -72,6 +72,14 @@ Distributed Training Examples using Ray Train
         .. button-ref:: dolly_lightning_fsdp_finetuning
 
             Fine-tune LLM with AIR LightningTrainer and FSDP
+    
+    .. grid-item-card::
+        :img-top: /images/pytorch_lightning_small.png
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: vicuna_lightning_deepspeed_finetuning
+
+            Fine-tune vicuna-13b-v1.3 with Deepspeed and LightningTrainer
 
 
 Ray Train Examples Using Loggers & Callbacks

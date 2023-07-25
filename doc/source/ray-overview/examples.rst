@@ -1618,3 +1618,10 @@ Ray Examples
         .. button-ref:: /serve/tutorials/streaming
 
             Using Ray Serve to deploy a chatbot
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm
+
+        .. button-ref:: /train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+
+            Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer
