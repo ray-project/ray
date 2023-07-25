@@ -6875,6 +6875,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6892,6 +6893,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6909,6 +6911,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6926,6 +6929,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -6944,6 +6948,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: manual
   team: core
   cluster:
