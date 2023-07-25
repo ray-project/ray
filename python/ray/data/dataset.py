@@ -1148,7 +1148,7 @@ class Dataset:
                 @ray.remote
                 def consume(it):
                     for batch in it.iter_batches():
-                       print(batch)
+                       pass
 
                 ray.get([consume.remote(it1), consume.remote(it2)])
 
@@ -1161,7 +1161,7 @@ class Dataset:
                     NUM_EPOCHS = 2
                     for _ in range(NUM_EPOCHS):
                         for batch in it.iter_batches():
-                           print(batch)
+                            pass
 
                 ray.get([train.remote(it1), train.remote(it2)])
 
