@@ -1189,6 +1189,11 @@ def run(
         # This differs from the else case, which specifies the actual file path.
         # ExperimentAnalysis also accepts the directory as the argument.
         experiment_checkpoint = experiments[0].storage.experiment_cache_path
+
+        # TODO(justinvyu): Leave refactoring the ExperimentAnalysis to use
+        # StorageContext for a follow-up PR.
+        # Just plug in the "remote_storage_path" for now.
+        remote_path = experiments[0].storage.storage_path
     else:
         experiment_checkpoint = runner.experiment_state_path
 
