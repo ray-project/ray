@@ -16,7 +16,7 @@ from ray.data.preprocessors import BatchMapper, Chain, TorchVisionPreprocessor
 from ray import train
 from ray.air import session
 from ray.train.torch import TorchTrainer
-from ray.air.config import ScalingConfig
+from ray.air.config import RunConfig, ScalingConfig
 
 
 def add_fake_labels(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
@@ -108,6 +108,7 @@ def main(data_size_gb: int, num_epochs=2, num_workers=1, smoke_test: bool = Fals
         scaling_config=ScalingConfig(
             num_workers=num_workers, use_gpu=int(not smoke_test)
         ),
+        run_config=RunConfig(storage_path="/mnt/cluster_storage"),
     )
     trainer.fit()
 
