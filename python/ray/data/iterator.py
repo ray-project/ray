@@ -360,14 +360,12 @@ class DataIterator(abc.ABC):
                 "desired dtype and device outside of collate_fn."
             )
 
-        if collate_fn is None:
-            # Automatically move torch tensors to the appropriate device
-            # when used with Ray Train.
-            if device == "auto":
-                default_device = get_device()
-                if default_device.type != "cpu":
-                    device = default_device
+        if device == "auto":
+            # Use the appropriate device for Ray Train, or falls back to CPU if
+            # Ray Train is not being used.
+            device = get_device()
 
+        if collate_fn is None:
             # The default collate_fn handles formatting and Tensor creation.
             # Here, we set device=None to defer host to device data transfer
             # to the subsequent finalize_fn.
