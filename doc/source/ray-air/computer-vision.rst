@@ -315,8 +315,6 @@ To NumPy ndarrays like this:
             :end-before: __torch_online_predict_stop__
             :dedent:
 
-        For more in-depth examples, see :doc:`/ray-air/examples/serving_guide`.
-
     .. tab-item:: TensorFlow
 
         To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
@@ -334,5 +332,3 @@ To NumPy ndarrays like this:
             :start-after: __tensorflow_online_predict_start__
             :end-before: __tensorflow_online_predict_stop__
             :dedent:
-
-        For more information, read :doc:`/ray-air/examples/serving_guide`.
