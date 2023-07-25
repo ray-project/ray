@@ -861,6 +861,7 @@ class RayServeReplica:
                 for attr in dir(self.callable):
                     if attr.startswith("__serve_multiplex"):
                         await getattr(self.callable, attr).__del__()
+                        setattr(getattr(self.callable, attr), "__del__", lambda _: None)
                         break
 
             except Exception as e:
