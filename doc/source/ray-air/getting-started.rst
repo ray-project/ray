@@ -195,7 +195,6 @@ Next Steps
 ----------
 
 - :ref:`air-key-concepts`
-- :ref:`air-examples-ref`
 - :ref:`API reference <air-api-ref>`
 - :ref:`Technical whitepaper <whitepaper>`
 - To check how your application is doing, you can use the :ref:`Ray dashboard<observability-getting-started>`.
