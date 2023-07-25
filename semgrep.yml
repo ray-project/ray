@@ -2,8 +2,25 @@ rules:
   - id: code-block-python
     paths:
       include:
+        # Ray Core
+        - "python/ray/util/**/*.py"
+        - "python/ray/_private/**/*.py"
+        - "python/ray/core/**/*.py"
+        - "doc/source/ray-core/**/*.rst"
+        - "doc/source/ray-overview/**/*.rst"
+        - "doc/source/ray-observability/**/*.rst"
+        # Ray Data
         - "python/ray/data/**/*.py"
         - "doc/source/data/**/*.rst"
+        # Ray Train
+        - "python/ray/train/**/*.py"
+        - "doc/source/train/**/*.rst"
+      exclude:
+        # FIXME(@matthewdeng): We're ignoring the examples for now since they'll likely
+        # get re-written.
+        - "doc/source/train/examples/pytorch/torch_data_prefetch_benchmark/benchmark_example.rst"
+        - "doc/source/train/dl_guide.rst"
+
     languages:
       - generic
     message: > 
