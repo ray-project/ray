@@ -89,9 +89,9 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         connections (ports) by setting num_rollout_workers to a larger number. The ports
         used will then be `port` + the worker's index.
         
-        WARNING: This class is not meant to be publically exposed. There is no gurantee 
-        on security vulnerabilities of this implementation. Use this with caution and 
-        at your own risk. 
+        WARNING: This class is not meant to be publicly exposed. Anyone that can
+        communicate with this server can execute arbitary code on the machine. Use
+        this with caution, in isolated environments, and at your own risk.
 
         Args:
             ioctx: IOContext provided by RLlib.
