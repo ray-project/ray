@@ -55,6 +55,12 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 WARNED_ABOUT_STARLETTE_REQUESTS_ONCE = False
 
 
+start = time.time()
+def trace(*msg):
+    delta = time.time() - start
+    print("XXX", delta, *msg)
+
+
 @dataclass
 class RequestMetadata:
     request_id: str
@@ -438,6 +444,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         backoff_index = 0
         replica_ids_attempted = set()
+        tag = "req_id=" + str(int(100000 * random.random()))
         while True:
             # If no replicas are available, wait until `update_replicas` is called.
             while len(self._replicas) == 0:
@@ -453,22 +460,29 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Got replicas for deployment {self._deployment_name}, waking up.",
                     extra={"log_to_stderr": False},
                 )
-            candidate_replica_ids = set()
+#            candidate_replica_ids = set()
             if request_metadata is not None and request_metadata.multiplexed_model_id:
+                trace(tag, "Start wait for ", request_metadata.multiplexed_model_id)
                 start = time.time()
+                max_dt = RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+#                max_dt = 2 * RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * random.random()
                 while (
                     time.time() - start
-                    < RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+                    < max_dt
                 ):
+                    replica_ids_attempted = set()  # XXX
                     candidate_replica_ids = (
                         self._get_candidate_replica_ids_for_matched_model_ids(
                             request_metadata.multiplexed_model_id, replica_ids_attempted
                         )
                     )
                     if candidate_replica_ids:
+                        trace(tag, "Got replicas for for ", request_metadata.multiplexed_model_id, candidate_replica_ids)
                         break
-                    await asyncio.sleep(0.01)
+                    trace(tag, "Retry wait for ", request_metadata.multiplexed_model_id, "delay so far", time.time() - start, "current mapping", self._multiplexed_model_id_to_replica_ids)
+                    await asyncio.sleep(0.1)
                 if not candidate_replica_ids:
+                    trace(tag, "TIMED OUT", request_metadata.multiplexed_model_id, "delay so far", time.time() - start, "current mapping", self._multiplexed_model_id_to_replica_ids)
                     candidate_replica_ids = (
                         self._get_candidate_replica_ids_for_matched_model_ids(
                             request_metadata.multiplexed_model_id,
