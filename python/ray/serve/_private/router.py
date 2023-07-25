@@ -1004,12 +1004,6 @@ class Router:
 
         return result
 
-    def __del__(self):
-        # Gracefully shutdown self.metrics_pusher.
-        if self.metrics_pusher:
-            del self.metrics_pusher
-            self.metrics_pusher = None
-
     def shutdown(self):
         """Shutdown router gracefully.
 
