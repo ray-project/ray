@@ -36,6 +36,10 @@
   commands:
     - ./ci/v2/lint.sh copyright
 
+- label: "semgrep"
+  commands:
+    - ./ci/v2/lint.sh run_semgrep
+
 - label: "test script"
   commands:
     - ./ci/v2/lint.sh test_script
