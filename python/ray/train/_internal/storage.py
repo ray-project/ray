@@ -20,26 +20,36 @@ class StorageContext:
     """Shared context that holds all paths and storage utilities, passed along from
     the driver to workers.
 
+    The properties of this context may not all be set at once, depending on where
+    the context lives.
+    For example, on the driver, the storage context is initialized, only knowing
+    the experiment path. On the Trainable actor, the trial_dir_name is accessible.
+
     Example:
-        storage_path = "s3://bucket/results"
-        storage_filesystem = S3FileSystem (auto-resolved)
-        storage_cache_path = "~/ray_results"
-        storage_fs_path = "bucket/results"
 
-        experiment_dir_name = "exp_name"
-        # experiment_path = "s3://bucket/results/exp_name"
-        experiment_fs_path = "bucket/results/exp_name"  # Use this path with pyarrow
-        experiment_cache_path = "~/ray_results/exp_name"
-
-        # Only set on workers.
-        trial_dir_name = "trial_dir"
-        # trial_path = "s3://bucket/results/exp_name/trial_dir"
-        trial_fs_path = "bucket/results/exp_name/trial_dir"
-        # trial_cache_path = "~/ray_results/exp_name/trial_dir"
+        >>> from ray.train._internal.storage import StorageContext
+        >>> import os
+        >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
+        >>> storage = StorageContext(
+        ...     storage_path="mock:///bucket/path",
+        ...     sync_config=SyncConfig(),
+        ...     experiment_dir_name="exp_name"
+        ... )
+        >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
+        <pyarrow._fs._MockFileSystem object...
+        >>> storage.experiment_fs_path
+        'bucket/path/exp_name'
+        >>> storage.experiment_cache_path
+        '/tmp/ray_results/exp_name'
+        >>> storage.trial_dir_name = "trial_dir"
+        >>> storage.trial_fs_path
+        'bucket/path/exp_name/trial_dir'
+        >>> storage.current_checkpoint_id = 1
+        >>> storage.checkpoint_fs_path
+        'bucket/path/exp_name/trial_dir/checkpoint_000001'
 
     Internal Usage Examples:
-        construct_checkpoint_fs_path("checkpoint_000001")
-        -> "bucket/results/exp_name/trial_dir/checkpoint_000001"
+    - To copy files to the trial directory on the storage filesystem:
 
         pyarrow.fs.copy_files(
             local_dir,
@@ -119,12 +129,17 @@ class StorageContext:
         return f"StorageContext<\n{attr_str}\n>"
 
     def _create_validation_file(self):
+        """On the creation of a storage context, create a validation file at the
+        storage path to verify that the storage path can be written to.
+        This validation file is also used to check whether the storage path is
+        accessible by all nodes in the cluster."""
         valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
         self.storage_filesystem.create_dir(self.experiment_fs_path)
         with self.storage_filesystem.open_output_stream(valid_file):
             pass
 
     def _check_validation_file(self):
+        """Checks that the validation file exists at the storage path."""
         valid_file = os.path.join(self.experiment_fs_path, ".validate_storage_marker")
         valid = self.storage_filesystem.get_file_info([valid_file])[0]
         if valid.type == pyarrow.fs.FileType.NotFound:
@@ -136,14 +151,24 @@ class StorageContext:
 
     @property
     def experiment_fs_path(self) -> str:
+        """The path on the `storage_filesystem` to the experiment directory."""
         return os.path.join(self.storage_fs_path, self.experiment_dir_name)
 
     @property
     def experiment_cache_path(self) -> str:
+        """The local filesystem path to the experiment directory.
+
+        This local "cache" path refers to location where files are dumped before
+        syncing them to the `storage_path` on the `storage_filesystem`.
+        """
         return os.path.join(self.storage_cache_path, self.experiment_dir_name)
 
     @property
     def trial_fs_path(self) -> str:
+        """The trial directory path on the `storage_filesystem`.
+
+        Raises a ValueError if `trial_dir_name` is not set beforehand.
+        """
         if self.trial_dir_name is None:
             raise RuntimeError(
                 "Should not access `trial_fs_path` without setting `trial_dir_name`"
@@ -152,6 +177,10 @@ class StorageContext:
 
     @property
     def checkpoint_fs_path(self) -> str:
+        """The trial directory path on the `storage_filesystem`.
+
+        Raises a ValueError if `current_checkpoint_id` is not set beforehand.
+        """
         if self.current_checkpoint_id is None:
             raise RuntimeError(
                 "Should not access `checkpoint_fs_path` without setting "
@@ -167,6 +196,11 @@ _storage_context: Optional[StorageContext] = None
 
 
 def init_shared_storage_context(storage_context: StorageContext):
+    """StorageContext can be made a global singleton by calling this method.
+
+    This singleton is only created on the initialization of remote Trainable actors.
+    On the driver, there is no global singleton, since each trial has its own
+    trial_dir_name."""
     global _storage_context
     _storage_context = storage_context
 
