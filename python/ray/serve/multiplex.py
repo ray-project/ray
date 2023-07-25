@@ -6,6 +6,7 @@ import time
 from typing import Any, Callable, List, Set
 
 from ray._private.async_compat import sync_to_async
+from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
@@ -125,14 +126,19 @@ class _ModelMultiplexWrapper:
                 f"to the controller. Error: {e}"
             )
 
-    def __del__(self):
+    async def _unload_all_models(self):
+        """Unload all the models."""
         while len(self.models) > 0:
             try:
-                asyncio.run(self.unload_model())
+                await self.unload_model()
             except Exception as e:
                 logger.error(
                     f"Failed to unload model. Error: {e}",
                 )
+
+    async def __del__(self):
+        """Unload all the models when the model multiplexer is deleted."""
+        await self._unload_all_models()
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the user-constructed model object.

@@ -855,6 +855,14 @@ class RayServeReplica:
                     # Make sure to accept `async def __del__(self)` as well.
                     await sync_to_async(self.callable.__del__)()
                     setattr(self.callable, "__del__", lambda _: None)
+
+                # Check self.callable has __serve_multiplex prefix as attribute function
+                # If it has, call it to clean up the multiplexed model
+                for attr in dir(self.callable):
+                    if attr.startswith("__serve_multiplex"):
+                        await getattr(self.callable, attr).__del__()
+                        break
+
             except Exception as e:
                 logger.exception(f"Exception during graceful shutdown of replica: {e}")
             finally:

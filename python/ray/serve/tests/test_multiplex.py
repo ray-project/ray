@@ -511,6 +511,60 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
     assert ray.get(handle.options(multiplexed_model_id="foo").remote()) == "foo"
 
 
+def test_replica_upgrade_to_cleanup_resource(serve_instance):
+    """When replica is upgraded, we need to make sure model resources are released."""
+
+    @serve.deployment
+    class Recorder:
+        def __init__(self):
+            self.call_record = set()
+
+        def add(self, model_id):
+            self.call_record.add(model_id)
+
+        def get_call_record(self):
+            return self.call_record
+
+    record_handle = serve.run(
+        Recorder.bind(), name="recorder", route_prefix="/recorder"
+    )
+
+    class MyModel:
+        def __init__(self, model_id, record_handle):
+            self.model_id = model_id
+            self.record_handle = record_handle
+
+        def __del__(self):
+            self.record_handle.add.remote(self.model_id)
+
+        def __eq__(self, model):
+            return model.model_id == self.model_id
+
+    @serve.deployment(num_replicas=1)
+    class Model:
+        def __init__(self, record_handle):
+            self.record_handle = record_handle
+
+        @serve.multiplexed(max_num_models_per_replica=1)
+        async def get_model(self, tag):
+            return MyModel(tag, self.record_handle)
+
+        async def __call__(self, request):
+            tag = serve.get_multiplexed_model_id()
+            await self.get_model(tag)
+            # return pid to check if the same model is used
+            return os.getpid()
+
+    serve.run(Model.bind(record_handle))
+
+    model_id = "1"
+    headers = {"serve_multiplexed_model_id": model_id}
+    requests.get("http://localhost:8000", headers=headers)
+    assert ray.get(record_handle.get_call_record.remote()) == set()
+    serve.run(Model.bind(record_handle))
+    assert ray.get(record_handle.get_call_record.remote()) == {"1"}
+
+
 if __name__ == "__main__":
     import sys
 
