@@ -121,7 +121,7 @@ from fastapi import Request
 
 
 @serve.deployment
-class XGBoostService:
+class XGBoostDeployment:
     def __init__(self, checkpoint):
         self.predictor = XGBoostPredictor.from_checkpoint(checkpoint)
 
@@ -130,7 +130,7 @@ class XGBoostService:
         return self.predictor.predict(data)
 
 
-serve.run(XGBoostService.bind(result.checkpoint))
+serve.run(XGBoostDeployment.bind(result.checkpoint))
 # __air_deploy_end__
 
 # __air_inference_start__

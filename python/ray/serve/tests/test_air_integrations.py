@@ -160,7 +160,7 @@ def send_request(**requests_kargs):
 
 def test_simple_adder(serve_instance):
     @serve.deployment
-    class AdderService:
+    class AdderDeployment:
         def __init__(self, checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
@@ -168,7 +168,7 @@ def test_simple_adder(serve_instance):
             data = await request.json()
             return self.predictor.predict(np.array(data["array"]))
 
-    AdderService.options(name="Adder").deploy(
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
@@ -177,7 +177,7 @@ def test_simple_adder(serve_instance):
 
 def test_predictor_kwargs(serve_instance):
     @serve.deployment
-    class AdderService:
+    class AdderDeployment:
         def __init__(self, checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
@@ -187,7 +187,7 @@ def test_predictor_kwargs(serve_instance):
                 np.array(data["array"]), override_increment=100
             )
 
-    AdderService.options(name="Adder").deploy(
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
 
@@ -197,7 +197,7 @@ def test_predictor_kwargs(serve_instance):
 
 def test_predictor_from_checkpoint_kwargs(serve_instance):
     @serve.deployment
-    class AdderService:
+    class AdderDeployment:
         def __init__(self, checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint, do_double=True)
 
@@ -205,7 +205,7 @@ def test_predictor_from_checkpoint_kwargs(serve_instance):
             data = await request.json()
             return self.predictor.predict(np.array(data["array"]))
 
-    AdderService.options(name="Adder").deploy(
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
     resp = ray.get(send_request.remote(json={"array": [40]}))
@@ -214,7 +214,7 @@ def test_predictor_from_checkpoint_kwargs(serve_instance):
 
 def test_batching(serve_instance):
     @serve.deployment
-    class AdderService:
+    class AdderDeployment:
         def __init__(self, checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
@@ -224,7 +224,7 @@ def test_batching(serve_instance):
             batch = np.concatenate([np.array(item["array"]) for item in items])
             return self.predictor.predict(batch)
 
-    AdderService.options(name="Adder").deploy(
+    AdderDeployment.options(name="Adder").deploy(
         checkpoint=Checkpoint.from_dict({"increment": 2}),
     )
 
@@ -253,7 +253,7 @@ def test_air_integrations_in_pipeline(serve_instance):
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
     @serve.deployment
-    class AdderService:
+    class AdderDeployment:
         def __init__(self, checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
@@ -261,7 +261,7 @@ def test_air_integrations_in_pipeline(serve_instance):
             return self.predictor.predict(data)
 
     with InputNode() as dag_input:
-        m1 = AdderService.bind(
+        m1 = AdderDeployment.bind(
             checkpoint=Checkpoint.from_uri(uri),
         )
         dag = m1.__call__.bind(dag_input)
@@ -281,7 +281,7 @@ def test_air_integrations_reconfigure(serve_instance):
     Checkpoint.from_dict({"increment": 2}).to_uri(uri)
 
     @serve.deployment
-    class AdderService:
+    class AdderDeployment:
         def __init__(self, checkpoint):
             self.predictor = AdderPredictor.from_checkpoint(checkpoint)
 
@@ -298,7 +298,7 @@ def test_air_integrations_reconfigure(serve_instance):
     }
 
     with InputNode() as dag_input:
-        m1 = AdderService.options(user_config=additional_config).bind(
+        m1 = AdderDeployment.options(user_config=additional_config).bind(
             checkpoint=Checkpoint.from_uri(uri),
         )
         dag = m1.__call__.bind(dag_input)

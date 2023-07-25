@@ -363,7 +363,7 @@ def online_predict_torch(checkpoint):
     from ray.train.torch import TorchPredictor
 
     @serve.deployment
-    class TorchService:
+    class TorchDeployment:
         def __init__(self, checkpoint):
             self.predictor = TorchPredictor.from_checkpoint(checkpoint)
 
@@ -371,7 +371,7 @@ def online_predict_torch(checkpoint):
             image = Image.open(BytesIO(await request.body()))
             return self.predictor.predict(np.array(image)[np.newaxis])
 
-    serve.run(TorchService.bind(checkpoint))
+    serve.run(TorchDeployment.bind(checkpoint))
     # __torch_serve_stop__
 
     # __torch_online_predict_start__
@@ -395,7 +395,7 @@ def online_predict_tensorflow(checkpoint):
     from ray.train.tensorflow import TensorflowPredictor
 
     @serve.deployment
-    class TensorflowService:
+    class TensorflowDeployment:
         def __init__(self, checkpoint):
             self.predictor = TensorflowPredictor.from_checkpoint(
                 checkpoint,
@@ -406,7 +406,7 @@ def online_predict_tensorflow(checkpoint):
             image = Image.open(BytesIO(await request.body()))
             return self.predictor.predict({"image": np.array(image)[np.newaxis]})
 
-    serve.run(TensorflowService.bind(checkpoint))
+    serve.run(TensorflowDeployment.bind(checkpoint))
     # __tensorflow_serve_stop__
 
     # __tensorflow_online_predict_start__
