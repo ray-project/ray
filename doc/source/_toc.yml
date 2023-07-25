@@ -44,6 +44,7 @@ parts:
       - file: ray-air/getting-started
         title: "Ray AI Runtime (AIR)"
         sections:
+          - file: ray-air/key-concepts
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/torch_image_example
