@@ -271,8 +271,9 @@ class Preprocessor(abc.ABC):
 
         transform_status = self.transform_status()
         if transform_status == Preprocessor.TransformStatus.NOT_TRANSFORMED:
-            raise RuntimeError("`transform` must be called before"
-                               "`inverse_transform_batch`")
+            raise RuntimeError(
+                "`transform` must be called before" "`inverse_transform_batch`"
+            )
 
         return self._inverse_transform_batch(data)
 
