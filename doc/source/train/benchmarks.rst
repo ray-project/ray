@@ -1,9 +1,9 @@
-:orphan:
+.. _train-benchmarks:
 
-Benchmarks
-==========
+Train Benchmarks
+================
 
-Below we document key performance benchmarks for common AIR tasks and workflows.
+Below we document key performance benchmarks for common Ray Train tasks and workflows.
 
 Bulk Ingest
 -----------

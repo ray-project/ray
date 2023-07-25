@@ -83,6 +83,7 @@ parts:
               - file: train/check-ingest
                 title: "Configuring Training Datasets"
               - file: train/predictors
+              - file: train/benchmarks
           - file: train/examples
             title: "Examples"
             sections:
