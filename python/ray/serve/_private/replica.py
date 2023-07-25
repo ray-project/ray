@@ -781,9 +781,7 @@ class RayServeReplica:
         # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
         # relies on the current task being stable, so it raises an exception.
         # This flag should be removed once the above issue is closed.
-        async with self.wrap_user_method_call(
-            request_metadata
-        ):
+        async with self.wrap_user_method_call(request_metadata):
             assert (
                 not request_metadata.is_http_request
             ), "HTTP requests should go through `call_user_method`."
