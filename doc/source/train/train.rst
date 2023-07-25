@@ -35,7 +35,7 @@ There are three broad categories of Trainers that Train offers:
 * Integration with TensorBoard, Weights/Biases, and MLflow
 * Jupyter notebooks
 
-**Batteries included**: Train is part of :ref:`Ray AIR <air>` and seamlessly operates in the Ray ecosystem.
+**Batteries included**: Train seamlessly operates in the Ray ecosystem.
 
 * Use :ref:`Ray Data <data>` with Train to load and process datasets both small and large.
 * Use :ref:`Ray Tune <tune-main>` with Train to sweep parameter grids and leverage cutting edge hyperparameter search algorithms.
