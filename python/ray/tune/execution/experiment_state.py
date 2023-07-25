@@ -448,19 +448,28 @@ class _ExperimentCheckpointManager:
         return synced
 
     def _resume_auto(self) -> bool:
-        if self._remote_checkpoint_dir and self._syncer:
+        if _use_storage_context():
+            experiment_cache_path = self._storage.experiment_cache_path
+            experiment_fs_path = self._storage.experiment_fs_path
+            syncer = self._storage.syncer
+        else:
+            experiment_cache_path = self._local_checkpoint_dir
+            experiment_fs_path = self._remote_checkpoint_dir
+            syncer = self._syncer
+
+        if experiment_fs_path and syncer:
             logger.info(
                 f"Trying to find and download experiment checkpoint at "
-                f"{self._remote_checkpoint_dir}"
+                f"{experiment_fs_path}"
             )
             # Todo: This syncs the entire experiment including trial
             # checkpoints. We should exclude these in the future.
             try:
-                self._syncer.sync_down_if_needed(
-                    remote_dir=self._remote_checkpoint_dir,
-                    local_dir=self._local_checkpoint_dir,
+                syncer.sync_down_if_needed(
+                    remote_dir=experiment_fs_path,
+                    local_dir=experiment_cache_path,
                 )
-                self._syncer.wait()
+                syncer.wait()
             except Exception as e:
                 logger.warning(
                     f"Got error when trying to sync down: {e} "
@@ -477,7 +486,7 @@ class _ExperimentCheckpointManager:
                     "Ray Tune will now start a new experiment."
                 )
                 return False
-            if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+            if not _experiment_checkpoint_exists(experiment_cache_path):
                 logger.warning(
                     "A remote checkpoint was fetched, but no checkpoint "
                     "data was found. This can happen when e.g. the cloud "
@@ -490,7 +499,7 @@ class _ExperimentCheckpointManager:
                 "used to restore the previous experiment state."
             )
             return True
-        elif not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+        elif not _experiment_checkpoint_exists(experiment_cache_path):
             logger.info(
                 "No local checkpoint was found. "
                 "Ray Tune will now start a new experiment."
@@ -521,11 +530,17 @@ class _ExperimentCheckpointManager:
 
         resume_type, resume_config = _resume_str_to_config(resume_type)
 
-        # Not clear if we need this assertion, since we should always have a
-        # local checkpoint dir.
-        assert self._local_checkpoint_dir or (
-            self._remote_checkpoint_dir and self._syncer
-        )
+        if _use_storage_context():
+            experiment_cache_path = self._storage.experiment_cache_path
+            experiment_fs_path = self._storage.experiment_fs_path
+        else:
+            # Not clear if we need this assertion, since we should always have a
+            # local checkpoint dir.
+            assert self._local_checkpoint_dir or (
+                self._remote_checkpoint_dir and self._syncer
+            )
+            experiment_cache_path = self._local_checkpoint_dir
+            experiment_fs_path = self._remote_checkpoint_dir
 
         if resume_type == "AUTO":
             if self._resume_auto():
@@ -534,11 +549,11 @@ class _ExperimentCheckpointManager:
             return None
 
         if resume_type in ["LOCAL", "PROMPT"]:
-            if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+            if not _experiment_checkpoint_exists(experiment_cache_path):
                 raise ValueError(
                     f"You called resume ({resume_type}) when no checkpoint "
                     f"exists in local directory "
-                    f"({self._local_checkpoint_dir}). If you want to start "
+                    f"({experiment_cache_path}). If you want to start "
                     f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
@@ -546,17 +561,16 @@ class _ExperimentCheckpointManager:
                 )
             elif resume_type == "PROMPT":
                 if click.confirm(
-                    f"Resume from local directory? " f"({self._local_checkpoint_dir})"
+                    f"Resume from local directory? " f"({experiment_cache_path})"
                 ):
                     return resume_config
 
         if resume_type in ["REMOTE", "PROMPT"]:
             if resume_type == "PROMPT" and not click.confirm(
-                f"Try downloading from remote directory? "
-                f"({self._remote_checkpoint_dir})"
+                f"Try downloading from remote directory? " f"({experiment_fs_path})"
             ):
                 return None
-            if not self._remote_checkpoint_dir or not self._syncer:
+            if not experiment_fs_path or not self._syncer:
                 raise ValueError(
                     "Called resume from remote without remote directory or "
                     "without valid syncer. "
@@ -566,12 +580,11 @@ class _ExperimentCheckpointManager:
 
             # Try syncing down the upload directory.
             logger.info(
-                f"Downloading experiment checkpoint from "
-                f"{self._remote_checkpoint_dir}"
+                f"Downloading experiment checkpoint from " f"{experiment_fs_path}"
             )
             self.sync_down(force=True, wait=True)
 
-            if not _experiment_checkpoint_exists(self._local_checkpoint_dir):
+            if not _experiment_checkpoint_exists(experiment_cache_path):
                 raise ValueError(
                     "Called resume when no checkpoint exists "
                     "in remote or local directory."
