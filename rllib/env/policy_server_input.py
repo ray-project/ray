@@ -35,6 +35,10 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     For an example, run `examples/serving/cartpole_server.py` along
     with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
+    WARNING: This class is not meant to be publicly exposed. Anyone that can
+    communicate with this server can execute arbitary code on the machine. Use
+    this with caution, in isolated environments, and at your own risk.
+
     Examples:
         >>> import gymnasium as gym
         >>> from ray.rllib.algorithms.pg import PGConfig
@@ -88,10 +92,6 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         server using rllib.env.PolicyClient. You can increase the number of available
         connections (ports) by setting num_rollout_workers to a larger number. The ports
         used will then be `port` + the worker's index.
-        
-        WARNING: This class is not meant to be publicly exposed. Anyone that can
-        communicate with this server can execute arbitary code on the machine. Use
-        this with caution, in isolated environments, and at your own risk.
 
         Args:
             ioctx: IOContext provided by RLlib.
