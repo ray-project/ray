@@ -33,6 +33,7 @@ LocalResourceManager::LocalResourceManager(
       resource_change_subscriber_(resource_change_subscriber) {
   local_resources_.available = TaskResourceInstances(node_resources.available);
   local_resources_.total = TaskResourceInstances(node_resources.total);
+  local_resources_.labels = node_resources.labels;
   const auto now = absl::Now();
   for (const auto &resource_id : local_resources_.total.ResourceIds()) {
     resources_last_idle_time_[resource_id] = now;
@@ -342,6 +343,7 @@ NodeResources ToNodeResources(const NodeResourceInstances &instance) {
   NodeResources node_resources;
   node_resources.available = instance.available.ToResourceRequest();
   node_resources.total = instance.total.ToResourceRequest();
+  node_resources.labels = instance.labels;
   return node_resources;
 }
 
