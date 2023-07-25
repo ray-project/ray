@@ -279,9 +279,9 @@ class DataIterator(abc.ABC):
             ...     12,
             ... ).iterator().iter_torch_batches(batch_size=4):
             ...     print(batch)
-            {'id': tensor([ 0, 10,  1,  2])}
-            {'id': tensor([3, 4, 5, 6])}
-            {'id': tensor([ 8,  9, 11,  7])}
+            {'id': tensor([0, 1, 2, 3])}
+            {'id': tensor([4, 5, 6, 7])}
+            {'id': tensor([ 8, 9, 10, 11])}
 
             Use the ``collate_fn`` to customize how the tensor batch is created.
 
