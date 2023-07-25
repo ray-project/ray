@@ -5,7 +5,6 @@ from typing import Optional
 import pyarrow.fs
 
 from ray.air._internal.uri_utils import is_uri
-from ray.air._internal.remote_storage import get_fs_and_path
 from ray.tune.syncer import Syncer, SyncConfig, _DefaultSyncer
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.trainable.util import TrainableUtil
@@ -96,7 +95,7 @@ class StorageContext:
             (
                 self.storage_filesystem,
                 self.storage_fs_path,
-            ) = get_fs_and_path(self.storage_path)
+            ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
 
         self.syncer: Optional[Syncer] = (
             None
