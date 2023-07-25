@@ -265,10 +265,12 @@ class ActorPoolMapOperator(MapOperator):
         ):
             # The user specified a batch size, but it was probably too large.
             logger.get_logger().warning(
-                "To ensure full parallelization across an actor pool of size "
-                f"{min_workers}, the specified batch size "
-                f"should be at most {max_desired_batch_size}. Your configured batch "
-                f"size for this operator was {self._min_rows_per_bundle}."
+                f"Your batch size is too large. Currently, your batch size is "
+                f"{self._min_rows_per_bundle}. Your dataset contains {total_rows}, and "
+                f"Ray Data tried to parallelize it across {min_workers} actors. To "
+                f"parallelize this fully across all {min_workers} actors, set batch "
+                f"size to not exceed `{total_rows} / {min_workers} = "
+                f"{max_desired_batch_size}`."
             )
         elif len(self._output_metadata) < min_workers:
             # The user created a stream that has too few blocks to begin with.
