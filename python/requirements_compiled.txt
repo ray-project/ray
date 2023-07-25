@@ -256,7 +256,10 @@ matplotlib==3.7.2
 matplotlib-inline==0.1.6
 mccabe==0.6.1
 mdit-py-plugins==0.2.8
-memray==1.8.1 ; platform_system != "Windows" and sys_platform != "darwin"
+# Manual fix for https://github.com/bloomberg/memray/issues/426
+# Remove arm64-specific git pin when > 1.8.1 is released
+memray==1.8.1 ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
+memray @ git+https://github.com/bloomberg/memray.git ; platform_system != "Windows" and sys_platform != "darwin" and platform_machine == 'aarch64'
 minigrid==2.1.1
 mistune==0.8.4
 ml-dtypes==0.2.0
