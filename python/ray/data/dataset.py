@@ -924,28 +924,32 @@ class Dataset:
         return Dataset(plan, self._epoch, self._lazy, logical_plan)
 
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
-        """Repartition the dataset into exactly this number of blocks.
+        """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
-        After repartitioning, all blocks in the returned dataset will have
-        approximately the same number of rows.
+        This method can be useful to tune the performance of your pipeline. To learn
+        more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
 
-        Repartition has two modes:
+        If you're writing data to files, you can also use this method to change the
+        number of output files. To learn more, see
+        :ref:`Changing the number of output files <changing-number-output-files>`.
 
-        * ``shuffle=False`` - performs the minimal data movement needed to equalize block sizes
-        * ``shuffle=True`` - performs a full distributed shuffle
+        .. note::
 
-        .. image:: /data/images/dataset-shuffle.svg
-            :align: center
+            Repartition has two modes. If ``shuffle=False``, Ray Data performs the
+            minimal data movement needed to equalize block sizes. Otherwise, Ray Data
+            performs a full distributed shuffle.
 
-        ..
-            https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
+            .. image:: /data/images/dataset-shuffle.svg
+                :align: center
 
+            ..
+                https://docs.google.com/drawings/d/132jhE3KXZsf29ho1yUdPrCHB9uheHBWHJhDQMXqIVPA/edit
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> # Set the number of output partitions to write to disk.
-            >>> ds.repartition(10).write_parquet("/tmp/test")
+            >>> ds.repartition(10).num_blocks()
+            10
 
         Time complexity: O(dataset size / parallelism)
 
@@ -959,7 +963,7 @@ class Dataset:
                 minimizing data movement.
 
         Returns:
-            The repartitioned dataset.
+            The repartitioned :class:`Dataset`.
         """  # noqa: E501
 
         plan = self._plan.with_stage(RepartitionStage(num_blocks, shuffle))
@@ -981,35 +985,32 @@ class Dataset:
         num_blocks: Optional[int] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Randomly shuffle the elements of this dataset.
+        """Randomly shuffle the rows of this :class:`Dataset`.
 
         .. tip::
 
-            ``random_shuffle`` can be slow. For better performance, try
+            This method can be slow. For better performance, try
             `Iterating over batches with shuffling <iterating-over-data#iterating-over-batches-with-shuffling>`_.
+            Also, see :ref:`Optimizing shuffles <optimizing_shuffles>`.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> # Shuffle this dataset randomly.
-            >>> ds.random_shuffle()
-            RandomShuffle
-            +- Dataset(num_blocks=..., num_rows=100, schema={id: int64})
-            >>> # Shuffle this dataset with a fixed random seed.
-            >>> ds.random_shuffle(seed=12345)
-            RandomShuffle
-            +- Dataset(num_blocks=..., num_rows=100, schema={id: int64})
+            >>> ds.random_shuffle().take(3)  # doctest: +SKIP
+            {'id': 41}, {'id': 21}, {'id': 92}]
+            >>> ds.random_shuffle(seed=42).take(3)  # doctest: +SKIP
+            {'id': 77}, {'id': 21}, {'id': 63}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
-            num_blocks: The number of output blocks after the shuffle, or None
+            num_blocks: The number of output blocks after the shuffle, or ``None``
                 to retain the number of blocks.
 
         Returns:
-            The shuffled dataset.
+            The shuffled :class:`Dataset`.
         """  # noqa: E501
 
         plan = self._plan.with_stage(
@@ -1032,22 +1033,26 @@ class Dataset:
         *,
         seed: Optional[int] = None,
     ) -> "Dataset":
-        """Randomly shuffle the blocks of this dataset.
+        """Randomly shuffle the :ref:`blocks <dataset_concept>` of this :class:`Dataset`.
+
+        This method is useful if you :meth:`~Dataset.split` your dataset into shards and
+        want to randomize the data in each shard without performing a full
+        :meth:`~Dataset.random_shuffle`.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> # Randomize the block order.
-            >>> ds.randomize_block_order() # doctest: +SKIP
-            >>> # Randomize the block order with a fixed random seed.
-            >>> ds.randomize_block_order(seed=12345) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.take(5)
+            [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
+            >>> ds.randomize_block_order().take(5)  # doctest: +SKIP
+            {'id': 15}, {'id': 16}, {'id': 17}, {'id': 18}, {'id': 19}]
 
         Args:
             seed: Fix the random seed to use, otherwise one is chosen
                 based on system randomness.
 
         Returns:
-            The block-shuffled dataset.
+            The block-shuffled :class:`Dataset`.
         """
 
         plan = self._plan.with_stage(RandomizeBlocksStage(seed))
@@ -2144,7 +2149,7 @@ class Dataset:
         return self._aggregate_result(ret)
 
     def sort(self, key: Optional[str] = None, descending: bool = False) -> "Dataset":
-        """Sort the dataset by the specified column.
+        """Sort the :class:`Dataset` by the specified column.
 
         Examples:
             >>> import ray
@@ -2156,7 +2161,7 @@ class Dataset:
 
         Args:
             key: The column to sort by. To sort by multiple columns, call
-                :meth:`Dataset.map` to generate a column to sort by.
+                :meth:`Dataset.map` and generate a new column to sort by.
             descending: Whether to sort in descending order.
 
         Returns:
