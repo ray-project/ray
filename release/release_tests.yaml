@@ -967,6 +967,27 @@
 
   # variations: TODO(jungong): add GCP variation.
 
+- name: air_example_vicuna_13b_lightning_deepspeed_finetuning
+  group: AIR examples
+  working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
+
+  python: "3.8"
+
+  frequency: weekly
+  team: ml
+  cluster:
+    byod:
+      type: cu118
+      pip:
+        - myst-parser==0.15.2
+        - myst-nb==0.13.1
+        - jupytext==1.13.6
+    cluster_env: vicuna_13b_deepspeed_env.yaml
+    cluster_compute: vicuna_13b_deepspeed_compute_aws.yaml
+
+  run:
+    timeout: 4700
+    script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
 
 #####################################
 # Workspace templates release tests #
