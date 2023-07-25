@@ -637,6 +637,7 @@ def list_at_uri(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None) -> List[st
             )
     else:
         fs_path = uri
+        assert not is_uri(fs_path), fs_path
 
     if not is_non_local_path_uri(uri):
         # Make sure local paths get expanded fully
