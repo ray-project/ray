@@ -12,7 +12,7 @@ Scaling Configurations in Train (``ScalingConfig``)
 The scaling configuration specifies distributed training properties like the number of workers or the
 resources per worker.
 
-The properties of the scaling configuration are :ref:`tunable <air-tuner-search-space>`.
+The properties of the scaling configuration are :ref:`tunable <tune-search-space-tutorial>`.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -38,7 +38,7 @@ and logging options.
 Many of these settings are configured through other config objects and passed through
 the ``RunConfig``. The following sub-sections contain descriptions of these configs.
 
-The properties of the run configuration are :ref:`not tunable <air-tuner-search-space>`.
+The properties of the run configuration are :ref:`not tunable <tune-search-space-tutorial>`.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -58,7 +58,7 @@ Failure configurations in Train (``FailureConfig``)
 The failure configuration specifies how training failures should be dealt with.
 
 As part of the RunConfig, the properties of the failure configuration
-are :ref:`not tunable <air-tuner-search-space>`.
+are :ref:`not tunable <tune-search-space-tutorial>`.
 
 
 .. literalinclude:: doc_code/key_concepts.py
@@ -78,7 +78,7 @@ The checkpoint configuration specifies how often to checkpoint training state
 and how many checkpoints to keep.
 
 As part of the RunConfig, the properties of the checkpoint configuration
-are :ref:`not tunable <air-tuner-search-space>`.
+are :ref:`not tunable <tune-search-space-tutorial>`.
 
 .. literalinclude:: doc_code/key_concepts.py
     :language: python
@@ -118,7 +118,7 @@ The ``tune.SyncConfig`` specifies how synchronization of results
 and checkpoints should happen in a distributed Ray cluster.
 
 As part of the RunConfig, the properties of the failure configuration
-are :ref:`not tunable <air-tuner-search-space>`.
+are :ref:`not tunable <tune-search-space-tutorial>`.
 
 .. note::
 

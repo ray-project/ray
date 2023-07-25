@@ -19,7 +19,7 @@ Trainers
 
 Trainers are responsible for executing (distributed) training runs.
 The output of a Trainer run is a :ref:`Result <train-key-concepts-results>` that contains
-metrics from the training run and the latest saved :ref:`Checkpoint <air-checkpoint-ref>`.
+metrics from the training run and the latest saved :ref:`Checkpoint <checkpoint-api-ref>`.
 Trainers can also be configured with :ref:`Datasets <air-ingest>` and :ref:`Preprocessors <air-preprocessors>` for scalable data ingest and preprocessing.
 
 
@@ -43,7 +43,6 @@ There are three categories of built-in Trainers:
         and executes single-worker training steps. Refer to the following guides for more details:
 
         - :ref:`Deep learning user guide <train-dl-guide>`
-        - :ref:`Quick overview of deep-learning trainers in the Ray AIR documentation <air-trainers-dl>`
 
     .. tab-item:: Tree-Based Trainers
 
@@ -57,8 +56,6 @@ There are three categories of built-in Trainers:
         automatically.
 
         - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
-        - :ref:`Quick overview of tree-based trainers in the Ray AIR documentation <air-trainers-tree>`
-
 
     .. tab-item:: Other Trainers
 
@@ -67,8 +64,6 @@ There are three categories of built-in Trainers:
         - :class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>` for NLP
         - :class:`RLTrainer <ray.train.rl.RLTrainer>` for reinforcement learning
         - :class:`SklearnTrainer <ray.train.sklearn.sklearn_trainer.SklearnTrainer>` for (non-distributed) training of sklearn models.
-
-        - :ref:`Other trainers in the Ray AIR documentation <air-trainers-other>`
 
 .. _train-key-concepts-config:
 

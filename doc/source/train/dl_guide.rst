@@ -396,6 +396,10 @@ For example, you can:
 
     result.checkpoint  # last saved checkpoint
     result.best_checkpoints  # N best saved checkpoints, as configured in run_config
+    result.error  # returns the Exception if training failed.
+
+
+See :class:`the Result docstring <ray.air.result.Result>` for more details.
 
 .. _train-log-dir:
 
@@ -462,7 +466,7 @@ is shared with Ray Tune.
 
 .. _train-checkpointing:
 
-Ray Train also provides a way to save :ref:`Checkpoints <air-checkpoints-doc>` during the training process. This is
+Ray Train also provides a way to save :ref:`Checkpoints <checkpoint-api-ref>` during the training process. This is
 useful for:
 
 1. :ref:`Integration with Ray Tune <train-tune>` to use certain Ray Tune
@@ -515,7 +519,7 @@ The following figure shows how these two sessions look like in a Data Parallel t
 Saving checkpoints
 ++++++++++++++++++
 
-:ref:`Checkpoints <air-checkpoints-doc>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
 training function. This will cause the checkpoint state from the distributed
 workers to be saved on the ``Trainer`` (where your python script is executed).
 
@@ -1144,42 +1148,6 @@ to determine the existence and validity of the given experiment directory.
 ..     # View the PyTorch Profiler traces.
 ..     $ open http://localhost:6006/#pytorch_profiler
 
-.. _train-tune:
-
-Hyperparameter tuning (Ray Tune)
---------------------------------
-
-Hyperparameter tuning with :ref:`Ray Tune <tune-main>` is natively supported
-with Ray Train. Specifically, you can take an existing ``Trainer`` and simply
-pass it into a :py:class:`~ray.tune.tuner.Tuner`.
-
-.. code-block:: python
-
-    from ray import tune
-    from ray.air import session, ScalingConfig
-    from ray.train.torch import TorchTrainer
-    from ray.tune.tuner import Tuner, TuneConfig
-
-    def train_func(config):
-        # In this example, nothing is expected to change over epochs,
-        # and the output metric is equivalent to the input value.
-        for _ in range(config["num_epochs"]):
-            session.report(dict(output=config["input"]))
-
-    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
-    tuner = Tuner(
-        trainer,
-        param_space={
-            "train_loop_config": {
-                "num_epochs": 2,
-                "input": tune.grid_search([1, 2, 3]),
-            }
-        },
-        tune_config=TuneConfig(num_samples=5, metric="output", mode="max"),
-    )
-    result_grid = tuner.fit()
-    print(result_grid.get_best_result().metrics["output"])
-    # 3
 
 .. _torch-amp:
 
