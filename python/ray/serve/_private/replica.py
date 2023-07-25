@@ -641,8 +641,6 @@ class RayServeReplica:
     async def wrap_user_method_call(
         self,
         request_metadata: RequestMetadata,
-        *,
-        acquire_reader_lock: bool = True,
     ):
         """Context manager that should be used to wrap user method calls.
 
@@ -668,16 +666,7 @@ class RayServeReplica:
         start_time = time.time()
         user_exception = None
         try:
-            # TODO(edoakes): this is only here because there is an issue where async
-            # generators in actors have the `asyncio.current_task()` change between
-            # iterations: https://github.com/ray-project/ray/issues/37147. `aiorwlock`
-            # relies on the current task being stable, so it raises an exception.
-            # This flag should be removed once the above issue is closed.
-            if acquire_reader_lock:
-                async with self.rwlock.reader:
-                    yield
-            else:
-                yield
+            yield
         except Exception as e:
             user_exception = e
             logger.exception(f"Request failed due to {type(e).__name__}:")
@@ -793,7 +782,7 @@ class RayServeReplica:
         # relies on the current task being stable, so it raises an exception.
         # This flag should be removed once the above issue is closed.
         async with self.wrap_user_method_call(
-            request_metadata, acquire_reader_lock=False
+            request_metadata
         ):
             assert (
                 not request_metadata.is_http_request

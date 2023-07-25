@@ -124,11 +124,11 @@ def test_responses_actually_streamed(
     requester = StreamingRequester.remote()
     gen1 = requester.make_request.options(num_returns="streaming").remote()
     gen2 = requester.make_request.options(num_returns="streaming").remote()
-
     # Check that we get the first responses before the signal is sent
     # (so the generator is still hanging after the first yield).
     gen1_result = ray.get(next(gen1))
     gen2_result = ray.get(next(gen2))
+
     assert gen1_result.endswith("before signal")
     assert gen2_result.endswith("before signal")
     gen1_pid = gen1_result.split(":")[0]

@@ -1468,9 +1468,6 @@ cdef void execute_task(
                                 while True:
                                     try:
                                         output = await outputs.__anext__()
-                                        # We need it to force context
-                                        # switch so that queue can pick up the result.
-                                        await asyncio.sleep(0)
                                     except StopAsyncIteration as e:
                                         output = e
                                         break
