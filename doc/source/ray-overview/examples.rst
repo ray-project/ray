@@ -241,13 +241,6 @@ Ray Examples
             How to log results and upload models to Weights and Biases
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving
-
-        .. button-ref:: /ray-air/examples/rl_serving_example
-
-            Serving RL models with Ray AIR
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item
 
         .. button-ref:: /ray-air/examples/rl_online_example
