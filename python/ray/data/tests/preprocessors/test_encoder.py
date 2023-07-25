@@ -507,6 +507,10 @@ def test_label_encoder():
     )
     assert pred_out_df.equals(pred_expected_df)
 
+    # Inverse transform batch.
+    inverse_transform_df = encoder.inverse_transform_batch(pred_out_df)
+    assert inverse_transform_df.equals(pred_in_df)
+
     # Test null behavior.
     null_col = [1, None]
     nonnull_col = [1, 1]

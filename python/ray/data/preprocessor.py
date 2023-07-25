@@ -248,6 +248,34 @@ class Preprocessor(abc.ABC):
 
         return self._inverse_transform(ds)
 
+    def inverse_transform_batch(self, data: "DataBatchType") -> "DataBatchType":
+        """Inverse transform a single batch of data.
+
+        The data will be converted to the format supported by the Preprocessor,
+        based on which ``_inverse_transform_*`` methods are implemented.
+
+        Args:
+            data: Input data batch.
+
+        Returns:
+            DataBatchType:
+                The inverse transformed data batch. This may differ
+                from the input type depending on which ``_inverse_transform_*`` methods
+                are implemented.
+        """
+        if not self._is_inverse_transformable:
+            raise RuntimeError(
+                "An inverse transform method has not been defined on"
+                "this preprocessor."
+            )
+
+        transform_status = self.transform_status()
+        if transform_status == Preprocessor.TransformStatus.NOT_TRANSFORMED:
+            raise RuntimeError("`transform` must be called before"
+                               "`inverse_transform_batch`")
+
+        return self._inverse_transform_batch(data)
+
     @DeveloperAPI
     def _fit(self, ds: "Dataset") -> "Preprocessor":
         """Sub-classes should override this instead of fit()."""
@@ -368,6 +396,36 @@ class Preprocessor(abc.ABC):
             return self._transform_pandas(_convert_batch_type_to_pandas(data))
         elif transform_type == BatchFormat.NUMPY:
             return self._transform_numpy(_convert_batch_type_to_numpy(data))
+
+    def _inverse_transform_batch(self, data: "DataBatchType") -> "DataBatchType":
+        import numpy as np
+        import pandas as pd
+
+        from ray.air.util.data_batch_conversion import (
+            _convert_batch_type_to_numpy,
+            _convert_batch_type_to_pandas,
+        )
+
+        try:
+            import pyarrow
+        except ImportError:
+            pyarrow = None
+
+        if not isinstance(
+            data, (pd.DataFrame, pyarrow.Table, collections.abc.Mapping, np.ndarray)
+        ):
+            raise ValueError(
+                "`transform_batch` is currently only implemented for Pandas "
+                "DataFrames, pyarrow Tables, NumPy ndarray and dictionary of "
+                f"ndarray. Got {type(data)}."
+            )
+
+        transform_type = self._determine_transform_to_use()
+
+        if transform_type == BatchFormat.PANDAS:
+            return self._inverse_transform_pandas(_convert_batch_type_to_pandas(data))
+        elif transform_type == BatchFormat.NUMPY:
+            return self._inverse_transform_numpy(_convert_batch_type_to_numpy(data))
 
     @DeveloperAPI
     def _transform_pandas(self, df: "pd.DataFrame") -> "pd.DataFrame":
