@@ -8,6 +8,7 @@ from ray.air._internal.uri_utils import is_uri
 from ray.air._internal.remote_storage import get_fs_and_path
 from ray.tune.syncer import Syncer, SyncConfig, _DefaultSyncer
 from ray.tune.result import _get_defaults_results_dir
+from ray.tune.trainable.util import TrainableUtil
 
 
 def _use_storage_context() -> bool:
@@ -54,11 +55,13 @@ class StorageContext:
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
+        current_checkpoint_id: Optional[int] = None,
     ):
         self.storage_path: str = storage_path
         self.storage_cache_path: str = _get_defaults_results_dir()
         self.experiment_dir_name: str = experiment_dir_name
         self.trial_dir_name: Optional[str] = trial_dir_name
+        self.current_checkpoint_id = current_checkpoint_id
         self.sync_config: SyncConfig = dataclasses.replace(sync_config)
 
         if storage_filesystem:
@@ -134,7 +137,16 @@ class StorageContext:
             )
         return os.path.join(self.experiment_fs_path, self.trial_dir_name)
 
-    def construct_checkpoint_fs_path(self, checkpoint_dir_name: str) -> str:
+    @property
+    def checkpoint_fs_path(self) -> str:
+        if self.current_checkpoint_id is None:
+            raise RuntimeError(
+                "Should not access `checkpoint_fs_path` without setting "
+                "`current_checkpoint_id`"
+            )
+        checkpoint_dir_name = TrainableUtil._make_checkpoint_dir_name(
+            self.current_checkpoint_id
+        )
         return os.path.join(self.trial_fs_path, checkpoint_dir_name)
 
 
