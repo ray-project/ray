@@ -75,7 +75,7 @@ class TensorflowCheckpoint(Checkpoint):
                 model = tf.keras.applications.resnet.ResNet101()
                 checkpoint = TensorflowCheckpoint.from_model(model)
 
-            .. testcode::
+            .. testoutput::
                 :options: +MOCK
                 :hide:
 
