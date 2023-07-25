@@ -7,7 +7,7 @@ aim==3.17.5
 aim-ui==3.17.5
 aimrecords==0.0.7
 aimrocks==0.4.0
-aioboto3==11.2.0; python_version >= "3.8"
+aioboto3==11.2.0 ; python_version >= "3.8"
 aiobotocore==2.5.0
 aiofiles==22.1.0
 aiohttp==3.8.4
@@ -67,6 +67,7 @@ botorch==0.8.5
 cached-property==1.5.2
 cachetools==5.3.1
 catboost==1.2
+certifi==2023.5.7
 cffi==1.15.1
 cfn-lint==0.77.10
 charset-normalizer==3.2.0
@@ -169,7 +170,7 @@ grapheme==0.6.0
 graphql-core==3.2.3
 graphviz==0.20.1
 greenlet==2.0.2
-grpcio==1.56.0
+grpcio==1.54.2
 gsutil==5.25
 gunicorn==20.1.0
 gym==0.26.2
@@ -215,7 +216,7 @@ jsondiff==2.0.0
 jsonpatch==1.32
 jsonpickle==3.0.1
 jsonpointer==2.4
-jsonschema==4.18.1
+jsonschema==4.17.3
 jsonschema-spec==0.1.6
 junit-xml==1.9
 jupyter-cache==0.4.3
@@ -255,7 +256,7 @@ matplotlib==3.7.2
 matplotlib-inline==0.1.6
 mccabe==0.6.1
 mdit-py-plugins==0.2.8
-memray==1.8.1 ; platform_system != "Windows" and sys_platform != "darwin"
+memray @ git+https://github.com/bloomberg/memray.git ; platform_system != "Windows" and sys_platform != "darwin"
 minigrid==2.1.1
 mistune==0.8.4
 ml-dtypes==0.2.0
@@ -350,7 +351,7 @@ portalocker==2.7.0
 prometheus-client==0.17.0
 promise==2.3
 prompt-toolkit==3.0.39
-protobuf==3.20.3
+protobuf==3.19.6
 proxy-py==2.4.3
 psutil==5.9.5
 ptyprocess==0.7.0
@@ -414,7 +415,7 @@ pytorch-lightning==1.6.5
 pytz==2022.7.1
 pyu2f==0.1.5
 pywavelets==1.4.1
-pyyaml==6.0.0
+pyyaml==6.0
 pyzmq==25.1.0
 querystring-parser==1.2.4
 raydp==1.6.0b20230707.dev0
@@ -429,7 +430,7 @@ restrictedpython==6.0
 retry-decorator==1.1.1
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
-rich==13.1.0
+rich==12.6.0
 rsa==4.7.2
 s3fs==2023.5.0 ; python_version >= "3.8"
 s3transfer==0.6.1
@@ -522,7 +523,7 @@ uc-micro-py==1.0.2
 uri-template==1.3.0
 uritemplate==4.1.1
 urllib3==1.26.16
-uvicorn==0.23.0
+uvicorn==0.22.0
 uvloop==0.17.0
 virtualenv==20.21.0
 wandb==0.13.4
