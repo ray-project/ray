@@ -845,8 +845,9 @@ class RayServeReplica:
         # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
         async with self.delete_lock:
-            self.metrics_pusher.__del__()
-            self.metrics_pusher = None
+            if self.metrics_pusher:
+                self.metrics_pusher.__del__()
+                self.metrics_pusher = None
 
             if not hasattr(self, "callable"):
                 return
