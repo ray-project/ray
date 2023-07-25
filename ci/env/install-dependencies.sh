@@ -464,8 +464,7 @@ install_pip_packages() {
     # consistency between CI and docker images.
     # On Windows, some pinned dependencies are not built for win, so we
     # skip this until we have a good wy to resolve cross-platform dependencies.
-    # pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
-    pass
+    pip_cmd+=" -c ${WORKSPACE_DIR}/python/requirements_compiled.txt"
   fi
 
   for file in "${requirements_files[@]}"; do
