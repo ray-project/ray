@@ -221,7 +221,6 @@ from ray.air.config import RunConfig
 run_config = RunConfig(
     name="MyExperiment",
     storage_path="s3://...",
-    verbose=2,
     checkpoint_config=air.CheckpointConfig(checkpoint_frequency=2),
 )
 # __run_config_end__

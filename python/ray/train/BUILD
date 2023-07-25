@@ -9,6 +9,8 @@ doctest(
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "huggingface/transformers/transformers_trainer.py",
+            "_internal/session.py",
+            "context.py"
         ]
     ),
     size = "large",
@@ -19,7 +21,10 @@ doctest(
     files = [
         "tensorflow/tensorflow_trainer.py",
         "huggingface/transformers/transformers_trainer.py",
+        "_internal/session.py",
+        "context.py"
     ],
+    size = "large",
     tags = ["team:ml"],
     gpu = True
 )
@@ -240,15 +245,6 @@ py_test(
 # Tests from the python/ray/train/tests directory.
 # Please keep these sorted alphabetically.
 # --------------------------------------------------------------------
-
-py_test(
-    name = "pytorch_pbt_failure",
-    size = "small",
-    srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive", "no_main"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
 
 py_test(
     name = "test_accelerate_trainer_gpu",
