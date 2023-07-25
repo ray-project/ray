@@ -275,6 +275,15 @@ class RayServeHandle:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
+    def shutdown(self):
+        """Shutdown ray serve handle gracefully.
+
+        The router needs to be shutdown separately.
+        """
+        if self._router:
+            self._router.shutdown()
+            self._router = None
+
 
 @PublicAPI(stability="beta")
 class RayServeSyncHandle(RayServeHandle):

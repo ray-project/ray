@@ -952,6 +952,7 @@ class Router:
             ray.get(controller_handle.get_deployment_info.remote(self.deployment_name))
         )
         deployment_info = DeploymentInfo.from_proto(deployment_route.deployment_info)
+        self.metrics_pusher = None
         if deployment_info.deployment_config.autoscaling_config:
             self.metrics_pusher = MetricsPusher()
             self.metrics_pusher.register_task(
@@ -1002,3 +1003,18 @@ class Router:
         )
 
         return result
+
+    def __del__(self):
+        # Gracefully shutdown self.metrics_pusher.
+        if self.metrics_pusher:
+            del self.metrics_pusher
+            self.metrics_pusher = None
+
+    def shutdown(self):
+        """Shutdown router gracefully.
+
+        The metrics_pusher needs to be shutdown separately.
+        """
+        if self.metrics_pusher:
+            self.metrics_pusher.__del__()
+            self.metrics_pusher = None
