@@ -286,44 +286,46 @@ class Dataset:
         num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Apply the given function to each record of this dataset.
+        """Apply the given function to each row of this dataset.
 
-        Note that mapping individual records can be quite slow. Consider using
-        `.map_batches()` for performance.
+        Use this method to transform your data. To learn more, see
+        :ref:`Transforming rows <transforming_rows>`.
+
+        .. tip::
+
+            If your transformation is vectorized like most NumPy or pandas operations,
+            :meth:`~Dataset.map_batches` might be faster.
 
         Examples:
-            >>> import ray
-            >>> # Transform python objects.
-            >>> ds = ray.data.range(1000)
-            >>> # The function goes from record (Dict[str, Any]) to record.
-            >>> ds.map(lambda record: {"id": record["id"] * 2})
-            Map
-            +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
-            >>> # Transform Arrow records.
-            >>> ds = ray.data.from_items(
-            ...     [{"value": i} for i in range(1000)])
-            >>> ds.map(lambda record: {"v2": record["value"] * 2})
-            Map
-            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
-            >>> # Define a callable class that persists state across
-            >>> # function invocations for efficiency.
-            >>> init_model = ... # doctest: +SKIP
-            >>> class CachedModel:
-            ...    def __init__(self):
-            ...        self.model = init_model()
-            ...    def __call__(self, batch):
-            ...        return self.model(batch)
-            >>> # Apply the transform in parallel on GPUs. Since
-            >>> # compute=ActorPoolStrategy(size=8) the transform is applied on a
-            >>> # pool of 8 Ray actors, each allocated 1 GPU by Ray.
-            >>> ds.map(CachedModel, # doctest: +SKIP
-            ...        compute=ray.data.ActorPoolStrategy(size=8),
-            ...        num_gpus=1)
+
+            .. testcode::
+
+                import os
+                from typing import Any, Dict
+                import ray
+
+                def parse_filename(row: Dict[str, Any]) -> Dict[str, Any]:
+                    row["filename"] = os.path.basename(row["path"])
+                    return row
+
+                ds = (
+                    ray.data.read_images("s3://anonymous@ray-example-data/image-datasets/simple", include_paths=True)
+                    .map(parse_filename)
+                )
+                print(ds.schema())
+
+            .. testoutput::
+
+                Column    Type
+                ------    ----
+                image     numpy.ndarray(shape=(32, 32, 3), dtype=uint8)
+                path      string
+                filename  string
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The function to apply to each record, or a class type
+            fn: The function to apply to each row, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either None (default) to use Ray
@@ -335,22 +337,18 @@ class Dataset:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                Ray for each map worker.
 
         .. seealso::
 
-            :meth:`~Dataset.flat_map`:
-                Call this method to create new records from existing ones. Unlike
+            :meth:`~Dataset.flat_map`
+                Call this method to create new rows from existing ones. Unlike
                 :meth:`~Dataset.map`, a function passed to
-                :meth:`~Dataset.flat_map` can return multiple records.
-
-                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call
-                :meth:`~Dataset.map_batches` instead.
+                :meth:`~Dataset.flat_map` can return multiple rows.
 
             :meth:`~Dataset.map_batches`
-                Call this method to transform batches of data. It's faster and more
-                flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
-        """
+                Call this method to transform batches of data.
+        """  # noqa: E501
         validate_compute(fn, compute)
 
         transform_fn = generate_map_rows_fn()
@@ -400,121 +398,90 @@ class Dataset:
     ) -> "Dataset":
         """Apply the given function to batches of data.
 
-        This applies the ``fn`` in parallel with map tasks, with each task handling
-        a batch of data (typically Dict[str, np.ndarray] or pd.DataFrame).
+        This method is useful for preprocessing data and performing inference. To learn
+        more, see :ref:`Transforming batches <transforming_batches>`.
 
-        To learn more, see the :ref:`Transforming batches user guide <transforming_batches>`.
+        You can use either Ray Tasks or Ray Actors to perform the transformation. By
+        default, Ray Data uses Tasks. To use Actors, see
+        :ref:`Transforming batches with actors <transforming_data_actors>`.
 
         .. tip::
-            If ``fn`` does not mutate its input, set ``zero_copy_batch=True`` to elide a
-            batch copy, which can improve performance and decrease memory utilization.
-            ``fn`` will then receive zero-copy read-only batches.
-            If ``fn`` mutates its input, you will need to ensure that the batch provided
-            to ``fn`` is writable by setting ``zero_copy_batch=False`` (default). This
-            will create an extra, mutable copy of each batch before handing it to
-            ``fn``.
-
-        .. note::
-            The size of the batches provided to ``fn`` may be smaller than the provided
-            ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent to
-            a given map task. When ``batch_size`` is specified, each map task is
-            sent a single block if the block is equal to or larger than ``batch_size``,
-            and is sent a bundle of blocks up to (but not exceeding)
-            ``batch_size`` if blocks are smaller than ``batch_size``.
+            If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
+            performance and decrease memory utilization.
 
         Examples:
 
-            >>> import numpy as np
-            >>> import ray
-            >>> ds = ray.data.from_items([
-            ...     {"name": "Luna", "age": 4},
-            ...     {"name": "Rory", "age": 14},
-            ...     {"name": "Scout", "age": 9},
-            ... ])
-            >>> ds  # doctest: +SKIP
-            MaterializedDataset(
-                num_blocks=3,
-                num_rows=3,
-                schema={name: string, age: int64}
-            )
+            Call :meth:`~Dataset.map_batches` to transform your data.
 
-            Here ``fn`` returns the same batch type as the input, but your ``fn`` can
-            also return a different batch type (e.g., pd.DataFrame). Read more about
-            :ref:`Transforming batches <transforming_batches>`.
+            .. testcode::
 
-            >>> from typing import Dict
-            >>> def map_fn(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-            ...     batch["age_in_dog_years"] = 7 * batch["age"]
-            ...     return batch
-            >>> ds = ds.map_batches(map_fn)
-            >>> ds
-            MapBatches(map_fn)
-            +- Dataset(num_blocks=3, num_rows=3, schema={name: string, age: int64})
+                from typing import Dict
+                import numpy as np
+                import ray
 
-            :ref:`Actors <actor-guide>` can improve the performance of some workloads.
-            For example, you can use :ref:`actors <actor-guide>` to load a model once
-            per worker instead of once per inference.
+                def add_dog_years(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                    batch["age_in_dog_years"] = 7 * batch["age"]
+                    return batch
 
-            To transform batches with :ref:`actors <actor-guide>`, pass a callable type
-            to ``fn`` and specify an :class:`~ray.data.ActorPoolStrategy`.
+                ds = (
+                    ray.data.from_items([
+                        {"name": "Luna", "age": 4},
+                        {"name": "Rory", "age": 14},
+                        {"name": "Scout", "age": 9},
+                    ])
+                    .map_batches(add_dog_years)
+                )
+                ds.show()
 
-            In the example below, ``CachedModel`` is called on an autoscaling pool of
-            two to eight :ref:`actors <actor-guide>`, each allocated one GPU by Ray.
+            .. testoutput::
 
-            >>> init_large_model = ... # doctest: +SKIP
-            >>> class CachedModel:
-            ...    def __init__(self):
-            ...        self.model = init_large_model()
-            ...    def __call__(self, item):
-            ...        return self.model(item)
-            >>> ds.map_batches( # doctest: +SKIP
-            ...     CachedModel, # doctest: +SKIP
-            ...     batch_size=256, # doctest: +SKIP
-            ...     compute=ray.data.ActorPoolStrategy(size=8), # doctest: +SKIP
-            ...     num_gpus=1,
-            ... ) # doctest: +SKIP
+                {'name': 'Luna', 'age': 4, 'age_in_dog_years': 28}
+                {'name': 'Rory', 'age': 14, 'age_in_dog_years': 98}
+                {'name': 'Scout', 'age': 9, 'age_in_dog_years': 63}
 
-            ``fn`` can also be a generator, yielding multiple batches in a single
-            invocation. This is useful when returning large objects. Instead of
-            returning a very large output batch, ``fn`` can instead yield the
-            output batch in chunks.
+            If your function returns large objects, yield outputs in chunks.
 
-            >>> def map_fn_with_large_output(batch):
-            ...     for i in range(3):
-            ...         yield {"large_output": np.ones((100, 1000))}
-            >>> ds = ray.data.from_items([1])
-            >>> ds = ds.map_batches(map_fn_with_large_output)
-            >>> ds
-            MapBatches(map_fn_with_large_output)
-            +- Dataset(num_blocks=..., num_rows=1, schema={item: int64})
+            .. testcode::
 
+                from typing import Dict
+                import ray
+                import numpy as np
+
+                def map_fn_with_large_output(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+                    for i in range(3):
+                        yield {"large_output": np.ones((100, 1000))}
+
+                ds = (
+                    ray.data.from_items([1])
+                    .map_batches(map_fn_with_large_output)
+                )
+
+            You can also use :meth:`~Dataset.map_batches` to perform offline inference.
+            To learn more, see
+            :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`.
 
         Args:
-            fn: The function or generator to apply to each record batch, or a class type
+            fn: The function or generator to apply to a record batch, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy. Note ``fn`` must be
                 pickle-able.
-            batch_size: The desired number of rows in each batch, or None to use entire
-                blocks as batches (blocks may contain different number of rows).
+            batch_size: The desired number of rows in each batch, or ``None`` to use
+                entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
                 to a given map task. Default batch_size is 4096 with "default".
-            compute: The compute strategy, either "tasks" (default) to use Ray
-                tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
-                pool, or ``ray.data.ActorPoolStrategy(min_size=m, max_size=n)`` for an
-                autoscaling actor pool.
-            batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
-                ``Dict[str, numpy.ndarray]``, or None to return the underlying block
-                exactly as is with no additional formatting.
+            compute: Either "tasks" (default) to use Ray Tasks or an
+                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
                 view on data in Ray's object store, which can decrease memory
                 utilization and improve performance. If this is ``False``, the batch
-                is writable, which will require an extra copy to guarantee.
-                If ``fn`` mutates its input, this will need to be ``False`` in order to
+                is writable, which requires an extra copy to guarantee.
+                If ``fn`` mutates its input, this needs to be ``False`` in order to
                 avoid "assignment destination is read-only" or "buffer source array is
                 read-only" errors. Default is ``False``.
             fn_args: Positional arguments to pass to ``fn`` after the first argument.
@@ -533,24 +500,25 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray for each map worker.
 
+        .. note::
+
+            The size of the batches provided to ``fn`` might be smaller than the
+            specified ``batch_size`` if ``batch_size`` doesn't evenly divide the
+            block(s) sent to a given map task.
+
         .. seealso::
 
             :meth:`~Dataset.iter_batches`
                 Call this function to iterate over batches of data.
 
-            :meth:`~Dataset.flat_map`:
+            :meth:`~Dataset.flat_map`
                 Call this method to create new records from existing ones. Unlike
                 :meth:`~Dataset.map`, a function passed to :meth:`~Dataset.flat_map`
                 can return multiple records.
 
-                :meth:`~Dataset.flat_map` isn't recommended because it's slow; call
-                :meth:`~Dataset.map_batches` instead.
-
             :meth:`~Dataset.map`
                 Call this method to transform one record at time.
 
-                This method isn't recommended because it's slow; call
-                :meth:`~Dataset.map_batches` instead.
         """  # noqa: E501
 
         if num_cpus is not None:
@@ -657,17 +625,31 @@ class Dataset:
     ) -> "Dataset":
         """Add the given column to the dataset.
 
-        This is only supported for datasets convertible to pandas format.
         A function generating the new column values given the batch in pandas
         format must be specified.
 
         Examples:
+
+
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column("new_col", lambda df: df["id"] * 2)
-            >>> # Overwrite the existing "value" with zeros.
-            >>> ds = ds.add_column("id", lambda df: 0)
+            >>> ds.schema()
+            Column  Type
+            ------  ----
+            id      int64
+
+            Add a new column equal to ``id * 2``.
+
+            >>> ds.add_column("new_id", lambda df: df["id"] * 2).schema()
+            Column  Type
+            ------  ----
+            id      int64
+            new_id  int64
+
+            Overwrite the existing values with zeros.
+
+            >>> ds.add_column("id", lambda df: 0).take(3)
+            [{'id': 0}, {'id': 0}, {'id': 0}]
 
         Time complexity: O(dataset size / parallelism)
 
@@ -709,13 +691,24 @@ class Dataset:
         """Drop one or more columns from the dataset.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(100)
-            >>> # Add a new column equal to value * 2.
-            >>> ds = ds.add_column("new_col", lambda df: df["id"] * 2)
-            >>> # Drop the existing "value" column.
-            >>> ds = ds.drop_columns(["id"])
 
+            >>> import ray
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
+            >>> ds.drop_columns(["variety"]).schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
 
         Time complexity: O(dataset size / parallelism)
 
@@ -728,7 +721,7 @@ class Dataset:
                 autoscaling actor pool.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
-        """
+        """  # noqa: E501
 
         return self.map_batches(
             lambda batch: batch.drop(columns=cols),
@@ -747,28 +740,30 @@ class Dataset:
     ) -> "Dataset":
         """Select one or more columns from the dataset.
 
-        All input columns used to select need to be in the schema of the dataset.
+        Specified columns must be in the dataset schema.
 
         Examples:
-            >>> import ray
-            >>> # Create a dataset with 3 columns
-            >>> ds = ray.data.from_items([{"col1": i, "col2": i+1, "col3": i+2}
-            ...      for i in range(10)])
-            >>> # Select only "col1" and "col2" columns.
-            >>> ds = ds.select_columns(cols=["col1", "col2"])
-            >>> ds
-            MapBatches(<lambda>)
-            +- Dataset(
-                  num_blocks=...,
-                  num_rows=10,
-                  schema={col1: int64, col2: int64, col3: int64}
-               )
 
+            >>> import ray
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
+            >>> ds.select_columns(["sepal.length", "sepal.width"]).schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            cols: Names of the columns to select. If any name is not included in the
+            cols: Names of the columns to select. If a name isn't in the
                 dataset schema, an exception is raised.
             compute: The compute strategy, either "tasks" (default) to use Ray
                 tasks, ``ray.data.ActorPoolStrategy(size=n)`` to use a fixed-size actor
@@ -794,17 +789,35 @@ class Dataset:
         num_gpus: Optional[float] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Apply the given function to each record and then flatten results.
+        """Apply the given function to each row and then flatten results.
 
-        Consider using ``.map_batches()`` for better performance (the batch size can be
-        altered in map_batches).
+        Use this method if your transformation returns multiple rows for each input
+        row.
+
+        .. tip::
+            :meth:`~Dataset.map_batches` can also modify the number of rows. If your
+            transformation is vectorized like most NumPy and pandas operations,
+            it might be faster.
 
         Examples:
-            >>> import ray
-            >>> ds = ray.data.range(1000)
-            >>> ds.flat_map(lambda x: [{"id": 1}, {"id": 2}, {"id": 4}])
-            FlatMap
-            +- Dataset(num_blocks=..., num_rows=1000, schema={id: int64})
+
+            .. testcode::
+
+                from typing import Any, Dict, List
+                import ray
+
+                def duplicate_row(row: Dict[str, Any]) -> List[Dict[str, Any]]:
+                    return [row] * 2
+
+                print(
+                    ray.data.range(3)
+                    .flat_map(duplicate_row)
+                    .take_all()
+                )
+
+            .. testoutput::
+
+                [{'id': 0}, {'id': 0}, {'id': 1}, {'id': 1}, {'id': 2}, {'id': 2}]
 
         Time complexity: O(dataset size / parallelism)
 
@@ -826,14 +839,10 @@ class Dataset:
         .. seealso::
 
             :meth:`~Dataset.map_batches`
-                Call this method to transform batches of data. It's faster and more
-                flexible than :meth:`~Dataset.map` and :meth:`~Dataset.flat_map`.
+                Call this method to transform batches of data.
 
             :meth:`~Dataset.map`
-                Call this method to transform one record at time.
-
-                This method isn't recommended because it's slow; call
-                :meth:`~Dataset.map_batches` instead.
+                Call this method to transform one row at time.
         """
         validate_compute(fn, compute)
 
@@ -867,22 +876,24 @@ class Dataset:
         compute: Union[str, ComputeStrategy] = None,
         **ray_remote_args,
     ) -> "Dataset":
-        """Filter out records that do not satisfy the given predicate.
+        """Filter out rows that don't satisfy the given predicate.
 
-        Consider using ``.map_batches()`` for better performance (you can implement
-        filter by dropping records).
+        .. tip::
+            If you can represent your predicate with NumPy or pandas operations,
+            :meth:`Dataset.map_batches` might be faster. You can implement filter by
+            dropping rows.
 
         Examples:
+
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.filter(lambda x: x["id"] % 2 == 0)
-            Filter
-            +- Dataset(num_blocks=..., num_rows=100, schema={id: int64})
+            >>> ds.filter(lambda row: row["id"] % 2 == 0).take_all()
+            [{'id': 0}, {'id': 2}, {'id': 4}, ...]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
-            fn: The predicate to apply to each record, or a class type
+            fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable. Callable classes are
                 only supported for the actor compute strategy.
             compute: The compute strategy, either "tasks" (default) to use Ray
@@ -1053,23 +1064,25 @@ class Dataset:
     def random_sample(
         self, fraction: float, *, seed: Optional[int] = None
     ) -> "Dataset":
-        """Randomly samples a fraction of the elements of this dataset.
+        """Returns a new :class:`Dataset` containing a random fraction of the rows.
 
-        Note that the exact number of elements returned is not guaranteed,
-        and that the number of elements being returned is roughly fraction * total_rows.
+        .. note::
+
+            This method returns roughly ``fraction * total_rows`` rows. An exact number
+            of rows isn't guaranteed.
 
         Examples:
             >>> import ray
-            >>> ds = ray.data.range(100) # doctest: +SKIP
-            >>> ds.random_sample(0.1) # doctest: +SKIP
-            >>> ds.random_sample(0.2, seed=12345) # doctest: +SKIP
+            >>> ds = ray.data.range(100)
+            >>> ds.random_sample(0.1).count()  # doctest: +SKIP
+            10
 
         Args:
             fraction: The fraction of elements to sample.
             seed: Seeds the python random pRNG generator.
 
         Returns:
-            Returns a Dataset containing the sampled elements.
+            Returns a :class:`Dataset` containing the sampled rows.
         """
         import random
 
@@ -2054,26 +2067,23 @@ class Dataset:
         return self._aggregate_result(ret)
 
     def sort(self, key: Optional[str] = None, descending: bool = False) -> "Dataset":
-        """Sort the dataset by the specified key column or key function.
+        """Sort the dataset by the specified column.
 
         Examples:
             >>> import ray
-            >>> # Sort by a single column in descending order.
-            >>> ds = ray.data.from_items(
-            ...     [{"value": i} for i in range(1000)])
-            >>> ds.sort("value", descending=True)
-            Sort
-            +- Dataset(num_blocks=200, num_rows=1000, schema={value: int64})
+            >>> ds = ray.data.range(100)
+            >>> ds.sort("id", descending=True).take(3)
+            [{'id': 99}, {'id': 98}, {'id': 97}]
 
         Time complexity: O(dataset size * log(dataset size / parallelism))
 
         Args:
-            key: The column to sort by. To sort by multiple columns, use a map function
-                to generate the sort column beforehand.
+            key: The column to sort by. To sort by multiple columns, call
+                :meth:`Dataset.map` to generate a column to sort by.
             descending: Whether to sort in descending order.
 
         Returns:
-            A new, sorted dataset.
+            A new, sorted :class:`Dataset`.
         """
 
         plan = self._plan.with_stage(SortStage(self, key, descending))
@@ -2131,17 +2141,17 @@ class Dataset:
 
     @ConsumptionAPI
     def limit(self, limit: int) -> "Dataset":
-        """Materialize and truncate the dataset to the first ``limit`` records.
+        """Truncate the dataset to the first ``limit`` rows.
 
-        Contrary to :meth`.take`, this will not move any data to the caller's
-        machine. Instead, it will return a new ``Dataset`` pointing to the truncated
+        Unlike :meth:`~Dataset.take`, this method doesn't move data to the caller's
+        machine. Instead, it returns a new :class:`Dataset` pointing to the truncated
         distributed data.
 
         Examples:
             >>> import ray
             >>> ds = ray.data.range(1000)
-            >>> ds.limit(5).take_batch()
-            {'id': array([0, 1, 2, 3, 4])}
+            >>> ds.limit(5).count()
+            5
 
         Time complexity: O(limit specified)
 
