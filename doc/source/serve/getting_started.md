@@ -1,8 +1,6 @@
 (serve-getting-started)=
-<<<<<<< HEAD
-=======
+
 (getting-started)=
->>>>>>> 5f1e2747cc80ea0083b090942809192c09619399
 
 # Getting Started
 
