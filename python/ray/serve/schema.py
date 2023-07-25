@@ -1,6 +1,8 @@
+from dataclasses import dataclass, field, asdict
 import json
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict, Set, Optional
+
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatusInfo,
@@ -760,23 +762,23 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
         # See https://github.com/pydantic/pydantic/issues/3764.
         return json.loads(self.get_status().json())
 
-    def get_status(self) -> "ServeStatusSchema":
-        return ServeStatusSchema(
-            name=self.name,
-            app_status=ApplicationStatusInfo(
-                status=self.status,
-                message=self.message,
-                deployment_timestamp=self.last_deployed_time_s,
-            ),
-            deployment_statuses=[
-                DeploymentStatusInfo(
-                    name=name,
-                    status=d.status,
-                    message=d.message,
-                )
-                for name, d in self.deployments.items()
-            ],
-        )
+    # def get_status(self) -> "ServeStatusSchema":
+    #     return ServeStatusSchema(
+    #         name=self.name,
+    #         app_status=ApplicationStatusInfo(
+    #             status=self.status,
+    #             message=self.message,
+    #             deployment_timestamp=self.last_deployed_time_s,
+    #         ),
+    #         deployment_statuses=[
+    #             DeploymentStatusInfo(
+    #                 name=name,
+    #                 status=d.status,
+    #                 message=d.message,
+    #             )
+    #             for name, d in self.deployments.items()
+    #         ],
+    #     )
 
 
 @PublicAPI(stability="alpha")
@@ -829,58 +831,46 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
 
         return {"deploy_mode": "UNSET", "controller_info": {}, "applications": {}}
 
-
-@PublicAPI(stability="beta")
-class ServeStatusSchema(BaseModel, extra=Extra.forbid):
-    """
-    Describes the status of an application and all its deployments.
-
-    This is the response JSON schema for the v1 REST API
-    `GET /api/serve/deployments/status`.
-    """
-
-    name: str = Field(description="Application name", default="")
-    app_status: ApplicationStatusInfo = Field(
-        ...,
-        description=(
-            "Describes if the Serve application is DEPLOYING, if the "
-            "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
-            "when the application was deployed."
-        ),
-    )
-    deployment_statuses: List[DeploymentStatusInfo] = Field(
-        default=[],
-        description=(
-            "List of statuses for all the deployments running in this Serve "
-            "application. Each status contains the deployment name, the "
-            "deployment's status, and a message providing extra context on "
-            "the status."
-        ),
-    )
-
-    @staticmethod
-    def get_empty_schema_dict() -> Dict:
-        """Returns an empty status schema dictionary.
-
-        Schema represents Serve status for a Ray cluster where Serve hasn't
-        started yet.
-        """
-
-        return {
-            "app_status": {
-                "status": ApplicationStatus.NOT_STARTED.value,
-                "message": "",
-                "deployment_timestamp": 0,
+    def _get_status(self) -> "ServeStatus":
+        return ServeStatus(
+            http_proxies={
+                node_id: proxy.status for node_id, proxy in self.http_proxies.items()
             },
-            "deployment_statuses": [],
-        }
+            applications={
+                app_name: ApplicationStatusOverview(
+                    status=app.status,
+                    message=app.message,
+                    last_deployed_time_s=app.last_deployed_time_s,
+                    deployments={
+                        deployment_name: DeploymentStatusOverview(
+                            status=deployment.status, message=deployment.message
+                        )
+                        for deployment_name, deployment in app.deployments.items()
+                    },
+                )
+                for app_name, app in self.applications.items()
+            },
+        )
 
 
-@DeveloperAPI
-def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
+@PublicAPI(stability="alpha")
+@dataclass
+class DeploymentStatusOverview:
+    status: DeploymentStatus
+    message: str
 
-    return ServeStatusSchema(
-        name=serve_status.name,
-        app_status=serve_status.app_status,
-        deployment_statuses=serve_status.deployment_statuses,
-    )
+
+@PublicAPI(stability="alpha")
+@dataclass
+class ApplicationStatusOverview:
+    status: ApplicationStatus
+    message: str
+    last_deployed_time_s: float
+    deployments: Dict[str, DeploymentStatusOverview]
+
+
+@PublicAPI(stability="alpha")
+@dataclass(eq=True)
+class ServeStatus:
+    http_proxies: Dict[str, HTTPProxyStatus]
+    applications: Dict[str, ApplicationStatusOverview]

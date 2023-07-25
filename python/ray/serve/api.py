@@ -50,7 +50,7 @@ from ray.serve._private.utils import (
     get_random_letters,
     extract_self_if_method_call,
 )
-from ray.serve.schema import ServeInstanceDetails, ServeStatusSchema
+from ray.serve.schema import ServeInstanceDetails, ServeStatus
 
 from ray.serve._private import api as _private_api
 
@@ -722,7 +722,7 @@ def get_multiplexed_model_id() -> str:
 
 
 @PublicAPI(stability="alpha")
-def status() -> List[ServeStatusSchema]:
+def status() -> List[ServeStatus]:
     """Get statuses of all active applications on the cluster.
 
     Each item in the list is a pydantic ServeStatusSchema model,
@@ -748,4 +748,4 @@ def status() -> List[ServeStatusSchema]:
         return []
 
     details = ServeInstanceDetails(**client.get_serve_details())
-    return [app.get_status() for app in details.applications.values()]
+    return details._get_status()

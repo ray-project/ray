@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from dataclasses import asdict
 import os
 import pathlib
 import sys
@@ -32,6 +33,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    ServeStatus,
 )
 
 APP_DIR_HELP_STR = (
@@ -578,17 +580,14 @@ def status(address: str, name: Optional[str]):
         if len(serve_details.applications) == 0:
             print("There are no applications running on this cluster.")
         else:
+            status = asdict(serve_details._get_status())
             print(
-                "\n---\n\n".join(
-                    yaml.safe_dump(
-                        # Ensure exception traceback in app_status are printed correctly
-                        process_dict_for_yaml_dump(application.get_status_dict()),
-                        default_flow_style=False,
-                        sort_keys=False,
-                    )
-                    for application in serve_details.applications.values()
-                ),
-                end="",
+                yaml.safe_dump(
+                    # Ensure exception traceback in app_status are printed correctly
+                    process_dict_for_yaml_dump(status),
+                    default_flow_style=False,
+                    sort_keys=False,
+                )
             )
     else:
         if name not in serve_details.applications:
