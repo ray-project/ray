@@ -62,6 +62,8 @@ For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.p
 to read rows with sepal.length greater than 5.0.
 This can be used in conjunction with column pruning when appropriate to get the benefits of both.
 
+.. _optimizing_shuffles:
+
 Optimizing shuffles
 -------------------
 

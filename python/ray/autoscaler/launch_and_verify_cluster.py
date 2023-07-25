@@ -6,14 +6,13 @@ cluster configuration file.
 
 Usage:
     python launch_and_verify_cluster.py [--no-config-cache] [--retries NUM_RETRIES]
+        [--num-expected-nodes NUM_NODES] [--docker-override DOCKER_OVERRIDE]
+        [--wheel-override WHEEL_OVERRIDE]
         <cluster_configuration_file_path>
-
-Example:
-    python launch_and_verify_cluster.py --retries 5 --no-config-cache
-        /path/to/cluster_config.yaml
 """
 import argparse
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -23,15 +22,14 @@ from pathlib import Path
 import boto3
 import yaml
 
+import ray
+
 
 def check_arguments():
     """
     Check command line arguments and return the cluster configuration file path, the
-    number of retries, and the value of the --no-config-cache flag.
-
-    Returns:
-        A tuple containing the cluster config file path, the number of retries, and the
-        value of the --no-config-cache flag.
+    number of retries, the number of expected nodes, and the value of the
+    --no-config-cache flag.
     """
     parser = argparse.ArgumentParser(description="Launch and verify a Ray cluster")
     parser.add_argument(
@@ -46,11 +44,67 @@ def check_arguments():
         help="Number of retries for verifying Ray is running (default: 3)",
     )
     parser.add_argument(
+        "--num-expected-nodes",
+        type=int,
+        default=1,
+        help="Number of nodes for verifying Ray is running (default: 1)",
+    )
+    parser.add_argument(
+        "--docker-override",
+        choices=["disable", "latest", "nightly", "commit"],
+        default="disable",
+        help="Override the docker image used for the head node and worker nodes",
+    )
+    parser.add_argument(
+        "--wheel-override",
+        type=str,
+        default="",
+        help="Override the wheel used for the head node and worker nodes",
+    )
+    parser.add_argument(
         "cluster_config", type=str, help="Path to the cluster configuration file"
     )
     args = parser.parse_args()
 
-    return args.cluster_config, args.retries, args.no_config_cache
+    assert not (
+        args.docker_override != "disable" and args.wheel_override != ""
+    ), "Cannot override both docker and wheel"
+
+    return (
+        args.cluster_config,
+        args.retries,
+        args.no_config_cache,
+        args.num_expected_nodes,
+        args.docker_override,
+        args.wheel_override,
+    )
+
+
+def get_docker_image(docker_override):
+    """
+    Get the docker image to use for the head node and worker nodes.
+
+    Args:
+        docker_override: The value of the --docker-override flag.
+
+    Returns:
+        The docker image to use for the head node and worker nodes, or None if not
+        applicable.
+    """
+    if docker_override == "latest":
+        return "rayproject/ray:latest-py38"
+    elif docker_override == "nightly":
+        return "rayproject/ray:nightly-py38"
+    elif docker_override == "commit":
+        if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py38"
+        else:
+            print(
+                "Error: docker image is only available for "
+                f"release version, but we get: {ray.__version__}"
+            )
+            sys.exit(1)
+    return None
 
 
 def check_file(file_path):
@@ -66,6 +120,23 @@ def check_file(file_path):
     if not file_path.is_file() or not os.access(file_path, os.R_OK):
         print(f"Error: Cannot read cluster configuration file: {file_path}")
         sys.exit(1)
+
+
+def override_wheels_url(config_yaml, wheel_url):
+    setup_commands = config_yaml.get("setup_commands", [])
+    setup_commands.append(
+        f'pip3 uninstall -y ray && pip3 install -U "ray[default] @ {wheel_url}"'
+    )
+    config_yaml["setup_commands"] = setup_commands
+
+
+def override_docker_image(config_yaml, docker_image):
+    docker_config = config_yaml.get("docker", {})
+    docker_config["image"] = docker_image
+    docker_config["container_name"] = "ray_container"
+    assert docker_config.get("head_image") is None, "Cannot override head_image"
+    assert docker_config.get("worker_image") is None, "Cannot override worker_image"
+    config_yaml["docker"] = docker_config
 
 
 def download_ssh_key():
@@ -101,7 +172,7 @@ def cleanup_cluster(cluster_config):
     subprocess.run(["ray", "down", "-v", "-y", str(cluster_config)], check=True)
 
 
-def run_ray_commands(cluster_config, retries, no_config_cache):
+def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=1):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
@@ -135,7 +206,10 @@ def run_ray_commands(cluster_config, retries, no_config_cache):
                 "exec",
                 "-v",
                 str(cluster_config),
-                "python -c 'import ray; ray.init(\"localhost:6379\")'",
+                (
+                    'python -c \'import ray; ray.init("localhost:6379");'
+                    + f" assert len(ray.nodes()) >= {num_expected_nodes}'"
+                ),
             ]
             if no_config_cache:
                 cmd.append("--no-config-cache")
@@ -145,7 +219,7 @@ def run_ray_commands(cluster_config, retries, no_config_cache):
         except subprocess.CalledProcessError:
             count += 1
             print(f"Verification failed. Retry attempt {count} of {retries}...")
-            time.sleep(5)
+            time.sleep(60)
 
     if not success:
         print("======================================")
@@ -168,19 +242,40 @@ def run_ray_commands(cluster_config, retries, no_config_cache):
 
 
 if __name__ == "__main__":
-    cluster_config, retries, no_config_cache = check_arguments()
+    (
+        cluster_config,
+        retries,
+        no_config_cache,
+        num_expected_nodes,
+        docker_override,
+        wheel_override,
+    ) = check_arguments()
     cluster_config = Path(cluster_config)
     check_file(cluster_config)
 
     print(f"Using cluster configuration file: {cluster_config}")
     print(f"Number of retries for 'verify ray is running' step: {retries}")
     print(f"Using --no-config-cache flag: {no_config_cache}")
+    print(f"Number of expected nodes for 'verify ray is running': {num_expected_nodes}")
 
     config_yaml = yaml.safe_load(cluster_config.read_text())
     # Make the cluster name unique
     config_yaml["cluster_name"] = (
         config_yaml["cluster_name"] + "-" + str(int(time.time()))
     )
+
+    print("======================================")
+    print(f"Overriding ray wheel...: {wheel_override}")
+    if wheel_override:
+        override_wheels_url(config_yaml, wheel_override)
+
+    print("======================================")
+    print(f"Overriding docker image...: {docker_override}")
+    docker_override_image = get_docker_image(docker_override)
+    print(f"Using docker image: {docker_override_image}")
+    if docker_override_image:
+        override_docker_image(config_yaml, docker_override_image)
+
     provider_type = config_yaml.get("provider", {}).get("type")
     if provider_type == "aws":
         download_ssh_key()
@@ -222,4 +317,4 @@ if __name__ == "__main__":
         temp.write(yaml.dump(config_yaml).encode("utf-8"))
         temp.flush()
         cluster_config = Path(temp.name)
-        run_ray_commands(cluster_config, retries, no_config_cache)
+        run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes)
