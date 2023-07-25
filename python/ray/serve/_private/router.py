@@ -460,12 +460,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Got replicas for deployment {self._deployment_name}, waking up.",
                     extra={"log_to_stderr": False},
                 )
-#            candidate_replica_ids = set()
+            candidate_replica_ids = set()
             if request_metadata is not None and request_metadata.multiplexed_model_id:
                 trace(tag, "Start wait for ", request_metadata.multiplexed_model_id)
                 start = time.time()
-                max_dt = RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
-#                max_dt = 2 * RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * random.random()
+                #max_dt = RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S
+                max_dt = 2 * RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * random.random()
                 while (
                     time.time() - start
                     < max_dt
