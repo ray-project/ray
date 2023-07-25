@@ -272,14 +272,14 @@ class SerializationContext:
                 if data is None:
                     return b""
                 return data.to_pybytes()
-            # elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
-            #     try:
-            #         import pyarrow
-            #     except ImportError:
-            #         pyarrow = None
+            elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ARROW:
+                try:
+                    import pyarrow
+                except ImportError:
+                    pyarrow = None
 
-            #     reader = pyarrow.BufferReader(data)
-            #     return pyarrow.ipc.open_stream(reader).read_all()
+                reader = pyarrow.BufferReader(data)
+                return pyarrow.ipc.open_stream(reader).read_all()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
                 return _actor_handle_deserializer(obj)
