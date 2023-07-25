@@ -61,6 +61,12 @@ class ConfigInternal {
 
   std::vector<std::string> head_args = {};
 
+  std::string plugin_name = "default";
+
+  std::string plugin_path = "";
+
+  std::string plugin_params = "{}";
+
   boost::optional<RuntimeEnv> runtime_env;
 
   int runtime_env_hash = 0;
@@ -94,3 +100,4 @@ class ConfigInternal {
 
 }  // namespace internal
 }  // namespace ray
+

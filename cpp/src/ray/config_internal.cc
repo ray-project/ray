@@ -23,6 +23,8 @@
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
 
+#include "ray/util/logging.h"
+
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
@@ -89,6 +91,21 @@ ABSL_FLAG(std::string,
           "",
           "The namespace of job. If not set,"
           " a unique value will be randomly generated.");
+
+ABSL_FLAG(std::string,
+          ray_plugin_name,
+          "default",
+          "The name of the object store plugin.");
+
+ABSL_FLAG(std::string,
+          ray_plugin_path,
+          "",
+          "The path to the object store plugin library.");
+
+ABSL_FLAG(std::string,
+          ray_plugin_params,
+          "{}",
+          "The paramters input of the object store plugin.");
 
 using json = nlohmann::json;
 
@@ -170,7 +187,20 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     if (!FLAGS_ray_node_ip_address.CurrentValue().empty()) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
+    if (!FLAGS_ray_plugin_name.CurrentValue().empty()){
+      RAY_LOG(INFO) << FLAGS_ray_plugin_name.CurrentValue();
+      plugin_name = FLAGS_ray_plugin_name.CurrentValue();
+    }
+    if (!FLAGS_ray_plugin_path.CurrentValue().empty()){
+      RAY_LOG(INFO) << FLAGS_ray_plugin_path.CurrentValue();
+      plugin_path = FLAGS_ray_plugin_path.CurrentValue();
+    }
+    if (!FLAGS_ray_plugin_params.CurrentValue().empty()){
+      RAY_LOG(INFO) << FLAGS_ray_plugin_params.CurrentValue();
+      plugin_params = FLAGS_ray_plugin_params.CurrentValue();
+    }
     if (!FLAGS_ray_head_args.CurrentValue().empty()) {
+      RAY_LOG(INFO) << FLAGS_ray_head_args.CurrentValue();
       std::vector<std::string> args =
           absl::StrSplit(FLAGS_ray_head_args.CurrentValue(), ' ', absl::SkipEmpty());
       head_args.insert(head_args.end(), args.begin(), args.end());
@@ -251,3 +281,4 @@ void ConfigInternal::UpdateSessionDir(const std::string dir) {
 }
 }  // namespace internal
 }  // namespace ray
+

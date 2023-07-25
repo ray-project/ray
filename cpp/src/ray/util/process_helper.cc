@@ -21,6 +21,7 @@
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace internal {
@@ -91,7 +92,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       node_ip = GetNodeIpAddress();
     }
   }
-
+  
   std::unique_ptr<ray::gcs::GlobalStateAccessor> global_state_accessor =
       CreateGlobalStateAccessor(bootstrap_address);
   if (ConfigInternal::Instance().worker_type == WorkerType::DRIVER) {
@@ -129,6 +130,9 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
       options.job_id = global_state_accessor->GetNextJobID();
     }
   }
+  options.plugin_name = ConfigInternal::Instance().plugin_name;
+  options.plugin_path = ConfigInternal::Instance().plugin_path;
+  options.plugin_params = ConfigInternal::Instance().plugin_params;
   options.gcs_options = gcs_options;
   options.enable_logging = true;
   options.log_dir = ConfigInternal::Instance().logs_dir;

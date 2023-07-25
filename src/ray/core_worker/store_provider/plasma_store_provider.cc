@@ -79,9 +79,7 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
 
   ray::PluginManager& plugin_manager = ray::PluginManager::GetInstance();
   RAY_LOG(INFO) << "Inside plasma_store_provider current object store name: " << plugin_manager.GetCurrentObjectStoreName();
-  plugin_manager.SetObjectStores(plugin_name,
-                                 plugin_path, 
-                                 plugin_params);
+  plugin_manager.SetObjectStoreClients(plugin_name, plugin_path, plugin_params);
   RAY_LOG(INFO) << "Inside plasma_store_provider current object store name: "  << plugin_manager.GetCurrentObjectStoreName();
   store_client_ = plugin_manager.CreateCurrentClientInstance();
   if (get_current_call_site != nullptr) {

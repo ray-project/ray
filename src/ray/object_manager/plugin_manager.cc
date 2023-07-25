@@ -10,6 +10,8 @@ PluginManager &PluginManager::GetInstance() {
   return instance;
 }
 
+
+
 void PluginManager::LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_path, const std::string plugin_params) {
   using ObjectStoreRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)();
   using ObjectStoreClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
@@ -38,8 +40,8 @@ void PluginManager::LoadObjectStorePlugin(const std::string plugin_name, const s
     return;
   }
 
-  //client_creators_[plugin_name] = client_creator; 
-  //std::shared_ptr<plasma::ObjectStoreClientInterface> client = client_creator();
+  // If any params need to be passed into the creators, you could parse the params here.
+
   std::shared_ptr<plasma::ObjectStoreClientInterface> client = client_creators_[plugin_name]();
   std::unique_ptr<plasma::ObjectStoreRunnerInterface> runner = std::move(runner_creator());
 
@@ -70,46 +72,72 @@ std::unique_ptr<plasma::ObjectStoreRunnerInterface> PluginManager::CreateObjectS
   return std::move(object_stores_[name].runner_);
 }
 
+void PluginManager::LoadObjectStoreClientPlugin(const std::string plugin_name,
+                                                const std::string plugin_path, 
+                                                const std::string plugin_params) {
+
+    //using ObjectStoreRunnerCreator = std::unique_ptr<plasma::ObjectStoreRunnerInterface> (*)();
+
+    void *handle = dlopen(plugin_path.c_str(), RTLD_NOW);
+    if (!handle) {
+        std::cerr << "Failed to load shared library: " << dlerror() << std::endl;
+        return;
+    }
+
+    client_creators_[plugin_name] = reinterpret_cast<ObjectStoreClientCreator>(dlsym(handle, "CreateNewStoreClient"));
+    if (!client_creators_[plugin_name]) {
+        std::cerr << "Failed to get CreateNewStoreClient function: " << dlerror()
+                << std::endl;
+        dlclose(handle);
+        return;
+    }
+
+    dlclose(handle);
+    return;
+}
+
+void PluginManager::SetObjectStoreClients(const std::string plugin_name,
+                                          const std::string plugin_path, 
+                                          const std::string plugin_params) {
+    current_object_store_name_ = plugin_name;
+    if (plugin_name != "default") {
+        LoadObjectStoreClientPlugin(plugin_name, plugin_path, plugin_params);
+    }
+}
+
 void PluginManager::SetObjectStores(const std::string plugin_name, 
                                     const std::string plugin_path,
                                     const std::string plugin_params) {
-    RAY_LOG(INFO) << "Entering PluginManager::SetDefaultObjectStore " << plugin_name ;
-    json params_map = json::parse(plugin_params);
-    // Parse the plugin params
-    std::string store_socket_name_ = params_map["store_socket_name"];
-    RAY_LOG(INFO) << store_socket_name_;
-    std::string plasma_directory_ = params_map["plasma_directory"];
-    RAY_LOG(INFO) << "plasma_directory_ pages " << plasma_directory_;
-    std::string fallback_directory_ = params_map["temp_dir"];
-    RAY_LOG(INFO) << "fallback_directory_ " << fallback_directory_;
-
-    int64_t object_store_memory_ = params_map["object_store_memory"]; 
-    RAY_LOG(INFO) << "object_store_memory_ " << object_store_memory_;
-    bool huge_pages_ = false;
-    if (!params_map["huge_pages"].is_null() && params_map["huge_pages"] == true){
-        huge_pages_ = true;
-    }
-    RAY_LOG(INFO) << "huge_pages " << huge_pages_ ;
+    RAY_LOG(INFO) << "Entering PluginManager::SetObjectStores " << plugin_name ;
+    current_object_store_name_ = plugin_name;
     
-
-
-    
-
     // LoadPlugin
     if (plugin_name != "default"){
-        current_object_store_name_ = plugin_name;
         LoadObjectStorePlugin(plugin_name, plugin_path, plugin_params);
     } else {
-        current_object_store_name_ = "default";
+        // Parse the plugin parameters
+        json params_map = json::parse(plugin_params);
+        std::string store_socket_name_ = params_map.value("store_socket_name", "");
+        RAY_LOG(INFO) << store_socket_name_;
 
-        // object_stores_["default"] = PluginManagerObjectStore{
-        //     std::make_shared<plasma::PlasmaClient>(),
-        //     std::make_unique<plasma::PlasmaStoreRunner>(store_socket_name,
-        //                                                 object_store_memory,
-        //                                                 huge_pages,
-        //                                                 plasma_directory,
-        //                                                 fallback_directory)
-        // };
+
+        std::string plasma_directory_ = params_map.value("plasma_directory", "");
+        RAY_LOG(INFO) << "plasma_directory_  " << plasma_directory_;
+        std::string fallback_directory_ = params_map.value("fallback_directory", "");
+        RAY_LOG(INFO) << "fallback_directory_ " << fallback_directory_;
+
+        int64_t object_store_memory_ = params_map["object_store_memory"]; 
+        RAY_LOG(INFO) << "object_store_memory_ " << object_store_memory_;
+        bool huge_pages_ = false;
+        if (params_map.contains("huge_pages") && 
+            !params_map["huge_pages"].is_null() && 
+            params_map["huge_pages"] == true){
+                huge_pages_ = true;
+        }
+        RAY_LOG(INFO) << "huge_pages " << huge_pages_ ;
+
+
+
         object_stores_["default"] = PluginManagerObjectStore{
             std::make_shared<plasma::PlasmaClient>(),
             std::make_unique<plasma::PlasmaStoreRunner>(store_socket_name_,

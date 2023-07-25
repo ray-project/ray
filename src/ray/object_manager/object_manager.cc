@@ -21,6 +21,8 @@
 #include "ray/util/util.h"
 
 namespace asio = boost::asio;
+using json = nlohmann::json;
+
 
 namespace ray {
 
@@ -119,9 +121,18 @@ ObjectManager::ObjectManager(
   RAY_CHECK(config_.rpc_service_threads_number > 0);
   PluginManager& plugin_manager = PluginManager::GetInstance();
   RAY_LOG(INFO) << plugin_manager.GetCurrentObjectStoreName();
+  json params_map = json::parse(config.plugin_params);
+  if (config.plugin_name == "default"){
+    params_map["plasma_directory"] = config.plasma_directory;
+    params_map["fallback_directory"] = config.fallback_directory;
+    params_map["object_store_memory"] = config.object_store_memory;
+    params_map["store_socket_name"] = config.store_socket_name;
+    params_map["huge_pages"] = config.huge_pages;
+  }
+  RAY_LOG(INFO) << "object manager new plugin params" << params_map.dump();
   plugin_manager.SetObjectStores(config.plugin_name,
                                  config.plugin_path, 
-                                 config.plugin_params);
+                                 params_map.dump());
   RAY_LOG(INFO) << plugin_manager.GetCurrentObjectStoreName();
   object_store_internal_ = std::make_unique<ObjectStoreRunner>(
           config,

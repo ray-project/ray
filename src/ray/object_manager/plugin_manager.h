@@ -11,6 +11,7 @@
 #include "ray/object_manager/plasma/client.h"
 #include "ray/object_manager/plasma/store_runner.h"
 
+
 namespace ray {
     
 struct PluginManagerObjectStore{
@@ -20,7 +21,7 @@ struct PluginManagerObjectStore{
 
 class PluginManager {
   public:
-//   using ObjectStoreRunnerCreator = std::unique_ptr<ObjectStoreRunnerInterface> (*)();
+  //using ObjectStoreRunnerCreator = std::unique_ptr<ObjectStoreRunnerInterface> (*)();
   using ObjectStoreClientCreator = std::shared_ptr<plasma::ObjectStoreClientInterface> (*)();
 
 
@@ -28,10 +29,22 @@ class PluginManager {
   std::shared_ptr<plasma::ObjectStoreClientInterface> CreateObjectStoreClientInstance(const std::string& name);
   std::shared_ptr<plasma::ObjectStoreClientInterface> CreateCurrentClientInstance();
   std::string GetCurrentObjectStoreName();
-  void LoadObjectStorePlugin(const std::string plugin_name, const std::string plugin_path, const std::string plugin_params);
+
+  // For where it uses only client (node manager, plasma store provider, etc.)
+  void SetObjectStoreClients(const std::string plugin_name,
+                             const std::string plugin_path,
+                             const std::string plugin_params);
+  void LoadObjectStoreClientPlugin(const std::string plugin_name,
+                                   const std::string plugin_path,
+                                   const std::string plugin_params);
+  // For where it uses both client and runner
   void SetObjectStores(const std::string plugin_name, 
                        const std::string plugin_path,
                        const std::string plugin_params);
+  void LoadObjectStorePlugin(const std::string plugin_name, 
+                             const std::string plugin_path, 
+                             const std::string plugin_params);
+
 
   static PluginManager &GetInstance();
 

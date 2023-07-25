@@ -1540,21 +1540,21 @@ def init(
                 "resources must not be provided."
             )
         ## my part
-        if plugin_name is not None:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "plugin_name must not be provided."
-            )
-        if plugin_path is not None:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "plugin_path must not be provided."
-            )
-        if plugin_params is not None:
-            raise ValueError(
-                "When connecting to an existing cluster, "
-                "plugin_params must not be provided."
-            )
+        # if plugin_name is not None:
+        #     raise ValueError(
+        #         "When connecting to an existing cluster, "
+        #         "plugin_name must not be provided."
+        #     )
+        # if plugin_path is not None:
+        #     raise ValueError(
+        #         "When connecting to an existing cluster, "
+        #         "plugin_path must not be provided."
+        #     )
+        # if plugin_params is not None:
+        #     raise ValueError(
+        #         "When connecting to an existing cluster, "
+        #         "plugin_params must not be provided."
+        #     )
         if object_store_memory is not None:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -1585,6 +1585,9 @@ def init(
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
             raylet_ip_address=raylet_ip_address,
+            plugin_name = plugin_name,
+            plugin_path = plugin_path,
+            plugin_params = plugin_params,
             gcs_address=gcs_address,
             redis_address=redis_address,
             redis_password=_redis_password,
@@ -2203,7 +2206,11 @@ def connect(
         logs_dir = ""
     else:
         logs_dir = node.get_logs_dir_path()
+
+
+    print("Executing here")
     
+    print("Executing here")
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,
