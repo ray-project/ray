@@ -19,9 +19,7 @@ from ray.train.torch.train_loop_utils import RayIterableDataset
 transform = transforms.Compose(
     [transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))]
 )
-mnist = MNIST(
-    "/tmp", train=True, download=True, transform=transform
-)
+mnist = MNIST("/tmp", train=True, download=True, transform=transform)
 mnist_train, mnist_val = random_split(mnist, [55000, 5000])
 
 
@@ -78,7 +76,9 @@ class MNISTClassifier(pl.LightningModule):
         optimizer = torch.optim.Adam(self.parameters(), lr=self.lr)
         return optimizer
 
+
 from ray.air import session
+
 
 def train_loop_per_worker(config):
     parallel_devices = ray.train.lightning.setup()
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         datasets={
             "train": ray.data.from_torch(mnist_train),
             "val": ray.data.from_torch(mnist_val),
-        }
+        },
     )
 
     air_trainer.fit()
