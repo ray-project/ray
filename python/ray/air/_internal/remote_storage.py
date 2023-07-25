@@ -133,7 +133,7 @@ def is_non_local_path_uri(uri: str) -> bool:
     if parsed.scheme == "file" or not parsed.scheme:
         return False
 
-    if bool(get_fs_and_path(uri)[0]):
+    if bool(_get_fs_and_path(uri)[0]):
         return True
 
     return False
@@ -352,6 +352,16 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     return fs
 
 
+def _get_fs_and_path(
+    uri: str,
+) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
+    from ray.train._internal.storage import _use_storage_context
+
+    if _use_storage_context():
+        return pyarrow.fs.FileSystem.from_uri(uri)
+    return get_fs_and_path(uri)
+
+
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
@@ -417,7 +427,7 @@ def delete_at_uri(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None):
     _assert_pyarrow_installed()
 
     if not fs:
-        fs, fs_path = get_fs_and_path(uri)
+        fs, fs_path = _get_fs_and_path(uri)
         if not fs:
             raise ValueError(
                 f"Could not clear URI contents: "
@@ -437,7 +447,7 @@ def delete_at_uri(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None):
 def read_file_from_uri(uri: str) -> bytes:
     _assert_pyarrow_installed()
 
-    fs, file_path = get_fs_and_path(uri)
+    fs, file_path = _get_fs_and_path(uri)
     if not fs:
         raise ValueError(
             f"Could not download from URI: "
@@ -478,7 +488,7 @@ def download_from_uri(
     _assert_pyarrow_installed()
 
     if not source_filesystem:
-        source_filesystem, source_path = get_fs_and_path(uri)
+        source_filesystem, source_path = _get_fs_and_path(uri)
         if not source_filesystem:
             raise ValueError(
                 f"Could not upload to URI: "
@@ -536,7 +546,7 @@ def upload_to_uri(
     _assert_pyarrow_installed()
 
     if not destination_filesystem:
-        destination_filesystem, destination_path = get_fs_and_path(uri)
+        destination_filesystem, destination_path = _get_fs_and_path(uri)
         if not destination_filesystem:
             raise ValueError(
                 f"Could not upload to URI: "
@@ -618,7 +628,7 @@ def list_at_uri(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None) -> List[st
     _assert_pyarrow_installed()
 
     if not fs:
-        fs, fs_path = get_fs_and_path(uri)
+        fs, fs_path = _get_fs_and_path(uri)
         if not fs:
             raise ValueError(
                 f"Could not list at URI: "
@@ -651,7 +661,7 @@ def is_directory(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None) -> bool:
     _assert_pyarrow_installed()
 
     if not fs:
-        fs, fs_path = get_fs_and_path(uri)
+        fs, fs_path = _get_fs_and_path(uri)
     else:
         fs_path = uri
 
@@ -674,7 +684,7 @@ def _ensure_directory(uri: str, fs: Optional["pyarrow.fs.FileSystem"] = None):
     if fs:
         path = uri
     else:
-        fs, path = get_fs_and_path(uri)
+        fs, path = _get_fs_and_path(uri)
     try:
         fs.create_dir(path)
     except Exception:
