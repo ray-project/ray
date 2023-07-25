@@ -80,6 +80,10 @@ Many developers are not on macOS's trusted list. Users can manually override thi
 
 See [these instructions](https://support.apple.com/guide/mac-help/open-a-mac-app-from-an-unidentified-developer-mh40616/mac) for how to override the restriction and install or run the application.
 
+#### Loading Ray Prometheus configurations with Docker Compose
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Prometheus configuration files.
+
+To fix this issue, employ an automated shell script for seamlessly transferring the Prometheus configurations from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations to initiate the Prometheus servers.
 
 (scrape-metrics)=
 ## Scraping metrics
@@ -214,7 +218,8 @@ If this is your first time using Grafana, login with the username: `admin` and p
 
 ![grafana login](images/graphs.png)
 
-**Troubleshooting: Using Ray configurations in Grafana with Homebrew on macOS X**
+**Troubleshooting**
+***Using Ray configurations in Grafana with Homebrew on macOS X***
 
 Homebrew installs Grafana as a service that is automatically launched for you.
 Therefore, to configure these services, you cannot simply pass in the config files as command line arguments.
@@ -222,6 +227,11 @@ Therefore, to configure these services, you cannot simply pass in the config fil
 Instead, update the `/usr/local/etc/grafana/grafana.ini` file so that it matches the contents of `/tmp/ray/session_latest/metrics/grafana/grafana.ini`.
 
 You can then start or restart the services with `brew services start grafana` and `brew services start prometheus`.
+
+***Loading Ray Grafana configurations with Docker Compose***
+In the Ray container, the symbolic link "/tmp/ray/session_latest/metrics" points to the latest active Ray session. However, Docker does not support the mounting of symbolic links on shared volumes and you may fail to load the Grafana configuration files and default dashboards.
+
+To fix this issue, employ an automated shell script for seamlessly transferring the necessary Grafana configurations and dashboards from the Ray container to a shared volume. To ensure a proper setup, mount the shared volume on the respective path for the container, which contains the recommended configurations and default dashboards to initiate Grafana servers.
 
 :::
 
