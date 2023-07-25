@@ -1238,13 +1238,13 @@ class Dataset:
 
             :meth:`Dataset.split_at_indices`
                 Unlike :meth:`~Dataset.split`, which splits a dataset into approximately
-                equal splits, :meth:`Dataset.split_proportionately` lets you split a 
+                equal splits, :meth:`Dataset.split_proportionately` lets you split a
                 dataset into different sizes.
 
             :meth:`Dataset.split_proportionately`
-                This method is equivalent to :meth:`Dataset.split_at_indices` if 
+                This method is equivalent to :meth:`Dataset.split_at_indices` if
                 you compute indices manually.
-                
+
             :meth:`Dataset.streaming_split`.
                 Unlike :meth:`~Dataset.split`, :meth:`~Dataset.streaming_split`
                 doesn't materialize the dataset in memory.
@@ -1463,14 +1463,14 @@ class Dataset:
         .. seealso::
 
             :meth:`Dataset.split`
-                Unlike :meth:`~Dataset.split_at_indices`, which lets you split a 
-                dataset into different sizes, :meth:`Dataset.split` splits a dataset 
+                Unlike :meth:`~Dataset.split_at_indices`, which lets you split a
+                dataset into different sizes, :meth:`Dataset.split` splits a dataset
                 into approximately equal splits.
 
             :meth:`Dataset.split_proportionately`
-                This method is equivalent to :meth:`Dataset.split_at_indices` if 
+                This method is equivalent to :meth:`Dataset.split_at_indices` if
                 you compute indices manually.
-                
+
             :meth:`Dataset.streaming_split`.
                 Unlike :meth:`~Dataset.split`, :meth:`~Dataset.streaming_split`
                 doesn't materialize the dataset in memory.
@@ -1562,13 +1562,13 @@ class Dataset:
         .. seealso::
 
             :meth:`Dataset.split`
-                Unlike :meth:`~Dataset.split_proportionately`, which lets you split a 
-                dataset into different sizes, :meth:`Dataset.split` splits a dataset 
+                Unlike :meth:`~Dataset.split_proportionately`, which lets you split a
+                dataset into different sizes, :meth:`Dataset.split` splits a dataset
                 into approximately equal splits.
 
             :meth:`Dataset.split_at_indices`
                 :meth:`Dataset.split_proportionately` uses this method under the hood.
-                
+
             :meth:`Dataset.streaming_split`.
                 Unlike :meth:`~Dataset.split`, :meth:`~Dataset.streaming_split`
                 doesn't materialize the dataset in memory.
@@ -1627,8 +1627,8 @@ class Dataset:
                 represents the absolute number of test samples. The train split
                 always complements the test split.
             shuffle: Whether or not to globally shuffle the dataset before splitting.
-                Defaults to ``False``. This may be a very expensive operation with a large
-                dataset.
+                Defaults to ``False``. This may be a very expensive operation with a 
+                large dataset.
             seed: Fix the random seed to use for shuffle, otherwise one is chosen
                 based on system randomness. Ignored if ``shuffle=False``.
 
