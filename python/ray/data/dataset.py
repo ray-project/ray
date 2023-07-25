@@ -4364,15 +4364,15 @@ class Dataset:
             print(ds.stats())
 
         .. testoutput::
-
-            Stage 0 Read: .../... blocks executed in ...
-            * Remote wall time: ... min, ... max, ... mean, ... total
-            * Remote cpu time: ... min, ... max, ... mean, ... total
-            * Peak heap memory usage (MiB): ... min, ... max, ... mean
-            * Output num rows: ... min, ... max, ... mean, ... total
-            * Output size bytes: ... min, ... max, ... mean, ... total
-            * Tasks per node: ... min, ... max, ... mean; ... nodes used
-            <BLANKLINE>
+            :options: +MOCK
+            
+            Stage 0 Read: 20/20 blocks executed in 0.3s                                                                                                                                        
+            * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
+            * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
+            * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
+            * Output num rows: 0 min, 1 max, 0 mean, 10 total
+            * Output size bytes: 0 min, 8 max, 4 mean, 80 total
+            * Tasks per node: 20 min, 20 max, 20 mean; 1 nodes used
 
         """
         return self._get_stats_summary().to_string()
