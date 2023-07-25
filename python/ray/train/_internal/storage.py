@@ -57,18 +57,30 @@ class StorageContext:
         trial_dir_name: Optional[str] = None,
         current_checkpoint_id: Optional[int] = None,
     ):
-        self.storage_path: str = storage_path
-        self.storage_cache_path: str = _get_defaults_results_dir()
-        self.experiment_dir_name: str = experiment_dir_name
-        self.trial_dir_name: Optional[str] = trial_dir_name
+        self.storage_path = storage_path
+        self.storage_cache_path = _get_defaults_results_dir()
+        self.experiment_dir_name = experiment_dir_name
+        self.trial_dir_name = trial_dir_name
         self.current_checkpoint_id = current_checkpoint_id
-        self.sync_config: SyncConfig = dataclasses.replace(sync_config)
+        self.sync_config = dataclasses.replace(sync_config)
 
         if storage_filesystem:
             # Custom pyarrow filesystem
             self.storage_filesystem = storage_filesystem
             if is_uri(self.storage_path):
-                raise ValueError("TODO")
+                raise ValueError(
+                    "If you specify a custom `storage_filesystem`, the corresponding "
+                    "`storage_path` must be a *path* on that filesystem, not a URI.\n"
+                    "For example: "
+                    "(storage_filesystem=CustomS3FileSystem(), "
+                    "storage_path='s3://bucket/path') should be changed to "
+                    "(storage_filesystem=CustomS3FileSystem(), "
+                    "storage_path='bucket/path')\n"
+                    "This is what you provided: "
+                    f"(storage_filesystem={storage_filesystem}, "
+                    f"storage_path={storage_path})\n"
+                    "Note that this may depend on the custom filesystem you use."
+                )
             self.storage_fs_path = self.storage_path
         else:
             (
@@ -101,6 +113,7 @@ class StorageContext:
             "storage_fs_path",
             "experiment_dir_name",
             "trial_dir_name",
+            "current_checkpoint_id",
         ]
         attr_str = "\n".join([f"  {attr}={getattr(self, attr)}" for attr in attrs])
         return f"StorageContext<\n{attr_str}\n>"
