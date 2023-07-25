@@ -282,7 +282,7 @@
 
   run:
     timeout: 4000
-    prepare: python setup_chaos.py
+    prepare: python setup_chaos.py --max-nodes-to-kill 5
     script: python workloads/gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
 
     wait_for_nodes:
