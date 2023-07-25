@@ -5,8 +5,9 @@ import types
 import collections
 from packaging.version import Version
 
-from typing import Any, Dict, List, Optional, Callable, Union
+from typing import Any, Dict, List, Optional, Callable, Union, Iterator
 
+from ray.data.iterator import DataIterator
 from ray.train._internal import session
 from ray.train._internal.accelerator import Accelerator
 from torch.optim import Optimizer
@@ -638,3 +639,14 @@ class _WrappedOptimizer(Optimizer):
             self.scaler.update()
         else:
             self.optimizer.step(closure)
+
+class RayIterableDataset(IterableDataset):
+    """HF ``_BaseExamplesIterable`` backed by a ``ray.data.DataIterator`` """
+
+    def __init__(self, dataset: DataIterator) -> None:
+        super().__init__()
+        self.dataset = dataset
+
+    def __iter__(self) -> Iterator[dict]:
+        for row in self.dataset.iter_rows():
+            yield row

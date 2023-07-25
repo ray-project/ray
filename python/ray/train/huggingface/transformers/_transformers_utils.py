@@ -14,6 +14,8 @@ from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIte
 from ray.train.huggingface.transformers.transformers_checkpoint import (
     TransformersCheckpoint,
 )
+from ray.train.torch.train_loop_utils import RayIterableDataset
+
 
 if TYPE_CHECKING:
     from torch.utils.data import IterableDataset
@@ -51,7 +53,7 @@ def wrap_transformers_trainer(
             data_loader = super().get_train_dataloader()
             if isinstance(
                 data_loader.dataset, transformers.trainer.IterableDatasetShard
-            ) and getattr(data_loader.dataset.dataset, "_do_not_split", False):
+            ) and isinstance(data_loader.dataset.dataset, RayIterableDataset):
                 # Default Trainer.get_train_dataloader will wrap the dataset in
                 # IterableDatasetShard, which will perform additional sharding on top
                 # of the already sharded dataset. By setting those two attributes,
