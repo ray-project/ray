@@ -31,10 +31,11 @@ def test_replica_tag_formatting():
 
 
 def test_replica_name_from_str():
+    code_version = get_random_letters()
     replica_suffix = get_random_letters()
-    actor_name = f"{ReplicaName.prefix}DeploymentA#{replica_suffix}"
+    actor_name = f"{ReplicaName.prefix}DeploymentA#{code_version}-{replica_suffix}"
 
-    replica_name = ReplicaName.from_str(actor_name)
+    replica_name = ReplicaName.from_actor_name(actor_name)
     assert (
         str(replica_name)
         == replica_name.replica_tag
@@ -47,12 +48,12 @@ def test_invalid_name_from_str():
 
     replica_tag = f"DeploymentA##{replica_suffix}"
     with pytest.raises(AssertionError):
-        ReplicaName.from_str(replica_tag)
+        ReplicaName.from_actor_name(replica_tag)
 
     # No prefix
     replica_tag = f"DeploymentA#{replica_suffix}"
     with pytest.raises(AssertionError):
-        ReplicaName.from_str(replica_tag)
+        ReplicaName.from_actor_name(replica_tag)
 
 
 def test_is_replica_name():

@@ -395,6 +395,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             return True
 
         current_app = internal_replica_context.app_name
+        if not current_app:
+            return True
+
         # NOTE(zcin): This is a slightly hacky way of getting the application
         # of the deployment to which this router sends requests. We include
         # application info in RunningReplicaInfo, and fetch it from there.
@@ -810,6 +813,9 @@ class RoundRobinReplicaScheduler(ReplicaScheduler):
             return True
 
         current_app = internal_replica_context.app_name
+        if not current_app:
+            return True
+
         # NOTE(zcin): This is a slightly hacky way of getting the application
         # of the deployment to which this router sends requests. We include
         # application info in RunningReplicaInfo, and fetch it from there.

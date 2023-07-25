@@ -368,12 +368,12 @@ class ReplicaName:
 
 @dataclass(frozen=True)
 class RunningReplicaInfo:
-    app_name: Optional[str]
     deployment_name: str
     replica_tag: ReplicaTag
     actor_handle: ActorHandle
     max_concurrent_queries: int
     is_cross_language: bool = False
+    app_name: Optional[str] = None
     multiplexed_model_ids: List[str] = field(default_factory=list)
 
     def __post_init__(self):
