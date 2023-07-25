@@ -89,8 +89,7 @@ a ``Checkpoint`` object that can be used to generate an AIR checkpoint:
     :end-before: __checkpoint_adhoc_end__
 
 
-Checkpoints can be used to instantiate a :class:`Predictor`, :class:`BatchPredictor`, or :class:`PredictorDeployment` classes,
-as seen below.
+Checkpoints can be used to instantiate a :class:`Predictor` as seen below.
 
 
 Batch Predictor
@@ -108,7 +107,7 @@ You can take a checkpoint and do batch inference using the BatchPredictor object
 Deployments
 -----------
 
-Deploy the model as an inference service by using Ray Serve and the ``PredictorDeployment`` class.
+Deploy the model as an inference service by using Ray Serve deployments.
 
 .. literalinclude:: doc_code/air_key_concepts.py
     :language: python

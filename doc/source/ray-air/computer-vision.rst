@@ -315,9 +315,8 @@ To NumPy ndarrays like this:
 
     .. tab-item:: TensorFlow
 
-        To deploy a TensorFlow model to an endpoint, pass the checkpoint you created in `Creating checkpoints`_
-        to :meth:`PredictorDeployment.bind <ray.serve.air_integrations.PredictorDeployment.bind>` and specify
-        :func:`~ray.serve.http_adapters.json_to_multi_ndarray` as the HTTP adapter.
+        To deploy a TensorFlow model to an endpoint, use the checkpoint you created in `Creating checkpoints`_
+        to create a Ray Serve deployment serving the model.
 
         .. literalinclude:: ./doc_code/computer_vision.py
             :start-after: __tensorflow_serve_start__
