@@ -35,12 +35,22 @@ def get_filesystem() -> ("pyarrow.fs.FileSystem", str):
     storage filesystem.
 
     Examples:
-        # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> fs, path = storage.get_filesystem()  # doctest: +SKIP
-        >>> print(fs)  # doctest: +SKIP
-        <pyarrow._fs.LocalFileSystem object at 0x7fd745dd9830>
-        >>> print(path)  # doctest: +SKIP
-        cluster_1/storage
+        .. testcode::
+
+            import ray
+            from ray._private import storage
+
+            ray.shutdown()
+
+            ray.init(storage="/tmp/storage/cluster_1/storage")
+            fs, path = storage.get_filesystem()
+            print(fs)
+            print(path)
+
+        .. testoutput::
+
+            <pyarrow._fs.LocalFileSystem object at ...>
+            /tmp/storage/cluster_1/storage
 
     Returns:
         Tuple of pyarrow filesystem instance and the path under which files should
@@ -63,9 +73,16 @@ def get_client(prefix: str) -> "KVClient":
             data will be stored under. All writes will be scoped to this sub-dir.
 
     Examples:
-        # Assume ray.init(storage="s3:/bucket/cluster_1/storage")
-        >>> client = storage.get_client("foo")  # doctest: +SKIP
-        >>> client.put("foo", b"bar")  # doctest: +SKIP
+        .. testcode::
+
+            import ray
+            from ray._private import storage
+
+            ray.shutdown()
+
+            ray.init(storage="/tmp/storage/cluster_1/storage")
+            client = storage.get_client("foo")
+            client.put("foo", b"bar")
 
     Returns:
         KVClient.
@@ -107,9 +124,16 @@ class KVClient:
         """Save a blob in persistent storage at the given path, if possible.
 
         Examples:
-            # Writes "bar" to <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")  # doctest: +SKIP
-            >>> client.put("path/foo.txt", b"bar")  # doctest: +SKIP
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
 
         Args:
             path: Relative directory of the blobs.
@@ -130,12 +154,19 @@ class KVClient:
         """Load a blob from persistent storage at the given path, if possible.
 
         Examples:
-            # Loads value from <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")  # doctest: +SKIP
-            >>> client.get("path/foo.txt")  # doctest: +SKIP
-            b"bar"
-            >>> client.get("invalid")  # doctest: +SKIP
-            None
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+                assert client.get("path/foo.txt") == b"bar"
+                assert client.get("invalid") is None
 
         Args:
             path: Relative directory of the blobs.
@@ -158,10 +189,18 @@ class KVClient:
         """Load the blob from persistent storage at the given path, if possible.
 
         Examples:
-            # Deletes blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")  # doctest: +SKIP
-            >>> client.delete("path/foo.txt")  # doctest: +SKIP
-            True
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+                assert client.delete("path/foo.txt")
 
         Args:
             path: Relative directory of the blob.
@@ -184,10 +223,18 @@ class KVClient:
         """Delete a directory and its contents, recursively.
 
         Examples:
-            # Deletes dir at <storage_prefix>/my_app/path/
-            >>> client = storage.get_client("my_app")  # doctest: +SKIP
-            >>> client.delete_dir("path")  # doctest: +SKIP
-            True
+            .. testcode::
+
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+                assert client.delete_dir("path")
 
         Args:
             path: Relative directory of the blob.
@@ -210,15 +257,26 @@ class KVClient:
         """Get info about the persistent blob at the given path, if possible.
 
         Examples:
-            # Inspect blob at <storage_prefix>/my_app/path/foo.txt
-            >>> client = storage.get_client("my_app")  # doctest: +SKIP
-            >>> client.get_info("path/foo.txt")  # doctest: +SKIP
-            <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.File>
+            .. testcode::
 
-            # Non-existent blob.
-            >>> client.get_info("path/does_not_exist.txt")  # doctest: +SKIP
-            None
-            <FileInfo for '/tmp/storage/my_app/path/foo.txt': type=FileType.NotFound>
+                import ray
+                from ray._private import storage
+
+                ray.shutdown()
+
+                ray.init(storage="/tmp/storage/cluster_1/storage")
+
+                client = storage.get_client("my_app")
+                client.put("path/foo.txt", b"bar")
+
+                print(client.get_info("path/foo.txt"))
+
+                print(client.get_info("path/does_not_exist.txt"))
+
+            .. testoutput::
+
+                <FileInfo for '.../my_app/path/foo.txt': type=FileType.File, size=3>
+                None
 
         Args:
             path: Relative directory of the blob.
@@ -241,19 +299,33 @@ class KVClient:
         """List blobs and sub-dirs in the given path, if possible.
 
         Examples:
-            # List created blobs and dirs at <storage_prefix>/my_app/path
-            >>> client = storage.get_client("my_app")  # doctest: +SKIP
-            >>> client.list("path")  # doctest: +SKIP
-            [<FileInfo for '/tmp/storage/my_app/path/foo.txt' type=FileType.File>,
-             <FileInfo for '/tmp/storage/my_app/path/subdir' type=FileType.Directory>]
 
-            # Non-existent path.
-            >>> client.get_info("does_not_exist")  # doctest: +SKIP
-            FileNotFoundError: ...
+            >>> import ray
+            >>> from ray._private import storage
+            >>> ray.shutdown()
 
-            # Not a directory.
-            >>> storage.get_info("path/foo.txt")  # doctest: +SKIP
-            NotADirectoryError: ...
+            Normal usage.
+
+            >>> ray.init(storage="/tmp/storage/cluster_1/storage")
+            RayContext(...)
+            >>> client = storage.get_client("my_app")
+            >>> client.put("path/foo.txt", b"bar")
+            >>> client.list("path")
+            [<FileInfo for '.../my_app/path/foo.txt': type=FileType.File, size=3>]
+
+            Non-existent path.
+
+            >>> client.list("does_not_exist")
+            Traceback (most recent call last):
+                ...
+            FileNotFoundError: ... No such file or directory
+
+            Not a directory.
+
+            >>> client.list("path/foo.txt")
+            Traceback (most recent call last):
+                ...
+            NotADirectoryError: ... Not a directory
 
         Args:
             path: Relative directory to list from.
