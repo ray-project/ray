@@ -3234,7 +3234,7 @@ class Dataset:
             >>> for batch in ray.data.range(
             ...     12,
             ... ).iter_torch_batches(batch_size=4):
-            ...     print(batch.shape)
+            ...     print(batch)
             {'id': tensor([ 0, 10,  1,  2])}
             {'id': tensor([3, 4, 5, 6])}
             {'id': tensor([ 8,  9, 11,  7])}
