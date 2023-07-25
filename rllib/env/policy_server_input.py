@@ -88,6 +88,10 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         server using rllib.env.PolicyClient. You can increase the number of available
         connections (ports) by setting num_rollout_workers to a larger number. The ports
         used will then be `port` + the worker's index.
+        
+        WARNING: This class is not meant to be publically exposed. There is no gurantee 
+        on security vulnerabilities of this implementation. Use this with caution and 
+        at your own risk. 
 
         Args:
             ioctx: IOContext provided by RLlib.
