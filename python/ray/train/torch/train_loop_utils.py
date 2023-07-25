@@ -642,7 +642,7 @@ class _WrappedOptimizer(Optimizer):
 
 
 class RayIterableDataset(IterableDataset):
-    """HF ``_BaseExamplesIterable`` backed by a ``ray.data.DataIterator``"""
+    """PyTorch IterableDataset backed by a ``ray.data.DataIterator``"""
 
     def __init__(self, dataset: DataIterator) -> None:
         super().__init__()
