@@ -1831,7 +1831,7 @@ class Dataset:
             .. testoutput::
 
                 {'prod': 45}
-                
+
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -1879,7 +1879,7 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column ``dict``
               containing the column-wise sum of the provided columns.
 
-            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Sum, on, ignore_nulls)
@@ -1920,8 +1920,8 @@ class Dataset:
               column ``"col"``,
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise min of the provided columns.
-            
-            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Min, on, ignore_nulls)
@@ -1963,7 +1963,7 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise max of the provided columns.
 
-            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Max, on, ignore_nulls)
@@ -2005,7 +2005,7 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise mean of the provided columns.
 
-            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Mean, on, ignore_nulls)
@@ -2060,7 +2060,7 @@ class Dataset:
             - ``on=["col_1", ..., "col_n"]``: an n-column dict
               containing the column-wise std of the provided columns.
 
-            If the dataset is empty, all values are null. If ``ignore_nulls`` is 
+            If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
         """
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
@@ -4489,8 +4489,8 @@ class Dataset:
 
         .. testoutput::
             :options: +MOCK
-            
-            Stage 0 Read: 20/20 blocks executed in 0.3s                                                                                                                                        
+
+            Stage 0 Read: 20/20 blocks executed in 0.3s
             * Remote wall time: 16.29us min, 7.29ms max, 1.21ms mean, 24.17ms total
             * Remote cpu time: 16.0us min, 2.54ms max, 810.45us mean, 16.21ms total
             * Peak heap memory usage (MiB): 137968.75 min, 142734.38 max, 139846 mean
