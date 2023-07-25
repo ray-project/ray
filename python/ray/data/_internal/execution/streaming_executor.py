@@ -353,11 +353,11 @@ def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
             )
         if (
             base_usage.gpu is not None
-            and limits.cpu is not None
+            and limits.gpu is not None
             and base_usage.gpu > limits.gpu
         ):
             error_message += (
-                f"- Your application needs {base_usage.cpu} GPU(s), but your cluster "
+                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
                 f"only has {limits.gpu}.\n"
             )
         if (
