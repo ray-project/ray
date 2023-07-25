@@ -215,7 +215,7 @@ jsondiff==2.0.0
 jsonpatch==1.32
 jsonpickle==3.0.1
 jsonpointer==2.4
-jsonschema==4.17.3
+jsonschema==4.18.1
 jsonschema-spec==0.1.6
 junit-xml==1.9
 jupyter-cache==0.4.3
@@ -414,7 +414,7 @@ pytorch-lightning==1.6.5
 pytz==2022.7.1
 pyu2f==0.1.5
 pywavelets==1.4.1
-pyyaml==6.0
+pyyaml==6.0.0
 pyzmq==25.1.0
 querystring-parser==1.2.4
 raydp==1.6.0b20230707.dev0
@@ -522,7 +522,7 @@ uc-micro-py==1.0.2
 uri-template==1.3.0
 uritemplate==4.1.1
 urllib3==1.26.16
-uvicorn==0.22.0
+uvicorn==0.23.0
 uvloop==0.17.0
 virtualenv==20.21.0
 wandb==0.13.4
