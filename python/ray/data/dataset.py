@@ -915,9 +915,9 @@ class Dataset:
     def repartition(self, num_blocks: int, *, shuffle: bool = False) -> "Dataset":
         """Repartition the :class:`Dataset` into exactly this number of :ref:`blocks <dataset_concept>`.
 
-        This method can be useful to tune the performance of your pipeline. To learn 
+        This method can be useful to tune the performance of your pipeline. To learn
         more, see :ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
-        
+
         If you're writing data to files, you can also use this method to change the
         number of output files. To learn more, see
         :ref:`Changing the number of output files <changing-number-output-files>`.
