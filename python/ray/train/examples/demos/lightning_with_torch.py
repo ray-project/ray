@@ -145,4 +145,3 @@ if __name__ == "__main__":
     )
 
     air_trainer.fit()
-

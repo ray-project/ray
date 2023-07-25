@@ -640,8 +640,9 @@ class _WrappedOptimizer(Optimizer):
         else:
             self.optimizer.step(closure)
 
+
 class RayIterableDataset(IterableDataset):
-    """HF ``_BaseExamplesIterable`` backed by a ``ray.data.DataIterator`` """
+    """HF ``_BaseExamplesIterable`` backed by a ``ray.data.DataIterator``"""
 
     def __init__(self, dataset: DataIterator) -> None:
         super().__init__()

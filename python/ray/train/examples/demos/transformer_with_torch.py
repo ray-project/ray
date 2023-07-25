@@ -5,7 +5,12 @@
 from datasets import load_dataset
 from ray.train.torch import TorchTrainer
 import transformers
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, default_data_collator
+from transformers import (
+    AutoConfig,
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    default_data_collator,
+)
 
 import ray
 from ray.train.huggingface import TransformersTrainer
@@ -13,6 +18,7 @@ from ray.air.config import ScalingConfig
 
 # If using GPUs, set this to True.
 use_gpu = True
+
 
 def train_loop_per_worker(config):
     model_checkpoint = "gpt2"
@@ -31,9 +37,7 @@ def train_loop_per_worker(config):
 
     def group_texts(examples):
         # Concatenate all texts.
-        concatenated_examples = {
-            k: sum(examples[k], []) for k in examples.keys()
-        }
+        concatenated_examples = {k: sum(examples[k], []) for k in examples.keys()}
         total_length = len(concatenated_examples[list(examples.keys())[0]])
         # We drop the small remainder, we could add padding if the model
         # supported it.
@@ -41,10 +45,7 @@ def train_loop_per_worker(config):
         total_length = (total_length // block_size) * block_size
         # Split by chunks of max_len.
         result = {
-            k: [
-                t[i : i + block_size]
-                for i in range(0, total_length, block_size)
-            ]
+            k: [t[i : i + block_size] for i in range(0, total_length, block_size)]
             for k, t in concatenated_examples.items()
         }
         result["labels"] = result["input_ids"].copy()
@@ -81,6 +82,7 @@ def train_loop_per_worker(config):
     # Diff
     trainer = ray.train.huggingface.transformers.prepare_trainer(trainer)
     trainer.train()
+
 
 scaling_config = ScalingConfig(num_workers=4, use_gpu=use_gpu)
 trainer = TorchTrainer(

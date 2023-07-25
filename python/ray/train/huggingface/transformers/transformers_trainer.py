@@ -553,4 +553,3 @@ def prepare_trainer(trainer):
         trainer.pop_callback(callback)
 
     trainer.add_callback(TrainReportCallback)
-    
