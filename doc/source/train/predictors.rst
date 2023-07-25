@@ -307,12 +307,3 @@ Execution can be triggered by pulling from the pipeline, as shown in the example
     :language: python
     :start-after: __pipelined_prediction_start__
     :end-before: __pipelined_prediction_end__
-<<<<<<< HEAD:doc/source/train/predictors.rst
-
-
-Online Inference
-----------------
-
-Check out the :ref:`air-serving-guide` for details on how to perform online inference.
-=======
->>>>>>> 5f1e2747cc80ea0083b090942809192c09619399:doc/source/ray-air/predictors.rst
