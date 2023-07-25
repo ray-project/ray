@@ -115,4 +115,5 @@ The command for testing a lora fine-tuning is:
 python finetune_hf_llm.py --as-test --lora 
 ```
 
-When adapting the LoRA config (at lora_configs/lora.json)
+When adapting `target_modules` in the LoRA config (at lora_configs/lora.json), be aware that different models have different names for the
+sub-models that can be tuned with LoRA. Have a look at the models themselves or [here](https://github.com/huggingface/peft/blob/main/src/peft/utils/other.py#L263-L288) for common ones.
