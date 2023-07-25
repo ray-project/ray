@@ -37,33 +37,11 @@ Basic usage
 Specifically, you can take an existing ``Trainer`` and simply
 pass it into a :py:class:`~ray.tune.tuner.Tuner`.
 
-.. code-block:: python
+.. literalinclude:: doc_code/tuner.py
+    :language: python
+    :start-after: __basic_start__
+    :end-before: __basic_end__
 
-    from ray import tune
-    from ray.air import session, ScalingConfig
-    from ray.train.torch import TorchTrainer
-    from ray.tune.tuner import Tuner, TuneConfig
-
-    def train_func(config):
-        # In this example, nothing is expected to change over epochs,
-        # and the output metric is equivalent to the input value.
-        for _ in range(config["num_epochs"]):
-            session.report(dict(output=config["input"]))
-
-    trainer = TorchTrainer(train_func, scaling_config=ScalingConfig(num_workers=2))
-    tuner = Tuner(
-        trainer,
-        param_space={
-            "train_loop_config": {
-                "num_epochs": 2,
-                "input": tune.grid_search([1, 2, 3]),
-            }
-        },
-        tune_config=TuneConfig(num_samples=5, metric="output", mode="max"),
-    )
-    result_grid = tuner.fit()
-    print(result_grid.get_best_result().metrics["output"])
-    # 3
 
 
 How to configure a Tuner?
