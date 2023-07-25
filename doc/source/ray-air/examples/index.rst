@@ -1,8 +1,7 @@
-.. _air-examples-ref:
+:orphan:
 
 Examples
 ========
-
 
 Framework-specific Examples
 ---------------------------
@@ -48,7 +47,6 @@ Logging & Observability
 RL (RLlib)
 ----------
 
-- :doc:`/ray-air/examples/rl_serving_example`
 - :doc:`/ray-air/examples/rl_online_example`
 - :doc:`/ray-air/examples/rl_offline_example`
 

@@ -45,43 +45,6 @@ parts:
         title: "Ray AI Runtime (AIR)"
         sections:
           - file: ray-air/key-concepts
-          - file: ray-air/user-guides
-            sections:
-              - file: ray-air/preprocessors
-              - file: ray-air/trainers
-              - file: ray-air/check-ingest
-              - file: ray-air/tuner
-              - file: ray-air/predictors
-              - file: ray-air/computer-vision
-              - file: ray-air/examples/serving_guide
-              - file: ray-air/deployment
-          - file: ray-air/examples/index
-            sections:
-              - file: ray-air/examples/torch_detection
-              - file: ray-air/examples/convert_existing_pytorch_code_to_ray_air
-              - file: ray-air/examples/convert_existing_tf_code_to_ray_air
-              - file: ray-air/examples/tfx_tabular_train_to_serve
-              - file: ray-air/examples/huggingface_text_classification
-              - file: ray-air/examples/sklearn_example
-              - file: ray-air/examples/xgboost_example
-              - file: ray-air/examples/analyze_tuning_results
-              - file: ray-air/examples/lightgbm_example
-              - file: ray-air/examples/torch_incremental_learning
-              - file: ray-air/examples/rl_serving_example
-              - file: ray-air/examples/rl_online_example
-              - file: ray-air/examples/rl_offline_example
-              - file: ray-air/examples/upload_to_comet_ml
-              - file: ray-air/examples/upload_to_wandb
-              - file: ray-air/examples/feast_example
-              - file: ray-air/examples/automl_with_ray_air
-              - file: ray-air/examples/batch_tuning
-              - file: ray-air/examples/batch_forecasting
-              - file: ray-air/examples/stablediffusion_batch_prediction
-              - file: ray-air/examples/gptj_deepspeed_fine_tuning
-              - file: ray-air/examples/gptj_batch_prediction
-              - file: ray-air/examples/gptj_serving
-              - file: ray-air/examples/dreambooth_finetuning
-              - file: ray-air/examples/dolly_lightning_fsdp_finetuning
           - file: ray-air/api/api
           - file: ray-air/benchmarks
 
@@ -110,10 +73,17 @@ parts:
                 title: "Configuring Ray Train"
               - file: train/dl_guide
                 title: "Deep Learning Guide"
+              - file: train/hf_trainers
+                title: "Hugging Face Trainers"
               - file: train/gbdt
                 title: "XGBoost/LightGBM guide"
               - file: train/architecture
                 title: "Ray Train Architecture"
+              - file: train/train-with-tune
+                title: "Using Ray Train with Ray Tune"
+              - file: train/check-ingest
+                title: "Configuring Training Datasets"
+              - file: train/predictors
           - file: train/examples
             title: "Examples"
             sections:
@@ -141,6 +111,8 @@ parts:
                 title: "Torch Data Prefetching Benchmark"
               - file: train/examples/pytorch/pytorch_resnet_finetune
                 title: "PyTorch Finetuning ResNet Example"
+              - file: train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+                title: "Fine-tune Vicuna-13B with DeepSpeed and PyTorch Lightning"
           - file: train/faq
           - file: train/api/api
 
