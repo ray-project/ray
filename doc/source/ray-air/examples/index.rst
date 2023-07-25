@@ -33,7 +33,7 @@ Text/NLP
 Image/CV
 --------
 
-- :doc:`/ray-air/examples/torch_image_example`
+- :doc:`/ray-air/computer-vision`
 - :doc:`/ray-air/examples/torch_detection`
 - :doc:`/ray-air/examples/stablediffusion_batch_prediction`: How to use Ray AIR to do batch prediction with the Stable Diffusion text-to-image model.
 
@@ -48,7 +48,6 @@ Logging & Observability
 RL (RLlib)
 ----------
 
-- :doc:`/ray-air/examples/rl_serving_example`
 - :doc:`/ray-air/examples/rl_online_example`
 - :doc:`/ray-air/examples/rl_offline_example`
 

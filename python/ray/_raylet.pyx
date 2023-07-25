@@ -78,6 +78,14 @@ from ray.includes.common cimport (
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
     CNodeAffinitySchedulingStrategy,
+    CNodeLabelSchedulingStrategy,
+    CLabelMatchExpressions,
+    CLabelMatchExpression,
+    CLabelIn,
+    CLabelNotIn,
+    CLabelExists,
+    CLabelDoesNotExist,
+    CLabelOperator,
     CRayFunction,
     CWorkerType,
     CJobConfig,
@@ -156,6 +164,11 @@ from ray._private import external_storage
 from ray.util.scheduling_strategies import (
     PlacementGroupSchedulingStrategy,
     NodeAffinitySchedulingStrategy,
+    NodeLabelSchedulingStrategy,
+    In,
+    NotIn,
+    Exists,
+    DoesNotExist,
 )
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
@@ -3059,6 +3072,31 @@ cdef class CoreWorker:
         logger.warning("Local object store memory usage:\n{}\n".format(
             message.decode("utf-8")))
 
+    cdef python_label_match_expressions_to_c(
+            self, python_expressions,
+            CLabelMatchExpressions *c_expressions):
+        cdef:
+            CLabelMatchExpression* c_expression
+            CLabelIn * c_label_in
+            CLabelNotIn * c_label_not_in
+
+        for expression in python_expressions:
+            c_expression = c_expressions[0].add_expressions()
+            c_expression.set_key(expression.key)
+            if isinstance(expression.operator, In):
+                c_label_in = c_expression.mutable_operator_()[0].mutable_label_in()
+                for value in expression.operator.values:
+                    c_label_in[0].add_values(value)
+            elif isinstance(expression.operator, NotIn):
+                c_label_not_in = \
+                    c_expression.mutable_operator_()[0].mutable_label_not_in()
+                for value in expression.operator.values:
+                    c_label_not_in[0].add_values(value)
+            elif isinstance(expression.operator, Exists):
+                c_expression.mutable_operator_()[0].mutable_label_exists()
+            elif isinstance(expression.operator, DoesNotExist):
+                c_expression.mutable_operator_()[0].mutable_label_does_not_exist()
+
     cdef python_scheduling_strategy_to_c(
             self, python_scheduling_strategy,
             CSchedulingStrategy *c_scheduling_strategy):
@@ -3066,6 +3104,7 @@ cdef class CoreWorker:
             CPlacementGroupSchedulingStrategy \
                 *c_placement_group_scheduling_strategy
             CNodeAffinitySchedulingStrategy *c_node_affinity_scheduling_strategy
+            CNodeLabelSchedulingStrategy *c_node_label_scheduling_strategy
         assert python_scheduling_strategy is not None
         if python_scheduling_strategy == "DEFAULT":
             c_scheduling_strategy[0].mutable_default_scheduling_strategy()
@@ -3099,6 +3138,17 @@ cdef class CoreWorker:
                 python_scheduling_strategy._spill_on_unavailable)
             c_node_affinity_scheduling_strategy[0].set_fail_on_unavailable(
                 python_scheduling_strategy._fail_on_unavailable)
+        elif isinstance(python_scheduling_strategy,
+                        NodeLabelSchedulingStrategy):
+            c_node_label_scheduling_strategy = \
+                c_scheduling_strategy[0] \
+                .mutable_node_label_scheduling_strategy()
+            self.python_label_match_expressions_to_c(
+                python_scheduling_strategy.hard,
+                c_node_label_scheduling_strategy[0].mutable_hard())
+            self.python_label_match_expressions_to_c(
+                python_scheduling_strategy.soft,
+                c_node_label_scheduling_strategy[0].mutable_soft())
         else:
             raise ValueError(
                 f"Invalid scheduling_strategy value "
