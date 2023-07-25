@@ -312,7 +312,8 @@ class Preprocessor(abc.ABC):
             )
         else:
             raise ValueError(
-                "Invalid inverse transform type returned from _determine_transform_to_use; "
+                "Invalid inverse transform type returned from "
+                "_determine_transform_to_use; "
                 f'"pandas" and "numpy" allowed, but got: {inverse_transform_type}'
             )
 
