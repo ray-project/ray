@@ -85,9 +85,9 @@ def _import_kubernetes(provider_config):
 
 
 def _import_kuberay(provider_config):
-    from ray.autoscaler._private.kuberay.node_provider import KuberayNodeProvider
+    from ray.autoscaler._private.kuberay.node_provider import KubeRayNodeProvider
 
-    return KuberayNodeProvider
+    return KubeRayNodeProvider
 
 
 def _import_aliyun(provider_config):
@@ -168,7 +168,7 @@ _PROVIDER_PRETTY_NAMES = {
     "gcp": "GCP",
     "azure": "Azure",
     "kubernetes": "Kubernetes",
-    "kuberay": "Kuberay",
+    "kuberay": "KubeRay",
     "aliyun": "Aliyun",
     "external": "External",
 }
