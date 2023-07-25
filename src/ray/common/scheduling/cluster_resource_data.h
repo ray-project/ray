@@ -473,6 +473,9 @@ class NodeResourceInstances {
  public:
   TaskResourceInstances available;
   TaskResourceInstances total;
+  // The key-value labels of this node.
+  absl::flat_hash_map<std::string, std::string> labels;
+
   /// Extract available resource instances.
   const TaskResourceInstances &GetAvailableResourceInstances() const;
   const TaskResourceInstances &GetTotalResourceInstances() const;

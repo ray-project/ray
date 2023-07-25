@@ -61,6 +61,10 @@ inline bool operator==(const ray::rpc::SchedulingStrategy &lhs,
             rhs.placement_group_scheduling_strategy()
                 .placement_group_capture_child_tasks());
   }
+  case ray::rpc::SchedulingStrategy::kNodeLabelSchedulingStrategy: {
+    return google::protobuf::util::MessageDifferencer::Equivalent(
+        lhs.node_label_scheduling_strategy(), rhs.node_label_scheduling_strategy());
+  }
   default:
     return true;
   }
@@ -132,6 +136,9 @@ struct hash<ray::rpc::SchedulingStrategy> {
       hash ^=
           static_cast<size_t>(scheduling_strategy.placement_group_scheduling_strategy()
                                   .placement_group_capture_child_tasks());
+    } else if (scheduling_strategy.has_node_label_scheduling_strategy()) {
+      hash ^= std::hash<std::string>()(
+          scheduling_strategy.node_label_scheduling_strategy().DebugString());
     }
     return hash;
   }
