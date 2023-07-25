@@ -139,10 +139,10 @@ def is_non_local_path_uri(uri: str) -> bool:
 
 
 # Cache fs objects. Map from cache_key --> timestamp, fs
-_cached_fs: Dict[tuple, Tuple[float, pyarrow.fs.FileSystem]] = {}
+_cached_fs: Dict[tuple, Tuple[float, "pyarrow.fs.FileSystem"]] = {}
 
 
-def _get_cache(cache_key: tuple) -> Optional[pyarrow.fs.FileSystem]:
+def _get_cache(cache_key: tuple) -> Optional["pyarrow.fs.FileSystem"]:
     ts, fs = _cached_fs.get(cache_key, (0, None))
     if not fs:
         return None
@@ -155,7 +155,7 @@ def _get_cache(cache_key: tuple) -> Optional[pyarrow.fs.FileSystem]:
     return fs
 
 
-def _put_cache(cache_key: tuple, fs: pyarrow.fs.FileSystem):
+def _put_cache(cache_key: tuple, fs: "pyarrow.fs.FileSystem"):
     now = time.monotonic()
     _cached_fs[cache_key] = (now, fs)
 
