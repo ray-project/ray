@@ -54,7 +54,7 @@ These objects contain training metrics as well as checkpoints to retrieve the be
 Tuner
 -----
 
-:ref:`Tuners <tune-getting-started>` offer scalable hyperparameter tuning as part of :ref:`Ray Tune <tune-main>`.
+:ref:`Tuners <tune-tutorial>` offer scalable hyperparameter tuning as part of :ref:`Ray Tune <tune-main>`.
 
 Tuners can work seamlessly with any Trainer but also can support arbitrary training functions.
 
