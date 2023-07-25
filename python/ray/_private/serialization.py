@@ -474,13 +474,13 @@ class SerializationContext:
             # that this object can also be read by Java.
             return RawSerializedObject(value)
 
-        # try:
-        #     import pyarrow
-        # except ImportError:
-        #     pyarrow = None
+        try:
+            import pyarrow
+        except ImportError:
+            pyarrow = None
 
-        # # Check whether arrow is installed. If so, use Arrow IPC format
-        # # to serialize this object, then it can also be read by Java.
+        # Check whether arrow is installed. If so, use Arrow IPC format
+        # to serialize this object, then it can also be read by Java.
         # if pyarrow is not None and (
         #     isinstance(value, pyarrow.Table) or isinstance(value, pyarrow.RecordBatch)
         # ):
