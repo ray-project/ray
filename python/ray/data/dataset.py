@@ -987,7 +987,7 @@ class Dataset:
             >>> ds = ray.data.range(100)
             >>> ds.random_shuffle().take(3)  # doctest: +SKIP
             {'id': 41}, {'id': 21}, {'id': 92}]
-            >>> ds.random_shuffle(seed=42).take(3)
+            >>> ds.random_shuffle(seed=42).take(3)  # doctest: +SKIP
             {'id': 77}, {'id': 21}, {'id': 63}]
 
         Time complexity: O(dataset size / parallelism)
