@@ -3240,6 +3240,7 @@ class Dataset:
             {'id': tensor([ 8,  9, 11,  7])}
 
             Use the ``collate_fn`` to customize how the tensor batch is created.
+
             >>> from typing import Any, Dict
             >>> import torch
             >>> import numpy as np
