@@ -24,7 +24,7 @@ class StorageContext:
     For example, on the driver, the storage context is initialized, only knowing
     the experiment path. On the Trainable actor, the trial_dir_name is accessible.
 
-    Example:
+    Example with storage_path="mock:///bucket/path":
 
         >>> from ray.train._internal.storage import StorageContext
         >>> import os
@@ -32,7 +32,7 @@ class StorageContext:
         >>> storage = StorageContext(
         ...     storage_path="mock:///bucket/path",
         ...     sync_config=SyncConfig(),
-        ...     experiment_dir_name="exp_name"
+        ...     experiment_dir_name="exp_name",
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs._MockFileSystem object...
@@ -47,6 +47,26 @@ class StorageContext:
         >>> storage.checkpoint_fs_path
         'bucket/path/exp_name/trial_dir/checkpoint_000001'
 
+    Example with storage_path=None:
+
+        >>> from ray.train._internal.storage import StorageContext
+        >>> import os
+        >>> os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = "/tmp/ray_results"
+        >>> storage = StorageContext(
+        ...     storage_path=None,
+        ...     sync_config=SyncConfig(),
+        ...     experiment_dir_name="exp_name",
+        ... )
+        >>> storage.storage_path  # Auto-resolved
+        '/tmp/ray_results'
+        >>> storage.storage_cache_path
+        '/tmp/ray_results'
+        >>> storage.syncer is None
+        True
+        >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
+        <pyarrow._fs.LocalFileSystem object...
+
+
     Internal Usage Examples:
     - To copy files to the trial directory on the storage filesystem:
 
@@ -59,15 +79,18 @@ class StorageContext:
 
     def __init__(
         self,
-        storage_path: str,
+        storage_path: Optional[str],
         sync_config: SyncConfig,
         experiment_dir_name: str,
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
         trial_dir_name: Optional[str] = None,
         current_checkpoint_id: Optional[int] = None,
     ):
-        self.storage_path = storage_path
         self.storage_cache_path = _get_defaults_results_dir()
+        # If `storage_path=None`, then set it to the default cache path.
+        # Invariant: (`storage_filesystem`, `storage_path`) is the location where
+        # *all* results can be accessed.
+        self.storage_path = storage_path or self.storage_cache_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_id = current_checkpoint_id
@@ -97,6 +120,7 @@ class StorageContext:
                 self.storage_fs_path,
             ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
 
+        # Only initialize a syncer if the storage path is different from the cache path.
         self.syncer: Optional[Syncer] = (
             None
             if self.storage_path == self.storage_cache_path

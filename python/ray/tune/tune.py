@@ -689,18 +689,22 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    (
-        storage_path,
-        local_path,
-        remote_path,
-        sync_config,
-    ) = _resolve_and_validate_storage_path(
-        storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
-    )
+    if _use_storage_context():
+        local_path, remote_path = None, None
+        # TODO(justinvyu): Fix telemetry for the new persistence.
+    else:
+        (
+            storage_path,
+            local_path,
+            remote_path,
+            sync_config,
+        ) = _resolve_and_validate_storage_path(
+            storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
+        )
 
-    air_usage.tag_ray_air_storage_config(
-        local_path=local_path, remote_path=remote_path, sync_config=sync_config
-    )
+        air_usage.tag_ray_air_storage_config(
+            local_path=local_path, remote_path=remote_path, sync_config=sync_config
+        )
 
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
@@ -850,6 +854,8 @@ def run(
         placeholder_resolvers,
     )
 
+    # TODO(justinvyu): We should remove the ability to pass a list of
+    # trainables to tune.run.
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -1141,7 +1147,6 @@ def run(
             _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
-    experiment_checkpoint = runner.experiment_state_path
 
     runner.cleanup()
 
@@ -1177,6 +1182,16 @@ def run(
                 f"Experiment has been interrupted, but the most recent state was "
                 f"saved.\nResume experiment with: {restore_entrypoint}"
             )
+
+    if _use_storage_context():
+        # (temporary) NOTE: This is the local (cache) experiment directory path,
+        # not the actual experiment-state.json file.
+        # This differs from the else case, which specifies the actual file path.
+        # ExperimentAnalysis also accepts the directory as the argument.
+        experiment_checkpoint = experiments[0].storage.experiment_cache_path
+    else:
+        experiment_checkpoint = runner.experiment_state_path
+
     ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
