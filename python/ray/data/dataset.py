@@ -3164,7 +3164,7 @@ class Dataset:
         delegate=(
             "Calling any of the consumption methods on the returned ``DataIterator``"
         ),
-        pattern="Returns:"
+        pattern="Returns:",
     )
     def iterator(self) -> DataIterator:
         """Return a :class:`~ray.data.DataIterator` over this dataset.
@@ -3350,7 +3350,7 @@ class Dataset:
         .. seealso::
             :meth:`Dataset.iter_batches`
                 Call this method to manually convert your data to Torch tensors.
-        """
+        """  # noqa: E501
         return self.iterator().iter_torch_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
@@ -3414,7 +3414,7 @@ class Dataset:
         Args:
             prefetch_batches: The number of batches to fetch ahead of the current batch
                 to fetch. If set to greater than 0, a separate threadpool is used
-                to fetch the objects to the local node, format the batches, and apply 
+                to fetch the objects to the local node, format the batches, and apply
                 the ``collate_fn``. Defaults to 1.
             batch_size: The number of rows in each batch, or ``None`` to use entire
                 blocks as batches (blocks may contain different numbers of rows).
@@ -3437,7 +3437,7 @@ class Dataset:
         .. seealso::
             :meth:`Dataset.iter_batches`
                 Call this method to manually convert your data to TensorFlow tensors.
-        """
+        """  # noqa: E501
         return self.iterator().iter_tf_batches(
             prefetch_batches=prefetch_batches,
             prefetch_blocks=prefetch_blocks,
