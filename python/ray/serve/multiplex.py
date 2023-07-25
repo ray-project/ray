@@ -6,7 +6,6 @@ import time
 from typing import Any, Callable, List, Set
 
 from ray._private.async_compat import sync_to_async
-from ray._private.utils import get_or_create_event_loop
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
