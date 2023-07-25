@@ -45,18 +45,6 @@ parts:
         title: "Ray AI Runtime (AIR)"
         sections:
           - file: ray-air/key-concepts
-<<<<<<< HEAD
-=======
-          - file: ray-air/user-guides
-            sections:
-              - file: ray-air/preprocessors
-              - file: ray-air/trainers
-              - file: ray-air/check-ingest
-              - file: ray-air/tuner
-              - file: ray-air/predictors
-              - file: ray-air/computer-vision
-              - file: ray-air/deployment
->>>>>>> 90dac1dec8473e3b6d0f38413da6edfa01df2df9
           - file: ray-air/examples/index
             sections:
               - file: ray-air/examples/torch_detection
@@ -122,10 +110,6 @@ parts:
               - file: train/check-ingest
                 title: "Configuring Training Datasets"
               - file: train/predictors
-              - file: train/gbdt
-                title: "XGBoost/LightGBM guide"
-              - file: train/architecture
-                title: "Ray Train Architecture"
           - file: train/examples
             title: "Examples"
             sections:
