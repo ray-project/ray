@@ -14,7 +14,7 @@ RAY_REPO = "ray-project/ray"
 AWS_SECRET_GITHUB = "ray_ci_github_token"
 AWS_SECRET_BUILDKITE = "ray_ci_buildkite_token"
 MAX_BISECT_PER_DAY = 10  # Max number of bisects to run per day for all tests
-CONTINUOUS_FAILURE_TO_JAIL = 5  # Number of continuous failures before jailing
+CONTINUOUS_FAILURE_TO_JAIL = 3  # Number of continuous failures before jailing
 BUILDKITE_ORGANIZATION = "ray-project"
 BUILDKITE_BISECT_PIPELINE = "release-tests-bisect"
 
