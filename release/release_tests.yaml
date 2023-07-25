@@ -264,6 +264,32 @@
   
   alert: default
 
+# Chaos equivalent of the above test.
+- name: torch_batch_inference_hetero_10tb_parquet_chaos
+  group: AIR tests
+  working_dir: air_tests/air_benchmarks
+
+  stable: false
+
+  frequency: weekly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: compute_hetero_10x10_aws.yaml
+
+  run:
+    timeout: 4000
+    prepare: python setup_chaos.py
+    script: python workloads/gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+
+    wait_for_nodes:
+      num_nodes: 20
+  
+  alert: default
+
 
 #########################
 # AIR release tests
