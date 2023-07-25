@@ -100,8 +100,8 @@ class ServeControllerClient:
         Remove the reference to the cached handles so that they can be
         garbage collected.
         """
-        for cache_key, handle in self.handle_cache.items():
-            handle.shutdown()
+        for cache_key in list(self.handle_cache):
+            self.handle_cache[cache_key].shutdown()
             del self.handle_cache[cache_key]
 
     def shutdown(self, timeout_s: float = 30.0) -> None:
