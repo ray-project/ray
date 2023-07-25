@@ -2147,7 +2147,7 @@ class Dataset:
             >>> import ray
             >>> ds = ray.data.range(100)
             >>> ds.take_batch(5)
-            {'id': array([15, 16, 17, 18, 19])}
+            {'id': array([0, 1, 2, 3, 4])}
 
         Time complexity: O(batch_size specified)
 
@@ -2235,6 +2235,7 @@ class Dataset:
         Examples:
             >>> import ray
             >>> ds = ray.data.range(5)
+            >>> ds.take_all()
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
         Time complexity: O(dataset size)
