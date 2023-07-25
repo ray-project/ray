@@ -31,7 +31,7 @@ Ray Examples
     :class-container: gallery-container container pb-3
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-link:: https://www.anyscale.com/blog/ray-common-production-challenges-for-generative-ai-infrastructure
 
@@ -45,32 +45,39 @@ Ray Examples
             Training 175B Parameter Language Models at 1000 GPU scale with Alpa and Ray
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-link:: https://www.anyscale.com/blog/faster-stable-diffusion-fine-tuning-with-ray-air
 
             Faster stable diffusion fine-tuning with Ray AIR
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item training serving huggingface
+        :class-item: gallery-item training serving huggingface llm
 
         .. button-link:: https://www.anyscale.com/blog/how-to-fine-tune-and-serve-llms-simply-quickly-and-cost-effectively-using
 
             How to fine tune and serve LLMs simply, quickly and cost effectively using Ray + DeepSpeed + HuggingFace
 
     .. grid-item-card:: :bdg-primary:`Blog`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-link:: https://www.businessinsider.com/openai-chatgpt-trained-on-anyscale-ray-generative-lifelike-ai-models-2022-12
 
             How OpenAI Uses Ray to Train Tools like ChatGPT
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-ref:: /ray-air/examples/gptj_deepspeed_fine_tuning
 
             GPT-J-6B Fine-Tuning with Ray AIR and DeepSpeed
+
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item llm
+
+        .. button-link:: https://github.com/ray-project/aviary/
+
+            Aviary toolkit serving live traffic for LLMs 
 
     .. grid-item-card:: :bdg-success:`Tutorial`
         :class-item: gallery-item pytorch
@@ -173,9 +180,9 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
 
-        .. button-ref:: /ray-air/examples/torch_image_example
+        .. button-ref:: /ray-air/computer-vision
 
-            Torch Image Classification Example with Ray AIR
+            Computer Vision User Guide
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item pytorch cv
@@ -232,13 +239,6 @@ Ray Examples
         .. button-ref:: /ray-air/examples/upload_to_wandb
 
             How to log results and upload models to Weights and Biases
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving
-
-        .. button-ref:: /ray-air/examples/rl_serving_example
-
-            Serving RL models with Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item
@@ -332,21 +332,21 @@ Ray Examples
             Serving an Object Detection Model
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-ref:: /ray-air/examples/dreambooth_finetuning
 
             Fine-tuning DreamBooth with Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item
+        :class-item: gallery-item llm
 
         .. button-ref:: /ray-air/examples/stablediffusion_batch_prediction
 
             Stable Diffusion Batch Prediction with Ray AIR
 
     .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item serving
+        :class-item: gallery-item serving llm
 
         .. button-ref:: /ray-air/examples/gptj_serving
 
@@ -488,13 +488,6 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
-        .. button-ref:: /tune/examples/skopt_example
-
-            How To Use Tune With Scikit-Optimize
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
         .. button-ref:: /tune/examples/hyperopt_example
 
             How To Use Tune With HyperOpt
@@ -537,23 +530,9 @@ Ray Examples
     .. grid-item-card:: :bdg-secondary:`Code example`
         :class-item: gallery-item tuning
 
-        .. button-ref:: /tune/examples/zoopt_example
-
-            How To Use Tune With ZOOpt
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
         .. button-ref:: /tune/examples/sigopt_example
 
             How To Use Tune With SigOpt
-
-    .. grid-item-card:: :bdg-secondary:`Code example`
-        :class-item: gallery-item tuning
-
-        .. button-ref:: /tune/examples/hebo_example
-
-            How To Use Tune With HEBO
 
     .. grid-item-card:: :bdg-warning:`Video`
         :class-item: gallery-item tuning serving
@@ -1639,3 +1618,10 @@ Ray Examples
         .. button-ref:: /serve/tutorials/streaming
 
             Using Ray Serve to deploy a chatbot
+    
+    .. grid-item-card:: :bdg-secondary:`Code example`
+        :class-item: gallery-item training llm
+
+        .. button-ref:: /train/examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+
+            Fine-tune vicuna-13b-v1.3 with DeepSpeed and LightningTrainer

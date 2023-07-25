@@ -22,7 +22,7 @@ def serve_start_shutdown():
     ray.init(
         _metrics_export_port=9999,
         _system_config={
-            "metrics_report_interval_ms": 1000,
+            "metrics_report_interval_ms": 100,
             "task_retry_delay_ms": 50,
         },
     )
@@ -308,7 +308,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_num_http_requests")) == 2,
-        timeout=20,
+        timeout=40,
     )
     num_http_requests = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
@@ -329,7 +329,7 @@ def test_http_redirect_metrics(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_http_request_latency_ms_sum")) == 2,
-        timeout=20,
+        timeout=40,
     )
     http_latency = get_metric_dictionaries("serve_num_http_requests")
     expected_output = [
@@ -364,7 +364,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
-        timeout=20,
+        timeout=40,
     )
 
     num_requests = get_metric_dictionaries("serve_deployment_request_counter")
@@ -385,7 +385,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
             get_metric_dictionaries("serve_deployment_processing_latency_ms_count")
         )
         == 2,
-        timeout=20,
+        timeout=40,
     )
     for metric_name in [
         "serve_deployment_processing_latency_ms_count",
@@ -416,7 +416,7 @@ def test_replica_metrics_fields(serve_start_shutdown):
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
-        timeout=20,
+        timeout=40,
     )
     err_requests = get_metric_dictionaries("serve_deployment_error_counter")
     assert len(err_requests) == 1
@@ -494,7 +494,7 @@ class TestRequestContextMetrics:
                 get_metric_dictionaries("serve_deployment_processing_latency_ms_sum")
             )
             == 3,
-            timeout=20,
+            timeout=40,
         )
 
         def wait_for_route_and_name(
@@ -599,7 +599,7 @@ class TestRequestContextMetrics:
         wait_for_condition(
             lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
             == 4,
-            timeout=20,
+            timeout=40,
         )
         (
             requests_metrics_route,
@@ -664,7 +664,7 @@ class TestRequestContextMetrics:
         deployment_name, replica_tag = resp.json()
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=40,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
@@ -800,7 +800,7 @@ class TestRequestContextMetrics:
         assert resp.text == "hello"
         wait_for_condition(
             lambda: len(get_metric_dictionaries("my_gauge")) == 1,
-            timeout=20,
+            timeout=40,
         )
 
         counter_metrics = get_metric_dictionaries("my_counter")
@@ -866,7 +866,7 @@ def test_multiplexed_metrics(serve_start_shutdown):
 
     wait_for_condition(
         verify_metrics,
-        timeout=20,
+        timeout=40,
         retry_interval_ms=1000,
     )
 

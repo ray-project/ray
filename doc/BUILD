@@ -315,7 +315,8 @@ doctest(
             "source/data/transforming-data.rst",
             "source/train/faq.rst",
             "source/workflows/**/*.rst",
-            "source/workflows/**/*.md"
+            "source/workflows/**/*.md",
+            "source/templates/04_finetuning_llms_with_deepspeed/README.md"
         ]
     ),
     size = "large",

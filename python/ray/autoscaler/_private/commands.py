@@ -725,6 +725,7 @@ def get_or_create_head_node(
     # The above `head_node` field is deprecated in favor of per-node-type
     # node_configs. We allow it for backwards-compatibility.
     head_node_resources = None
+    head_node_labels = None
     head_node_type = config.get("head_node_type")
     if head_node_type:
         head_node_tags[TAG_RAY_USER_NODE_TYPE] = head_node_type
@@ -734,6 +735,7 @@ def get_or_create_head_node(
         # Not necessary to keep in sync with node_launcher.py
         # Keep in sync with autoscaler.py _node_resources
         head_node_resources = head_config.get("resources")
+        head_node_labels = head_config.get("labels")
 
     launch_hash = hash_launch_conf(head_node_config, config["auth"])
     creating_new_head = _should_create_new_head(
@@ -833,6 +835,7 @@ def get_or_create_head_node(
             file_mounts_contents_hash=file_mounts_contents_hash,
             is_head_node=True,
             node_resources=head_node_resources,
+            node_labels=head_node_labels,
             rsync_options={
                 "rsync_exclude": config.get("rsync_exclude"),
                 "rsync_filter": config.get("rsync_filter"),
