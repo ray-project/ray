@@ -52,6 +52,7 @@ def unify_schemas(
     """Version of `pyarrow.unify_schemas()` which also handles checks for
     variable-shaped tensors in the given schemas."""
     import pyarrow as pa
+
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
         ArrowVariableShapedTensorType,

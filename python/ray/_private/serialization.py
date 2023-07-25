@@ -8,7 +8,7 @@ import ray._private.utils
 import ray.cloudpickle as pickle
 from ray._private import ray_constants
 from ray._raylet import (
-    # ArrowSerializedObject,
+    ArrowSerializedObject,
     MessagePackSerializedObject,
     MessagePackSerializer,
     ObjectRefGenerator,
