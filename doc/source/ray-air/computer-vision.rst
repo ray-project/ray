@@ -186,7 +186,7 @@ Training vision models
             :dedent:
 
         For more in-depth examples, read :doc:`/ray-air/examples/torch_image_example` and
-        :ref:`Using Trainers <air-trainers>`.
+        :ref:`Using Trainers <train-getting-started>`.
 
     .. tab-item:: TensorFlow
 
@@ -205,7 +205,7 @@ Training vision models
             :end-before: __tensorflow_trainer_stop__
             :dedent:
 
-        For more information, read :ref:`Using Trainers <air-trainers>`.
+        For more information, read :ref:`Using Trainers <train-getting-started>`.
 
 Creating checkpoints
 --------------------
