@@ -6,3 +6,4 @@ mypy==0.982
 types-PyYAML==6.0.12.2
 black==22.10.0
 isort==5.10.1
+semgrep==1.32.0
