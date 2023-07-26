@@ -443,8 +443,7 @@ def append_to_test_output_json(path, metrics):
     with open(path, "w") as test_output_file:
         json.dump(output_json, test_output_file)
 
-    print(f"===> Wrote metrics to {path}:")
-    print(perf_metrics)
+    print(f"Finished benchmark, metrics exported to {path}.")
 
 
 if __name__ == "__main__":

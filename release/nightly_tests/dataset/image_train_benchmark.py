@@ -139,5 +139,4 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
 
-    print(f"Finished benchmark, metrics exported to {test_output_json}:")
-    print(metrics_dict)
+    print(f"Finished benchmark, metrics exported to {test_output_json}.")
