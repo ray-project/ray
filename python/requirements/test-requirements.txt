@@ -77,6 +77,8 @@ werkzeug==2.1.2
 xlrd==2.0.1
 memray; platform_system != "Windows" and sys_platform != "darwin" and platform_machine != 'aarch64'
 memray @ git+https://github.com/bloomberg/memray.git; platform_system != "Windows" and sys_platform != "darwin" and platform_machine == 'aarch64'
+yq==3.2.2
+
 # For doc tests
 myst-parser==0.15.2
 myst-nb==0.13.1

@@ -185,7 +185,10 @@
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
       --test_tag_filters=client_tests,small_size_python_tests 
-      $(bazel query "attr(tags, civ1, tests(python/ray/tests/...))")
+      -- $(yq -r .flaky_tests[] ci/v2/test/core.tests.yml)
+    - bazel test --config=ci $(./ci/run/bazel_export_options) 
+      --test_tag_filters=client_tests,small_size_python_tests,-team:core 
+      -- python/ray/tests/...
     - bazel test --config=ci $(./ci/run/bazel_export_options)
       --test_tag_filters=ray_ha
       --test_env=DOCKER_HOST=tcp://docker:2376
