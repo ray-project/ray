@@ -165,13 +165,15 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
   job_info_stub_ = rpc::JobInfoGcsService::NewStub(channel_);
   autoscaler_stub_ = rpc::autoscaler::AutoscalerStateService::NewStub(channel_);
 
+  RAY_CHECK(num_retries >= 0) << "Expected non-negative retries, but got " << num_retries;
+
   if (cluster_id.IsNil()) {
     RAY_LOG(INFO) << "Retrieving cluster ID from GCS server.";
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;
 
     Status connect_status;
-    for (; num_retries > 0; num_retries--) {
+    for (; num_retries >= 0; num_retries--) {
       grpc::ClientContext context;
       PrepareContext(context, timeout_ms);
       connect_status =
@@ -179,8 +181,8 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
 
       if (connect_status.ok()) {
         cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_CHECK(!cluster_id_.IsNil());
         RAY_LOG(INFO) << "Received cluster ID from GCS server: " << cluster_id_;
+        RAY_CHECK(!cluster_id_.IsNil());
         break;
       } else if (!connect_status.IsGrpcError()) {
         return HandleGcsError(reply.status());
