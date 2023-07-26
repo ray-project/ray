@@ -81,8 +81,11 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    async def resolve_deployment_handle_results(self):
-        """Replace DeploymentHandleResults with their resolve ObjectRefs."""
+    async def resolve_deployment_handle_results_to_obj_refs(self):
+        """Replace DeploymentHandleResults with their resolved ObjectRefs.
+
+        DeploymentHandleResultGenerators are rejected (not currently supported).
+        """
         from ray.serve.handle import (
             DeploymentHandleResultBase,
             DeploymentHandleResultGenerator,
@@ -99,6 +102,7 @@ class Query:
                         "downstream handle calls. If you have a use case requiring "
                         "this feature, please file a feature request on GitHub."
                     )
+
             if len(results) > 0:
                 resolved = await asyncio.gather(*results)
                 replacement_table = dict(zip(results, resolved))
@@ -1000,7 +1004,7 @@ class Router:
             kwargs=request_kwargs,
             metadata=request_meta,
         )
-        await query.resolve_deployment_handle_results()
+        await query.resolve_deployment_handle_results_to_obj_refs()
         await query.buffer_starlette_requests_and_warn()
         result = await self._replica_scheduler.assign_replica(query)
 
