@@ -2354,8 +2354,9 @@ cdef class GcsClient:
     def _connect(self, timeout=None):
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            size_t num_retries = self._nums_reconnect_retry
         with nogil:
-            status = self.inner.get().Connect(self.cluster_id, timeout_ms)
+            status = self.inner.get().Connect(self.cluster_id, timeout_ms, num_retries)
 
         if self.cluster_id.IsNil():
             self.cluster_id = self.inner.get().GetClusterId()

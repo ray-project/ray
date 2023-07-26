@@ -154,7 +154,9 @@ Status HandleGcsError(rpc::GcsStatus status) {
 }
 }  // namespace
 
-Status PythonGcsClient::Connect(const ClusterID &cluster_id, int64_t timeout_ms) {
+Status PythonGcsClient::Connect(const ClusterID &cluster_id,
+                                int64_t timeout_ms,
+                                size_t num_retries) {
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   kv_stub_ = rpc::InternalKVGcsService::NewStub(channel_);
@@ -165,29 +167,26 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id, int64_t timeout_ms)
 
   if (cluster_id.IsNil()) {
     RAY_LOG(INFO) << "Retrieving cluster ID from GCS server.";
-    grpc::ClientContext context;
-    PrepareContext(context, timeout_ms);
-
     rpc::GetClusterIdRequest request;
     rpc::GetClusterIdReply reply;
 
-    auto status =
-        GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
-    while (!status.IsTimedOut()) {
-      if (status.ok()) {
+    Status connect_status;
+    for (; num_retries > 0; num_retries--) {
+      grpc::ClientContext context;
+      PrepareContext(context, timeout_ms);
+      connect_status =
+          GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
+
+      if (connect_status.ok()) {
         cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
         RAY_CHECK(!cluster_id_.IsNil());
         RAY_LOG(INFO) << "Received cluster ID from GCS server: " << cluster_id_;
         break;
-      } else if (!status.IsGrpcError()) {
+      } else if (!connect_status.IsGrpcError()) {
         return HandleGcsError(reply.status());
-      } else {
-        grpc::ClientContext context;
-        PrepareContext(context, timeout_ms);
-        status = GrpcStatusToRayStatus(
-            node_info_stub_->GetClusterId(&context, request, &reply));
       }
     }
+    RAY_RETURN_NOT_OK(connect_status);
   } else {
     cluster_id_ = cluster_id;
     RAY_LOG(INFO) << "Client initialized with provided cluster ID: " << cluster_id_;
