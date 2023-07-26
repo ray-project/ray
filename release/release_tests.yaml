@@ -1081,7 +1081,7 @@
     byod:
       type: cu118
     cluster_env: ./cluster_env.yaml
-    cluster_compute: ./compute_configs/gpu/aws_7b_or_13b.yaml
+    cluster_compute: ./compute_configs/aws_7b_or_13b.yaml
 
   run:
     timeout: 600
@@ -1094,7 +1094,7 @@
         frequency: manual
         cluster:
           cluster_env: ./cluster_env.yaml
-          cluster_compute: ./compute_configs/gpu/gce_7b_or_13b.yaml
+          cluster_compute: ./compute_configs/gce_7b_or_13b.yaml
 
 
 
@@ -1108,7 +1108,7 @@
     byod:
       type: cu118
     cluster_env: ./cluster_env.yaml
-    cluster_compute: ./compute_configs/gpu/aws_7b_or_13b.yaml
+    cluster_compute: ./compute_configs/aws_7b_or_13b.yaml
 
   run:
     timeout: 1200
@@ -1121,7 +1121,7 @@
         frequency: manual
         cluster:
           cluster_env: ./cluster_env.yaml
-          cluster_compute: ./compute_configs/gpu/gce_7b_or_13b.yaml
+          cluster_compute: ./compute_configs/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
