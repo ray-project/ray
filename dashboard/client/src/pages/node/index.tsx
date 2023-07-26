@@ -240,7 +240,6 @@ const Nodes = () => {
   } = useNodeList();
   const { clusterStatusMap } = useClusterStatusMap();
   const nodeLogicalResourcesMap = clusterStatusMap?.nodeLogicalResources;
-  console.info("nodeLogicalResourcesMap: ", nodeLogicalResourcesMap);
 
   return (
     <div className={classes.root}>
