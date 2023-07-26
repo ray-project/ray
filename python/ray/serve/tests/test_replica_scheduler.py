@@ -556,6 +556,22 @@ class TestModelMultiplexing:
             task = loop.create_task(s.choose_replica_for_query(query))
             assert (await task) in {r1, r2}
 
+    async def test_choose_least_number_of_models_replicas(self, pow_2_scheduler):
+        """
+        If no replica has the model_id, choose the least number of models replicas.
+        """
+        s = pow_2_scheduler
+        loop = get_or_create_event_loop()
+        r1 = FakeReplicaWrapper("r1", model_ids={"m1", "m2"})
+        r2 = FakeReplicaWrapper("r2", model_ids={"m2"})
+        r1.set_queue_state_response(0, accepted=True)
+        r2.set_queue_state_response(0, accepted=True)
+        s.update_replicas([r1, r2])
+        for _ in range(10):
+            query = query_with_model_id("m3")
+            task = loop.create_task(s.choose_replica_for_query(query))
+            assert (await task) == r2
+
     async def test_no_replica_has_model_id(self, pow_2_scheduler):
         """
         If no replica has the model_id, we should fall back to normal procedure.

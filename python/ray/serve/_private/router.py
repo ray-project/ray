@@ -7,6 +7,7 @@ import logging
 import math
 import pickle
 import random
+import time
 from typing import (
     Any,
     AsyncGenerator,
@@ -34,6 +35,7 @@ from ray.serve._private.common import RunningReplicaInfo, DeploymentInfo
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     HANDLE_METRIC_PUSH_INTERVAL_S,
+    RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S,
 )
 from ray.serve._private.http_util import make_buffered_asgi_receive
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -388,31 +390,67 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     def _get_candidate_replica_ids(
         self,
         blacklist_replica_ids: Set[str],
-        request_metadata: Optional[RequestMetadata] = None,
     ) -> Set[str]:
         """Get candidates from the current replica set excluding the blacklist.
 
         If a model ID is present in request_metadata, any replicas that have it are
         prioritized.
         """
-        if (
-            request_metadata is not None
-            and request_metadata.multiplexed_model_id
-            in self._multiplexed_model_id_to_replica_ids
-        ):
-            candidates = self._multiplexed_model_id_to_replica_ids[
-                request_metadata.multiplexed_model_id
-            ].difference(blacklist_replica_ids)
-            if len(candidates) > 0:
-                return candidates
 
         return self._replica_id_set.difference(blacklist_replica_ids)
+
+    async def _get_candidate_replica_ids_for_multiplexed_model_id(
+        self, blacklist_replica_ids: Set[str], model_id: str
+    ) -> Set[str]:
+
+        start = time.time()
+        multiplexed_matching_timeout = (
+            RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S * random.random()
+        )
+        candidates = set()
+        first_check = True
+        while first_check or time.time() - start < multiplexed_matching_timeout:
+            # If model id in the multiplexed model id to replica ids map,
+            # then we prioritize replicas that have the model id.
+            if model_id in self._multiplexed_model_id_to_replica_ids:
+                candidates = self._multiplexed_model_id_to_replica_ids[
+                    model_id
+                ].difference(blacklist_replica_ids)
+                if len(candidates) > 0:
+                    return candidates
+            first_check = False
+            await asyncio.sleep(0.1)
+
+        # Sort the replicas by the number of multiplexed model ids they have, and filter
+        # out replicas from the blacklist.
+        # Choose all replicas with the least number of multiplexed model ids.
+        sorted_replicas = sorted(
+            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
+        )
+        least_num_multiplexed_model_ids = math.inf
+        for replica in sorted_replicas:
+            if (
+                replica.replica_id not in blacklist_replica_ids
+                and len(replica.multiplexed_model_ids)
+                <= least_num_multiplexed_model_ids
+            ):
+                candidates.add(replica.replica_id)
+                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
+            else:
+                break
+
+        return candidates
 
     async def choose_two_replicas_with_backoff(
         self,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> AsyncGenerator[List[RunningReplicaInfo], None]:
-        """Generator that repeatedly chooses two random replicas from `self._replicas`.
+        """Generator that repeatedly chooses (at most) two random replicas
+        from `self._replicas`.
+
+        For multiplexing, this will choose replicas that have the requested model ID.
+        If there are no replicas with the requested model ID, it will choose from all
+        replicas.
 
         After each iteration, there will be an increasing backoff sleep time (dictated
         by `self.backoff_sequence_s`). The caller should exit the generator to reset the
@@ -437,11 +475,22 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     extra={"log_to_stderr": False},
                 )
 
-            # Get candidates to sample from; this will exclude replicas used in a
-            # previous iteration until all replicas have been tried.
-            candidate_replica_ids = self._get_candidate_replica_ids(
-                replica_ids_attempted, request_metadata
-            )
+            candidate_replica_ids = set()
+            # Get candidates for multiplexed model ID.
+            if request_metadata is not None and request_metadata.multiplexed_model_id:
+                candidate_replica_ids = (
+                    await self._get_candidate_replica_ids_for_multiplexed_model_id(
+                        replica_ids_attempted, request_metadata.multiplexed_model_id
+                    )
+                )
+
+            else:
+                # Get candidates to sample from; this will exclude replicas used in a
+                # previous iteration until all replicas have been tried.
+                candidate_replica_ids = self._get_candidate_replica_ids(
+                    replica_ids_attempted
+                )
+
             chosen_ids = random.sample(
                 list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
             )
@@ -450,9 +499,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
             # If another iteration occurrs, the chosen replicas did not accept the
             # request. Blacklist them until we've attempted all replicas.
             replica_ids_attempted.update(chosen_ids)
+
             if replica_ids_attempted.issuperset(self._replica_id_set):
                 replica_ids_attempted.clear()
-
             await asyncio.sleep(self.backoff_sequence_s[backoff_index])
             backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
 

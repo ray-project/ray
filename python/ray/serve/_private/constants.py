@@ -146,7 +146,7 @@ RAY_GCS_RPC_TIMEOUT_S = 3.0
 RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S = 10.0
 
 # Minimum duration to wait until broadcasting model IDs.
-PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 1.0
+PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S = 0.1
 
 
 # Deprecation message for V1 migrations.
@@ -220,3 +220,13 @@ RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH = os.environ.get(
 )
 # Serve gauge metric set period.
 RAY_SERVE_GAUGE_METRIC_SET_PERIOD_S = 1
+
+# Serve multiplexed matching timeout.
+# This is the timeout for the matching process of multiplexed requests. To avoid
+# thundering herd problem, the timeout value will be randomid between 0 and this
+# value. The unit is second.
+# If the matching process takes longer than the timeout, the request will be
+# fallen to the default routing strategy.
+RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S = int(
+    os.environ.get("RAY_SERVE_MULTIPLEXED_MODEL_ID_MATCHING_TIMEOUT_S", "0")
+)
