@@ -205,7 +205,7 @@ class ServerCallImpl : public ServerCall {
 
   void HandleRequest() override {
     bool auth_success = true;
-      RAY_LOG(INFO) << "vct handling " << typeid(reply).name();
+    RAY_LOG(INFO) << "vct handling " << typeid(Reply).name();
     if constexpr (EnableAuth == AuthType::STRICT_AUTH) {
       RAY_CHECK(!cluster_id_.IsNil()) << "Expected cluster ID in server call!";
       auto &metadata = context_.client_metadata();
@@ -228,7 +228,7 @@ class ServerCallImpl : public ServerCall {
       }
     } else {
       if (!cluster_id_.IsNil()) {
-        RAY_LOG_EVERY_N(WARNING, 100)
+        RAY_LOG_EVERY_MS(WARNING, 5000)
             << "Unexpected cluster ID in server call! " << cluster_id_;
       }
     }
@@ -238,14 +238,14 @@ class ServerCallImpl : public ServerCall {
       ray::stats::STATS_grpc_server_req_handling.Record(1.0, call_name_);
     }
     if (!io_service_.stopped()) {
-      RAY_LOG(INFO) << "vct posting " << typeid(reply).name();
+      RAY_LOG(INFO) << "vct posting " << typeid(Reply).name();
       io_service_.post([this, auth_success] { HandleRequestImpl(auth_success); },
                        call_name_);
     } else {
       // Handle service for rpc call has stopped, we must handle the call here
       // to send reply and remove it from cq
       RAY_LOG(DEBUG) << "Handle service has been closed.";
-      RAY_LOG(INFO) << "vct handle service closed" << typeid(reply).name();
+      RAY_LOG(INFO) << "vct handle service closed" << typeid(Reply).name();
       if (auth_success) {
         SendReply(Status::Invalid("HandleServiceClosed"));
       } else {
@@ -270,8 +270,11 @@ class ServerCallImpl : public ServerCall {
       factory.CreateCall();
     }
     if (!auth_success) {
-      boost::asio::post(GetServerCallExecutor(),
-                        [this]() { SendReply(Status::AuthError("WrongClusterToken")); });
+      boost::asio::post(GetServerCallExecutor(), [this]() {
+        SendReply(
+            Status::AuthError("WrongClusterToken: Perhaps the client is accessing GCS "
+                              "after it has restarted."));
+      });
     } else {
       (service_handler_.*handle_request_function_)(
           std::move(request_),

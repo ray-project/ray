@@ -14,8 +14,6 @@
 
 #pragma once
 
-#include <atomic>
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
@@ -44,6 +42,8 @@
 namespace ray {
 using raylet::ClusterTaskManager;
 using raylet::NoopLocalTaskManager;
+
+class GcsClientTest;
 namespace gcs {
 
 struct GcsServerConfig {
@@ -174,6 +174,8 @@ class GcsServer {
 
   /// Initialize monitor service.
   void InitMonitorServer();
+
+  friend class ray::GcsClientTest;
 
  private:
   /// Gets the type of KV storage to use from config.
