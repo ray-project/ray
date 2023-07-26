@@ -42,6 +42,8 @@ There are three broad categories of Trainers that Train offers:
 * Leverage the :ref:`Ray cluster launcher <cluster-index>` to launch autoscaling or spot instance clusters on any cloud.
 
 
+.. _train-getting-started:
+
 Quick Start to Distributed Training with Ray Train
 --------------------------------------------------
 

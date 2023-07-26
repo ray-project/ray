@@ -52,23 +52,6 @@ The properties of the run configuration are :ref:`not tunable <tune-search-space
     See :ref:`tune-storage-options` for storage configuration examples (related to ``storage_path``).
 
 
-Failure configurations in Train (``FailureConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The failure configuration specifies how training failures should be dealt with.
-
-As part of the RunConfig, the properties of the failure configuration
-are :ref:`not tunable <tune-search-space-tutorial>`.
-
-
-.. literalinclude:: doc_code/key_concepts.py
-    :language: python
-    :start-after: __failure_config_start__
-    :end-before: __failure_config_end__
-
-.. seealso::
-
-    See the :class:`~ray.air.FailureConfig` API reference.
 
 
 Checkpoint configurations in Train (``CheckpointConfig``)
@@ -104,27 +87,9 @@ enabled by setting the checkpoint frequency within the :class:`~ray.air.Checkpoi
 .. seealso::
 
     See the :class:`~ray.air.CheckpointConfig` API reference.
-    
-**[Experimental] Distributed Checkpoints**: For model parallel workloads where the models do not fit in a single GPU worker, 
-it will be important to save and upload the model that is partitioned across different workers. You 
+
+**[Experimental] Distributed Checkpoints**: For model parallel workloads where the models do not fit in a single GPU worker,
+it will be important to save and upload the model that is partitioned across different workers. You
 can enable this by setting `_checkpoint_keep_all_ranks=True` to retain the model checkpoints across workers,
 and `_checkpoint_upload_from_workers=True` to upload their checkpoints to cloud directly in :class:`~ray.air.CheckpointConfig`. This functionality works for any trainer that inherits from :class:`~ray.train.data_parallel_trainer.DataParallelTrainer`.
 
-
-Synchronization configurations in Train (``tune.SyncConfig``)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The ``tune.SyncConfig`` specifies how synchronization of results
-and checkpoints should happen in a distributed Ray cluster.
-
-As part of the RunConfig, the properties of the failure configuration
-are :ref:`not tunable <tune-search-space-tutorial>`.
-
-.. note::
-
-    This configuration is mostly relevant to running multiple Train runs with a
-    Ray Tune. See :ref:`tune-storage-options` for a guide on using the ``SyncConfig``.
-
-.. seealso::
-
-    See the :class:`~ray.tune.syncer.SyncConfig` API reference.

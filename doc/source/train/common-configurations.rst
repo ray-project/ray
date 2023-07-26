@@ -1,6 +1,6 @@
-.. _train-userguides:
+.. _train-common-config:
 
-Ray Train User Guides
+Common configurations
 =====================
 
 .. grid:: 1 2 3 4
@@ -11,31 +11,30 @@ Ray Train User Guides
         :img-top: /ray-overview/images/ray_svg_logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: config_guide
+        .. button-ref:: common-configurations/persistent-storage
 
-            Configurations User Guide
-
-    .. grid-item-card::
-        :img-top: /ray-overview/images/ray_svg_logo.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: dl_guide
-
-            Deep Learning User Guide
+            Persistent storage
 
     .. grid-item-card::
         :img-top: /ray-overview/images/ray_svg_logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: gbdt
+        .. button-ref:: common-configurations/fault-tolerance
 
-            XGBoost / LightGBM User Guide
+            Fault tolerance
 
     .. grid-item-card::
         :img-top: /ray-overview/images/ray_svg_logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: architecture
+        .. button-ref:: common-configurations/callbacks
 
-            Ray Train Architecture
+            Fault tolerance
 
+    .. grid-item-card::
+        :img-top: /ray-overview/images/ray_svg_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: common-configurations/experiment-tracking
+
+            Fault tolerance
