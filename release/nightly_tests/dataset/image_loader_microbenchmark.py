@@ -1,3 +1,4 @@
+from collections import defaultdict
 import ray
 import torch
 import torchvision
@@ -246,17 +247,12 @@ if __name__ == "__main__":
             metrics,
         )
 
-    metrics_list = []
+    metrics_dict = defaultdict(dict)
     for label, tput in metrics.items():
-        metrics_list.append(
-            {
-                "perf_metric_name": label,
-                "perf_metric_value": tput,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        )
+        metrics_dict[label].update({"THROUGHPUT": tput})
+
     result_dict = {
-        "perf_metrics": metrics_list,
+        "perf_metrics": metrics_dict,
         "success": 1,
     }
 
@@ -266,3 +262,5 @@ if __name__ == "__main__":
 
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
+
+    print(f"Finished benchmark, metrics exported to {test_output_json}.")

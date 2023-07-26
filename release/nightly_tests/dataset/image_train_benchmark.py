@@ -1,3 +1,4 @@
+from collections import defaultdict
 import ray
 from ray.air import session
 from ray.train.torch import TorchTrainer
@@ -103,7 +104,7 @@ if __name__ == "__main__":
             for batch in it.iter_batches(
                 batch_size=args.batch_size, prefetch_batches=10
             ):
-                num_rows += len(batch)
+                num_rows += len(batch["image"])
             end_t = time.time()
             # Record throughput per epoch.
             epoch_tput = num_rows / (end_t - start_t)
@@ -121,18 +122,13 @@ if __name__ == "__main__":
     metrics["ray.TorchTrainer.fit"] = list(result.metrics_dataframe["tput"])[-1]
 
     # Gather up collected metrics, and write to output JSON file.
-    metrics_list = []
+    metrics_dict = defaultdict(dict)
     for label, tput in metrics.items():
-        metrics_list.append(
-            {
-                "perf_metric_name": label,
-                "perf_metric_value": tput,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        )
+        metrics_dict[label].update({"THROUGHPUT": tput})
+
     test_name = f"read_images_train{args.num_workers}_cpu"
     result_dict = {
-        test_name: metrics_list,
+        test_name: metrics_dict,
         "success": 1,
     }
 
@@ -143,5 +139,4 @@ if __name__ == "__main__":
     with open(test_output_json, "wt") as f:
         json.dump(result_dict, f)
 
-    print(f"Finished benchmark, metrics exported to {test_output_json}:")
-    print(metrics)
+    print(f"Finished benchmark, metrics exported to {test_output_json}.")

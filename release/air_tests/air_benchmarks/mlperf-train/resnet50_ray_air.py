@@ -1,3 +1,4 @@
+from collections import defaultdict
 import tensorflow as tf
 import numpy as np
 import os
@@ -429,18 +430,20 @@ def append_to_test_output_json(path, metrics):
     num_cpu_nodes = metrics["num_cpu_nodes"]
 
     # Append select performance metrics to perf_metrics.
-    perf_metrics = output_json.get("perf_metrics", [])
-    perf_metrics.append(
+    perf_metrics = defaultdict(dict)
+    perf_metrics.update(output_json.get("perf_metrics", {}))
+    perf_metric_name = f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files-{num_cpu_nodes}-num-cpu-nodes_throughput-img-per-second"  # noqa: E501
+    perf_metrics[perf_metric_name].update(
         {
-            "perf_metric_name": f"{data_loader}_{num_images_per_file}-images-per-file_{num_files}-num-files-{num_cpu_nodes}-num-cpu-nodes_throughput-img-per-second",  # noqa: E501
-            "perf_metric_value": metrics["tput_images_per_s"],
-            "perf_metric_type": "THROUGHPUT",
+            "THROUGHPUT": metrics["tput_images_per_s"],
         }
     )
     output_json["perf_metrics"] = perf_metrics
 
     with open(path, "w") as test_output_file:
         json.dump(output_json, test_output_file)
+
+    print(f"Finished benchmark, metrics exported to {path}.")
 
 
 if __name__ == "__main__":
