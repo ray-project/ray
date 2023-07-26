@@ -131,10 +131,6 @@ class StorageContext:
             )
         )
 
-        # TODO(justinvyu): This is needed for the legacy Trainable syncing code.
-        # Remove this after syncer argument is removed from SyncConfig.
-        self.sync_config.syncer = self.syncer
-
         self._create_validation_file()
         self._check_validation_file()
 
