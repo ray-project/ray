@@ -6282,6 +6282,58 @@
         cluster_env: app_config.yaml
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
+- name: read_images_train_4_cpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_aws.yaml
+
+  run:
+    timeout: 600
+    script: python image_train_benchmark.py --num-workers 4
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
+
+- name: read_images_train_16_cpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+  python: "3.8"
+  cluster:
+    byod:
+      type: gpu
+    cluster_env: app_config.yaml
+    cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_aws.yaml
+
+  run:
+    timeout: 600
+    script: python image_train_benchmark.py --num-workers 16
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_env: app_config.yaml
+        cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
+
 - name: read_tfrecords_benchmark_single_node
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -7094,6 +7146,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7113,6 +7166,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7130,6 +7184,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7147,6 +7202,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: nightly
   team: core
   cluster:
@@ -7165,6 +7221,7 @@
   stable: true
 
   env: gce
+  python: "3.8"
   frequency: manual
   team: core
   cluster:

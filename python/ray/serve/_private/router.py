@@ -443,7 +443,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 replica_ids_attempted, request_metadata
             )
             chosen_ids = random.sample(
-                candidate_replica_ids, k=min(2, len(candidate_replica_ids))
+                list(candidate_replica_ids), k=min(2, len(candidate_replica_ids))
             )
             yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
 

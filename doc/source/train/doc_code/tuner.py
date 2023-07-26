@@ -154,16 +154,6 @@ tuner = tune.Tuner(
 )
 # __tune_dataset_end__
 
-# __tune_parallelism_start__
-from ray.tune import TuneConfig
-
-config = TuneConfig(
-    # ...
-    num_samples=100,
-    max_concurrent_trials=10,
-)
-# __tune_parallelism_end__
-
 # __tune_optimization_start__
 from ray.tune.search.bayesopt import BayesOptSearch
 from ray.tune.schedulers import HyperBandScheduler
