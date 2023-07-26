@@ -30,6 +30,7 @@ from ray.includes.common cimport (
     CAddress,
     CConcurrencyGroup,
     CSchedulingStrategy,
+    CLabelMatchExpressions,
 )
 from ray.includes.libcoreworker cimport (
     ActorHandleSharedPtr,
@@ -155,6 +156,9 @@ cdef class CoreWorker:
     cdef python_scheduling_strategy_to_c(
         self, python_scheduling_strategy,
         CSchedulingStrategy *c_scheduling_strategy)
+    cdef python_label_match_expressions_to_c(
+        self, python_expressions,
+        CLabelMatchExpressions *c_expressions)
     cdef CObjectID allocate_dynamic_return_id_for_generator(
             self,
             const CAddress &owner_address,
