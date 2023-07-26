@@ -1643,7 +1643,7 @@ def read_sql(
                 os.remove("example.db")
             except OSError:
                 pass
-            
+
         .. testcode::
 
             import sqlite3
