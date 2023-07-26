@@ -65,7 +65,7 @@ void AgentManager::StartAgent() {
     RAY_LOG(INFO) << "Agent process with name " << options_.agent_name
                   << " exited, exit code " << exit_code << ".";
 
-    if (kill_raylet_if_process_exits_) {
+    if (fate_shares_.load()) {
       RAY_LOG(ERROR)
           << "The raylet exited immediately because one Ray agent failed, agent_name = "
           << options_.agent_name
@@ -96,7 +96,8 @@ AgentManager::~AgentManager() {
   if (monitor_thread_) {
     RAY_LOG(INFO) << "Killing agent " << options_.agent_name << ", pid "
                   << process_.GetId() << ".";
-    kill_raylet_if_process_exits_ = false;
+    // Stop fate sharing because we gracefully kill the agent.
+    fate_shares_ = false;
     process_.Kill();
     monitor_thread_->join();
   }
