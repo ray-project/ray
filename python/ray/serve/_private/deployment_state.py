@@ -111,6 +111,7 @@ class DeploymentTargetState:
             else:
                 num_replicas = info.deployment_config.num_replicas
 
+        # XXX: should include PG info.
         version = DeploymentVersion(
             info.version,
             deployment_config=info.deployment_config,
@@ -413,6 +414,12 @@ class ActorReplicaWrapper:
             actor_resources=self._actor_resources,
             actor_options=actor_options,
             actor_init_args=init_args,
+            placement_group_bundles=(
+                deployment_info.replica_config.placement_group_bundles
+            ),
+            placement_group_strategy=(
+                deployment_info.replica_config.placement_group_strategy
+            ),
             on_scheduled=self.on_scheduled,
         )
 

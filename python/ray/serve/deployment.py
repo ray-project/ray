@@ -5,6 +5,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    List,
     Optional,
     Tuple,
     Union,
@@ -131,6 +132,8 @@ class Deployment:
         init_kwargs: Optional[Tuple[Any]] = None,
         route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         ray_actor_options: Optional[Dict] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         is_driver_deployment: Optional[bool] = False,
         _internal=False,
     ) -> None:
@@ -162,6 +165,21 @@ class Deployment:
                 raise ValueError("route_prefix may not contain wildcards.")
         if not (ray_actor_options is None or isinstance(ray_actor_options, dict)):
             raise TypeError("ray_actor_options must be a dict.")
+        if placement_group_bundles is not None:
+            if not isinstance(placement_group_bundles, list):
+                raise TypeError("placement_group_bundles must be a list.")
+
+            for bundle in placement_group_bundles:
+                if not isinstance(bundle, dict):
+                    raise TypeError(
+                        "placement_group_bundles entries must be "
+                        f"dicts, got {type(bundle)}."
+                    )
+        if not (
+            placement_group_strategy is None
+            or isinstance(placement_group_strategy, str)
+        ):
+            raise TypeError("placement_group_strategy must be a string.")
 
         if is_driver_deployment is True:
             if config.num_replicas != 1:
@@ -191,6 +209,8 @@ class Deployment:
         self._init_kwargs = init_kwargs
         self._route_prefix = route_prefix
         self._ray_actor_options = ray_actor_options
+        self._placement_group_bundles = placement_group_bundles
+        self._placement_group_strategy = placement_group_strategy
         self._is_driver_deployment = is_driver_deployment
         self._docs_path = docs_path
 
@@ -401,6 +421,8 @@ class Deployment:
         init_kwargs: Default[Dict[Any, Any]] = DEFAULT.VALUE,
         route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = DEFAULT.VALUE,
+        placement_group_strategy: Optional[str] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
         max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -484,6 +506,12 @@ class Deployment:
         if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._ray_actor_options
 
+        if placement_group_bundles is DEFAULT.VALUE:
+            placement_group_bundles = self._placement_group_bundles
+
+        if placement_group_strategy is DEFAULT.VALUE:
+            placement_group_strategy = self._placement_group_strategy
+
         if autoscaling_config is not DEFAULT.VALUE:
             new_config.autoscaling_config = autoscaling_config
 
@@ -511,6 +539,8 @@ class Deployment:
             init_kwargs=init_kwargs,
             route_prefix=route_prefix,
             ray_actor_options=ray_actor_options,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
             _internal=True,
             is_driver_deployment=is_driver_deployment,
         )
@@ -630,6 +660,8 @@ def deployment_to_schema(
         "health_check_period_s": d._config.health_check_period_s,
         "health_check_timeout_s": d._config.health_check_timeout_s,
         "ray_actor_options": ray_actor_options_schema,
+        "placement_group_strategy": d._placement_group_strategy,
+        "placement_group_bundles": d._placement_group_bundles,
         "is_driver_deployment": d._is_driver_deployment,
     }
 
@@ -665,6 +697,16 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     else:
         ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
 
+    if s.placement_group_bundles is DEFAULT.VALUE:
+        placement_group_bundles = None
+    else:
+        placement_group_bundles = s.placement_group_bundles
+
+    if s.placement_group_strategy is DEFAULT.VALUE:
+        placement_group_strategy = None
+    else:
+        placement_group_strategy = s.placement_group_strategy
+
     if s.is_driver_deployment is DEFAULT.VALUE:
         is_driver_deployment = False
     else:
@@ -690,6 +732,8 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         init_kwargs={},
         route_prefix=s.route_prefix,
         ray_actor_options=ray_actor_options,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
         _internal=True,
         is_driver_deployment=is_driver_deployment,
     )

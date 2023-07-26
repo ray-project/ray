@@ -232,6 +232,16 @@ class DeploymentSchema(
         default=DEFAULT.VALUE, description="Options set for each replica actor."
     )
 
+    placement_group_bundles: Optional[List[Dict[str, float]]] = Field(
+        default=DEFAULT.VALUE,
+        description="TODO",
+    )
+
+    placement_group_strategy: Optional[str] = Field(
+        default=DEFAULT.VALUE,
+        description="TODO",
+    )
+
     is_driver_deployment: bool = Field(
         default=DEFAULT.VALUE,
         description="Indicate Whether the deployment is driver deployment "

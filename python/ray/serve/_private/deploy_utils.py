@@ -1,4 +1,4 @@
-from typing import Dict, Tuple, Union, Callable, Type, Optional, Any
+from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
 import hashlib
 import json
 import logging
@@ -21,6 +21,8 @@ def get_deploy_args(
     init_args: Tuple[Any],
     init_kwargs: Dict[Any, Any],
     ray_actor_options: Optional[Dict] = None,
+    placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+    placement_group_strategy: Optional[str] = None,
     config: Optional[Union[DeploymentConfig, Dict[str, Any]]] = None,
     version: Optional[str] = None,
     route_prefix: Optional[str] = None,
@@ -53,6 +55,8 @@ def get_deploy_args(
         init_args=init_args,
         init_kwargs=init_kwargs,
         ray_actor_options=ray_actor_options,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
     )
 
     if isinstance(config, dict):
@@ -98,6 +102,7 @@ def deploy_args_to_deployment_info(
     replica_config = ReplicaConfig.from_proto_bytes(
         replica_config_proto_bytes, deployment_config.needs_pickle()
     )
+    print("IN deploy_args_to_deployment_info", replica_config.placement_group_bundles)
 
     # Java API passes in JobID as bytes
     if isinstance(deployer_job_id, bytes):

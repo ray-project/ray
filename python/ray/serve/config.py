@@ -345,6 +345,8 @@ class ReplicaConfig:
         serialized_init_args: bytes,
         serialized_init_kwargs: bytes,
         ray_actor_options: Dict,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         needs_pickle: bool = True,
     ):
         """Construct a ReplicaConfig with serialized properties.
@@ -368,6 +370,9 @@ class ReplicaConfig:
         self.ray_actor_options = ray_actor_options
         self._validate_ray_actor_options()
 
+        self.placement_group_bundles = placement_group_bundles
+        self.placement_group_strategy = placement_group_strategy
+
         # Create resource_dict. This contains info about the replica's resource
         # needs. It does NOT set the replica's resource usage. That's done by
         # the ray_actor_options.
@@ -386,6 +391,8 @@ class ReplicaConfig:
         init_args: Optional[Union[Tuple[Any], bytes]] = None,
         init_kwargs: Optional[Dict[Any, Any]] = None,
         ray_actor_options: Optional[Dict] = None,
+        placement_group_bundles: Optional[List[Dict[str, float]]] = None,
+        placement_group_strategy: Optional[str] = None,
         deployment_def_name: Optional[str] = None,
     ):
         """Create a ReplicaConfig from deserialized parameters."""
@@ -424,6 +431,8 @@ class ReplicaConfig:
             pickle_dumps(init_args, "Could not serialize the deployment init args"),
             pickle_dumps(init_kwargs, "Could not serialize the deployment init kwargs"),
             ray_actor_options,
+            placement_group_bundles,
+            placement_group_strategy,
         )
 
         config._deployment_def = deployment_def
@@ -523,6 +532,8 @@ class ReplicaConfig:
             proto.init_args if proto.init_args != b"" else None,
             proto.init_kwargs if proto.init_kwargs != b"" else None,
             json.loads(proto.ray_actor_options),
+            json.loads(proto.placement_group_bundles),
+            proto.placement_group_strategy,
             needs_pickle,
         )
 
@@ -538,6 +549,8 @@ class ReplicaConfig:
             init_args=self.serialized_init_args,
             init_kwargs=self.serialized_init_kwargs,
             ray_actor_options=json.dumps(self.ray_actor_options),
+            placement_group_bundles=json.dumps(self.placement_group_bundles),
+            placement_group_strategy=self.placement_group_strategy,
         )
 
     def to_proto_bytes(self):
