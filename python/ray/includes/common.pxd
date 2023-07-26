@@ -337,7 +337,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
 
         CRayStatus Connect(
             const CClusterID &cluster_id,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            size_t num_retries)
         CRayStatus InternalKVGet(
             const c_string &ns, const c_string &key,
             int64_t timeout_ms, c_string &value)
