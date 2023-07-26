@@ -280,9 +280,7 @@ class RayServeHandle:
 
         The router needs to be shutdown separately.
         """
-        if self._router:
-            self._router.shutdown()
-            self._router = None
+        self._router.shutdown()
 
 
 @PublicAPI(stability="beta")

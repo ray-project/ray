@@ -1009,6 +1009,4 @@ class Router:
 
         The metrics_pusher needs to be shutdown separately.
         """
-        if self.metrics_pusher:
-            self.metrics_pusher.shutdown()
-            self.metrics_pusher = None
+        self.metrics_pusher.shutdown()
