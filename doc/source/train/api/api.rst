@@ -265,3 +265,97 @@ Restoration API for Built-in Trainers
 .. seealso::
 
     See :ref:`train-restore-guide` for more details on when and how trainer restore should be used.
+
+
+Ray Data Ingest into AIR Trainers
+---------------------------------
+
+.. seealso::
+
+    See this :ref:`AIR Data ingest guide <air-ingest>` for usage examples.
+
+.. currentmodule:: ray
+
+.. autosummary::
+
+    air.session.get_dataset_shard
+    ~data.DataIterator
+    ray.train.DataConfig
+
+Debugging Utilities
+~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    ~air.util.check_ingest.make_local_dataset_iterator
+    ~air.util.check_ingest.DummyTrainer
+
+
+Predictor
+---------
+
+.. currentmodule:: ray.train
+
+Constructor Options
+~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    predictor.Predictor
+
+.. autosummary::
+    :toctree: doc/
+
+    predictor.Predictor.from_checkpoint
+    predictor.Predictor.from_pandas_udf
+
+Predictor Properties
+~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    predictor.Predictor.get_preprocessor
+    predictor.Predictor.set_preprocessor
+
+
+Prediction API
+~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    predictor.Predictor.predict
+
+
+Supported Data Formats
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. autosummary::
+    :toctree: doc/
+
+    predictor.Predictor.preferred_batch_format
+    ~predictor.DataBatchType
+
+
+
+Ray Train / Tune Configurations
+-------------------------------
+
+.. TODO(ml-team): Add a general AIR configuration guide that covers all of these configs.
+
+.. seealso::
+
+    See :ref:`this Ray Train configuration user guide <train-config>` for more details.
+
+.. currentmodule:: ray
+
+.. autosummary::
+    :toctree: doc/
+
+    air.RunConfig
+    air.ScalingConfig
+    air.CheckpointConfig
+    air.FailureConfig

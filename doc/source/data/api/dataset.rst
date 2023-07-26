@@ -1,7 +1,7 @@
 .. _dataset-api:
 
 Dataset API
-==============
+===========
 
 .. currentmodule:: ray.data
 

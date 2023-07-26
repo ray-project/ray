@@ -1,10 +1,10 @@
 .. _air-preprocessor-ref:
 
-Preprocessor
-============
+Preprocessor API
+================
 
 Preprocessor Interface
-------------------------
+----------------------
 
 .. currentmodule:: ray.data
 

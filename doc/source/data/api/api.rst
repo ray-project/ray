@@ -13,5 +13,6 @@ Ray Data API
     grouped_data.rst
     data_context.rst
     random_access_dataset.rst
+    preprocessor.rst
     utility.rst
     from_other_data_libs.rst
