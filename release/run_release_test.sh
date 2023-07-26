@@ -153,7 +153,7 @@ else
   echo "RELEASE MANAGER: This could be an error in the test. Please REVIEW THE LOGS and ping the test owner."
 fi
 
-if [[ ("$REASON" == "infra error" || "$REASON" == "infra timeout") && ("$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY") ]]; then
+if [[ "$RUNTIME" -le "$BUILDKITE_TIME_LIMIT_FOR_RETRY" ]]; then
   exit "$BUILDKITE_RETRY_CODE"
 else
   exit "$EXIT_CODE"
