@@ -428,6 +428,159 @@ class GenericProxy:
             )
             self._prevent_node_downscale_ref = None
 
+    async def proxy_request(self, serve_request: ServeRequest) -> ServeResponse:
+        """Wrapper for proxy request.
+
+        This method wraps the request input into ServeRequest object and output
+        response into ServeResponse object to be used commonly by both HTTP and
+        GRPC proxies. It also handles the routing, including `/-/routes` and
+        `/-/healthz`, ongoing request counter and keep alive object, and metrics
+        counters.
+        """
+        assert serve_request.request_type in {"http", "websocket", "grpc"}
+
+        method = serve_request.method
+
+        # only use the non-root part of the path for routing
+        route_path = serve_request.route_path
+
+        if route_path == "/-/routes":
+            if self._draining:
+                return await self._draining_response(serve_request=serve_request)
+
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": method,
+                    "application": "",
+                    "status_code": "200",
+                }
+            )
+            return await starlette.responses.JSONResponse(self.route_info)(
+                serve_request.scope, serve_request.receive, serve_request.send
+            )
+
+        if route_path == "/-/healthz":
+            if self._draining:
+                return await self._draining_response(serve_request=serve_request)
+
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": method,
+                    "application": "",
+                    "status_code": "200",
+                }
+            )
+            return await starlette.responses.PlainTextResponse("success")(
+                serve_request.scope, serve_request.receive, serve_request.send
+            )
+
+        try:
+            self._ongoing_requests_start()
+
+            matched_route = self.prefix_router.match_route(route_path)
+            if matched_route is None and isinstance(serve_request, ASGIServeRequest):
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": "404",
+                        "method": method,
+                    }
+                )
+                self.request_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "method": method,
+                        "application": "",
+                        "status_code": "404",
+                    }
+                )
+                return await self._not_found(
+                    serve_request.scope, serve_request.receive, serve_request.send
+                )
+
+            route_prefix, handle, app_name, app_is_cross_language = matched_route
+
+            # Modify the path and root path so that reverse lookups and redirection
+            # work as expected. We do this here instead of in replicas so it can be
+            # changed without restarting the replicas.
+            if route_prefix != "/" and isinstance(serve_request, ASGIServeRequest):
+                assert not route_prefix.endswith("/")
+                serve_request.set_path(route_path.replace(route_prefix, "", 1))
+                serve_request.set_root_path(serve_request.root_path + route_prefix)
+
+            start_time = time.time()
+            handle, request_id = self.setup_request_context_and_handle(
+                app_name=app_name,
+                handle=handle,
+                route_path=route_path,
+                serve_request=serve_request,
+            )
+
+            # Streaming codepath isn't supported for Java.
+            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
+                serve_response = await self.send_request_to_replica_streaming(
+                    request_id=request_id,
+                    handle=handle,
+                    serve_request=serve_request,
+                )
+            else:
+                serve_response = await self.send_request_to_replica_unary(
+                    handle=handle,
+                    serve_request=serve_request,
+                )
+
+            self.request_counter.inc(
+                tags={
+                    "route": route_path,
+                    "method": method,
+                    "application": app_name,
+                    "status_code": serve_response.status_code,
+                }
+            )
+
+            latency_ms = (time.time() - start_time) * 1000.0
+            self.processing_latency_tracker.observe(
+                latency_ms,
+                tags={
+                    "route": route_path,
+                    "application": app_name,
+                    "status_code": serve_response.status_code,
+                },
+            )
+            logger.info(
+                access_log_msg(
+                    method=method,
+                    status=str(serve_response.status_code),
+                    latency_ms=latency_ms,
+                ),
+                extra={"log_to_stderr": False},
+            )
+            if serve_response.status_code != "200":
+                self.request_error_counter.inc(
+                    tags={
+                        "route": route_path,
+                        "error_code": serve_response.status_code,
+                        "method": method,
+                    }
+                )
+                self.deployment_request_error_counter.inc(
+                    tags={
+                        "deployment": handle.deployment_name,
+                        "error_code": serve_response.status_code,
+                        "method": method,
+                        "route": route_path,
+                        "application": app_name,
+                    }
+                )
+        finally:
+            # If anything during the request failed, we still want to ensure the ongoing
+            # request counter is decremented and possibly reset the keep alive object.
+            self._ongoing_requests_end()
+
+        return serve_response
+
     async def send_request_to_replica_unary(
         self,
         handle: RayServeHandle,
@@ -592,159 +745,6 @@ class GenericProxy:
 
     def generate_request_id(self) -> str:
         return get_random_letters(10)
-
-    async def proxy_request(self, serve_request: ServeRequest) -> ServeResponse:
-        """Wrapper for proxy request.
-
-        This method wraps the request input into ServeRequest object and output
-        response into ServeResponse object to be used commonly by both HTTP and
-        GRPC proxies. It also handles the routing, including `/-/routes` and
-        `/-/healthz`, ongoing request counter and keep alive object, and metrics
-        counters.
-        """
-        assert serve_request.request_type in {"http", "websocket", "grpc"}
-
-        method = serve_request.method
-
-        # only use the non-root part of the path for routing
-        route_path = serve_request.route_path
-
-        if route_path == "/-/routes":
-            if self._draining:
-                return await self._draining_response(serve_request=serve_request)
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": "",
-                    "status_code": "200",
-                }
-            )
-            return await starlette.responses.JSONResponse(self.route_info)(
-                serve_request.scope, serve_request.receive, serve_request.send
-            )
-
-        if route_path == "/-/healthz":
-            if self._draining:
-                return await self._draining_response(serve_request=serve_request)
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": "",
-                    "status_code": "200",
-                }
-            )
-            return await starlette.responses.PlainTextResponse("success")(
-                serve_request.scope, serve_request.receive, serve_request.send
-            )
-
-        try:
-            self._ongoing_requests_start()
-
-            matched_route = self.prefix_router.match_route(route_path)
-            if matched_route is None and isinstance(serve_request, ASGIServeRequest):
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": "404",
-                        "method": method,
-                    }
-                )
-                self.request_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "method": method,
-                        "application": "",
-                        "status_code": "404",
-                    }
-                )
-                return await self._not_found(
-                    serve_request.scope, serve_request.receive, serve_request.send
-                )
-
-            route_prefix, handle, app_name, app_is_cross_language = matched_route
-
-            # Modify the path and root path so that reverse lookups and redirection
-            # work as expected. We do this here instead of in replicas so it can be
-            # changed without restarting the replicas.
-            if route_prefix != "/" and isinstance(serve_request, ASGIServeRequest):
-                assert not route_prefix.endswith("/")
-                serve_request.set_path(route_path.replace(route_prefix, "", 1))
-                serve_request.set_root_path(serve_request.root_path + route_prefix)
-
-            start_time = time.time()
-            handle, request_id = self.setup_request_context_and_handle(
-                app_name=app_name,
-                handle=handle,
-                route_path=route_path,
-                serve_request=serve_request,
-            )
-
-            # Streaming codepath isn't supported for Java.
-            if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING and not app_is_cross_language:
-                serve_response = await self.send_request_to_replica_streaming(
-                    request_id=request_id,
-                    handle=handle,
-                    serve_request=serve_request,
-                )
-            else:
-                serve_response = await self.send_request_to_replica_unary(
-                    handle=handle,
-                    serve_request=serve_request,
-                )
-
-            self.request_counter.inc(
-                tags={
-                    "route": route_path,
-                    "method": method,
-                    "application": app_name,
-                    "status_code": serve_response.status_code,
-                }
-            )
-
-            latency_ms = (time.time() - start_time) * 1000.0
-            self.processing_latency_tracker.observe(
-                latency_ms,
-                tags={
-                    "route": route_path,
-                    "application": app_name,
-                    "status_code": serve_response.status_code,
-                },
-            )
-            logger.info(
-                access_log_msg(
-                    method=method,
-                    status=str(serve_response.status_code),
-                    latency_ms=latency_ms,
-                ),
-                extra={"log_to_stderr": False},
-            )
-            if serve_response.status_code != "200":
-                self.request_error_counter.inc(
-                    tags={
-                        "route": route_path,
-                        "error_code": serve_response.status_code,
-                        "method": method,
-                    }
-                )
-                self.deployment_request_error_counter.inc(
-                    tags={
-                        "deployment": handle.deployment_name,
-                        "error_code": serve_response.status_code,
-                        "method": method,
-                        "route": route_path,
-                        "application": app_name,
-                    }
-                )
-        finally:
-            # If anything during the request failed, we still want to ensure the ongoing
-            # request counter is decremented and possibly reset the keep alive object.
-            self._ongoing_requests_end()
-
-        return serve_response
 
     @property
     def proxy_name(self) -> str:
