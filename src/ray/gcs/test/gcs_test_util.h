@@ -213,6 +213,7 @@ struct Mocker {
     job_table_data->set_job_id(job_id.Binary());
     job_table_data->set_is_dead(false);
     job_table_data->set_timestamp(current_sys_time_ms());
+    job_table_data->set_driver_ip_address("127.0.0.1");
     rpc::Address address;
     address.set_ip_address("127.0.0.1");
     address.set_port(1234);
