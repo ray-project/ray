@@ -66,7 +66,7 @@ class TensorflowCheckpoint(Checkpoint):
             A :py:class:`TensorflowCheckpoint` containing the specified model.
 
         Examples:
-        
+
             .. testcode::
 
                 from ray.train.tensorflow import TensorflowCheckpoint
