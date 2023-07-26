@@ -107,6 +107,10 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                            rpc::InternalKVGetReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleInternalKVMultiGet(rpc::InternalKVMultiGetRequest request,
+                                rpc::InternalKVMultiGetReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
+
   void HandleInternalKVPut(rpc::InternalKVPutRequest request,
                            rpc::InternalKVPutReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;

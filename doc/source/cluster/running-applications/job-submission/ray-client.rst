@@ -1,7 +1,7 @@
 .. _ray-client-ref:
 
-Ray Client: Interactive Development
-===================================
+Ray Client
+==========
 
 **What is the Ray Client?**
 
@@ -26,8 +26,12 @@ By changing ``ray.init()`` to ``ray.init("ray://<head_node_host>:<port>")``, you
    do_work.remote(2)
    #....
 
+
 When to use Ray Client
 ----------------------
+
+.. note::
+   Ray Client has architectural limitations and may not work as expected when using Ray for ML workloads (like Ray Tune or Ray Train). Use :ref:`Ray Jobs API<jobs-overview>` for interactive development on ML projects.
 
 Ray Client can be used when you want to connect an interactive Python shell to a **remote** cluster.
 
@@ -82,30 +86,32 @@ Ensure that the Ray Client port on the head node is reachable from your local ma
 This means opening that port up by configuring security groups or other access controls (on  `EC2 <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/authorizing-access-to-an-instance.html>`_)
 or proxying from your local machine to the cluster (on `K8s <https://kubernetes.io/docs/tasks/access-application-cluster/port-forward-access-application-cluster/#forward-a-local-port-to-a-port-on-the-pod>`_).
 
-.. tabbed:: AWS
+.. tab-set::
 
-    With the Ray cluster launcher, you can configure the security group
-    to allow inbound access by defining :ref:`cluster-configuration-security-group`
-    in your `cluster.yaml`.
+    .. tab-item:: AWS
 
-    .. code-block:: yaml
+        With the Ray cluster launcher, you can configure the security group
+        to allow inbound access by defining :ref:`cluster-configuration-security-group`
+        in your `cluster.yaml`.
 
-        # An unique identifier for the head node and workers of this cluster.
-        cluster_name: minimal_security_group
+        .. code-block:: yaml
 
-        # Cloud-provider specific configuration.
-        provider:
-            type: aws
-            region: us-west-2
-            security_group:
-                GroupName: ray_client_security_group
-                IpPermissions:
-                      - FromPort: 10001
-                        ToPort: 10001
-                        IpProtocol: TCP
-                        IpRanges:
-                            # This will enable inbound access from ALL IPv4 addresses.
-                            - CidrIp: 0.0.0.0/0
+            # An unique identifier for the head node and workers of this cluster.
+            cluster_name: minimal_security_group
+
+            # Cloud-provider specific configuration.
+            provider:
+                type: aws
+                region: us-west-2
+                security_group:
+                    GroupName: ray_client_security_group
+                    IpPermissions:
+                          - FromPort: 10001
+                            ToPort: 10001
+                            IpProtocol: TCP
+                            IpRanges:
+                                # This will enable inbound access from ALL IPv4 addresses.
+                                - CidrIp: 0.0.0.0/0
 
 Step 3: Run Ray code
 ~~~~~~~~~~~~~~~~~~~~
@@ -279,3 +285,10 @@ Uploads
 If a ``working_dir`` is specified in the runtime env, when running ``ray.init()`` the Ray client will upload the ``working_dir`` on the laptop to ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>``.
 
 Ray workers are started in the ``/tmp/ray/session_latest/runtime_resources/_ray_pkg_<hash of directory contents>`` directory on the cluster. This means that relative paths in the remote tasks and actors in the code will work on the laptop and on the cluster without any code changes. For example, if the ``working_dir`` on the laptop contains ``data.txt`` and ``run.py``, inside the remote task definitions in ``run.py`` one can just use the relative path ``"data.txt"``. Then ``python run.py`` will work on my laptop, and also on the cluster. As a side note, since relative paths can be used in the code, the absolute path is only useful for debugging purposes.
+
+Troubleshooting
+---------------
+
+Error: Attempted to reconnect a session that has already been cleaned up 
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+This error happens when Ray Client reconnects to a head node that does not recognize the client. This can happen if the head node restarts unexpectedly and loses state. On Kubernetes, this can happen if the head pod restarts after being evicted or crashing.

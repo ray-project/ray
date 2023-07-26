@@ -5,11 +5,12 @@ import logging
 import os
 import threading
 import time
+import urllib.parse
 from collections import defaultdict
 from datetime import datetime
 from numbers import Number
 from threading import Thread
-from typing import Dict, List, Union, Type, Callable, Any, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Type, Union
 
 import numpy as np
 import psutil
@@ -163,6 +164,76 @@ def retry_fn(
     return False
 
 
+def _split_remote_local_path(
+    path: str, default_local_path: Optional[str]
+) -> Tuple[Optional[str], Optional[str]]:
+    """Return a local and remote location from a path.
+
+    Our storage configuration allows to specify paths on
+    remote storage or local disk. This utility function detects the
+    location of a path and returns a tuple of (local path, remote path)
+    for further processing.
+
+    For instance, if ``path="s3://some/location"``, then
+    ``local_path=default_local_path`` and ``remote_path="s3://some/location``.
+
+    If ``path="/local/dir"``, then ``local_path="/local/dir"`` and
+    ``remote_path=None``.
+
+    """
+    parsed = urllib.parse.urlparse(path)
+    if parsed.scheme:
+        # If a scheme is set, this means it's not a local path.
+        # Note that we also treat `file://` as a URI.
+        remote_path = path
+        local_path = default_local_path
+    else:
+        remote_path = None
+        local_path = path
+
+    return local_path, remote_path
+
+
+def _resolve_storage_path(
+    path: str,
+    legacy_local_dir: Optional[str],
+    legacy_upload_dir: Optional[str],
+    error_location: str = "air.RunConfig",
+) -> Tuple[Optional[str], Optional[str]]:
+    """Resolve a path (using ``_split_remote_local_path``) with backwards compatibility.
+
+    As we changed the input API to specify persistent storage locations, we still
+    have the old ways to define local and remote storage paths. Until these are
+    fully deprecated, this utility helps resolving all options currently available
+    to users to configure storage locations.
+    """
+
+    local_path, remote_path = _split_remote_local_path(
+        path=path, default_local_path=None
+    )
+
+    if legacy_local_dir:
+        if local_path:
+            raise ValueError(
+                "Only one of `storage_path` and `local_dir` can be passed to "
+                f"`{error_location}`. Since `local_dir` is deprecated, "
+                "only pass `storage_path` instead."
+            )
+        local_path = legacy_local_dir
+
+    if legacy_upload_dir:
+        if remote_path:
+            raise ValueError(
+                "Only one of a remote `storage_path` and `SyncConfig.upload_dir` "
+                f"can be passed to `{error_location}`. "
+                "Since `SyncConfig.upload_dir` is deprecated, "
+                "only pass `storage_path` instead."
+            )
+        remote_path = legacy_upload_dir
+
+    return local_path, remote_path
+
+
 @ray.remote
 def _serialize_checkpoint(checkpoint_path) -> bytes:
     checkpoint = Checkpoint.from_directory(checkpoint_path)
@@ -250,17 +321,45 @@ class Tee(object):
         self.stream1 = stream1
         self.stream2 = stream2
 
+        # If True, we are currently handling a warning.
+        # We use this flag to avoid infinite recursion.
+        self._handling_warning = False
+
+    def _warn(self, op, s, args, kwargs):
+        # If we are already handling a warning, this is because
+        # `logger.warning` below triggered the same object again
+        # (e.g. because stderr is redirected to this object).
+        # In that case, exit early to avoid recursion.
+        if self._handling_warning:
+            return
+
+        msg = f"ValueError when calling '{op}' on stream ({s}). "
+        msg += f"args: {args} kwargs: {kwargs}"
+
+        self._handling_warning = True
+        logger.warning(msg)
+        self._handling_warning = False
+
     def seek(self, *args, **kwargs):
-        self.stream1.seek(*args, **kwargs)
-        self.stream2.seek(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.seek(*args, **kwargs)
+            except ValueError:
+                self._warn("seek", s, args, kwargs)
 
     def write(self, *args, **kwargs):
-        self.stream1.write(*args, **kwargs)
-        self.stream2.write(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.write(*args, **kwargs)
+            except ValueError:
+                self._warn("write", s, args, kwargs)
 
     def flush(self, *args, **kwargs):
-        self.stream1.flush(*args, **kwargs)
-        self.stream2.flush(*args, **kwargs)
+        for s in [self.stream1, self.stream2]:
+            try:
+                s.flush(*args, **kwargs)
+            except ValueError:
+                self._warn("flush", s, args, kwargs)
 
     @property
     def encoding(self):
@@ -578,7 +677,7 @@ def validate_save_restore(
     trainable_1 = remote_cls.remote(config=config)
     trainable_2 = remote_cls.remote(config=config)
 
-    from ray.tune.result import TRAINING_ITERATION
+    from ray.air.constants import TRAINING_ITERATION
 
     for _ in range(3):
         res = ray.get(trainable_1.train.remote())

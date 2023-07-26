@@ -6,6 +6,8 @@ import tempfile
 import unittest
 
 import ray
+from ray.air.config import CheckpointConfig
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib import _register_all
 
 from ray import tune
@@ -13,7 +15,7 @@ from ray.tune.logger import NoopLogger
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.trainable.util import TrainableUtil
 from ray.tune.trainable import with_parameters, wrap_function, FuncCheckpointUtil
-from ray.tune.result import DEFAULT_METRIC, TRAINING_ITERATION
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers import ResourceChangingScheduler
 
 
@@ -307,9 +309,9 @@ class FunctionApiTest(unittest.TestCase):
             pass
 
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_freq=1)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_frequency=1))
         with self.assertRaises(ValueError):
-            tune.run(train, checkpoint_at_end=True)
+            tune.run(train, checkpoint_config=CheckpointConfig(checkpoint_at_end=True))
 
     def testCheckpointFunctionAtEnd(self):
         def train(config, checkpoint_dir=False):
@@ -348,7 +350,8 @@ class FunctionApiTest(unittest.TestCase):
                 with open(checkpoint_path, "w") as f:
                     f.write("goodbye")
 
-        [trial] = tune.run(train, keep_checkpoints_num=3).trials
+        checkpoint_config = CheckpointConfig(num_to_keep=3)
+        [trial] = tune.run(train, checkpoint_config=checkpoint_config).trials
         assert os.path.exists(os.path.join(trial.checkpoint.dir_or_data, "ckpt.log2"))
 
     def testReuseCheckpoint(self):

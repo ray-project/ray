@@ -23,8 +23,7 @@ import psutil
 # Ray modules
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.gcs_utils import GcsClient
-from ray._raylet import GcsClientOptions
+from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 
 resource = None
@@ -98,6 +97,30 @@ ProcessInfo = collections.namedtuple(
         "use_tmux",
     ],
 )
+
+
+def _site_flags() -> List[str]:
+    """Detect whether flags related to site packages are enabled for the current
+    interpreter. To run Ray in hermetic build environments, it helps to pass these flags
+    down to Python workers.
+    """
+    flags = []
+    # sys.flags hidden behind helper methods for unit testing.
+    if _no_site():
+        flags.append("-S")
+    if _no_user_site():
+        flags.append("-s")
+    return flags
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_site():
+    return sys.flags.no_site
+
+
+# sys.flags hidden behind helper methods for unit testing.
+def _no_user_site():
+    return sys.flags.no_user_site
 
 
 def _build_python_executable_command_memory_profileable(
@@ -433,7 +456,11 @@ def wait_for_node(
             return
         else:
             time.sleep(0.1)
-    raise TimeoutError("Timed out while waiting for node to startup.")
+    raise TimeoutError(
+        f"Timed out after {timeout} seconds while waiting for node to startup. "
+        f"Did not find socket name {node_plasma_store_socket_name} in the list "
+        "of object store socket names."
+    )
 
 
 def get_node_to_connect_for_driver(gcs_address, node_ip_address):
@@ -581,6 +608,7 @@ def resolve_ip_for_localhost(address: str):
     address_parts = address.rsplit(":", 1)
     # Make sure localhost isn't resolved to the loopback ip
     if address_parts[0] == "127.0.0.1" or address_parts[0] == "localhost":
+        # Make sure localhost isn't resolved to the loopback ip
         ip_address = get_node_ip_address()
         my_pod_ip = os.environ.get("BYTED_RAY_POD_IP")
         if my_pod_ip is not None and my_pod_ip != "":
@@ -639,10 +667,10 @@ def node_ip_address_from_perspective(address: str):
 def get_node_ip_address(address="8.8.8.8:53"):
     if ray._private.worker._global_node is not None:
         return ray._private.worker._global_node.node_ip_address
-    if sys.platform == "darwin" or sys.platform == "win32":
-        # Due to the mac osx/windows firewall,
-        # we use loopback ip as the ip address
-        # to prevent security popups.
+    if not ray_constants.ENABLE_RAY_CLUSTER:
+        # Use loopback IP as the local IP address to prevent bothersome
+        # firewall popups on OSX and Windows.
+        # https://github.com/ray-project/ray/issues/18730.
         return "127.0.0.1"
     return node_ip_address_from_perspective(address)
 
@@ -1027,10 +1055,12 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    node_ip_address: str,
     temp_dir: str,
     logdir: str,
     session_dir: str,
     port: Optional[int] = None,
+    dashboard_grpc_port: Optional[int] = None,
     fate_share: Optional[bool] = None,
     max_bytes: int = 0,
     backup_count: int = 0,
@@ -1049,6 +1079,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
         session_dir: The session directory under temp_dir.
@@ -1056,6 +1087,8 @@ def start_api_server(
         logdir: The log directory used to generate dashboard log.
         port: The port to bind the dashboard web server to.
             Defaults to 8265.
+        dashboard_grpc_port: The port which the dashboard listens for
+            gRPC on. Defaults to a random, available port.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1068,7 +1101,9 @@ def start_api_server(
             no redirection should happen, then this should be None.
 
     Returns:
-        ProcessInfo for the process that was started.
+        A tuple of :
+            - Dashboard URL if dashboard enabled and started.
+            - ProcessInfo for the process that was started.
     """
     try:
         # Make sure port is available.
@@ -1121,6 +1156,7 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--node-ip-address={node_ip_address}",
         ]
 
         if not redirect_logging:
@@ -1146,6 +1182,9 @@ def start_api_server(
             # loaded although dashboard is disabled. Fix it.
             command.append("--modules-to-load=UsageStatsHead")
             command.append("--disable-frontend")
+
+        if dashboard_grpc_port is not None:
+            command.append(f"--grpc-port={dashboard_grpc_port}")
 
         process_info = start_ray_process(
             command,
@@ -1345,6 +1384,7 @@ def start_raylet(
     plasma_directory: str,
     object_store_memory: int,
     session_name: str,
+    is_head_node: bool,
     min_worker_port: Optional[int] = None,
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
@@ -1361,13 +1401,13 @@ def start_raylet(
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
-    start_initial_python_workers_for_first_job: bool = False,
     max_bytes: int = 0,
     backup_count: int = 0,
     ray_debugger_external: bool = False,
     env_updates: Optional[dict] = None,
     node_name: Optional[str] = None,
     webui: Optional[str] = None,
+    labels: Optional[dict] = None,
 ):
     """Start a raylet, which is a combined local scheduler and object manager.
 
@@ -1400,6 +1440,8 @@ def start_raylet(
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
+        dashboard_agent_listen_port: The port at which the dashboard agent
+            listens to for http.
         use_valgrind: True if the raylet should be started inside
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
@@ -1418,7 +1460,7 @@ def start_raylet(
         ray_debugger_external: True if the Ray debugger should be made
             available externally to this node.
         env_updates: Environment variable overrides.
-
+        labels: The key-value labels of the node.
     Returns:
         ProcessInfo for the process that was started.
     """
@@ -1486,26 +1528,32 @@ def start_raylet(
     # TODO(architkulkarni): Pipe in setup worker args separately instead of
     # inserting them into start_worker_command and later erasing them if
     # needed.
-    start_worker_command = [
-        sys.executable,
-        setup_worker_path,
-        worker_path,
-        f"--node-ip-address={node_ip_address}",
-        "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
-        f"--object-store-name={plasma_store_name}",
-        f"--raylet-name={raylet_name}",
-        f"--redis-address={redis_address}",
-        f"--temp-dir={temp_dir}",
-        f"--metrics-agent-port={metrics_agent_port}",
-        f"--logging-rotate-bytes={max_bytes}",
-        f"--logging-rotate-backup-count={backup_count}",
-        f"--gcs-address={gcs_address}",
-        f"--session-name={session_name}",
-        f"--temp-dir={temp_dir}",
-        f"--webui={webui}",
-    ]
+    start_worker_command = (
+        [
+            sys.executable,
+            setup_worker_path,
+        ]
+        + _site_flags()  # Inherit "-S" and "-s" flags from current Python interpreter.
+        + [
+            worker_path,
+            f"--node-ip-address={node_ip_address}",
+            "--node-manager-port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
+            f"--object-store-name={plasma_store_name}",
+            f"--raylet-name={raylet_name}",
+            f"--redis-address={redis_address}",
+            f"--temp-dir={temp_dir}",
+            f"--metrics-agent-port={metrics_agent_port}",
+            f"--logging-rotate-bytes={max_bytes}",
+            f"--logging-rotate-backup-count={backup_count}",
+            f"--gcs-address={gcs_address}",
+            f"--session-name={session_name}",
+            f"--temp-dir={temp_dir}",
+            f"--webui={webui}",
+        ]
+    )
 
-    start_worker_command.append(f"--storage={storage}")
+    if storage is not None:
+        start_worker_command.append(f"--storage={storage}")
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
@@ -1522,6 +1570,10 @@ def start_raylet(
 
     if max_worker_port is None:
         max_worker_port = 0
+
+    labels_json_str = ""
+    if labels:
+        labels_json_str = json.dumps(labels)
 
     agent_command = [
         *_build_python_executable_command_memory_profileable(
@@ -1586,16 +1638,17 @@ def start_raylet(
         f"--ray-debugger-external={1 if ray_debugger_external else 0}",
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
+        f"--labels={labels_json_str}",
     ]
+
+    if is_head_node:
+        command.append("--head")
 
     if worker_port_list is not None:
         command.append(f"--worker_port_list={worker_port_list}")
-    if start_initial_python_workers_for_first_job:
-        command.append(
-            "--num_initial_python_workers_for_first_job={}".format(
-                resource_spec.num_cpus
-            )
-        )
+    command.append(
+        "--num_prestart_python_workers={}".format(int(resource_spec.num_cpus))
+    )
     command.append("--agent_command={}".format(subprocess.list2cmdline(agent_command)))
     if huge_pages:
         command.append("--huge_pages")

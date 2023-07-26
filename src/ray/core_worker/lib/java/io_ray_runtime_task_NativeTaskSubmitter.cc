@@ -187,8 +187,8 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
 
     max_restarts =
         env->GetIntField(actorCreationOptions, java_actor_creation_options_max_restarts);
-    max_task_retries =
-        env->GetIntField(actorCreationOptions, java_actor_creation_options_max_task_retries);
+    max_task_retries = env->GetIntField(actorCreationOptions,
+                                        java_actor_creation_options_max_task_retries);
     jobject java_resources =
         env->GetObjectField(actorCreationOptions, java_base_task_options_resources);
     resources = ToResources(env, java_resources);
@@ -278,22 +278,21 @@ inline ActorCreationOptions ToActorCreationOptions(JNIEnv *env,
         placement_options.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  ActorCreationOptions actor_creation_options{
-      max_restarts,
-      max_task_retries,
-      static_cast<int>(max_concurrency),
-      resources,
-      resources,
-      dynamic_worker_options,
-      is_detached,
-      name,
-      ray_namespace,
-      is_async,
-      /*scheduling_strategy=*/scheduling_strategy,
-      serialized_runtime_env,
-      concurrency_groups,
-      /*execute_out_of_order*/ false,
-      max_pending_calls};
+  ActorCreationOptions actor_creation_options{max_restarts,
+                                              max_task_retries,
+                                              static_cast<int>(max_concurrency),
+                                              resources,
+                                              resources,
+                                              dynamic_worker_options,
+                                              is_detached,
+                                              name,
+                                              ray_namespace,
+                                              is_async,
+                                              /*scheduling_strategy=*/scheduling_strategy,
+                                              serialized_runtime_env,
+                                              concurrency_groups,
+                                              /*execute_out_of_order*/ false,
+                                              max_pending_calls};
   return actor_creation_options;
 }
 
@@ -439,10 +438,10 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   auto task_args = ToTaskArgs(env, args);
   RAY_CHECK(callOptions != nullptr);
   auto task_options = ToTaskOptions(env, numReturns, callOptions);
-
-  auto return_refs = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
-      actor_id, ray_function, task_args, task_options);
-  if (!return_refs.has_value()) {
+  std::vector<rpc::ObjectReference> return_refs;
+  auto status = CoreWorkerProcess::GetCoreWorker().SubmitActorTask(
+      actor_id, ray_function, task_args, task_options, return_refs);
+  if (!status.ok()) {
     std::stringstream ss;
     ss << "The task " << ray_function.GetFunctionDescriptor()->ToString()
        << " could not be submitted to " << actor_id;
@@ -456,7 +455,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
   }
 
   std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs.value()) {
+  for (const auto &ref : return_refs) {
     return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
   }
 

@@ -56,7 +56,7 @@ class TorchTrainer(DataParallelTrainer):
             # Get dict of last saved checkpoint.
             session.get_checkpoint()
 
-            # Session returns the Ray Dataset shard for the given key.
+            # Session returns the Dataset shard for the given key.
             session.get_dataset_shard("my_dataset")
 
             # Get the total number of workers executing training.
@@ -149,7 +149,7 @@ class TorchTrainer(DataParallelTrainer):
             input_size = 1
             layer_size = 32
             output_size = 1
-            num_epochs = 200
+            num_epochs = 20
             num_workers = 3
 
             # Define your network structure
@@ -165,6 +165,7 @@ class TorchTrainer(DataParallelTrainer):
 
             # Define your train worker loop
             def train_loop_per_worker():
+                torch.manual_seed(42)
 
                 # Fetch training set from the session
                 dataset_shard = session.get_dataset_shard("train")
@@ -182,7 +183,7 @@ class TorchTrainer(DataParallelTrainer):
                 # Iterate over epochs and batches
                 for epoch in range(num_epochs):
                     for batches in dataset_shard.iter_torch_batches(batch_size=32,
-                                dtypes=torch.float, device=train.torch.get_device()):
+                                dtypes=torch.float):
 
                         # Add batch or unsqueeze as an additional dimension [32, x]
                         inputs, labels = torch.unsqueeze(batches["x"], 1), batches["y"]
@@ -203,13 +204,12 @@ class TorchTrainer(DataParallelTrainer):
                     # Report and record metrics, checkpoint model at end of each
                     # epoch
                     session.report({"loss": loss.item(), "epoch": epoch},
-                                         checkpoint=Checkpoint.from_dict(
-                                         dict(epoch=epoch, model=model.state_dict()))
+                                            checkpoint=Checkpoint.from_dict(
+                                            dict(epoch=epoch, model=model.state_dict()))
                     )
 
-            torch.manual_seed(42)
             train_dataset = ray.data.from_items(
-                [{"x": x, "y": 2 * x + 1} for x in range(200)]
+                [{"x": x, "y": 2 * x + 1} for x in range(2000)]
             )
 
             # Define scaling and run configs
@@ -229,11 +229,10 @@ class TorchTrainer(DataParallelTrainer):
             # Assert loss is less 0.09
             assert best_checkpoint_loss <= 0.09
 
-    .. testoutput::
-        :hide:
-        :options: +ELLIPSIS
+        .. testoutput::
+            :hide:
 
-        ...
+            ...
 
     Args:
 
@@ -247,7 +246,7 @@ class TorchTrainer(DataParallelTrainer):
         scaling_config: Configuration for how to scale data parallel training.
         dataset_config: Configuration for dataset ingest.
         run_config: Configuration for the execution of the training run.
-        datasets: Any Ray Datasets to use for training. Use
+        datasets: Any Datasets to use for training. Use
             the key "train" to denote which dataset is the training
             dataset. If a ``preprocessor`` is provided and has not already been fit,
             it will be fit on the training dataset. All datasets will be transformed

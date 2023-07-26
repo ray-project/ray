@@ -4,6 +4,7 @@ from typing import Dict
 import numpy as np
 import sys
 
+import requests
 import ray
 from ray._private.test_utils import (
     raw_metrics,
@@ -223,43 +224,6 @@ def test_spilling(object_spilling_config, shutdown_only):
 @pytest.mark.skipif(
     sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
 )
-@pytest.mark.parametrize("metric_report_interval_ms", [500, 1000, 3000])
-def test_object_metric_report_interval(shutdown_only, metric_report_interval_ms):
-    """Test object store metric on raylet controlled by `metric_report_interval_ms`"""
-    import time
-
-    info = ray.init(
-        object_store_memory=100 * MiB,
-        _system_config={"metrics_report_interval_ms": metric_report_interval_ms},
-    )
-
-    # Put object to make sure metric shows up
-    obj = ray.get(ray.put(np.zeros(20 * MiB, dtype=np.uint8)))
-
-    expected = {
-        "MMAP_SHM": 20 * MiB,
-        "MMAP_DISK": 0,
-        "SPILLED": 0,
-        "WORKER_HEAP": 0,
-    }
-    start = time.time()
-    wait_for_condition(
-        # 1KiB for metadata difference
-        lambda: approx_eq_dict_in(objects_by_loc(info), expected, 1 * KiB),
-        timeout=10,
-        retry_interval_ms=100,
-    )
-
-    end = time.time()
-    # Also shouldn't have metrics reported too quickly
-    assert (end - start) * 1000 > metric_report_interval_ms, "Reporting too quickly"
-
-    del obj
-
-
-@pytest.mark.skipif(
-    sys.platform == "darwin", reason="Timing out on macos. Not enough time to run."
-)
 def test_fallback_memory(shutdown_only):
     """Test some fallback allocated objects"""
 
@@ -387,6 +351,37 @@ def test_seal_memory(shutdown_only):
         timeout=20,
         retry_interval_ms=500,
     )
+
+
+def test_object_store_memory_matches_dashboard_obj_memory(shutdown_only):
+    # https://github.com/ray-project/ray/issues/32092
+    # Verify the dashboard's object store memory report is same as
+    # the one from metrics
+    ctx = ray.init(
+        object_store_memory=500 * MiB,
+    )
+
+    def verify():
+        resources = raw_metrics(ctx)["ray_resources"]
+        object_store_memory_bytes_from_metrics = 0
+        for sample in resources:
+            # print(sample)
+            if sample.labels["Name"] == "object_store_memory":
+                object_store_memory_bytes_from_metrics += sample.value
+
+        r = requests.get(f"http://{ctx.dashboard_url}/nodes?view=summary")
+        object_store_memory_bytes_from_dashboard = int(
+            r.json()["data"]["summary"][0]["raylet"]["objectStoreAvailableMemory"]
+        )
+
+        assert (
+            object_store_memory_bytes_from_dashboard
+            == object_store_memory_bytes_from_metrics
+        )
+        assert object_store_memory_bytes_from_dashboard == 500 * MiB
+        return True
+
+    wait_for_condition(verify)
 
 
 if __name__ == "__main__":

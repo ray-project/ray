@@ -2,11 +2,11 @@ cartpole-dqn-w-param-noise:
     env: CartPole-v1
     run: DQN
     stop:
-        episode_reward_mean: 150
+        sampler_results/episode_reward_mean: 150
         timesteps_total: 300000
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         exploration_config:
             type: ParameterNoise
             random_timesteps: 10000

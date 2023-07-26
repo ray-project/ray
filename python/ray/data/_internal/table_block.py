@@ -1,14 +1,14 @@
 import collections
-from typing import Dict, Iterator, List, Union, Any, TypeVar, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Mapping, TypeVar, Union
 
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.block_builder import BlockBuilder
+from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
+from ray.data._internal.size_estimator import SizeEstimator
 from ray.data.block import Block, BlockAccessor
 from ray.data.row import TableRow
-from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.size_estimator import SizeEstimator
-from ray.data._internal.util import _is_tensor_schema
 
 if TYPE_CHECKING:
     from ray.data._internal.sort import SortKeyT
@@ -21,7 +21,7 @@ T = TypeVar("T")
 MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
 
 
-class TableBlockBuilder(BlockBuilder[T]):
+class TableBlockBuilder(BlockBuilder):
     def __init__(self, block_type):
         # The set of uncompacted Python values buffered.
         self._columns = collections.defaultdict(list)
@@ -29,6 +29,14 @@ class TableBlockBuilder(BlockBuilder[T]):
         self._column_names = None
         # The set of compacted tables we have built so far.
         self._tables: List[Any] = []
+        # Cursor into tables indicating up to which table we've accumulated table sizes.
+        # This is used to defer table size calculation, which can be expensive for e.g.
+        # Pandas DataFrames.
+        # This cursor points to the first table for which we haven't accumulated a table
+        # size.
+        self._tables_size_cursor = 0
+        # Accumulated table sizes, up to the table in _tables pointed to by
+        # _tables_size_cursor.
         self._tables_size_bytes = 0
         # Size estimator for un-compacted table values.
         self._uncompacted_size = SizeEstimator()
@@ -41,7 +49,7 @@ class TableBlockBuilder(BlockBuilder[T]):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
             item = {TENSOR_COLUMN_NAME: item}
-        if not isinstance(item, dict):
+        if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))
@@ -61,6 +69,8 @@ class TableBlockBuilder(BlockBuilder[T]):
             self._column_names = item_column_names
 
         for key, value in item.items():
+            if is_array_like(value) and not isinstance(value, np.ndarray):
+                value = np.array(value)
             self._columns[key].append(value)
         self._num_rows += 1
         self._compact_if_needed()
@@ -76,7 +86,6 @@ class TableBlockBuilder(BlockBuilder[T]):
             )
         accessor = BlockAccessor.for_block(block)
         self._tables.append(block)
-        self._tables_size_bytes += accessor.size_bytes()
         self._num_rows += accessor.num_rows()
 
     @staticmethod
@@ -91,9 +100,22 @@ class TableBlockBuilder(BlockBuilder[T]):
     def _empty_table() -> Any:
         raise NotImplementedError
 
-    def build(self) -> Block:
+    @staticmethod
+    def _concat_would_copy() -> bool:
+        raise NotImplementedError
+
+    def will_build_yield_copy(self) -> bool:
         if self._columns:
-            tables = [self._table_from_pydict(self._columns)]
+            # Building a table from a dict of list columns always creates a copy.
+            return True
+        return self._concat_would_copy() and len(self._tables) > 1
+
+    def build(self) -> Block:
+        columns = {
+            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
+        }
+        if columns:
+            tables = [self._table_from_pydict(columns)]
         else:
             tables = []
         tables.extend(self._tables)
@@ -108,13 +130,19 @@ class TableBlockBuilder(BlockBuilder[T]):
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
+        for table in self._tables[self._tables_size_cursor :]:
+            self._tables_size_bytes += BlockAccessor.for_block(table).size_bytes()
+        self._tables_size_cursor = len(self._tables)
         return self._tables_size_bytes + self._uncompacted_size.size_bytes()
 
     def _compact_if_needed(self) -> None:
         assert self._columns
         if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
             return
-        block = self._table_from_pydict(self._columns)
+        columns = {
+            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
+        }
+        block = self._table_from_pydict(columns)
         self.add_block(block)
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()
@@ -128,11 +156,8 @@ class TableBlockAccessor(BlockAccessor):
         self._table = table
 
     def _get_row(self, index: int, copy: bool = False) -> Union[TableRow, np.ndarray]:
-        row = self.slice(index, index + 1, copy=copy)
-        if self.is_tensor_wrapper():
-            row = self._build_tensor_row(row)
-        else:
-            row = self.ROW_TYPE(row)
+        base_row = self.slice(index, index + 1, copy=copy)
+        row = self.ROW_TYPE(base_row)
         return row
 
     @staticmethod
@@ -140,12 +165,9 @@ class TableBlockAccessor(BlockAccessor):
         raise NotImplementedError
 
     def to_default(self) -> Block:
-        if self.is_tensor_wrapper():
-            default = self.to_numpy()
-        else:
-            # Always promote Arrow blocks to pandas for consistency, since
-            # we lazily convert pandas->Arrow internally for efficiency.
-            default = self.to_pandas()
+        # Always promote Arrow blocks to pandas for consistency, since
+        # we lazily convert pandas->Arrow internally for efficiency.
+        default = self.to_pandas()
         return default
 
     def column_names(self) -> List[str]:
@@ -154,10 +176,9 @@ class TableBlockAccessor(BlockAccessor):
     def to_block(self) -> Block:
         return self._table
 
-    def is_tensor_wrapper(self) -> bool:
-        return _is_tensor_schema(self.column_names())
-
-    def iter_rows(self) -> Iterator[Union[TableRow, np.ndarray]]:
+    def iter_rows(
+        self, public_row_format: bool
+    ) -> Iterator[Union[Mapping, np.ndarray]]:
         outer = self
 
         class Iter:
@@ -170,15 +191,19 @@ class TableBlockAccessor(BlockAccessor):
             def __next__(self):
                 self._cur += 1
                 if self._cur < outer.num_rows():
-                    return outer._get_row(self._cur)
+                    row = outer._get_row(self._cur)
+                    if public_row_format and isinstance(row, TableRow):
+                        return row.as_pydict()
+                    else:
+                        return row
                 raise StopIteration
 
         return Iter()
 
-    def _zip(self, acc: BlockAccessor) -> "Block[T]":
+    def _zip(self, acc: BlockAccessor) -> "Block":
         raise NotImplementedError
 
-    def zip(self, other: "Block[T]") -> "Block[T]":
+    def zip(self, other: "Block") -> "Block":
         acc = BlockAccessor.for_block(other)
         if not isinstance(acc, type(self)):
             raise ValueError(

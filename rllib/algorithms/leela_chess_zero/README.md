@@ -11,7 +11,7 @@ It assumes that the environment is a MultiAgent Chess environment, that has a di
  
  It should also implement a `get_state`and a `set_state` function, used in the MCTS implementation.
  
- The model used in AlphaZero trainer should extend `TorchModelV2` and implement the method `compute_priors_and_value`. 
+ The model used in the AlphaZero Algorithm should extend `TorchModelV2` and implement the method `compute_priors_and_value`. 
  
 ## Example on Chess
 
@@ -20,4 +20,4 @@ It assumes that the environment is a MultiAgent Chess environment, that has a di
 ## References
 
 - AlphaZero: https://arxiv.org/abs/1712.01815
-- LeelaChessZero: https://lczero.org/dev/
+- LeelaChessZero: https://github.com/LeelaChessZero/lc0

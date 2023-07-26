@@ -1,23 +1,25 @@
 import os
 import sys
 from typing import Optional
+from pathlib import Path
 
 import click
 from ray_release.aws import maybe_fetch_api_token
 from ray_release.config import (
-    DEFAULT_PYTHON_VERSION,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
     as_smoke_test,
     find_test,
     parse_python_version,
     read_and_validate_release_test_collection,
 )
+from ray_release.test import DEFAULT_PYTHON_VERSION
 from ray_release.env import DEFAULT_ENVIRONMENT, load_environment, populate_os_env
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestError
 from ray_release.glue import run_release_test
 from ray_release.logger import logger
 from ray_release.reporter.artifacts import ArtifactsReporter
 from ray_release.reporter.db import DBReporter
+from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
 from ray_release.wheels import find_and_wait_for_ray_wheels_url
@@ -55,7 +57,8 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
         "Can be e.g. `master` to fetch latest wheels from the "
         "Ray master branch. Can also be `<repo_url>:<branch>` or "
         "`<repo_url>:<commit>` to specify a different repository to "
-        "fetch wheels from, if available."
+        "fetch wheels from, if available. Can also be "
+        "`file://<path to local wheel>` for wheels built locally."
     ),
 )
 @click.option(
@@ -73,7 +76,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
 @click.option(
     "--env",
     default=None,
-    type=click.Choice(["prod", "staging"]),
+    # Get the names without suffixes of all files in "../environments"
+    type=click.Choice(
+        [x.stem for x in (Path(__file__).parent.parent / "environments").glob("*.env")]
+    ),
     help="Environment to use. Will overwrite environment used in test config.",
 )
 @click.option(
@@ -81,7 +87,10 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     type=bool,
     is_flag=True,
-    help="Do not terminate cluster after test.",
+    help=(
+        "Do not terminate cluster after test. "
+        "Will switch `anyscale_job` run type to `job` (Ray Job)."
+    ),
 )
 def main(
     test_name: str,
@@ -140,6 +149,11 @@ def main(
     if report:
         reporters.append(DBReporter())
 
+    # TODO(can): this env var is used as a feature flag, in case we need to turn this
+    # off quickly. We should remove this when the new db reporter is stable.
+    if os.environ.get("REPORT_TO_RAY_TEST_DB", False):
+        reporters.append(RayTestDBReporter())
+
     try:
         result = run_release_test(
             test,
@@ -156,7 +170,6 @@ def main(
     except ReleaseTestError as e:
         logger.exception(e)
         return_code = e.exit_code.value
-
     logger.info(
         f"Release test pipeline for test {test['name']} completed. "
         f"Returning with exit code = {return_code}"

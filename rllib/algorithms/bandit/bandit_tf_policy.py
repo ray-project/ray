@@ -149,7 +149,7 @@ def after_init(policy, *args):
 
 BanditTFPolicy = build_tf_policy(
     name="BanditTFPolicy",
-    get_default_config=lambda: ray.rllib.algorithms.bandit.bandit.DEFAULT_CONFIG,
+    get_default_config=lambda: ray.rllib.algorithms.bandit.bandit.BanditConfig(),
     validate_spaces=validate_spaces,
     make_model=make_model,
     loss_fn=None,

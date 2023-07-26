@@ -94,8 +94,7 @@ class MultiAgentGymnasiumOldAPI(MultiAgentEnv):
             {"agent0": gym.spaces.Box(-1.0, 1.0, (1,))}
         )
         self.action_space = gym.spaces.Dict({"agent0": gym.spaces.Discrete(2)})
-        self._observation_space_in_preferred_format = True
-        self._action_space_in_preferred_format = True
+        self._agent_ids = {"agent0"}
 
     def reset(self):
         return {"agent0": self.observation_space.sample()}
@@ -132,7 +131,9 @@ class TestGymEnvAPIs(unittest.TestCase):
             (
                 PPOConfig()
                 .environment(env=GymnasiumOldAPI, auto_wrap_old_gym_envs=False)
-                .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+                # Forces the error to be raised on the local worker so that it is not
+                # swallowed by a RayActorError and speeds the test up.
+                .rollouts(num_rollout_workers=0)
                 .build()
             )
 
@@ -147,7 +148,8 @@ class TestGymEnvAPIs(unittest.TestCase):
         algo = (
             PPOConfig()
             .environment(env=GymnasiumOldAPI, auto_wrap_old_gym_envs=True)
-            .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+            # Speeds the test up.
+            .rollouts(num_rollout_workers=0)
             .build()
         )
         algo.train()
@@ -160,7 +162,9 @@ class TestGymEnvAPIs(unittest.TestCase):
             (
                 PPOConfig()
                 .environment(GymnasiumNewAPIButOldSpaces, auto_wrap_old_gym_envs=True)
-                .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+                # Forces the error to be raised on the local worker so that it is not
+                # swallowed by a RayActorError and speeds the test up.
+                .rollouts(num_rollout_workers=0)
                 .build()
             )
 
@@ -180,7 +184,9 @@ class TestGymEnvAPIs(unittest.TestCase):
                     GymnasiumNewAPIButThrowsErrorOnReset,
                     auto_wrap_old_gym_envs=True,
                 )
-                .rollouts(num_envs_per_worker=1, num_rollout_workers=0)
+                # Forces the error to be raised on the local worker so that it is not
+                # swallowed by a RayActorError and speeds the test up.
+                .rollouts(num_rollout_workers=0)
                 .build()
             )
 
@@ -199,7 +205,8 @@ class TestGymEnvAPIs(unittest.TestCase):
         algo = (
             PPOConfig()
             .environment("test", auto_wrap_old_gym_envs=False)
-            .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+            # Speeds the test up.
+            .rollouts(num_rollout_workers=0)
             .build()
         )
         algo.train()
@@ -212,7 +219,9 @@ class TestGymEnvAPIs(unittest.TestCase):
             (
                 PPOConfig()
                 .environment(env=OldGymEnv, auto_wrap_old_gym_envs=True)
-                .rollouts(num_envs_per_worker=2, num_rollout_workers=2)
+                # Forces the error to be raised on the local worker so that it is not
+                # swallowed by a RayActorError and speeds the test up.
+                .rollouts(num_rollout_workers=0)
                 .build()
             )
 
@@ -232,6 +241,9 @@ class TestGymEnvAPIs(unittest.TestCase):
                     MultiAgentGymnasiumOldAPI,
                     auto_wrap_old_gym_envs=False,
                 )
+                # Forces the error to be raised on the local worker so that it is not
+                # swallowed by a RayActorError and speeds the test up.
+                .rollouts(num_rollout_workers=0)
                 .build()
             )
 
@@ -249,7 +261,10 @@ class TestGymEnvAPIs(unittest.TestCase):
             .environment(
                 MultiAgentGymnasiumOldAPI,
                 auto_wrap_old_gym_envs=True,
+                disable_env_checking=True,
             )
+            # Speeds the test up.
+            .rollouts(num_rollout_workers=0)
             .build()
         )
         algo.train()
@@ -265,7 +280,15 @@ class TestGymEnvAPIs(unittest.TestCase):
             ),
         )
 
-        algo = PPOConfig().environment("test", auto_wrap_old_gym_envs=False).build()
+        algo = (
+            PPOConfig()
+            .environment(
+                "test", auto_wrap_old_gym_envs=False, disable_env_checking=True
+            )
+            # Speeds the test up.
+            .rollouts(num_rollout_workers=0)
+            .build()
+        )
         algo.train()
         algo.stop()
 

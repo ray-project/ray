@@ -223,13 +223,13 @@ class TensorflowCheckpoint(Checkpoint):
         Returns:
             The Tensorflow Keras model stored in the checkpoint.
         """
+        # TODO: Remove `model_definition` in 2.6.
         if model_definition is not None:
-            warnings.warn(
+            raise DeprecationWarning(
                 "The `model_definition` parameter is deprecated. Use the `model` "
-                "parameter instead.",
-                DeprecationWarning,
+                "parameter instead."
             )
-            model = model_definition
+
         if model is not None and self._flavor is not self.Flavor.MODEL_WEIGHTS:
             warnings.warn(
                 "TensorflowCheckpoint was created from "

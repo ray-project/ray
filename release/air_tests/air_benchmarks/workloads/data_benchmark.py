@@ -34,7 +34,7 @@ def run_ingest_bulk(dataset, num_workers, num_cpus_per_worker):
         datasets={"train": dataset},
         preprocessor=dummy_prep,
         num_epochs=1,
-        prefetch_blocks=1,
+        prefetch_batches=1,
         dataset_config={"train": DatasetConfig(split=True)},
     )
     trainer.fit()

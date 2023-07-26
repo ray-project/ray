@@ -16,7 +16,9 @@
 
 #include <functional>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
+
 namespace ray {
 namespace syncer {
 
@@ -50,6 +52,10 @@ std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_t
                    << ", node:" << NodeID::FromBinary(message->node_id());
   }
   return message;
+}
+
+bool NodeState::RemoveNode(const std::string &node_id) {
+  return cluster_view_.erase(node_id) != 0;
 }
 
 bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
@@ -104,11 +110,13 @@ RayServerBidiReactor::RayServerBidiReactor(
   StartPull();
 }
 
-void RayServerBidiReactor::Disconnect() {
+void RayServerBidiReactor::DoDisconnect() {
   io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
 }
 
-void RayServerBidiReactor::OnCancel() { Disconnect(); }
+void RayServerBidiReactor::OnCancel() {
+  io_context_.dispatch([this]() { Disconnect(); }, "");
+}
 
 void RayServerBidiReactor::OnDone() {
   io_context_.dispatch(
@@ -132,6 +140,10 @@ RayClientBidiReactor::RayClientBidiReactor(
       stub_(std::move(stub)) {
   client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
   stub_->async()->StartSync(&client_context_, this);
+  // Prevent this call from being terminated.
+  // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
+  // for details.
+  AddHold();
   StartPull();
 }
 
@@ -144,8 +156,14 @@ void RayClientBidiReactor::OnDone(const grpc::Status &status) {
       "");
 }
 
-void RayClientBidiReactor::Disconnect() {
-  io_context_.dispatch([this]() { StartWritesDone(); }, "");
+void RayClientBidiReactor::DoDisconnect() {
+  io_context_.dispatch(
+      [this]() {
+        StartWritesDone();
+        // Free the hold to allow OnDone being called.
+        RemoveHold();
+      },
+      "");
 }
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
@@ -159,33 +177,42 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
 
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
-  io_context_.dispatch(
-      [reactors = sync_reactors_]() {
-        for (auto [_, reactor] : reactors) {
-          reactor->Disconnect();
+  boost::asio::dispatch(io_context_.get_executor(), [reactors = sync_reactors_]() {
+    for (auto [_, reactor] : reactors) {
+      reactor->Disconnect();
+    }
+  });
+}
+
+std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
+    const std::string &node_id, MessageType message_type) const {
+  auto task = std::packaged_task<std::shared_ptr<const RaySyncMessage>()>(
+      [this, &node_id, message_type]() -> std::shared_ptr<const RaySyncMessage> {
+        auto &view = node_state_->GetClusterView();
+        if (auto iter = view.find(node_id); iter != view.end()) {
+          return iter->second[message_type];
         }
-      },
-      "");
+        return nullptr;
+      });
+
+  return boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
 std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
-  std::promise<std::vector<std::string>> promise;
-  io_context_.dispatch(
-      [&]() {
-        std::vector<std::string> nodes;
-        for (auto [node_id, _] : sync_reactors_) {
-          nodes.push_back(node_id);
-        }
-        promise.set_value(std::move(nodes));
-      },
-      "");
-  return promise.get_future().get();
+  auto task = std::packaged_task<std::vector<std::string>()>([&]() {
+    std::vector<std::string> nodes;
+    for (auto [node_id, _] : sync_reactors_) {
+      nodes.push_back(node_id);
+    }
+    return nodes;
+  });
+  return boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
 void RaySyncer::Connect(const std::string &node_id,
                         std::shared_ptr<grpc::Channel> channel) {
-  io_context_.dispatch(
-      [=]() {
+  boost::asio::dispatch(
+      io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
         auto reactor = new RayClientBidiReactor(
             /* remote_node_id */ node_id,
@@ -196,21 +223,28 @@ void RaySyncer::Connect(const std::string &node_id,
             [this, channel](const std::string &node_id, bool restart) {
               sync_reactors_.erase(node_id);
               if (restart) {
-                RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
-                              << NodeID::FromBinary(node_id);
-                Connect(node_id, channel);
+                execute_after(
+                    io_context_,
+                    [this, node_id, channel]() {
+                      RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
+                                    << NodeID::FromBinary(node_id);
+                      Connect(node_id, channel);
+                    },
+                    /* delay_microseconds = */ std::chrono::milliseconds(2000));
+              } else {
+                node_state_->RemoveNode(node_id);
               }
             },
             /* stub */ std::move(stub));
         Connect(reactor);
         reactor->StartCall();
-      },
-      "");
+      }))
+      .get();
 }
 
 void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
-  io_context_.dispatch(
-      [this, reactor]() {
+  boost::asio::dispatch(
+      io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
         RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) ==
                   sync_reactors_.end());
         sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
@@ -227,31 +261,24 @@ void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
             reactor->PushToSendingQueue(message);
           }
         }
-      },
-      "RaySyncerConnect");
+      }))
+      .get();
 }
 
 void RaySyncer::Disconnect(const std::string &node_id) {
-  std::promise<RaySyncerBidiReactor *> promise;
-  io_context_.dispatch(
-      [&]() {
-        auto iter = sync_reactors_.find(node_id);
-        if (iter == sync_reactors_.end()) {
-          promise.set_value(nullptr);
-          return;
-        }
+  auto task = std::packaged_task<void()>([&]() {
+    auto iter = sync_reactors_.find(node_id);
+    if (iter == sync_reactors_.end()) {
+      return;
+    }
 
-        auto reactor = iter->second;
-        if (iter != sync_reactors_.end()) {
-          sync_reactors_.erase(iter);
-        }
-        promise.set_value(reactor);
-      },
-      "RaySyncerDisconnect");
-  auto reactor = promise.get_future().get();
-  if (reactor != nullptr) {
+    auto reactor = iter->second;
+    if (iter != sync_reactors_.end()) {
+      sync_reactors_.erase(iter);
+    }
     reactor->Disconnect();
-  }
+  });
+  boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
 void RaySyncer::Register(MessageType message_type,
@@ -325,6 +352,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);
         syncer_.sync_reactors_.erase(node_id);
+        syncer_.node_state_->RemoveNode(node_id);
       });
   RAY_LOG(DEBUG) << "Get connection from "
                  << NodeID::FromBinary(reactor->GetRemoteNodeID()) << " to "

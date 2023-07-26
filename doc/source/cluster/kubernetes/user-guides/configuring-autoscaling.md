@@ -32,24 +32,23 @@ Worker pod upscaling occurs through the following sequence of events:
 2. Workload resource requirements are aggregated by the Ray head container
    and communicated to the Ray autoscaler sidecar.
 3. The autoscaler determines that a Ray worker pod must be added to satisfy the workload's resource requirement.
-4. The autoscaler requests an addtional worker pod by incrementing the RayCluster CR's `replicas` field.
+4. The autoscaler requests an additional worker pod by incrementing the RayCluster CR's `replicas` field.
 5. The KubeRay operator creates a Ray worker pod to match the new `replicas` specification.
 6. The Ray scheduler places the user's workload on the new worker pod.
 
-See also the operator architecture diagram in the [KubeRay documentation](https://ray-project.github.io/kuberay/components/operator/).
+See also the operator architecture diagram in the [KubeRay documentation](https://ray-project.github.io/kuberay/guidance/autoscaler/).
 
 ## Quickstart
 
-First, follow the [quickstart guide](kuberay-quickstart) to create an autoscaling cluster. The commands to create the KubeRay operator and deploy an autoscaling cluster are summarized here:
+First, follow the [KubeRay quickstart guide](kuberay-quickstart) to:
+* Install `kubectl` and `Helm`
+* Prepare a Kubernetes cluster
+* Deploy a KubeRay operator
 
+Next, create an autoscaling RayCluster custom resource.
 ```bash
-# Optionally use kind to run the examples locally.
-# $ kind create cluster
-
-# Create the KubeRay operator. Make sure your Kubernetes cluster and Kubectl are both at version at least 1.19.
-$ kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v0.4.0&timeout=90s"
-# Create an autoscaling Ray cluster.
-$ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml
+# Create an autoscaling RayCluster custom resource.
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/release-0.5/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 Now, we can run a Ray program on the head pod that uses [``request_resources``](ref-autoscaler-sdk) to scale the cluster to a total of 3 CPUs. The head and worker pods in our [example cluster config](https://github.com/ray-project/kuberay/blob/master/ray-operator/config/samples/ray-cluster.autoscaler.yaml) each have a capacity of 1 CPU, and we specified a minimum of 1 worker pod. Thus, the request should trigger upscaling of one additional worker pod.
@@ -59,39 +58,34 @@ Note that in real-life scenarios, you will want to use larger Ray pods. In fact,
 To run the Ray program, we will first get the name of the Ray head pod:
 
 ```bash
-$ kubectl get pods --selector=ray.io/cluster=raycluster-autoscaler --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers
-# raycluster-autoscaler-head-xxxxx
+# Trigger Ray Pod upscaling
+export HEAD_POD=$(kubectl get pods --selector=ray.io/node-type=head -o custom-columns=POD:metadata.name --no-headers)
+kubectl exec $HEAD_POD -it -c ray-head -- python -c "import ray; ray.init(); ray.autoscaler.sdk.request_resources(num_cpus=4)"
 ```
 
-Then, we can run the Ray program using ``kubectl exec``:
-```bash
-$ kubectl exec raycluster-autoscaler-head-xxxxx -it -c ray-head -- python -c "import ray; ray.init(); ray.autoscaler.sdk.request_resources(num_cpus=3)"
-```
-
-The last command should have triggered Ray pod upscaling. To confirm the new worker pod is up, let's query the RayCluster's pods again:
+The last command should trigger the upscaling of the Ray pod by requesting 4 CPUs. Initially, there is one head Pod and one worker Pod, each with 1 CPU. Next, the autoscaler will create two new worker Pods to utilize the remaining 2 CPUs.
 
 ```bash
-$ kubectl get pod --selector=ray.io/cluster=raycluster-autoscaler
+kubectl get pod --selector=ray.io/cluster=raycluster-autoscaler
 # NAME                                             READY   STATUS    RESTARTS   AGE
-# raycluster-autoscaler-head-xxxxx                 2/2     Running   0          XXs
-# raycluster-autoscaler-worker-small-group-yyyyy   1/1     Running   0          XXs
-# raycluster-autoscaler-worker-small-group-zzzzz   1/1     Running   0          XXs 
+# raycluster-autoscaler-head-pnb77                 2/2     Running   0          XXs
+# raycluster-autoscaler-worker-small-group-ng2p5   1/1     Running   0          XXs
+# raycluster-autoscaler-worker-small-group-s7pv6   1/1     Running   0          XXs
+# raycluster-autoscaler-worker-small-group-tb6d9   1/1     Running   0          XXs
 ```
 
 To get a summary of your cluster's status, run `ray status` on your cluster's Ray head node.
 ```bash
-# Substitute your head pod's name in place of \"raycluster-autoscaler-head-xxxxx
-$ kubectl exec raycluster-autoscaler-head-xxxxx -it -c ray-head -- ray status
-# ======== Autoscaler status: 2022-07-21 xxxxxxxxxx ========
+kubectl exec $HEAD_POD -it -c ray-head -- ray status
+# ======== Autoscaler status: 2023-04-07 xxxxxxxxxx ========
 # ....
 ```
 
 Alternatively, to examine the full autoscaling logs, fetch the stdout of the Ray head pod's autoscaler sidecar:
 ```bash
 # This command gets the last 20 lines of autoscaler logs.
-# Substitute your head pod's name in place of \"raycluster-autoscaler-head-xxxxx
-$ kubectl logs raycluster-autoscaler-head-xxxxx -c autoscaler | tail -n 20
-# ======== Autoscaler status: 2022-07-21 xxxxxxxxxx ========
+kubectl logs $HEAD_POD -c autoscaler | tail -n 20
+# ======== Autoscaler status: 2023-04-07 xxxxxxxxxx ========
 # ...
 ```
 
@@ -120,10 +114,11 @@ Use the `RayCluster` CR's `autoscalerOptions` field to do so. The `autoscalerOpt
 carries the following subfields:
 
 **`upscalingMode`**: This controls the rate of Ray pod upscaling. The valid values are:
-    - `Conservative`: Upscaling is rate-limited; the number of pending worker pods is at most the number
+
+  - `Conservative`: Upscaling is rate-limited; the number of pending worker pods is at most the number
       of worker pods connected to the Ray cluster.
-    - `Default`: Upscaling is not rate-limited.
-    - `Aggressive`: An alias for Default; upscaling is not rate-limited.
+  - `Default`: Upscaling is not rate-limited.
+  - `Aggressive`: An alias for Default; upscaling is not rate-limited.
 
 **`idleTimeoutSeconds`** (default 60s): This is the number of seconds to wait before scaling down an idle worker pod. Worker nodes are considered idle when they hold no active tasks, actors, or referenced objects (either in-memory or spilled to disk).
 
@@ -154,7 +149,7 @@ If your `RayCluster`'s `spec.RayVersion` is at least `2.0.0`, the autoscaler wil
 For older Ray versions, the autoscaler will default to the image `rayproject/ray:2.0.0`.
 
 **`imagePullPolicy`**: This field overrides the autoscaler container's
-image pull policy. The default is `Always`.
+image pull policy. The default is `IfNotPresent`.
 
 **`env`** and **`envFrom`**: These fields specify autoscaler container
 environment variables. These fields should be formatted following the
@@ -204,6 +199,7 @@ by the following considerations:
   Ray and Autoscaler code versions. Running one autoscaler per Ray cluster and matching the code versions
   ensures compatibility.
 
+(kuberay-autoscaler-with-ray-autoscaler)=
 ### Ray Autoscaler with Kubernetes Cluster Autoscaler
 The Ray Autoscaler and the
 [Kubernetes Cluster Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/cluster-autoscaler)

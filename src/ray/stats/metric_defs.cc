@@ -232,6 +232,13 @@ DEFINE_stats(scheduler_failed_worker_startup_total,
              ("Reason"),
              (),
              ray::stats::GAUGE);
+DEFINE_stats(scheduler_placement_time_s,
+             "The time it takes for a worklod (task, actor, placement group) to "
+             "be placed. This is the time from when the tasks dependencies are "
+             "resolved to when it actually reserves resources on a node to run.",
+             ("WorkloadType"),
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
 
 /// Local Object Manager
 DEFINE_stats(
@@ -330,11 +337,12 @@ DEFINE_stats(gcs_task_manager_task_events_stored_bytes,
              ray::stats::GAUGE);
 
 /// Memory Manager
-DEFINE_stats(memory_manager_worker_eviction_total,
-             "Total worker eviction events broken per work type {Actor, Task}",
-             ("Type"),
-             (),
-             ray::stats::COUNT);
+DEFINE_stats(
+    memory_manager_worker_eviction_total,
+    "Total worker eviction events broken per work type {Actor, Task, Driver} and name.",
+    ("Type", "Name"),
+    (),
+    ray::stats::COUNT);
 }  // namespace stats
 
 }  // namespace ray

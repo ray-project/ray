@@ -1,13 +1,13 @@
-import ray
-from ray import serve
-from ray.serve.gradio_integrations import GradioServer
-
-import gradio as gr
-
 import os
 import sys
+
+import gradio as gr
 import pytest
 import requests
+
+import ray
+from ray import serve
+from ray.serve.gradio_integrations import GradioIngress, GradioServer
 
 
 @pytest.fixture
@@ -19,7 +19,8 @@ def serve_start_shutdown():
     ray.shutdown()
 
 
-def test_gradio_ingress_correctness(serve_start_shutdown):
+@pytest.mark.parametrize("use_user_defined_class", [False, True])
+def test_gradio_ingress_correctness(serve_start_shutdown, use_user_defined_class: bool):
     """
     Ensure a Gradio app deployed to a cluster through GradioIngress still
     produces the correct output.
@@ -28,9 +29,21 @@ def test_gradio_ingress_correctness(serve_start_shutdown):
     def greet(name):
         return f"Good morning {name}!"
 
-    app = GradioServer.bind(
-        lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
-    )
+    if use_user_defined_class:
+
+        @serve.deployment
+        class UserDefinedGradioServer(GradioIngress):
+            def __init__(self):
+                super().__init__(
+                    lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+                )
+
+        app = UserDefinedGradioServer.bind()
+    else:
+        app = GradioServer.bind(
+            lambda: gr.Interface(fn=greet, inputs="text", outputs="text")
+        )
+
     serve.run(app)
 
     test_input = "Alice"

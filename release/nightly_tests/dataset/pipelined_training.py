@@ -14,7 +14,7 @@ from horovod.ray import RayExecutor
 
 from ray_shuffling_data_loader.data_generation import DATA_SPEC
 from ray_shuffling_data_loader.embedding_model import MyModel, annotation, huber_loss
-from ray.data.dataset_pipeline import DatasetPipeline
+from ray.data import DatasetPipeline
 
 # Training settings
 parser = argparse.ArgumentParser(description="Dataset ingestion Example")
@@ -327,7 +327,7 @@ if __name__ == "__main__":
         ray.get(tasks)
     else:
         print("Create Ray executor")
-        settings = RayExecutor.create_settings(timeout_s=30)
+        settings = RayExecutor.create_settings(timeout_s=120)
         executor = RayExecutor(settings, num_workers=args.num_workers, use_gpu=True)
         executor.start()
         executor.run(train_main, args=[args, splits])

@@ -26,32 +26,25 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
                            const std::string &node_ip_address,
                            const std::string &event_name)
     : task_event_buffer_(task_event_buffer) {
-  rpc_profile_event_.set_job_id(worker_context.GetCurrentJobID().Binary());
-  rpc_profile_event_.set_task_id(worker_context.GetCurrentTaskID().Binary());
-  auto task_spec = worker_context.GetCurrentTask();
-  rpc_profile_event_.set_attempt_number(
-      task_spec == nullptr ? 0 : task_spec->AttemptNumber());
-
-  auto profile_events = rpc_profile_event_.mutable_profile_events();
-  profile_events->set_component_type(WorkerTypeString(worker_context.GetWorkerType()));
-  profile_events->set_component_id(worker_context.GetWorkerID().Binary());
-  profile_events->set_node_ip_address(node_ip_address);
-  auto event_entry = profile_events->add_events();
-  event_entry->set_event_name(event_name);
-
-  event_entry->set_start_time(absl::GetCurrentTimeNanos());
+  const auto &task_spec = worker_context.GetCurrentTask();
+  event_.reset(new TaskProfileEvent(worker_context.GetCurrentTaskID(),
+                                    worker_context.GetCurrentJobID(),
+                                    task_spec == nullptr ? 0 : task_spec->AttemptNumber(),
+                                    WorkerTypeString(worker_context.GetWorkerType()),
+                                    worker_context.GetWorkerID().Binary(),
+                                    node_ip_address,
+                                    event_name,
+                                    absl::GetCurrentTimeNanos()));
 }
 
 ProfileEvent::~ProfileEvent() {
-  auto &event = rpc_profile_event_.mutable_profile_events()->mutable_events()->at(0);
-  event.set_end_time(absl::GetCurrentTimeNanos());
+  event_->SetEndTime(absl::GetCurrentTimeNanos());
   // Add task event to the task event buffer
-  task_event_buffer_.AddTaskEvent(std::move(rpc_profile_event_));
+  task_event_buffer_.AddTaskEvent(std::move(event_));
 }
 
 void ProfileEvent::SetExtraData(const std::string &extra_data) {
-  auto &event = rpc_profile_event_.mutable_profile_events()->mutable_events()->at(0);
-  event.set_extra_data(extra_data);
+  event_->SetExtraData(extra_data);
 }
 
 }  // namespace worker

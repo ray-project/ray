@@ -4,8 +4,8 @@ huggingface transformers `hyperparameter_search` API.
 """
 import os
 
-import ray
 from ray import tune
+from ray.air.config import CheckpointConfig
 from ray.tune import CLIReporter
 from ray.tune.examples.pbt_transformers.utils import (
     download_data,
@@ -136,8 +136,10 @@ def tune_transformer(num_samples=8, gpus_per_trial=0, smoke_test=False):
         n_trials=num_samples,
         resources_per_trial={"cpu": 1, "gpu": gpus_per_trial},
         scheduler=scheduler,
-        keep_checkpoints_num=1,
-        checkpoint_score_attr="training_iteration",
+        checkpoint_config=CheckpointConfig(
+            num_to_keep=1,
+            checkpoint_score_attribute="training_iteration",
+        ),
         stop={"training_iteration": 1} if smoke_test else None,
         progress_reporter=reporter,
         local_dir="~/ray_results/",
@@ -153,30 +155,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--smoke-test", action="store_true", help="Finish quickly for testing"
     )
-    parser.add_argument(
-        "--ray-address",
-        type=str,
-        default=None,
-        help="Address to use for Ray. "
-        'Use "auto" for cluster. '
-        "Defaults to None for local.",
-    )
-    parser.add_argument(
-        "--server-address",
-        type=str,
-        default=None,
-        required=False,
-        help="The address of server to connect to if using Ray Client.",
-    )
-
     args, _ = parser.parse_known_args()
-
-    if args.smoke_test:
-        ray.init()
-    elif args.server_address:
-        ray.init(f"ray://{args.server_address}")
-    else:
-        ray.init(args.ray_address)
 
     if args.smoke_test:
         tune_transformer(num_samples=1, gpus_per_trial=0, smoke_test=True)

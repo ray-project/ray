@@ -10,9 +10,12 @@ Ray Serve functionality and how to integrate different modeling frameworks.
 :name: serve-tutorials
 
 serve-ml-models
-batch
+stable-diffusion
+text-classification
+object-detection
 rllib
 gradio-integration
+batch
 gradio-dag-visualization
 java
 ```

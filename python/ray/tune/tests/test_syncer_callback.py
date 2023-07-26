@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import shutil
 import tempfile
 from typing import Optional
@@ -9,9 +10,11 @@ from freezegun import freeze_time
 
 import ray.util
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
+from ray.air.constants import TRAINING_ITERATION
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.logger import NoopLogger
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.syncer import (
     DEFAULT_SYNC_PERIOD,
     SyncConfig,
@@ -22,6 +25,17 @@ from ray.tune.trainable import wrap_function
 from ray.tune.trainable.function_trainable import NULL_MARKER
 from ray.tune.utils.callback import _create_default_callbacks
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+
+
+@pytest.fixture
+def propagate_logs():
+    # Ensure that logs are propagated to ancestor handles. This is required if using the
+    # caplog fixture with Ray's logging.
+    # NOTE: This only enables log propagation in the driver process, not the workers!
+    logger = logging.getLogger("ray")
+    logger.propagate = True
+    yield
+    logger.propagate = False
 
 
 @pytest.fixture
@@ -60,13 +74,48 @@ def temp_data_dirs():
     shutil.rmtree(tmp_target)
 
 
-def assert_file(exists: bool, root: str, path: str):
-    full_path = os.path.join(root, path)
+@pytest.fixture
+def syncer_callback_test_setup(ray_start_2_cpus, temp_data_dirs):
+    """Harness that sets up a sync directory and syncs one file (level0.txt) to start.
+    This test also writes another file (level0_new.txt) and advances time such that
+    the next `on_trial_result` will happen after the `sync_period` and start a new
+    sync process.
+    """
+    tmp_source, tmp_target = temp_data_dirs
 
-    if exists:
-        assert os.path.exists(full_path)
-    else:
-        assert not os.path.exists(full_path)
+    sync_period = 60
+    with freeze_time() as frozen:
+        syncer_callback = TestSyncerCallback(
+            sync_period=sync_period, local_logdir_override=tmp_target
+        )
+
+        trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+
+        syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
+        syncer_callback.wait_for_all()
+
+        assert_file(True, tmp_target, "level0.txt")
+        assert_file(False, tmp_target, "level0_new.txt")
+
+        # Add new file to source directory
+        with open(os.path.join(tmp_source, "level0_new.txt"), "w") as f:
+            f.write("Data\n")
+
+        assert_file(False, tmp_target, "level0_new.txt")
+
+        frozen.tick(sync_period)
+
+        expected_filenames = ["level0.txt", "level0_new.txt"]
+        expected_files_after_sync = [
+            os.path.join(tmp_target, fn) for fn in expected_filenames
+        ]
+
+        yield syncer_callback, trial1, expected_files_after_sync, tmp_target
+
+
+def assert_file(exists: bool, root: str, path: str = ""):
+    full_path = Path(root) / path
+    assert exists == full_path.exists()
 
 
 class MockTrial:
@@ -76,6 +125,7 @@ class MockTrial:
         self.sync_on_checkpoint = True
 
         self.logdir = logdir
+        self.local_path = logdir
         self._local_ip = ray.util.get_node_ip_address()
         self._on_dead_node = on_dead_node
 
@@ -96,6 +146,9 @@ class TestSyncerCallback(SyncerCallback):
         super(TestSyncerCallback, self).__init__(
             enabled=enabled, sync_period=sync_period
         )
+        self._min_iter_threshold = 0
+        self._min_time_s_threshold = 0
+
         self.local_logdir_override = local_logdir_override
         self.remote_logdir_override = remote_logdir_override
 
@@ -189,10 +242,14 @@ def test_syncer_callback_op_on_no_cloud_checkpointing():
         if isinstance(cb, SyncerCallback):
             syncer_callback = cb
 
+    assert syncer_callback
+
+    syncer_callback._min_iter_threshold = 0
+    syncer_callback._min_time_s_threshold = 0
+
     trial1 = MockTrial(trial_id="a", logdir=None)
     trial1.uses_cloud_checkpointing = False
 
-    assert syncer_callback
     assert syncer_callback._enabled
     assert syncer_callback._sync_trial_dir(trial1)
 
@@ -291,81 +348,83 @@ def test_syncer_callback_sync_period(ray_start_2_cpus, temp_data_dirs):
         assert_file(True, tmp_target, "level0_new.txt")
 
 
-def test_syncer_callback_force_on_checkpoint(ray_start_2_cpus, temp_data_dirs):
-    """Check that on_checkpoint forces syncing"""
-    tmp_source, tmp_target = temp_data_dirs
+@pytest.mark.parametrize("on", ["checkpoint", "trial_complete", "experiment_end"])
+def test_syncer_callback_force_on_hooks(syncer_callback_test_setup, on):
+    """Check that on_experiment_end forces syncing before the Tune loop exits."""
+    syncer_callback, trial, filepaths, target_dir = syncer_callback_test_setup
 
-    with freeze_time() as frozen:
-        syncer_callback = TestSyncerCallback(
-            sync_period=60, local_logdir_override=tmp_target
-        )
-
-        trial1 = MockTrial(trial_id="a", logdir=tmp_source)
-
-        syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
-        syncer_callback.wait_for_all()
-
-        assert_file(True, tmp_target, "level0.txt")
-        assert_file(False, tmp_target, "level0_new.txt")
-
-        # Add new file to source directory
-        with open(os.path.join(tmp_source, "level0_new.txt"), "w") as f:
-            f.write("Data\n")
-
-        assert_file(False, tmp_target, "level0_new.txt")
-
-        frozen.tick(30)
-
-        # Should sync as checkpoint observed
+    if on == "checkpoint":
         syncer_callback.on_checkpoint(
             iteration=2,
-            trials=[],
-            trial=trial1,
+            trials=[trial],
+            trial=trial,
             checkpoint=_TrackedCheckpoint(
-                dir_or_data=tmp_target, storage_mode=CheckpointStorage.PERSISTENT
+                dir_or_data=target_dir, storage_mode=CheckpointStorage.PERSISTENT
             ),
         )
+        # `on_checkpoint` syncing is not awaited, so do this manually
         syncer_callback.wait_for_all()
+    elif on == "trial_complete":
+        syncer_callback.on_trial_complete(iteration=2, trials=[trial], trial=trial)
+        # `on_trial_complete` syncing is not awaited, so do this manually
+        syncer_callback.wait_for_all()
+    elif on == "experiment_end":
+        # We still need to launch a new sync process, for `on_experiment_end` to await
+        syncer_callback.on_trial_result(
+            iteration=2, trials=[trial], trial=trial, result={}
+        )
+        syncer_callback.on_experiment_end(trials=[trial])
 
-        assert_file(True, tmp_target, "level0.txt")
-        assert_file(True, tmp_target, "level0_new.txt")
+    # Assert that all expected files have been synced.
+    for fp in filepaths:
+        assert_file(True, fp)
 
 
-def test_syncer_callback_force_on_complete(ray_start_2_cpus, temp_data_dirs):
-    """Check that on_trial_complete forces syncing"""
+@pytest.mark.parametrize("threshold", [TRAINING_ITERATION, TIME_TOTAL_S])
+def test_syncer_callback_min_thresholds(ray_start_2_cpus, temp_data_dirs, threshold):
+    """Check that the min_iter/min_time_s thresholds are respected."""
     tmp_source, tmp_target = temp_data_dirs
 
-    with freeze_time() as frozen:
-        syncer_callback = TestSyncerCallback(
-            sync_period=60, local_logdir_override=tmp_target
-        )
+    # Keep the other metric at 0
+    other = TRAINING_ITERATION if threshold == TIME_TOTAL_S else TIME_TOTAL_S
 
-        trial1 = MockTrial(trial_id="a", logdir=tmp_source)
+    syncer_callback = TestSyncerCallback(local_logdir_override=tmp_target)
 
-        syncer_callback.on_trial_result(iteration=1, trials=[], trial=trial1, result={})
-        syncer_callback.wait_for_all()
+    syncer_callback._min_iter_threshold = 8
+    syncer_callback._min_time_s_threshold = 8
 
-        assert_file(True, tmp_target, "level0.txt")
-        assert_file(False, tmp_target, "level0_new.txt")
+    trial1 = MockTrial(trial_id="a", logdir=tmp_source)
 
-        # Add new file to source directory
-        with open(os.path.join(tmp_source, "level0_new.txt"), "w") as f:
-            f.write("Data\n")
+    syncer_callback._trial_ips[trial1.trial_id] = "invalid"
+    syncer_callback.on_trial_start(iteration=0, trials=[], trial=trial1)
 
-        assert_file(False, tmp_target, "level0_new.txt")
-
-        frozen.tick(30)
-
-        # Should sync as checkpoint observed
-        syncer_callback.on_trial_complete(
-            iteration=2,
-            trials=[],
-            trial=trial1,
+    for i in range(7):
+        syncer_callback.on_trial_result(
+            iteration=i, trials=[], trial=trial1, result={threshold: i, other: 0}
         )
         syncer_callback.wait_for_all()
+        assert_file(False, tmp_target, "level0.txt")
 
-        assert_file(True, tmp_target, "level0.txt")
-        assert_file(True, tmp_target, "level0_new.txt")
+    syncer_callback.on_trial_result(
+        iteration=8, trials=[], trial=trial1, result={threshold: 8, other: 0}
+    )
+    syncer_callback.wait_for_all()
+
+    assert_file(True, tmp_target, "level0.txt")
+    assert_file(True, tmp_target, "level0_exclude.txt")
+    assert_file(True, tmp_target, "subdir/level1.txt")
+    assert_file(True, tmp_target, "subdir/level1_exclude.txt")
+    assert_file(True, tmp_target, "subdir/nested/level2.txt")
+    assert_file(True, tmp_target, "subdir_nested_level2_exclude.txt")
+    assert_file(True, tmp_target, "subdir_exclude/something/somewhere.txt")
+
+    # Also trigger delayed syncer process removal
+    syncer_callback._remove_trial_sync_process(trial_id=trial1.trial_id)
+    assert trial1.trial_id in syncer_callback._trial_sync_processes_to_remove
+
+    # Syncing finished so syncer should be removed now
+    syncer_callback._cleanup_trial_sync_processes()
+    assert trial1.trial_id not in syncer_callback._trial_sync_processes_to_remove
 
 
 def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
@@ -391,7 +450,9 @@ def test_syncer_callback_wait_for_all_error(ray_start_2_cpus, temp_data_dirs):
         assert "At least one" in e
 
 
-def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that errors in a previous sync are logged correctly"""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
@@ -429,7 +490,9 @@ def test_syncer_callback_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
     assert_file(True, tmp_target, "level0.txt")
 
 
-def test_syncer_callback_dead_node_log_error(caplog, ray_start_2_cpus, temp_data_dirs):
+def test_syncer_callback_dead_node_log_error(
+    propagate_logs, caplog, ray_start_2_cpus, temp_data_dirs
+):
     """Check that we catch + log errors when trying syncing with a dead remote node."""
     caplog.set_level(logging.ERROR, logger="ray.tune.syncer")
 
@@ -492,6 +555,7 @@ def test_sync_directory_exclude(ray_start_2_cpus, temp_data_dirs):
         local_logdir_override=tmp_target,
     )
     syncer_callback.on_trial_complete(iteration=1, trials=[], trial=trial1)
+    syncer_callback.wait_for_all()
 
     # Regular files are synced
     assert_file(True, tmp_target, "level0.txt")

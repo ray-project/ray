@@ -30,6 +30,11 @@ ACTIONS_PER_ITERATION = 20
 
 RAY_UNIT_TEST = "RAY_UNIT_TEST" in os.environ
 
+# RAY_OVERRIDE_RESOURCES will prevent "num_cpus" from working
+# when adding a node with custom resources to Cluster.
+if "RAY_OVERRIDE_RESOURCES" in os.environ:
+    del os.environ["RAY_OVERRIDE_RESOURCES"]
+
 
 def update_progress(result):
     """
@@ -151,12 +156,10 @@ class RandomTest:
 
             new_time = time.time()
             print(
-                "Iteration {}:\n"
-                "  - Iteration time: {}.\n"
-                "  - Absolute time: {}.\n"
-                "  - Total elapsed time: {}.".format(
-                    iteration, new_time - previous_time, new_time, new_time - start_time
-                )
+                f"Iteration {iteration}:\n"
+                f"  - Iteration time: {new_time - previous_time}.\n"
+                f"  - Absolute time: {new_time}.\n"
+                f"  - Total elapsed time: {new_time - start_time}."
             )
             update_progress(
                 {

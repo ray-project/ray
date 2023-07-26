@@ -67,7 +67,7 @@ def test_ssh_command_runner():
     )
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -113,7 +113,7 @@ def test_ssh_command_runner():
         "--login",
         "-c",
         "-i",
-        """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'""",  # noqa: E501
+        """'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"quote between this \\" and this"'"'"';export var2='"'"'"123"'"'"';echo helloo)'""",  # noqa: E501
     ]
 
     # Much easier to debug this loop than the function call.
@@ -135,7 +135,7 @@ def test_docker_command_runner():
     docker_config = {"container_name": "container"}
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -152,7 +152,7 @@ def test_docker_command_runner():
     # This string is insane because there are an absurd number of embedded
     # quotes. While this is a ridiculous string, the escape behavior is
     # important and somewhat difficult to get right for environment variables.
-    cmd = """'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'true && source ~/.bashrc && export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'"""  # noqa: E501
+    cmd = """'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (docker exec -it  container /bin/bash -c '"'"'bash --login -c -i '"'"'"'"'"'"'"'"'source ~/.bashrc; export OMP_NUM_THREADS=1 PYTHONWARNINGS=ignore && (export var1='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"quote between this \\" and this"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';export var2='"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"123"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"'"';echo hello)'"'"'"'"'"'"'"'"''"'"' )'"""  # noqa: E501
 
     expected = [
         "ssh",
@@ -202,7 +202,7 @@ def test_docker_rsync():
     docker_config = {"container_name": "container"}
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -292,7 +292,7 @@ def test_rsync_exclude_and_filter():
     cluster_name = "cluster"
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -327,7 +327,7 @@ def test_rsync_without_exclude_and_filter():
     cluster_name = "cluster"
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,
@@ -368,7 +368,7 @@ def test_docker_shm_override(run_option_type):
     }
     args = {
         "log_prefix": "prefix",
-        "node_id": 0,
+        "node_id": "0",
         "provider": provider,
         "auth_config": auth_config,
         "cluster_name": cluster_name,

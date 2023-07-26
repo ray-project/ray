@@ -20,7 +20,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
-    Deprecated,
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.metrics import (
@@ -42,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 
 class CQLConfig(SACConfig):
-    """Defines a configuration class from which a CQL Trainer can be built.
+    """Defines a configuration class from which a CQL can be built.
 
     Example:
         >>> from ray.rllib.algorithms.cql import CQLConfig
@@ -50,7 +49,7 @@ class CQLConfig(SACConfig):
         >>> config = config.resources(num_gpus=0)
         >>> config = config.rollouts(num_rollout_workers=4)
         >>> print(config.to_dict())  # doctest: +SKIP
-        >>> # Build a Trainer object from the config and run 1 training iteration.
+        >>> # Build a Algorithm object from the config and run 1 training iteration.
         >>> algo = config.build(env="CartPole-v1")  # doctest: +SKIP
         >>> algo.train()  # doctest: +SKIP
     """
@@ -68,7 +67,7 @@ class CQLConfig(SACConfig):
         self.lagrangian_thresh = 5.0
         self.min_q_weight = 5.0
 
-        # Changes to Trainer's/SACConfig's default:
+        # Changes to Algorithm's/SACConfig's default:
 
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
@@ -213,20 +212,3 @@ class CQL(SAC):
 
         # Return all collected metrics for the iteration.
         return train_results
-
-
-class _deprecated_default_config(dict):
-    def __init__(self):
-        super().__init__(CQLConfig().to_dict())
-
-    @Deprecated(
-        old="ray.rllib.algorithms.cql.cql::DEFAULT_CONFIG",
-        new="ray.rllib.algorithms.cql.cql::CQLConfig(...)",
-        error=True,
-    )
-    def __getitem__(self, item):
-        return super().__getitem__(item)
-
-
-DEFAULT_CONFIG = _deprecated_default_config()
-CQL_DEFAULT_CONFIG = DEFAULT_CONFIG

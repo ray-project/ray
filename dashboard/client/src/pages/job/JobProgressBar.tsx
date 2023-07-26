@@ -1,7 +1,10 @@
-import { makeStyles } from "@material-ui/core";
+import { LinearProgress, makeStyles } from "@material-ui/core";
 import React, { useEffect, useState } from "react";
 import { UnifiedJob } from "../../type/job";
-import { AdvancedProgressBar } from "./AdvancedProgressBar";
+import {
+  AdvancedProgressBar,
+  AdvancedProgressBarProps,
+} from "./AdvancedProgressBar";
 import { useJobProgress, useJobProgressByLineage } from "./hook/useJobProgress";
 import { TaskProgressBar } from "./TaskProgressBar";
 
@@ -12,11 +15,15 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 type JobProgressBarProps = {
-  jobId: string;
+  jobId: string | undefined;
   job: Pick<UnifiedJob, "status">;
-};
+} & Pick<AdvancedProgressBarProps, "onClickLink">;
 
-export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
+export const JobProgressBar = ({
+  jobId,
+  job,
+  ...advancedProgressBarProps
+}: JobProgressBarProps) => {
   const classes = useStyles();
 
   // Controls the first time we fetch the advanced progress bar data
@@ -34,12 +41,14 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
 
   const {
     progress,
+    isLoading: progressLoading,
     driverExists,
     totalTasks,
     latestFetchTimestamp: progressTimestamp,
   } = useJobProgress(jobId, advancedProgressBarExpanded);
   const {
     progressGroups,
+    isLoading: progressGroupsLoading,
     total,
     totalTasks: advancedTotalTasks,
     latestFetchTimestamp: totalTimestamp,
@@ -51,10 +60,20 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
   if (!driverExists) {
     return <TaskProgressBar />;
   }
+
+  if (
+    progressLoading &&
+    (progressGroupsLoading || !advancedProgressBarRendered)
+  ) {
+    return <LinearProgress />;
+  }
+
   const { status } = job;
   // Use whichever data was received the most recently
   // Note these values may disagree in some way. It might better to consistently use one endpoint.
   const [totalProgress, finalTotalTasks] =
+    total === undefined ||
+    advancedTotalTasks === undefined ||
     progressTimestamp > totalTimestamp
       ? [progress, totalTasks]
       : [total, advancedTotalTasks];
@@ -75,6 +94,7 @@ export const JobProgressBar = ({ jobId, job }: JobProgressBarProps) => {
         <AdvancedProgressBar
           className={classes.advancedProgressBar}
           progressGroups={progressGroups}
+          {...advancedProgressBarProps}
         />
       )}
     </div>

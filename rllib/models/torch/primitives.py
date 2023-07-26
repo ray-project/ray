@@ -1,5 +1,7 @@
 from typing import List, Optional
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.deprecation import deprecation_warning
+from ray.util import log_once
 
 torch, nn = try_import_torch()
 
@@ -11,8 +13,8 @@ class FCNet(nn.Module):
 
     Attributes:
         input_dim: The input dimension of the network. It cannot be None.
-        output_dim: The output dimension of the network. if None, the last layer would
-            be the last hidden layer.
+        output_dim: The output dimension of the network. If None, the output_dim will
+            be the number of nodes in the last hidden layer.
         hidden_layers: The sizes of the hidden layers.
         activation: The activation function to use after each layer.
     """
@@ -24,6 +26,10 @@ class FCNet(nn.Module):
         output_dim: Optional[int] = None,
         activation: str = "linear",
     ):
+        if log_once("fc_net_torch_deprecation"):
+            deprecation_warning(
+                old="ray.rllib.models.torch.fcnet.FCNet",
+            )
         super().__init__()
         self.input_dim = input_dim
         self.hidden_layers = hidden_layers

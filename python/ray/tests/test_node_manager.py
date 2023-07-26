@@ -1,4 +1,5 @@
 import ray
+from ray.util.state import list_workers
 from ray._private.test_utils import (
     get_load_metrics_report,
     run_string_as_driver,
@@ -8,6 +9,11 @@ from ray._private.test_utils import (
 )
 import pytest
 import os
+from ray.util.state import list_objects
+import subprocess
+from ray._private.utils import get_num_cpus
+import time
+import sys
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue
@@ -219,6 +225,79 @@ ray.get(A.options(num_cpus=123, name="det", lifetime="detached").remote())
     det_actor = ray.get_actor("det")
 
     ray.get(det_actor.fn.remote())
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_reference_global_import_does_not_leak_worker_upon_driver_exit(call_ray_start):
+    driver = """
+import ray
+import numpy as np
+import tensorflow
+
+def leak_repro(obj):
+    tensorflow
+    return []
+
+ds = ray.data.from_numpy(np.ones((100_000)))
+ds.map(leak_repro, max_retries=0)
+  """
+    try:
+        run_string_as_driver(driver)
+    except subprocess.CalledProcessError:
+        pass
+
+    ray.init(address=call_ray_start)
+
+    def no_object_leaks():
+        objects = list_objects(_explain=True, timeout=3)
+        return len(objects) == 0
+
+    wait_for_condition(no_object_leaks, timeout=10, retry_interval_ms=1000)
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="subprocess command only works for unix"
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head --system-config={"enable_worker_prestart":true}"""],
+    indirect=True,
+)
+def test_worker_prestart_on_node_manager_start(call_ray_start, shutdown_only):
+    def num_idle_workers(count):
+        result = subprocess.check_output(
+            "ps aux | grep ray::IDLE | grep -v grep",
+            shell=True,
+        )
+        return len(result.splitlines()) == count
+
+    wait_for_condition(num_idle_workers, count=get_num_cpus())
+
+    with ray.init():
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == get_num_cpus(), workers
+            time.sleep(1)
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["""ray start --head"""],
+    indirect=True,
+)
+def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
+    with ray.init():
+        workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+        assert len(workers) == get_num_cpus(), workers
+    with ray.init():
+        for _ in range(5):
+            workers = list_workers(filters=[("worker_type", "=", "WORKER")])
+            assert len(workers) == get_num_cpus(), workers
+            time.sleep(1)
 
 
 if __name__ == "__main__":

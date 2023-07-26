@@ -18,17 +18,17 @@ def gen_dataset_1():
 
 @ray.remote
 def gen_dataset_2():
-    return ray.data.range_table(1000)
+    return ray.data.range(1000)
 
 
 @ray.remote
 def transform_dataset(in_data):
-    return in_data.map(lambda x: x * 2)
+    return in_data.map(lambda x: {"id": x["id"] * 2})
 
 
 @ray.remote
 def transform_dataset_1(in_data):
-    return in_data.map(lambda r: {"v2": r["value"] * 2})
+    return in_data.map(lambda r: {"v2": r["id"] * 2})
 
 
 @ray.remote
@@ -36,6 +36,15 @@ def sum_dataset(ds):
     return ds.sum()
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared",
+    [
+        {
+            "num_cpus": 2,  # increase CPUs schedule dataset tasks
+        }
+    ],
+    indirect=True,
+)
 def test_dataset(workflow_start_regular_shared):
     ds_ref = gen_dataset.bind()
     transformed_ref = transform_dataset.bind(ds_ref)
@@ -45,6 +54,15 @@ def test_dataset(workflow_start_regular_shared):
     assert result == 2 * sum(range(1000))
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared",
+    [
+        {
+            "num_cpus": 2,  # increase CPUs schedule dataset tasks
+        }
+    ],
+    indirect=True,
+)
 def test_dataset_1(workflow_start_regular_shared):
     ds_ref = gen_dataset_1.bind()
     transformed_ref = transform_dataset.bind(ds_ref)
@@ -54,6 +72,15 @@ def test_dataset_1(workflow_start_regular_shared):
     assert result == 2 * sum(range(1000))
 
 
+@pytest.mark.parametrize(
+    "workflow_start_regular_shared",
+    [
+        {
+            "num_cpus": 2,  # increase CPUs schedule dataset tasks
+        }
+    ],
+    indirect=True,
+)
 def test_dataset_2(workflow_start_regular_shared):
     ds_ref = gen_dataset_2.bind()
     transformed_ref = transform_dataset_1.bind(ds_ref)

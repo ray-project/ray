@@ -1,4 +1,5 @@
 import abc
+import urllib.parse
 from functools import partial
 import threading
 from typing import (
@@ -9,6 +10,7 @@ from typing import (
     TYPE_CHECKING,
     Union,
     Optional,
+    Set,
     Tuple,
 )
 
@@ -17,7 +19,18 @@ import os
 import time
 from dataclasses import dataclass
 
+try:
+    import fsspec
+except Exception:
+    fsspec = None
+
+try:
+    import s3fs
+except Exception:
+    s3fs = None
+
 import ray
+from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air._internal.remote_storage import (
     fs_hint,
@@ -26,10 +39,13 @@ from ray.air._internal.remote_storage import (
     delete_at_uri,
     is_non_local_path_uri,
 )
+from ray.air.constants import LAZY_CHECKPOINT_MARKER_FILE, TRAINING_ITERATION
 from ray.exceptions import RayActorError
 from ray.tune import TuneError
 from ray.tune.callback import Callback
+from ray.tune.result import TIME_TOTAL_S
 from ray.tune.utils.file_transfer import sync_dir_between_nodes
+from ray.util import log_once
 from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
@@ -44,11 +60,18 @@ DEFAULT_SYNC_PERIOD = 300
 # Default sync timeout after which syncing processes are aborted
 DEFAULT_SYNC_TIMEOUT = 1800
 
+# Trigger first node-to-node sync only after this many iterations arrived
+_DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD = 2
+# ... or until at least this much time (in seconds) passed
+_DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD = 10.0
+
+
 _EXCLUDE_FROM_SYNC = [
     "./checkpoint_-00001",
     "./checkpoint_tmp*",
     "./save_to_object*",
     "./rank_*",
+    f"./{LAZY_CHECKPOINT_MARKER_FILE}",
 ]
 
 
@@ -73,6 +96,8 @@ class SyncConfig:
     (2) Workers directly syncing trial checkpoints to the cloud
     (3) Workers syncing their trial directories to the head node
         (this is the default option when no cloud storage is used)
+    (4) Workers syncing artifacts (which include all files saved in the trial directory
+        *except* for checkpoints) directly to the cloud.
 
     See :ref:`tune-storage-options` for more details and examples.
 
@@ -99,6 +124,10 @@ class SyncConfig:
             so that experiment execution can continue and the syncs can be retried.
             Defaults to 30 minutes.
             **Note**: Currently, this timeout only affects cloud syncing: (1) and (2).
+        sync_artifacts: Whether or not to sync artifacts that are saved to the
+            trial directory (accessed via `session.get_trial_dir()`) to the cloud.
+            Artifact syncing happens at the same frequency as trial checkpoint syncing.
+            **Note**: This is scenario (4).
         sync_on_checkpoint: If *True*, a sync from a worker's remote trial directory
             to the head node will be forced on every trial checkpoint, regardless
             of the ``sync_period``.
@@ -111,6 +140,7 @@ class SyncConfig:
     syncer: Optional[Union[str, "Syncer"]] = "auto"
     sync_period: int = DEFAULT_SYNC_PERIOD
     sync_timeout: int = DEFAULT_SYNC_TIMEOUT
+    sync_artifacts: bool = True
 
     sync_on_checkpoint: bool = True
 
@@ -121,8 +151,6 @@ class SyncConfig:
                 "disables syncing. Either remove the `upload_dir`, "
                 "or set `syncer` to 'auto' or a custom syncer."
             )
-        if not self.upload_dir and isinstance(self.syncer, Syncer):
-            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
 
     def _repr_html_(self) -> str:
         """Generate an HTML representation of the SyncConfig.
@@ -130,14 +158,6 @@ class SyncConfig:
         Note that self.syncer is omitted here; seems to have some overlap
         with existing configuration settings here in the SyncConfig class.
         """
-        try:
-            from tabulate import tabulate
-        except ImportError:
-            return (
-                "Tabulate isn't installed. Run "
-                "`pip install tabulate` for rich notebook output."
-            )
-
         return Template("scrollableTable.html.j2").render(
             table=tabulate(
                 {
@@ -159,19 +179,59 @@ class SyncConfig:
             max_height="none",
         )
 
-    def validate_upload_dir(self) -> bool:
+    def validate_upload_dir(self, upload_dir: Optional[str] = None) -> bool:
         """Checks if ``upload_dir`` is supported by ``syncer``.
 
         Returns True if ``upload_dir`` is valid, otherwise raises
         ``ValueError``.
 
+        The ``upload_dir`` attribute of ``SyncConfig`` is depreacted and will be
+        removed in the futures. This method also accepts a ``upload_dir`` argument
+        that will be checked for validity instead, if set.
+
         Args:
             upload_dir: Path to validate.
+
         """
+        upload_dir = upload_dir or self.upload_dir
+        if upload_dir and self.syncer is None:
+            raise ValueError(
+                "`upload_dir` enables syncing to cloud storage, but `syncer=None` "
+                "disables syncing. Either remove the `upload_dir`, "
+                "or set `syncer` to 'auto' or a custom syncer."
+            )
+        if not upload_dir and isinstance(self.syncer, Syncer):
+            raise ValueError("Must specify an `upload_dir` to use a custom `syncer`.")
+
+        parsed = urllib.parse.urlparse(upload_dir)
+        # Todo: Only warn for pyarrow versions that are affected by
+        # https://github.com/apache/arrow/issues/32372#issuecomment-1421097792
+        if (
+            parsed.scheme
+            and not s3fs
+            and parsed.scheme.startswith("s3")
+            and log_once("fsspec_missing")
+        ):
+            logger.warning(
+                "You are using S3 for remote storage, but you don't have `s3fs` "
+                "installed. Due to a bug in PyArrow, this can lead to significant "
+                "slowdowns. To avoid this, install s3fs with "
+                "`pip install fsspec s3fs`."
+            )
+        elif not fsspec and log_once("fsspec_missing"):
+            logger.warning(
+                "You are using remote storage, but you don't have `fsspec` "
+                "installed. This can lead to inefficient syncing behavior. "
+                "To avoid this, install fsspec with "
+                "`pip install fsspec`. Depending on your remote storage provider, "
+                "consider installing the respective fsspec-package "
+                "(see https://github.com/fsspec)."
+            )
+
         if isinstance(self.syncer, Syncer):
-            return self.syncer.validate_upload_dir(self.upload_dir)
+            return self.syncer.validate_upload_dir(upload_dir or self.upload_dir)
         else:
-            return Syncer.validate_upload_dir(self.upload_dir)
+            return Syncer.validate_upload_dir(upload_dir or self.upload_dir)
 
 
 class _BackgroundProcess:
@@ -210,7 +270,7 @@ class _BackgroundProcess:
         self._start_time = time.time()
 
     def wait(self, timeout: Optional[float] = None) -> Any:
-        """Waits for the backgrond process to finish running. Waits until the
+        """Waits for the background process to finish running. Waits until the
         background process has run for at least `timeout` seconds, counting from
         the time when the process was started."""
         if not self._process:
@@ -399,7 +459,7 @@ class Syncer(abc.ABC):
     def wait_or_retry(self, max_retries: int = 3, backoff_s: int = 5):
         assert max_retries > 0
         last_error = None
-        for _ in range(max_retries - 1):
+        for _ in range(max_retries):
             try:
                 self.wait()
             except Exception as e:
@@ -592,12 +652,14 @@ class _DefaultSyncer(_BackgroundSyncer):
 
 
 @DeveloperAPI
-def get_node_to_storage_syncer(sync_config: SyncConfig) -> Optional[Syncer]:
+def get_node_to_storage_syncer(
+    sync_config: SyncConfig, upload_dir: Optional[str] = None
+) -> Optional[Syncer]:
     """"""
     if sync_config.syncer is None:
         return None
 
-    if not sync_config.upload_dir:
+    if not sync_config.upload_dir and not upload_dir:
         return None
 
     if sync_config.syncer == "auto":
@@ -623,10 +685,39 @@ class SyncerCallback(Callback):
 
     def __init__(self, enabled: bool = True, sync_period: float = DEFAULT_SYNC_PERIOD):
         self._enabled = enabled
+
+        # Map from trial id to syncer process
         self._sync_processes: Dict[str, _BackgroundProcess] = {}
+
+        # Last time we synced a trial
         self._sync_times: Dict[str, float] = {}
+
+        # How often we should sync (in seconds)
         self._sync_period = sync_period
-        self._trial_ips = {}
+
+        # Map of trial id to IP
+        self._trial_ips: Dict[str, str] = {}
+
+        # Set of sync processes that are flagged to remove
+        self._trial_sync_processes_to_remove: Set[str] = set()
+
+        # Recorded training iterations + training times
+        self._trial_iter_training_times: Dict[str, Tuple[int, float]] = {}
+
+        # Only sync if this many items OR this much time has passed
+        # for each individual trial.
+        self._min_iter_threshold = int(
+            os.environ.get(
+                "TUNE_NODE_SYNCING_MIN_ITER_THRESHOLD",
+                _DEFAULT_NODE_SYNCING_MIN_ITER_THRESHOLD,
+            )
+        )
+        self._min_time_s_threshold = float(
+            os.environ.get(
+                "TUNE_NODE_SYNCING_MIN_TIME_S_THRESHOLD",
+                _DEFAULT_NODE_SYNCING_MIN_TIME_S_THRESHOLD,
+            )
+        )
 
     def _get_trial_sync_process(self, trial: "Trial"):
         return self._sync_processes.setdefault(
@@ -634,21 +725,56 @@ class SyncerCallback(Callback):
             _BackgroundProcess(partial(sync_dir_between_nodes, max_size_bytes=None)),
         )
 
-    def _remove_trial_sync_process(self, trial: "Trial"):
-        self._sync_processes.pop(trial.trial_id, None)
+    def _remove_trial_sync_process(self, trial_id: str, force: bool = False):
+        """Remove trial sync process.
+
+        If ``force=True``, we remove it immediately. If ``force=False``, we flag
+        it for removal and only remove it when it resolved. This is so we can await
+        the sync process at the end of the experiment.
+        """
+        if force:
+            self._sync_processes.pop(trial_id, None)
+        else:
+            self._trial_sync_processes_to_remove.add(trial_id)
+
+    def _cleanup_trial_sync_processes(self):
+        for trial_id in list(self._trial_sync_processes_to_remove):
+            sync_process = self._sync_processes.get(trial_id, None)
+            if not sync_process or not sync_process.is_running:
+                self._trial_sync_processes_to_remove.remove(trial_id)
+                self._sync_processes.pop(trial_id, None)
 
     def _should_sync(self, trial: "Trial"):
+        iteration, time_trained = self._trial_iter_training_times.setdefault(
+            trial.trial_id, (0, 0.0)
+        )
+
+        # If neither the min iter nor the min time threshold were met, we don't sync.
+        # This is to avoid eager syncing when we have many short running trials -
+        # in that case we only want to sync once at the end of training. For longer
+        # running trials the threshold is usually small enough to not make a difference
+        # in practice.
+        if (
+            iteration < self._min_iter_threshold
+            and time_trained < self._min_time_s_threshold
+        ):
+            return False
+
         last_sync_time = self._sync_times.setdefault(trial.trial_id, float("-inf"))
-        return time.time() - last_sync_time >= self._sync_period
+
+        if time.time() - last_sync_time < self._sync_period:
+            return False
+
+        return True
 
     def _mark_as_synced(self, trial: "Trial"):
         self._sync_times[trial.trial_id] = time.time()
 
     def _local_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _remote_trial_logdir(self, trial: "Trial"):
-        return trial.logdir
+        return trial.local_path
 
     def _sync_trial_dir(
         self, trial: "Trial", force: bool = False, wait: bool = True
@@ -723,20 +849,27 @@ class SyncerCallback(Callback):
         result: Dict,
         **info,
     ):
+        # If the results are not found, default to triggering syncing
+        trial_iter = result.get(TRAINING_ITERATION, self._min_iter_threshold)
+        trial_time_s = result.get(TIME_TOTAL_S, self._min_time_s_threshold)
+
+        self._trial_iter_training_times[trial.trial_id] = (trial_iter, trial_time_s)
         self._sync_trial_dir(trial, force=False, wait=False)
 
     def on_trial_complete(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
-        self._sync_trial_dir(trial, force=True, wait=True)
-        self._remove_trial_sync_process(trial)
+        self._sync_trial_dir(trial, force=True, wait=False)
+        self._remove_trial_sync_process(trial.trial_id, force=False)
         self._trial_ips.pop(trial.trial_id, None)
+        self._cleanup_trial_sync_processes()
 
     def on_trial_error(
         self, iteration: int, trials: List["Trial"], trial: "Trial", **info
     ):
-        self._remove_trial_sync_process(trial)
+        self._remove_trial_sync_process(trial.trial_id, force=True)
         self._trial_ips.pop(trial.trial_id, None)
+        self._cleanup_trial_sync_processes()
 
     def on_checkpoint(
         self,
@@ -758,12 +891,21 @@ class SyncerCallback(Callback):
             )
 
     def wait_for_all(self):
+        # Remove any sync processes as needed, and only wait on the remaining ones.
+        self._cleanup_trial_sync_processes()
+
         failed_syncs = {}
-        for trial, sync_process in self._sync_processes.items():
+        for trial_id, sync_process in self._sync_processes.items():
             try:
                 sync_process.wait()
             except Exception as e:
-                failed_syncs[trial] = e
+                failed_syncs[trial_id] = e
+
+            # Queue this sync process for removal
+            self._remove_trial_sync_process(trial_id, force=False)
+
+        # Remove the awaited processes
+        self._cleanup_trial_sync_processes()
 
         if failed_syncs:
             sync_str = "\n".join(
@@ -773,6 +915,13 @@ class SyncerCallback(Callback):
                 f"At least one trial failed to sync down when waiting for all "
                 f"trials to sync: \n{sync_str}"
             )
+
+    def on_experiment_end(self, trials: List["Trial"], **info):
+        """Wait for background sync processes to finish on experiment end."""
+        try:
+            self.wait_for_all()
+        except TuneError as e:
+            logger.error(e)
 
     def __getstate__(self):
         state = self.__dict__.copy()

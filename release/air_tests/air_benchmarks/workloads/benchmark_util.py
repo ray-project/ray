@@ -4,7 +4,7 @@ import subprocess
 from collections import defaultdict
 from contextlib import closing
 from pathlib import Path
-from python.ray.air.util.node import _force_on_node
+from ray.air.util.node import _force_on_node
 
 import ray
 from typing import Any, List, Dict, Union, Callable

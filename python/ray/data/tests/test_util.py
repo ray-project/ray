@@ -1,13 +1,13 @@
-import pytest
-import ray
 import numpy as np
+import pytest
 
-from ray.data._internal.util import _check_pyarrow_version
+import ray
 from ray.data._internal.memory_tracing import (
+    leak_report,
     trace_allocation,
     trace_deallocation,
-    leak_report,
 )
+from ray.data._internal.util import _check_pyarrow_version, _split_list
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
 
@@ -43,7 +43,7 @@ def test_check_pyarrow_version_supported():
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_memory_tracing(enabled):
-    ctx = ray.data.context.DatasetContext.get_current()
+    ctx = ray.data.context.DataContext.get_current()
     ctx.trace_allocations = enabled
     ref1 = ray.put(np.zeros(1024 * 1024))
     ref2 = ray.put(np.zeros(1024 * 1024))
@@ -70,6 +70,21 @@ def test_memory_tracing(enabled):
         assert "test3" not in report, report
         assert "test4" not in report, report
         assert "test5" not in report, report
+
+
+def test_list_splits():
+    with pytest.raises(AssertionError):
+        _split_list(list(range(5)), 0)
+
+    with pytest.raises(AssertionError):
+        _split_list(list(range(5)), -1)
+
+    assert _split_list(list(range(5)), 7) == [[0], [1], [2], [3], [4], [], []]
+    assert _split_list(list(range(5)), 2) == [[0, 1, 2], [3, 4]]
+    assert _split_list(list(range(6)), 2) == [[0, 1, 2], [3, 4, 5]]
+    assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
+    assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
+    assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
 
 
 if __name__ == "__main__":

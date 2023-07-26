@@ -1,3 +1,4 @@
+import signal
 import json
 import os
 import pathlib
@@ -7,9 +8,11 @@ import requests
 from pprint import pformat
 from unittest.mock import MagicMock
 
+import numpy as np
 import pytest
 
 import ray
+from ray.util.state import list_nodes
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
 from ray._private.test_utils import (
@@ -51,7 +54,6 @@ _METRICS = [
     "ray_object_directory_lookups",
     "ray_object_directory_added_locations",
     "ray_object_directory_removed_locations",
-    "ray_process_startup_time_ms_sum",
     "ray_internal_num_processes_started",
     "ray_internal_num_spilled_tasks",
     # "ray_unintentional_worker_failures_total",
@@ -144,6 +146,11 @@ _NODE_METRICS = [
     "ray_node_network_send_speed",
     "ray_node_network_receive_speed",
 ]
+
+
+if sys.platform == "linux" or sys.platform == "linux2":
+    _NODE_METRICS.append("ray_node_mem_shared_bytes")
+
 
 _NODE_COMPONENT_METRICS = [
     "ray_component_cpu_percentage",
@@ -382,7 +389,7 @@ def test_metrics_export_node_metrics(shutdown_only):
     def verify_dashboard_metrics():
         avail_metrics = fetch_prometheus_metrics([dashboard_export_addr])
         # Run list nodes to trigger dashboard API.
-        ray.experimental.state.api.list_nodes()
+        list_nodes()
 
         # Verify metrics exist.
         avail_metrics = avail_metrics
@@ -439,24 +446,33 @@ def test_per_func_name_stats(shutdown_only):
     # Test operation stats are available when flag is on.
     comp_metrics = [
         "ray_component_cpu_percentage",
+        "ray_component_rss_mb",
     ]
     if sys.platform == "linux" or sys.platform == "linux2":
         # Uss only available from Linux
         comp_metrics.append("ray_component_uss_mb")
-    addr = ray.init()
+        comp_metrics.append("ray_component_mem_shared_bytes")
+    addr = ray.init(num_cpus=2)
 
     @ray.remote
     class Actor:
-        pass
+        def __init__(self):
+            self.arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            self.shared_arr = ray.put(np.random.rand(5 * 1024 * 1024))
+
+        def pid(self):
+            return os.getpid()
 
     @ray.remote
     class ActorB:
-        pass
+        def __init__(self):
+            self.arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+            self.shared_arr = ray.put(np.random.rand(5 * 1024 * 1024))
 
     a = Actor.remote()  # noqa
     b = ActorB.remote()
 
-    def verify():
+    def verify_components():
         metrics = raw_metrics(addr)
         metric_names = set(metrics.keys())
         for metric in comp_metrics:
@@ -474,22 +490,43 @@ def test_per_func_name_stats(shutdown_only):
         } == components
         return True
 
-    wait_for_condition(verify, timeout=30)
+    wait_for_condition(verify_components, timeout=30)
 
-    # Verify ActorB is reported as value 0 because it is killed.
-    ray.kill(b)
-
-    def verify():
+    def verify_mem_usage():
         metrics = raw_metrics(addr)
         for metric in comp_metrics:
             samples = metrics[metric]
             for sample in samples:
                 if sample.labels["Component"] == "ray::ActorB":
-                    print("abc")
+                    assert sample.value > 0.0
+                    print(sample)
+                    print(sample.value)
+                if sample.labels["Component"] == "ray::Actor":
+                    assert sample.value > 0.0
+                    print(sample)
+                    print(sample.value)
+        return True
+
+    wait_for_condition(verify_mem_usage, timeout=30)
+
+    # Verify ActorB is reported as value 0 because it is killed.
+    ray.kill(b)
+    # Kill Actor by sigkill, which happens upon OOM.
+    pid = ray.get(a.pid.remote())
+    os.kill(pid, signal.SIGKILL)
+
+    def verify_mem_cleaned():
+        metrics = raw_metrics(addr)
+        for metric in comp_metrics:
+            samples = metrics[metric]
+            for sample in samples:
+                if sample.labels["Component"] == "ray::ActorB":
+                    assert sample.value == 0.0
+                if sample.labels["Component"] == "ray::Actor":
                     assert sample.value == 0.0
         return True
 
-    wait_for_condition(verify, timeout=30)
+    wait_for_condition(verify_mem_cleaned, timeout=30)
 
 
 def test_prometheus_file_based_service_discovery(ray_start_cluster):

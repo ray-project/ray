@@ -4,8 +4,6 @@ from collections import Counter
 from functools import reduce
 from typing import Dict, List
 
-import numpy as np
-
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
     AUTOSCALER_MAX_RESOURCE_DEMAND_VECTOR_SIZE,
@@ -194,8 +192,8 @@ class LoadMetrics:
 
         Example:
             >>> from ray.autoscaler._private.load_metrics import LoadMetrics
-            >>> metrics = LoadMetrics(...) # doctest: +SKIP
-            >>> metrics.get_static_node_resources_by_ip()
+            >>> metrics = LoadMetrics(...)  # doctest: +SKIP
+            >>> metrics.get_static_node_resources_by_ip()  # doctest: +SKIP
             {127.0.0.1: {"CPU": 1}, 127.0.0.2: {"CPU": 4, "GPU": 8}}
         """
         return self.static_resources_by_ip
@@ -383,14 +381,16 @@ class LoadMetrics:
                 ]
             ),
             "NodeIdleSeconds": "Min={} Mean={} Max={}".format(
-                int(np.min(idle_times)) if idle_times else -1,
-                int(np.mean(idle_times)) if idle_times else -1,
-                int(np.max(idle_times)) if idle_times else -1,
+                int(min(idle_times)) if idle_times else -1,
+                int(float(sum(idle_times)) / len(idle_times)) if idle_times else -1,
+                int(max(idle_times)) if idle_times else -1,
             ),
             "TimeSinceLastHeartbeat": "Min={} Mean={} Max={}".format(
-                int(np.min(heartbeat_times)) if heartbeat_times else -1,
-                int(np.mean(heartbeat_times)) if heartbeat_times else -1,
-                int(np.max(heartbeat_times)) if heartbeat_times else -1,
+                int(min(heartbeat_times)) if heartbeat_times else -1,
+                int(float(sum(heartbeat_times)) / len(heartbeat_times))
+                if heartbeat_times
+                else -1,
+                int(max(heartbeat_times)) if heartbeat_times else -1,
             ),
             "MostDelayedHeartbeats": most_delayed_heartbeats,
         }

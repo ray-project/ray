@@ -1,21 +1,21 @@
-from typing import List, Optional, Callable, Iterator, Dict, Any
+from typing import Any, Callable, Dict, Iterator, List, Optional
 
 import ray
-from ray.data.block import Block
+from ray._raylet import ObjectRefGenerator
 from ray.data._internal.execution.interfaces import (
-    RefBundle,
     ExecutionResources,
     PhysicalOperator,
+    RefBundle,
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
     MapOperator,
-    _TaskState,
     _map_task,
+    _TaskState,
 )
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.block import Block
 from ray.types import ObjectRef
-from ray._raylet import ObjectRefGenerator
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -52,9 +52,9 @@ class TaskPoolMapOperator(MapOperator):
         map_task = cached_remote_fn(_map_task, num_returns="dynamic")
         input_blocks = [block for block, _ in bundle.blocks]
         ctx = TaskContext(task_idx=self._next_task_idx)
-        ref = map_task.options(**self._ray_remote_args).remote(
-            self._transform_fn_ref, ctx, *input_blocks
-        )
+        ref = map_task.options(
+            **self._get_runtime_ray_remote_args(input_bundle=bundle), name=self.name
+        ).remote(self._transform_fn_ref, ctx, *input_blocks)
         self._next_task_idx += 1
         task = _TaskState(bundle)
         self._tasks[ref] = task

@@ -121,7 +121,7 @@ class TensorflowPredictor(DLPredictor):
 
         Example:
 
-            .. code-block:: python
+            .. testcode::
 
                 # List outputs are not supported by default TensorflowPredictor.
                 def build_model() -> tf.keras.Model:
@@ -137,7 +137,10 @@ class TensorflowPredictor(DLPredictor):
                             str(i): model_output[i] for i in range(len(model_output))
                         }
 
-                predictor = CustomPredictor(model_definition=build_model)
+                import numpy as np
+                data_batch = np.array([[0.5], [0.6], [0.7]], dtype=np.float32)
+
+                predictor = CustomPredictor(model=build_model())
                 predictions = predictor.predict(data_batch)
 
         Args:
@@ -225,9 +228,9 @@ class TensorflowPredictor(DLPredictor):
     def _arrays_to_tensors(
         self,
         numpy_arrays: Union[np.ndarray, Dict[str, np.ndarray]],
-        dtypes: Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]],
+        dtype: Optional[Union[tf.dtypes.DType, Dict[str, tf.dtypes.DType]]],
     ) -> Union[tf.Tensor, Dict[str, tf.Tensor]]:
-        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtypes)
+        return convert_ndarray_batch_to_tf_tensor_batch(numpy_arrays, dtypes=dtype)
 
     def _tensor_to_array(self, tensor: tf.Tensor) -> np.ndarray:
         if not isinstance(tensor, tf.Tensor):

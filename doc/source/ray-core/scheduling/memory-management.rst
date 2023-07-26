@@ -5,6 +5,8 @@ Memory Management
 
 This page describes how memory management works in Ray.
 
+Also view :ref:`Debugging Out of Memory <troubleshooting-out-of-memory>` to learn how to troubleshoot out-of-memory issues.
+
 Concepts
 ~~~~~~~~
 
@@ -21,7 +23,7 @@ Ray system memory: this is memory used internally by Ray
 
 Application memory: this is memory used by your application
   - **Worker heap**: memory used by your application (e.g., in Python code or TensorFlow), best measured as the *resident set size (RSS)* of your application minus its *shared memory usage (SHR)* in commands such as ``top``. The reason you need to subtract *SHR* is that object store shared memory is reported by the OS as shared with each worker. Not subtracting *SHR* will result in double counting memory usage.
-  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when returning values from remote functions. Objects are reference counted and evicted when they fall out of scope. There is an object store server running on each node. In Ray 1.3+, objects will be :ref:`spilled to disk <object-spilling>` if the object store fills up.
+  - **Object store memory**: memory used when your application creates objects in the object store via ``ray.put`` and when it returns values from remote functions. Objects are reference counted and evicted when they fall out of scope. An object store server runs on each node. By default, when starting an instance, Ray reserves 30% of available memory. The size of the object store can be controlled by `--object-store-memory <https://docs.ray.io/en/master/cluster/cli.html#cmdoption-ray-start-object-store-memory>`_. The memory is by default allocated to ``/dev/shm`` (shared memory) for Linux. For MacOS, Ray uses ``/tmp`` (disk), which can impact the performance compared to Linux. In Ray 1.3+, objects are :ref:`spilled to disk <object-spilling>` if the object store fills up.
   - **Object store shared memory**: memory used when your application reads objects via ``ray.get``. Note that if an object is already present on the node, this does not cause additional allocations. This allows large objects to be efficiently shared among many actors and tasks.
 
 ObjectRef Reference Counting
@@ -46,29 +48,29 @@ Running ``ray memory`` from the command line while a Ray application is running 
 
   --- Summary for node address: 192.168.0.15 ---
   Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
-  287 MiB              4                 0             0              1                    0            
+  287 MiB              4                 0             0              1                    0
 
   --- Object references for node address: 192.168.0.15 ---
-  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site
   192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (put object)
                                                                                                                     | test.py:
-                                                                                                                    <module>:17           
+                                                                                                                    <module>:17
 
   192.168.0.15  6465   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (task call)
                                                                                                                     | test.py:
-                                                                                                                    :<module>:18          
+                                                                                                                    :<module>:18
 
   192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000002000000  18 MiB  CAPTURED_IN_OBJECT  (put object)  |
                                                                                                                      test.py:
-                                                                                                                    <module>:19           
+                                                                                                                    <module>:19
 
   192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000004000000  21 MiB  LOCAL_REFERENCE     (put object)  |
                                                                                                                      test.py:
-                                                                                                                    <module>:20           
+                                                                                                                    <module>:20
 
   192.168.0.15  6465   Driver  ffffffffffffffffffffffffffffffffffffffff0100000003000000  218 MiB  LOCAL_REFERENCE     (put object)  |
                                                                                                                     test.py:
-                                                                                                                    <module>:20           
+                                                                                                                    <module>:20
 
   --- Aggregate object store stats across all nodes ---
   Plasma memory usage 0 MiB, 4 objects, 0.0% full
@@ -76,13 +78,15 @@ Running ``ray memory`` from the command line while a Ray application is running 
 
 Each entry in this output corresponds to an ``ObjectRef`` that's currently pinning an object in the object store along with where the reference is (in the driver, in a worker, etc.), what type of reference it is (see below for details on the types of references), the size of the object in bytes, the process ID and IP address where the object was instantiated, and where in the application the reference was created.
 
-``ray memory`` comes with features to make the memory debugging experience more effective. For example, you can add arguments ``sort-by=OBJECT_SIZE`` and ``group-by=STACK_TRACE``, which may be particularly helpful for tracking down the line of code where a memory leak occurs. You can see the full suite of options by running ``ray memory --help``.  
+``ray memory`` comes with features to make the memory debugging experience more effective. For example, you can add arguments ``sort-by=OBJECT_SIZE`` and ``group-by=STACK_TRACE``, which may be particularly helpful for tracking down the line of code where a memory leak occurs. You can see the full suite of options by running ``ray memory --help``.
 
 There are five types of references that can keep an object pinned:
 
 **1. Local ObjectRef references**
 
-.. code-block:: python
+.. testcode::
+
+  import ray
 
   @ray.remote
   def f(arg):
@@ -97,13 +101,13 @@ In this example, we create references to two objects: one that is ``ray.put()`` 
 
   --- Summary for node address: 192.168.0.15 ---
   Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
-  30 MiB               2                 0             0              0                    0            
+  30 MiB               2                 0             0              0                    0
 
   --- Object references for node address: 192.168.0.15 ---
-  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site
   192.168.0.15  6867   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (put object)  |
                                                                                                                     test.py:
-                                                                                                                    <module>:12           
+                                                                                                                    <module>:12
 
   192.168.0.15  6867   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  15 MiB  LOCAL_REFERENCE     (task call)
                                                                                                                     | test.py:
@@ -113,7 +117,7 @@ In the output from ``ray memory``, we can see that each of these is marked as a 
 
 **2. Objects pinned in memory**
 
-.. code-block:: python
+.. testcode::
 
   import numpy as np
 
@@ -127,10 +131,10 @@ In this example, we create a ``numpy`` array and then store it in the object sto
 
   --- Summary for node address: 192.168.0.15 ---
   Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
-  243 MiB              0                 1             0              0                    0            
+  243 MiB              0                 1             0              0                    0
 
   --- Object references for node address: 192.168.0.15 ---
-  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site
   192.168.0.15  7066   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  243 MiB  PINNED_IN_MEMORY   test.
                                                                                                                     py:<module>:19
 
@@ -138,7 +142,7 @@ The output from ``ray memory`` displays this as the object being ``PINNED_IN_MEM
 
 **3. Pending task references**
 
-.. code-block:: python
+.. testcode::
 
   @ray.remote
   def f(arg):
@@ -154,16 +158,16 @@ In this example, we first create an object via ``ray.put()`` and then submit a t
 
   --- Summary for node address: 192.168.0.15 ---
   Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
-  25 MiB               1                 1             1              0                    0            
+  25 MiB               1                 1             1              0                    0
 
   --- Object references for node address: 192.168.0.15 ---
-  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
-  192.168.0.15  7207   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (task call) 
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site
+  192.168.0.15  7207   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (task call)
                                                                                                                       | test.py:
-                                                                                                                    :<module>:29          
+                                                                                                                    :<module>:29
 
   192.168.0.15  7241   Worker  ffffffffffffffffffffffffffffffffffffffff0100000001000000  10 MiB  PINNED_IN_MEMORY    (deserialize task arg)
-                                                                                                                      __main__.f           
+                                                                                                                      __main__.f
 
   192.168.0.15  7207   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  USED_BY_PENDING_TASK  (put object)  |
                                                                                                                     test.py:
@@ -173,7 +177,7 @@ While the task is running, we see that ``ray memory`` shows both a ``LOCAL_REFER
 
 **4. Serialized ObjectRef references**
 
-.. code-block:: python
+.. testcode::
 
   @ray.remote
   def f(arg):
@@ -189,18 +193,18 @@ In this example, we again create an object via ``ray.put()``, but then pass it t
 
   --- Summary for node address: 192.168.0.15 ---
   Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
-  15 MiB               2                 0             1              0                    0            
+  15 MiB               2                 0             1              0                    0
 
   --- Object references for node address: 192.168.0.15 ---
-  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site
   192.168.0.15  7411   Worker  ffffffffffffffffffffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (deserialize task arg)
-                                                                                                                      __main__.f           
+                                                                                                                      __main__.f
 
-  192.168.0.15  7373   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (task call)  
+  192.168.0.15  7373   Driver  a67dc375e60ddd1affffffffffffffffffffffff0100000001000000  ?       LOCAL_REFERENCE     (task call)
                                                                                                                     | test.py:
-                                                                                                                    :<module>:38          
+                                                                                                                    :<module>:38
 
-  192.168.0.15  7373   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  USED_BY_PENDING_TASK  (put object) 
+  192.168.0.15  7373   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  USED_BY_PENDING_TASK  (put object)
                                                                                                                     | test.py:
                                                                                                                     <module>:37
 
@@ -208,7 +212,7 @@ Now, both the driver and the worker process running the task hold a ``LOCAL_REFE
 
 **5. Captured ObjectRef references**
 
-.. code-block:: python
+.. testcode::
 
   a = ray.put(None)
   b = ray.put([a])
@@ -220,17 +224,17 @@ In this example, we first create an object via ``ray.put()``, then capture its `
 
   --- Summary for node address: 192.168.0.15 ---
   Mem Used by Objects  Local References  Pinned Count  Pending Tasks  Captured in Objects  Actor Handles
-  233 MiB              1                 0             0              1                    0            
+  233 MiB              1                 0             0              1                    0
 
   --- Object references for node address: 192.168.0.15 ---
-  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site             
+  IP Address    PID    Type    Object Ref                                                Size    Reference Type      Call Site
   192.168.0.15  7473   Driver  ffffffffffffffffffffffffffffffffffffffff0100000001000000  15 MiB  CAPTURED_IN_OBJECT  (put object)  |
                                                                                                                     test.py:
-                                                                                                                    <module>:41           
+                                                                                                                    <module>:41
 
   192.168.0.15  7473   Driver  ffffffffffffffffffffffffffffffffffffffff0100000002000000  218 MiB  LOCAL_REFERENCE     (put object)  |
                                                                                                                     test.py:
-                                                                                                                    <module>:42 
+                                                                                                                    <module>:42
 
 In the output of ``ray memory``, we see that the second object displays as a normal ``LOCAL_REFERENCE``, but the first object is listed as ``CAPTURED_IN_OBJECT``.
 
@@ -247,7 +251,7 @@ By default, Ray does not take into account the potential memory usage of a task 
 
 To tell the Ray scheduler a task or actor requires a certain amount of available memory to run, set the ``memory`` argument. The Ray scheduler will then reserve the specified amount of available memory during scheduling, similar to how it handles CPU and GPU resources:
 
-.. code-block:: python
+.. testcode::
 
   # reserve 500MiB of available memory to place this task
   @ray.remote(memory=500 * 1024 * 1024)
@@ -256,13 +260,13 @@ To tell the Ray scheduler a task or actor requires a certain amount of available
 
   # reserve 2.5GiB of available memory to place this actor
   @ray.remote(memory=2500 * 1024 * 1024)
-  class SomeActor(object):
+  class SomeActor:
       def __init__(self, a, b):
           pass
 
 In the above example, the memory quota is specified statically by the decorator, but you can also set them dynamically at runtime using ``.options()`` as follows:
 
-.. code-block:: python
+.. testcode::
 
   # override the memory quota to 100MiB when submitting the task
   some_function.options(memory=100 * 1024 * 1024).remote(x=1)

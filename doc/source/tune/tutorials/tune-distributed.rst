@@ -52,7 +52,7 @@ Analyze your results on TensorBoard by starting TensorBoard on the remote head m
     ray exec tune-default.yaml 'tensorboard --logdir=~/ray_results/ --port 6006' --port-forward 6006
 
 
-Note that you can customize the directory of results by specifying: ``air.RunConfig(local_dir=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
+Note that you can customize the directory of results by specifying: ``air.RunConfig(storage_path=..)``, taken in by ``Tuner``. You can then point TensorBoard to that directory to visualize results. You can also use `awless <https://github.com/wallix/awless>`_ for easy cluster management on AWS.
 
 
 Running a Distributed Tune Experiment
@@ -101,8 +101,8 @@ Storage Options in a Distributed Tune Run
 -----------------------------------------
 
 In a distributed experiment, you should try to use :ref:`cloud checkpointing <tune-cloud-checkpointing>` to
-reduce synchronization overhead. For this, you just have to specify an ``upload_dir`` in the
-:class:`tune.SyncConfig <ray.tune.SyncConfig>`.
+reduce synchronization overhead. For this, you just have to specify a remote ``storage_path`` in the
+:class:`air.RunConfig <ray.air.RunConfig>`.
 
 `my_trainable` is a user-defined :ref:`Tune Trainable <tune_60_seconds_trainables>` in the following example:
 
@@ -114,10 +114,8 @@ reduce synchronization overhead. For this, you just have to specify an ``upload_
     tuner = tune.Tuner(
         my_trainable,
         run_config=air.RunConfig(
-            name="experiment_name"
-            sync_config=tune.SyncConfig(
-                upload_dir="s3://bucket-name/sub-path/"
-            )
+            name="experiment_name",
+            storage_path="s3://bucket-name/sub-path/",
         )
     )
     tuner.fit()
@@ -166,7 +164,9 @@ In GCP, you can use the following configuration modification:
         scheduling:
           - preemptible: true
 
-Spot instances may be removed suddenly while trials are still running. Often times this may be difficult to deal with when using other distributed hyperparameter optimization frameworks. Tune allows users to mitigate the effects of this by preserving the progress of your model training through :ref:`checkpointing <tune-function-checkpointing>`.
+Spot instances may be pre-empted suddenly while trials are still running.
+Tune allows you to mitigate the effects of this by preserving the progress of your model training through
+:ref:`checkpointing <tune-trial-checkpoint>`.
 
 .. literalinclude:: /../../python/ray/tune/tests/tutorial.py
     :language: python
@@ -212,20 +212,27 @@ To summarize, here are the commands to run:
 
 You should see Tune eventually continue the trials on a different worker node. See the :ref:`Fault Tolerance <tune-fault-tol>` section for more details.
 
-You can also specify ``sync_config=tune.SyncConfig(upload_dir=...)``, as part of ``air.RunConfig``, which is taken in by ``Tuner``, to sync results with a cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
+You can also specify ``storage_path=...``, as part of ``air.RunConfig``, which is taken in by ``Tuner``, to upload results to cloud storage like S3, allowing you to persist results in case you want to start and stop your cluster automatically.
 
 .. _tune-fault-tol:
 
 Fault Tolerance of Tune Runs
 ----------------------------
 
-Tune will automatically restart trials in case of trial failures/error (if ``max_failures != 0``), both in the single node and distributed setting.
+Tune automatically restarts trials in the case of trial failures (if ``max_failures != 0``),
+both in the single node and distributed setting.
 
-Tune will restore trials from the latest checkpoint, where available. In the distributed setting, Tune will automatically sync the trial folder with the driver. For example, if a node is lost while a trial (specifically, the corresponding Trainable actor of the trial) is still executing on that node and a checkpoint of the trial exists, Tune will wait until available resources are available to begin executing the trial again.
-See :ref:`here for information on checkpointing <tune-function-checkpointing>`.
+For example, let's say a node is pre-empted or crashes while a trial is still executing on that node.
+Assuming that a checkpoint for this trial exists (and in the distributed setting,
+:ref:`some form of persistent storage is configured to access the trial's checkpoint <tune-storage-options>`),
+Tune waits until available resources are available to begin executing the trial again from where it left off.
+If no checkpoint is found, the trial will restart from scratch.
+See :ref:`here for information on checkpointing <tune-trial-checkpoint>`.
 
 
-If the trial/actor is placed on a different node, Tune will automatically push the previous checkpoint file to that node and restore the remote trial actor state, allowing the trial to resume from the latest checkpoint even after failure.
+If the trial or actor is then placed on a different node, Tune automatically pushes the previous checkpoint file
+to that node and restores the remote trial actor state, allowing the trial to resume from the latest checkpoint
+even after failure.
 
 Recovering From Failures
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -247,8 +254,8 @@ Below are some commonly used commands for submitting experiments. Please see the
 
     # Start a cluster and run an experiment in a detached tmux session,
     # and shut down the cluster as soon as the experiment completes.
-    # In `tune_experiment.py`, set `tune.SyncConfig(upload_dir="s3://...")`
-    # and pass it to `sync_config=...` to persist results
+    # In `tune_experiment.py`, set `air.RunConfig(storage_path="s3://...")`
+    # to persist results
     $ ray submit CLUSTER.YAML --tmux --start --stop tune_experiment.py -- --address=localhost:6379
 
     # To start or update your cluster:

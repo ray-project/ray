@@ -41,7 +41,7 @@ void instrumented_io_context::post(std::function<void()> handler,
     boost::asio::io_context::post(std::move(handler));
   } else {
     RAY_LOG(DEBUG) << "Deferring " << name << " by " << defer_us << "us";
-    execute_after_us(*this, std::move(handler), defer_us);
+    execute_after(*this, std::move(handler), std::chrono::microseconds(defer_us));
   }
 }
 
@@ -65,7 +65,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   } else {
     RAY_LOG(DEBUG) << "Deferring " << stats_handle->event_name << " by " << defer_us
                    << "us";
-    execute_after_us(*this, std::move(handler), defer_us);
+    execute_after(*this, std::move(handler), std::chrono::microseconds(defer_us));
   }
 }
 

@@ -6,8 +6,7 @@ import {
   Paper,
   TextField,
 } from "@material-ui/core";
-import { Alert } from "@material-ui/lab";
-import classNames from "classnames";
+import { Alert, AlertProps } from "@material-ui/lab";
 import React, { useContext, useEffect, useState } from "react";
 import { RiExternalLinkLine } from "react-icons/ri";
 
@@ -45,7 +44,7 @@ const useStyles = makeStyles((theme) =>
     },
     topBar: {
       position: "sticky",
-      top: 0,
+      top: MAIN_NAV_HEIGHT,
       width: "100%",
       display: "flex",
       flexDirection: "row",
@@ -56,9 +55,6 @@ const useStyles = makeStyles((theme) =>
       zIndex: 1,
       height: 36,
     },
-    topBarNewIA: {
-      top: MAIN_NAV_HEIGHT,
-    },
     timeRangeButton: {
       marginLeft: theme.spacing(2),
     },
@@ -68,7 +64,7 @@ const useStyles = makeStyles((theme) =>
   }),
 );
 
-enum TimeRangeOptions {
+export enum TimeRangeOptions {
   FIVE_MINS = "Last 5 minutes",
   THIRTY_MINS = "Last 30 minutes",
   ONE_HOUR = "Last 1 hour",
@@ -80,7 +76,7 @@ enum TimeRangeOptions {
   SEVEN_DAYS = "Last 7 days",
 }
 
-const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
+export const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.FIVE_MINS]: "now-5m",
   [TimeRangeOptions.THIRTY_MINS]: "now-30m",
   [TimeRangeOptions.ONE_HOUR]: "now-1h",
@@ -92,36 +88,40 @@ const TIME_RANGE_TO_FROM_VALUE: Record<TimeRangeOptions, string> = {
   [TimeRangeOptions.SEVEN_DAYS]: "now-7d",
 };
 
-type MetricConfig = {
+export type MetricConfig = {
   title: string;
-  path: string;
+  pathParams: string;
 };
 
-type MetricsSectionConfig = {
+export type MetricsSectionConfig = {
   title: string;
   contents: MetricConfig[];
 };
 
-// NOTE: please keep the titles here in sync with grafana_dashboard_factory.py
+// NOTE: please keep the titles here in sync with dashboard/modules/metrics/dashboards/default_dashboard_panels.py
 const METRICS_CONFIG: MetricsSectionConfig[] = [
   {
     title: "Tasks and Actors",
     contents: [
       {
         title: "Scheduler Task State",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=26",
+        pathParams: "orgId=1&theme=light&panelId=26",
       },
       {
         title: "Active Tasks by Name",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=35",
+        pathParams: "orgId=1&theme=light&panelId=35",
       },
       {
         title: "Scheduler Actor State",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=33",
+        pathParams: "orgId=1&theme=light&panelId=33",
       },
       {
         title: "Active Actors by Name",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=36",
+        pathParams: "orgId=1&theme=light&panelId=36",
+      },
+      {
+        title: "Out of Memory Failures by Name",
+        pathParams: "orgId=1&theme=light&panelId=44",
       },
     ],
   },
@@ -130,19 +130,19 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Scheduler CPUs (logical slots)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=27",
+        pathParams: "orgId=1&theme=light&panelId=27",
       },
       {
         title: "Scheduler GPUs (logical slots)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=28",
+        pathParams: "orgId=1&theme=light&panelId=28",
       },
       {
         title: "Object Store Memory",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=29",
+        pathParams: "orgId=1&theme=light&panelId=29",
       },
       {
         title: "Placement Groups",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=40",
+        pathParams: "orgId=1&theme=light&panelId=40",
       },
     ],
   },
@@ -151,56 +151,55 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
     contents: [
       {
         title: "Node Count",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=24",
+        pathParams: "orgId=1&theme=light&panelId=24",
       },
       {
         title: "Node CPU (hardware utilization)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=2",
+        pathParams: "orgId=1&theme=light&panelId=2",
       },
       {
         title: "Node Memory (heap + object store)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=4",
+        pathParams: "orgId=1&theme=light&panelId=4",
       },
       {
         title: "Node GPU (hardware utilization)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=8",
+        pathParams: "orgId=1&theme=light&panelId=8",
       },
       {
         title: "Node GPU Memory (GRAM)",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=18",
+        pathParams: "orgId=1&theme=light&panelId=18",
       },
       {
         title: "Node Disk",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=6",
+        pathParams: "orgId=1&theme=light&panelId=6",
       },
       {
         title: "Node Disk IO Speed",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=32",
+        pathParams: "orgId=1&theme=light&panelId=32",
       },
       {
         title: "Node Network",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=20",
+        pathParams: "orgId=1&theme=light&panelId=20",
       },
       {
         title: "Node CPU by Component",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=37",
+        pathParams: "orgId=1&theme=light&panelId=37",
       },
       {
         title: "Node Memory by Component",
-        path: "/d-solo/rayDefaultDashboard/default-dashboard?orgId=1&theme=light&panelId=34",
+        pathParams: "orgId=1&theme=light&panelId=34",
       },
     ],
   },
 ];
 
-type MetricsProps = {
-  newIA?: boolean;
-};
-
-export const Metrics = ({ newIA = false }: MetricsProps) => {
+export const Metrics = () => {
   const classes = useStyles();
-  const { grafanaHost, sessionName, prometheusHealth } =
+  const { grafanaHost, sessionName, prometheusHealth, dashboardUids } =
     useContext(GlobalContext);
+
+  const grafanaDefaultDashboardUid =
+    dashboardUids?.default ?? "rayDefaultDashboard";
 
   const [timeRangeOption, setTimeRangeOption] = useState<TimeRangeOptions>(
     TimeRangeOptions.FIVE_MINS,
@@ -224,20 +223,16 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
         pageInfo={{
           id: "metrics",
           title: "Metrics",
-          path: "/new/metrics",
+          path: "/metrics",
         }}
       />
       {grafanaHost === undefined || !prometheusHealth ? (
         <GrafanaNotRunningAlert className={classes.alert} />
       ) : (
         <div>
-          <Paper
-            className={classNames(classes.topBar, {
-              [classes.topBarNewIA]: newIA,
-            })}
-          >
+          <Paper className={classes.topBar}>
             <Button
-              href={grafanaHost}
+              href={`${grafanaHost}/d/${grafanaDefaultDashboardUid}`}
               target="_blank"
               rel="noopener noreferrer"
               endIcon={<RiExternalLinkLine />}
@@ -276,22 +271,27 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
                 keepRendered
               >
                 <div className={classes.grafanaEmbedsContainer}>
-                  {contents.map(({ title, path }) => (
-                    <Paper
-                      key={path}
-                      className={classes.chart}
-                      elevation={1}
-                      variant="outlined"
-                    >
-                      <iframe
-                        key={title}
-                        title={title}
-                        className={classes.grafanaEmbed}
-                        src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
-                        frameBorder="0"
-                      />
-                    </Paper>
-                  ))}
+                  {contents.map(({ title, pathParams }) => {
+                    const path =
+                      `/d-solo/${grafanaDefaultDashboardUid}?${pathParams}` +
+                      `&refresh${timeRangeParams}&var-SessionName=${sessionName}`;
+                    return (
+                      <Paper
+                        key={pathParams}
+                        className={classes.chart}
+                        elevation={1}
+                        variant="outlined"
+                      >
+                        <iframe
+                          key={title}
+                          title={title}
+                          className={classes.grafanaEmbed}
+                          src={`${grafanaHost}${path}`}
+                          frameBorder="0"
+                        />
+                      </Paper>
+                    );
+                  })}
                 </div>
               </CollapsibleSection>
             ))}
@@ -302,24 +302,42 @@ export const Metrics = ({ newIA = false }: MetricsProps) => {
   );
 };
 
-export const GrafanaNotRunningAlert = ({ className }: ClassNameProps) => {
+const useGrafanaNotRunningAlertStyles = makeStyles((theme) =>
+  createStyles({
+    heading: {
+      fontWeight: 500,
+    },
+  }),
+);
+
+export type GrafanaNotRunningAlertProps = {
+  severity?: AlertProps["severity"];
+} & ClassNameProps;
+
+export const GrafanaNotRunningAlert = ({
+  className,
+  severity = "warning",
+}: GrafanaNotRunningAlertProps) => {
+  const classes = useGrafanaNotRunningAlertStyles();
+
   const { grafanaHost, prometheusHealth } = useContext(GlobalContext);
   return grafanaHost === undefined || !prometheusHealth ? (
-    <Alert className={className} severity="warning">
-      Grafana or prometheus server not detected. Please make sure both services
-      are running and refresh this page. See:{" "}
+    <Alert className={className} severity={severity}>
+      <span className={classes.heading}>
+        Set up Prometheus and Grafana for better Ray Dashboard experience
+      </span>
+      <br />
+      <br />
+      Time-series charts are hidden because either Prometheus or Grafana server
+      is not detected. Follow{" "}
       <a
         href="https://docs.ray.io/en/latest/ray-observability/ray-metrics.html"
         target="_blank"
         rel="noreferrer"
       >
-        https://docs.ray.io/en/latest/ray-observability/ray-metrics.html
-      </a>
-      .
-      <br />
-      If you are hosting grafana on a separate machine or using a non-default
-      port, please set the RAY_GRAFANA_HOST env var to point to your grafana
-      server when launching ray.
+        these instructions
+      </a>{" "}
+      to set them up and refresh this page. .
     </Alert>
   ) : null;
 };

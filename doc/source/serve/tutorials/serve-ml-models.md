@@ -7,9 +7,9 @@ In this guide, we will show you how to train models from various machine learnin
 
 Please see the [Key Concepts](serve-key-concepts) to learn more general information about Ray Serve.
 
+:::::{tab-set} 
 
-::::{tabbed} Keras and Tensorflow
-
+::::{tab-item} Keras and Tensorflow
 
 Let's train and deploy a simple Tensorflow neural net.
 In particular, we will show:
@@ -17,7 +17,7 @@ In particular, we will show:
 - How to train a Tensorflow model and load the model from your file system in your Ray Serve deployment.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework agnostic -- you can use any version of Tensorflow.
+Ray Serve is framework-agnostic -- you can use any version of Tensorflow.
 However, for this tutorial, we will use Tensorflow 2 and Keras. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install Tensorflow 2 and requests by running:
 
 ```console
@@ -38,14 +38,14 @@ Next, let's train a simple MNIST model using Keras.
 :end-before: __doc_train_model_end__
 ```
 
-Next, we define a class `TFMnistModel` that will accept HTTP requests and run the MNIST model that we trained. It is decorated with `@serve.deployment` to make it a deployment object so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
+Next, we define a class `TFMnistModel` that will accept HTTP requests and run the MNIST model that we trained. It is decorated with `@serve.deployment` to make it a deployment object, so it can be deployed onto Ray Serve. Note that the Serve deployment is exposed over an HTTP route, and by default the `__call__` method is invoked when a request is sent to your deployment over HTTP.
 
 ```{literalinclude} ../doc_code/tutorial_tensorflow.py
 :start-after: __doc_define_servable_begin__
 :end-before: __doc_define_servable_end__
 ```
 
-:::{note} 
+:::{note}
 When `TFMnistModel` is deployed and instantiated, it will load the Tensorflow model from your file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
@@ -56,14 +56,43 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :end-before: __doc_deploy_end__
 ```
 
-:::{note} 
-`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
+:::{note}
+`TFMnistModel.bind(TRAINED_MODEL_PATH)` binds the argument `TRAINED_MODEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `TFMnistModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-deployment-graphs).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
+
 ```console
 $ serve run tutorial_tensorflow:mnist_model
 ```
+
+:::{note}
+If you see the following error:
+
+```console
+TypeError: Descriptors cannot not be created directly.
+    If this call came from a _pb2.py file, your generated code is out of date and must be regenerated with protoc >= 3.19.0.
+    If you cannot immediately regenerate your protos, some other possible workarounds are:
+     1. Downgrade the protobuf package to 3.20.x or lower.
+     2. Set PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python (but this will use pure-Python parsing and will be much slower).
+```
+
+You can downgrade the protobuf package to 3.20.x or lower in your Docker image, or tell Ray to do it at runtime by specifying a [runtime environment](runtime-environments):
+
+Open a new YAML file called `tf_env.yaml` for runtime environment.
+
+```yaml
+pip:
+ - protobuf==3.20.3
+```
+
+Then, run the following command to deploy the model with the runtime environment.
+
+```console
+$ serve run --runtime-env tf_env.yaml tutorial_tensorflow:mnist_model
+```
+
+:::
 
 Let's query it! While Serve is running, open a separate terminal window, and run the following in an interactive Python shell or a separate Python script:
 
@@ -87,7 +116,7 @@ You should get an output like the following (the exact prediction may vary):
 ```
 ::::
 
-::::{tabbed} Pytorch
+::::{tab-item} Pytorch
 
 Let's load and deploy a PyTorch Resnet Model.
 In particular, we will show:
@@ -115,7 +144,7 @@ We define a class `ImageModel` that parses the input data, transforms the images
 :end-before: __doc_define_servable_end__
 ```
 
-:::{note} 
+:::{note}
 When `ImageModel` is deployed and instantiated, it will load the resnet18 model from `torchvision` so that it can be ready to run inference on the model and serve requests later.
 :::
 
@@ -126,8 +155,8 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :end-before: __doc_deploy_end__
 ```
 
-:::{note} 
-`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
+:::{note}
+`ImageModel.bind()` returns a `DeploymentNode` object (wrapping an `ImageModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-deployment-graphs).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
@@ -156,7 +185,7 @@ You should get an output like the following (the exact number may vary):
 ```
 ::::
 
-::::{tabbed} Scikit-Learn
+::::{tab-item} Scikit-Learn
 
 Let's train and deploy a simple Scikit-Learn classifier.
 In particular, we will show:
@@ -164,7 +193,7 @@ In particular, we will show:
 - How to load the Scikit-Learn model from file system in your Ray Serve definition.
 - How to parse the JSON request and make a prediction.
 
-Ray Serve is framework agnostic. You can use any version of sklearn. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install scikit-learn and requests by running:
+Ray Serve is framework-agnostic. You can use any version of sklearn. We will also need `requests` to send HTTP requests to your model deployment. If you haven't already, please install scikit-learn and requests by running:
 
 ```console
 $ pip install scikit-learn requests
@@ -214,7 +243,7 @@ We define a class `BoostingModel` that runs inference on the `GradientBoosingCla
 :end-before: __doc_define_servable_end__
 ```
 
-:::{note} 
+:::{note}
 When `BoostingModel` is deployed and instantiated, it will load the classifier model that we trained from your file system so that it can be ready to run inference on the model and serve requests later.
 :::
 
@@ -225,8 +254,8 @@ Now that we've defined our Serve deployment, let's prepare it so that it can be 
 :end-before: __doc_deploy_end__
 ```
 
-:::{note} 
-`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-model-composition-deployment-graph).
+:::{note}
+`BoostingModel.bind(MODEL_PATH, LABEL_PATH)` binds the arguments `MODEL_PATH` and `LABEL_PATH` to our deployment and returns a `DeploymentNode` object (wrapping an `BoostingModel` deployment object) that can then be used to connect with other `DeploymentNodes` to form a more complex [deployment graph](serve-deployment-graphs).
 :::
 
 Finally, we can deploy our model to Ray Serve through the terminal.
@@ -253,4 +282,7 @@ You should get an output like the following (the exact prediction may vary):
 ```python
 {"result": "versicolor"}
 ```
+
 ::::
+
+:::::

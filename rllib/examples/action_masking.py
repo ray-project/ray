@@ -70,10 +70,9 @@ def get_cli_args():
     parser.add_argument(
         "--framework",
         choices=["tf", "tf2", "torch"],
-        default="tf",
+        default="torch",
         help="The DL framework specifier.",
     )
-    parser.add_argument("--eager-tracing", action="store_true")
     parser.add_argument(
         "--stop-iters", type=int, default=10, help="Number of iterations to train."
     )
@@ -133,7 +132,7 @@ if __name__ == "__main__":
                 "custom_model_config": {"no_masking": args.no_masking},
             },
         )
-        .framework(args.framework, eager_tracing=args.eager_tracing)
+        .framework(args.framework)
         .resources(
             # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
             num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0"))
@@ -181,7 +180,7 @@ if __name__ == "__main__":
             print(f"Obs: {obs}, Action: {action}")
             obs = next_obs
 
-    # run with tune for auto trainer creation, stopping, TensorBoard, etc.
+    # Run with tune for auto Algorithm creation, stopping, TensorBoard, etc.
     else:
         tuner = tune.Tuner(
             args.run,

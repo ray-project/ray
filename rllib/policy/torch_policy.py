@@ -32,6 +32,7 @@ from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import NullContextManager, force_list
 from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -61,7 +62,7 @@ torch, nn = try_import_torch()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class TorchPolicy(Policy):
     """PyTorch specific Policy class to use with RLlib."""
 
@@ -375,6 +376,7 @@ class TorchPolicy(Policy):
             Union[List[TensorStructType], TensorStructType]
         ] = None,
         actions_normalized: bool = True,
+        **kwargs,
     ) -> TensorType:
 
         if self.action_sampler_fn and self.action_distribution_fn is None:
@@ -760,7 +762,10 @@ class TorchPolicy(Policy):
             optim_state_dict = convert_to_numpy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        state["_exploration_state"] = self.exploration.get_state()
+        if not self.config.get("_enable_rl_module_api", False) and self.exploration:
+            # This is not compatible with RLModules, which have a method
+            # `forward_exploration` to specify custom exploration behavior.
+            state["_exploration_state"] = self.exploration.get_state()
         return state
 
     @override(Policy)
@@ -771,7 +776,13 @@ class TorchPolicy(Policy):
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
             for o, s in zip(self._optimizers, optimizer_vars):
-                optim_state_dict = convert_to_torch_tensor(s, device=self.device)
+                # Torch optimizer param_groups include things like beta, etc. These
+                # parameters should be left as scalar and not converted to tensors.
+                # otherwise, torch.optim.step() will start to complain.
+                optim_state_dict = {"param_groups": s["param_groups"]}
+                optim_state_dict["state"] = convert_to_torch_tensor(
+                    s["state"], device=self.device
+                )
                 o.load_state_dict(optim_state_dict)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -863,7 +874,7 @@ class TorchPolicy(Policy):
             ]
         else:
             optimizers = [torch.optim.Adam(self.model.parameters())]
-        if getattr(self, "exploration", None):
+        if self.exploration:
             optimizers = self.exploration.get_exploration_optimizer(optimizers)
         return optimizers
 
@@ -1198,7 +1209,7 @@ class TorchPolicy(Policy):
         return outputs
 
 
-@DeveloperAPI
+@Deprecated(error=False)
 class DirectStepOptimizer:
     """Typesafe method for indicating `apply_gradients` can directly step the
     optimizers with in-place gradients.

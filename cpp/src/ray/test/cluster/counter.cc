@@ -102,6 +102,10 @@ int Counter::Plus1ForActor(ray::ActorHandle<Counter> actor) {
   return *actor.Task(&Counter::Plus1).Remote().Get();
 }
 
+int Counter::GetIntByObjectRef(ray::ObjectRef<int> object_ref) {
+  return *object_ref.Get();
+}
+
 RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            Counter::FactoryCreateException,
            RAY_FUNC(Counter::FactoryCreate, int),
@@ -122,7 +126,10 @@ RAY_REMOTE(RAY_FUNC(Counter::FactoryCreate),
            &Counter::Plus1ForActor,
            &Counter::GetCount,
            &Counter::CreateNestedChildActor,
-           &Counter::GetBytes);
+           &Counter::GetBytes,
+           &Counter::echoBytes,
+           &Counter::echoString,
+           &Counter::GetIntByObjectRef);
 
 RAY_REMOTE(ActorConcurrentCall::FactoryCreate, &ActorConcurrentCall::CountDown);
 

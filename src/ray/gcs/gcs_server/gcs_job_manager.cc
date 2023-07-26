@@ -166,8 +166,26 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
-    // Maps job data keys to the index of the job in the table.
-    std::unordered_map<std::string, int> job_data_key_to_index;
+    // Maps a Job API data key to the indices of the corresponding jobs in the table. Note
+    // that multiple jobs can come from the same Ray Job API submission (e.g. if the
+    // entrypoint script calls ray.init() multiple times).
+    std::unordered_map<std::string, std::vector<int>> job_data_key_to_indices;
+
+    // Create a shared counter for the number of jobs processed
+    std::shared_ptr<int> num_processed_jobs = std::make_shared<int>(0);
+
+    // Create a shared boolean flag for the internal KV callback completion
+    std::shared_ptr<bool> kv_callback_done = std::make_shared<bool>(false);
+
+    // Function to send the reply once all jobs have been processed and KV callback
+    // completed
+    auto try_send_reply =
+        [num_processed_jobs, kv_callback_done, reply, send_reply_callback]() {
+          if (*num_processed_jobs == reply->job_info_list_size() && *kv_callback_done) {
+            RAY_LOG(INFO) << "Finished getting all job info.";
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          }
+        };
 
     // Load the job table data into the reply.
     int i = 0;
@@ -183,16 +201,49 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         std::string job_submission_id = iter->second;
         std::string job_data_key = JobDataKey(job_submission_id);
         job_api_data_keys.push_back(job_data_key);
-        job_data_key_to_index[job_data_key] = i;
+        job_data_key_to_indices[job_data_key].push_back(i);
+      }
+
+      // If job is not dead, get is_running_tasks from the core worker for the driver.
+      if (data.second.is_dead()) {
+        reply->mutable_job_info_list(i)->set_is_running_tasks(false);
+        WorkerID worker_id =
+            WorkerID::FromBinary(data.second.driver_address().worker_id());
+        core_worker_clients_.Disconnect(worker_id);
+        (*num_processed_jobs)++;
+        ;
+        try_send_reply();
+      } else {
+        // Get is_running_tasks from the core worker for the driver.
+        auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
+        std::unique_ptr<rpc::NumPendingTasksRequest> request(
+            new rpc::NumPendingTasksRequest());
+        client->NumPendingTasks(
+            std::move(request),
+            [reply, i, num_processed_jobs, try_send_reply](
+                const Status &status,
+                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+              if (!status.ok()) {
+                RAY_LOG(ERROR) << "Failed to get is_running_tasks from core worker: "
+                               << status.ToString();
+              }
+              bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
+              reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
+              (*num_processed_jobs)++;
+              ;
+              try_send_reply();
+            });
       }
       i++;
     }
 
-    RAY_CHECK(job_api_data_keys.size() == job_data_key_to_index.size());
-
+    // Load the JobInfo for jobs submitted via the Ray Job API.
     auto kv_multi_get_callback =
-        [reply, send_reply_callback, job_data_key_to_index](
-            std::unordered_map<std::string, std::string> result) {
+        [reply,
+         send_reply_callback,
+         job_data_key_to_indices,
+         kv_callback_done,
+         try_send_reply](std::unordered_map<std::string, std::string> result) {
           for (auto &data : result) {
             std::string job_data_key = data.first;
             // The JobInfo stored by the Ray Job API.
@@ -207,14 +258,15 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                     << "Failed to parse JobInfo JSON into JobsAPIInfo protobuf. JSON: "
                     << job_info_json << " Error: " << status.message();
               }
-              // Add the JobInfo to the correct index in the reply.
-              reply->mutable_job_info_list(job_data_key_to_index.at(job_data_key))
-                  ->mutable_job_info()
-                  ->CopyFrom(std::move(jobs_api_info));
+              // Add the JobInfo to the correct indices in the reply.
+              for (int i : job_data_key_to_indices.at(job_data_key)) {
+                reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                    std::move(jobs_api_info));
+              }
             }
           }
-          RAY_LOG(INFO) << "Finished getting all job info.";
-          GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          *kv_callback_done = true;
+          try_send_reply();
         };
     internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
   };

@@ -6,7 +6,7 @@ import tensorflow as tf
 
 import ray
 from ray.air import session
-from ray.air.integrations.keras import Callback as TrainCheckpointReportCallback
+from ray.air.integrations.keras import ReportCheckpointCallback
 from ray.air.result import Result
 from ray.data import Dataset
 from ray.data.preprocessors import Concatenator
@@ -51,7 +51,7 @@ def train_func(config: dict):
             feature_columns="x", label_columns="y", batch_size=batch_size
         )
         history = multi_worker_model.fit(
-            tf_dataset, callbacks=[TrainCheckpointReportCallback()]
+            tf_dataset, callbacks=[ReportCheckpointCallback()]
         )
         results.append(history.history)
     return results

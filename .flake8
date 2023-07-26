@@ -8,6 +8,7 @@ exclude =
   python/.eggs/
   python/ray/_private/thirdparty/*
   python/ray/workflow/tests/mock_server.py
+  python/ray/serve/tests/test_config_files/syntax_error.py
 max-line-length = 88
 inline-quotes = "
 ignore =

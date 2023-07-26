@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import time
+from unittest.mock import MagicMock
 import pytest
 
 import ray
@@ -77,6 +78,26 @@ def test_map(init):
     for v in pool.map(lambda a, v: a.double.remote(v), range(5)):
         assert v == 2 * index
         index += 1
+
+
+def test_map_eager(init):
+    """Verify that submit is called eagerly when map is called.
+
+    If the results are directly yielded, then the submit calls are not
+    executed until the results are consumed.
+    """
+
+    @ray.remote
+    class MyActor:
+        def f(self, x):
+            pass
+
+    actor = MyActor.remote()
+    pool = ActorPool([actor])
+    pool.submit = MagicMock()
+
+    pool.map(lambda a, v: a.f.remote(v), range(1))
+    pool.submit.assert_called()
 
 
 def test_map_unordered(init):

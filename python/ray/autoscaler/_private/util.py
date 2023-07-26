@@ -13,7 +13,6 @@ from numbers import Number, Real
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
-import ray._private.ray_constants
 import ray._private.services as services
 from ray.autoscaler._private import constants
 from ray.autoscaler._private.cli_logger import cli_logger
@@ -107,6 +106,10 @@ class LoadMetricsSummary:
     # Optionally included for backwards compatibility: Resource breakdown by
     # node. Mapping from node id to resource usage.
     usage_by_node: Optional[Dict[str, Usage]] = None
+    # A mapping from node name (the same key as `usage_by_node`) to node type.
+    # Optional for deployment modes which have the concept of node types and
+    # backwards compatibility.
+    node_type_mapping: Optional[Dict[str, str]] = None
 
 
 class ConcurrentCounter:
@@ -380,13 +383,35 @@ def fill_node_type_min_max_workers(config):
                 node_type_data.setdefault("max_workers", global_max_workers)
 
 
+def with_envs(cmds: List[str], kv: Dict[str, str]) -> str:
+    """
+    Returns a list of commands with the given environment variables set.
+
+    Args:
+        cmds (List[str]): List of commands to set environment variables for.
+        kv (Dict[str, str]): Dictionary of environment variables to set.
+
+    Returns:
+        List[str]: List of commands with the given environment variables set.
+
+    Example:
+        with_envs(["echo $FOO"], {"FOO": "BAR"})
+            -> ["FOO=BAR echo $FOO"]
+    """
+    out_cmds = []
+    for cmd in cmds:
+        kv_str = ""
+        for k, v in kv.items():
+            kv_str += f"{k}={v} "
+
+        out_cmds.append(f"{kv_str}{cmd}")
+    return out_cmds
+
+
 def with_head_node_ip(cmds, head_ip=None):
     if head_ip is None:
         head_ip = services.get_node_ip_address()
-    out = []
-    for cmd in cmds:
-        out.append("export RAY_HEAD_IP={}; {}".format(head_ip, cmd))
-    return out
+    return with_envs(cmds, {"RAY_HEAD_IP": head_ip})
 
 
 def hash_launch_conf(node_conf, auth):
@@ -537,7 +562,28 @@ def parse_placement_group_resource_str(
     return (placement_group_resource_str, None, True)
 
 
-def parse_usage(usage: Usage) -> List[str]:
+MEMORY_SUFFIXES = [
+    ("TiB", 2**40),
+    ("GiB", 2**30),
+    ("MiB", 2**20),
+    ("KiB", 2**10),
+]
+
+
+def format_memory(mem_bytes: Number) -> str:
+    """Formats memory in bytes in friendly unit. E.g. (2**30 + 1) bytes should
+    be displayed as 1GiB but 1 byte should be displayed as 1B, (as opposed to
+    rounding it to 0GiB).
+    """
+    for suffix, bytes_per_unit in MEMORY_SUFFIXES:
+        if mem_bytes >= bytes_per_unit:
+            mem_in_unit = mem_bytes / bytes_per_unit
+            return f"{mem_in_unit:.2f}{suffix}"
+
+    return f"{int(mem_bytes)}B"
+
+
+def parse_usage(usage: Usage, verbose: bool) -> List[str]:
     # first collect resources used in placement groups
     placement_group_resource_usage = {}
     placement_group_resource_total = collections.defaultdict(float)
@@ -574,14 +620,21 @@ def parse_usage(usage: Usage) -> List[str]:
             used = used - pg_total + pg_used
 
         if resource in ["memory", "object_store_memory"]:
-            to_GiB = 1 / 2**30
-            line = f"{(used * to_GiB):.2f}/" f"{(total * to_GiB):.3f} GiB {resource}"
+            formatted_used = format_memory(used)
+            formatted_total = format_memory(total)
+            line = f"{formatted_used}/{formatted_total} {resource}"
             if used_in_pg:
+                formatted_pg_used = format_memory(pg_used)
+                formatted_pg_total = format_memory(pg_total)
                 line = line + (
-                    f" ({(pg_used * to_GiB):.2f} used of "
-                    f"{(pg_total * to_GiB):.2f} GiB " + "reserved in placement groups)"
+                    f" ({formatted_pg_used} used of "
+                    f"{formatted_pg_total} " + "reserved in placement groups)"
                 )
             usage_lines.append(line)
+        elif resource.startswith("accelerator_type:") and not verbose:
+            # We made a judgement call not to show this.
+            # https://github.com/ray-project/ray/issues/33272
+            pass
         else:
             line = f"{used}/{total} {resource}"
             if used_in_pg:
@@ -592,8 +645,8 @@ def parse_usage(usage: Usage) -> List[str]:
     return usage_lines
 
 
-def get_usage_report(lm_summary: LoadMetricsSummary) -> str:
-    usage_lines = parse_usage(lm_summary.usage)
+def get_usage_report(lm_summary: LoadMetricsSummary, verbose: bool) -> str:
+    usage_lines = parse_usage(lm_summary.usage, verbose)
 
     sio = StringIO()
     for line in usage_lines:
@@ -669,15 +722,27 @@ def get_demand_report(lm_summary: LoadMetricsSummary):
     return demand_report
 
 
-def get_per_node_breakdown(lm_summary: LoadMetricsSummary):
+def get_per_node_breakdown(
+    lm_summary: LoadMetricsSummary,
+    node_type_mapping: Optional[Dict[str, float]],
+    verbose: bool,
+) -> str:
     sio = StringIO()
+
+    if node_type_mapping is None:
+        node_type_mapping = {}
 
     print(file=sio)
     for node_ip, usage in lm_summary.usage_by_node.items():
         print(file=sio)  # Print a newline.
-        print(f"Node: {node_ip}", file=sio)
+        node_string = f"Node: {node_ip}"
+        if node_ip in node_type_mapping:
+            node_type = node_type_mapping[node_ip]
+            node_string += f" ({node_type})"
+
+        print(node_string, file=sio)
         print(" Usage:", file=sio)
-        for line in parse_usage(usage):
+        for line in parse_usage(usage, verbose):
             print(f"  {line}", file=sio)
 
     return sio.getvalue()
@@ -689,6 +754,7 @@ def format_info_string(
     time=None,
     gcs_request_time: Optional[float] = None,
     non_terminated_nodes_time: Optional[float] = None,
+    autoscaler_update_time: Optional[float] = None,
     verbose: bool = False,
 ):
     if time is None:
@@ -704,6 +770,8 @@ def format_info_string(
                 "Node Provider non_terminated_nodes time: "
                 f"{non_terminated_nodes_time:3f}s\n"
             )
+        if autoscaler_update_time:
+            header += "Autoscaler iteration time: " f"{autoscaler_update_time:3f}s\n"
 
     available_node_report_lines = []
     for node_type, count in autoscaler_summary.active_nodes.items():
@@ -738,6 +806,7 @@ def format_info_string(
             assert record.unavailable_node_information is not None
             node_type = record.node_type
             category = record.unavailable_node_information.category
+            description = record.unavailable_node_information.description
             attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
             formatted_time = (
                 # This `:02d` funny business is python syntax for printing a 2
@@ -747,6 +816,8 @@ def format_info_string(
                 f"{attempted_time.second:02d}"
             )
             line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
+            if verbose:
+                line += f" - {description}"
             failure_lines.append(line)
 
     failure_lines = failure_lines[: -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1]
@@ -756,7 +827,7 @@ def format_info_string(
     else:
         failure_report += " (no failures)"
 
-    usage_report = get_usage_report(lm_summary)
+    usage_report = get_usage_report(lm_summary, verbose)
     demand_report = get_demand_report(lm_summary)
 
     formatted_output = f"""{header}
@@ -776,7 +847,9 @@ Resources
 {demand_report}"""
 
     if verbose and lm_summary.usage_by_node:
-        formatted_output += get_per_node_breakdown(lm_summary)
+        formatted_output += get_per_node_breakdown(
+            lm_summary, autoscaler_summary.node_type_mapping, verbose
+        )
 
     return formatted_output.strip()
 

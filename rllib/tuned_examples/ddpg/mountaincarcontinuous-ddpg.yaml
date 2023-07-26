@@ -3,11 +3,11 @@ mountaincarcontinuous-ddpg:
     env: MountainCarContinuous-v0
     run: DDPG
     stop:
-        episode_reward_mean: 90
+        sampler_results/episode_reward_mean: 90
         time_total_s: 600 # 10 minutes
     config:
         # Works for both torch and tf.
-        framework: tf
+        framework: torch
         # === Model ===
         actor_hiddens: [32, 64]
         critic_hiddens: [64, 64]

@@ -12,7 +12,6 @@ Synthetic Data
    :toctree: doc/
 
    range
-   range_table
    range_tensor
 
 Python Objects
@@ -127,6 +126,14 @@ MongoDB
    read_mongo
    Dataset.write_mongo
 
+SQL Databases
+-------------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_sql
+
 Dask
 ----
 
@@ -171,8 +178,8 @@ Torch
 
    from_torch
 
-HuggingFace
------------
+Hugging Face
+------------
 
 .. autosummary::
    :toctree: doc/
@@ -187,6 +194,14 @@ TensorFlow
 
    from_tf
 
+WebDataset
+----------
+
+.. autosummary::
+   :toctree: doc/
+
+   read_webdataset
+
 .. _data_source_api:
 
 Datasource API
@@ -200,24 +215,6 @@ Datasource API
    Datasource
    ReadTask
    datasource.Reader
-
-
-Built-in Datasources
-####################
-
-.. autosummary::
-   :toctree: doc/
-
-   datasource.BinaryDatasource
-   datasource.CSVDatasource
-   datasource.FileBasedDatasource
-   datasource.ImageDatasource
-   datasource.JSONDatasource
-   datasource.NumpyDatasource
-   datasource.ParquetDatasource
-   datasource.RangeDatasource
-   datasource.TFRecordDatasource
-   datasource.MongoDatasource
 
 Partitioning API
 ----------------

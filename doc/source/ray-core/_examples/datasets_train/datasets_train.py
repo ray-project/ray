@@ -268,7 +268,7 @@ def inference(
     num_gpus = 1 if use_gpu else 0
     dataset.map_batches(
         model_cls,
-        compute="actors",
+        compute=ray.data.ActorPoolStrategy(),
         batch_size=batch_size,
         batch_format="pandas",
         num_gpus=num_gpus,

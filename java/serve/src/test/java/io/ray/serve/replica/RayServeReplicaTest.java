@@ -70,11 +70,17 @@ public class RayServeReplicaTest {
 
       // reconfigure
       ObjectRef<Object> versionRef =
-          replicHandle.task(RayServeWrappedReplica::reconfigure, (Object) null).remote();
+          replicHandle
+              .task(RayServeWrappedReplica::reconfigure, (new DeploymentConfig()).toProtoBytes())
+              .remote();
       Assert.assertEquals(
           DeploymentVersion.fromProtoBytes((byte[]) (versionRef.get())).getCodeVersion(), version);
 
-      replicHandle.task(RayServeWrappedReplica::reconfigure, new Object()).remote().get();
+      deploymentConfig = deploymentConfig.setUserConfig(new Object());
+      replicHandle
+          .task(RayServeWrappedReplica::reconfigure, deploymentConfig.toProtoBytes())
+          .remote()
+          .get();
       resultRef =
           replicHandle
               .task(
@@ -84,8 +90,9 @@ public class RayServeReplicaTest {
               .remote();
       Assert.assertEquals((String) resultRef.get(), "1");
 
+      deploymentConfig = deploymentConfig.setUserConfig(ImmutableMap.of("value", "100"));
       replicHandle
-          .task(RayServeWrappedReplica::reconfigure, ImmutableMap.of("value", "100"))
+          .task(RayServeWrappedReplica::reconfigure, deploymentConfig.toProtoBytes())
           .remote()
           .get();
       resultRef =

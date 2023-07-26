@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Union, TYPE_CHECKING
 import warnings
 import numpy as np
 
+from ray.air._internal.usage import tag_searcher
 from ray.tune.error import TuneError
 from ray.tune.experiment.config_parser import _make_parser, _create_trial_from_spec
 from ray.tune.search.sample import np_random_generator, _BackwardsCompatibleNumpyRng
@@ -294,6 +295,7 @@ class BasicVariantGenerator(SearchAlgorithm):
             Union[int, "np_random_generator", np.random.RandomState]
         ] = None,
     ):
+        tag_searcher(self)
         self._trial_generator = []
         self._iterators = []
         self._trial_iter = None

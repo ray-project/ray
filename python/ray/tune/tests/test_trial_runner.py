@@ -7,9 +7,8 @@ from ray.air.execution import PlacementGroupResourceManager, FixedResourceManage
 from ray.rllib import _register_all
 
 from ray import tune
-from ray.tune import TuneError, register_trainable
+from ray.tune import TuneError
 from ray.tune.execution.ray_trial_executor import RayTrialExecutor
-from ray.tune.resources import Resources
 from ray.tune.schedulers import TrialScheduler, FIFOScheduler
 from ray.tune.search import BasicVariantGenerator
 from ray.tune.experiment import Trial
@@ -27,36 +26,6 @@ class TrialRunnerTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-
-    def testExperimentTagTruncation(self):
-        ray.init(num_cpus=2)
-
-        def train(config, reporter):
-            reporter(timesteps_total=1)
-
-        trial_executor = RayTrialExecutor(resource_manager=self._resourceManager())
-        register_trainable("f1", train)
-
-        experiments = {
-            "foo": {
-                "run": "f1",
-                "config": {
-                    "a" * 50: tune.sample_from(lambda spec: 5.0 / 7),
-                    "b" * 50: tune.sample_from(lambda spec: "long" * 40),
-                },
-            }
-        }
-
-        for name, spec in experiments.items():
-            trial_generator = BasicVariantGenerator()
-            trial_generator.add_configurations({name: spec})
-            while not trial_generator.is_finished():
-                trial = trial_generator.next_trial()
-                if not trial:
-                    break
-                trial_executor.start_trial(trial)
-                self.assertLessEqual(len(os.path.basename(trial.logdir)), 200)
-                trial_executor.stop_trial(trial)
 
     def testExtraResources(self):
         ray.init(num_cpus=4, num_gpus=2)
@@ -133,7 +102,7 @@ class TrialRunnerTest(unittest.TestCase):
             trial_executor=RayTrialExecutor(resource_manager=self._resourceManager())
         )
         kwargs = {
-            "resources": Resources(cpu=1, gpu=0.5),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0.5}]),
         }
         trials = [
             Trial("__fake", **kwargs),
@@ -152,18 +121,11 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[2].status, Trial.PENDING)
         self.assertEqual(trials[3].status, Trial.PENDING)
 
-    def testResourceNumericalError(self):
-        resource = Resources(cpu=0.99, gpu=0.99, custom_resources={"a": 0.99})
-        small_resource = Resources(cpu=0.33, gpu=0.33, custom_resources={"a": 0.33})
-        for i in range(3):
-            resource = Resources.subtract(resource, small_resource)
-        self.assertTrue(resource.is_nonnegative())
-
     def testResourceScheduler(self):
         ray.init(num_cpus=4, num_gpus=1)
         kwargs = {
             "stopping_criterion": {"training_iteration": 1},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
 
@@ -185,7 +147,7 @@ class TrialRunnerTest(unittest.TestCase):
         ray.init(num_cpus=4, num_gpus=2)
         kwargs = {
             "stopping_criterion": {"training_iteration": 5},
-            "resources": Resources(cpu=1, gpu=1),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 1}]),
         }
         trials = [Trial("__fake", **kwargs), Trial("__fake", **kwargs)]
         snapshot = TrialStatusSnapshot()
@@ -209,7 +171,7 @@ class TrialRunnerTest(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "resources": Resources(cpu=1, gpu=0),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
         }
         trials = [Trial("__fake", **kwargs)]
         for t in trials:
@@ -247,7 +209,7 @@ class TrialRunnerTest(unittest.TestCase):
         )
         kwargs = {
             "stopping_criterion": {"training_iteration": 2},
-            "resources": Resources(cpu=1, gpu=0),
+            "placement_group_factory": PlacementGroupFactory([{"CPU": 1, "GPU": 0}]),
         }
         trials = [Trial("__fake", **kwargs)]
         for t in trials:
@@ -255,7 +217,7 @@ class TrialRunnerTest(unittest.TestCase):
 
         runner.step()
         self.assertEqual(trials[0].status, Trial.RUNNING)
-        self.assertEqual(runner.trial_executor._occupied_resources().get("CPU"), 1)
+        self.assertEqual(runner.trial_executor._allocated_resources().get("CPU"), 1)
         self.assertRaises(
             ValueError, lambda: trials[0].update_resources(dict(cpu=2, gpu=0))
         )
@@ -265,7 +227,7 @@ class TrialRunnerTest(unittest.TestCase):
         self.assertEqual(trials[0].status, Trial.PAUSED)
         # extra step for tune loop to stage the resource requests.
         runner.step()
-        self.assertEqual(runner.trial_executor._occupied_resources().get("CPU"), 2)
+        self.assertEqual(runner.trial_executor._allocated_resources().get("CPU"), 2)
 
     def testQueueFilling(self):
         os.environ["TUNE_MAX_PENDING_TRIALS_PG"] = "1"
@@ -319,4 +281,4 @@ class FixedResourceTrialRunnerTest(TrialRunnerTest):
 if __name__ == "__main__":
     import pytest
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "--reruns", "3", __file__]))

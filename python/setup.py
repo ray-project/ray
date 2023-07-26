@@ -6,6 +6,7 @@ import logging
 import os
 import pathlib
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,21 +15,30 @@ import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
+import warnings
 import zipfile
 from enum import Enum
 from itertools import chain
 
+# Workaround for setuptools_scm (used on macos) adding junk files
+# https://stackoverflow.com/a/61274968/8162137
+try:
+    import setuptools_scm.integration
+
+    setuptools_scm.integration.find_files = lambda _: []
+except ImportError:
+    pass
+
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 6), (3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 7), (3, 8), (3, 9), (3, 10), (3, 11)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
-
-SUPPORTED_BAZEL = (4, 2, 2)
 
 ROOT_DIR = os.path.dirname(__file__)
 BUILD_JAVA = os.getenv("RAY_INSTALL_JAVA") == "1"
 SKIP_BAZEL_BUILD = os.getenv("SKIP_BAZEL_BUILD") == "1"
+BAZEL_ARGS = os.getenv("BAZEL_ARGS")
 BAZEL_LIMIT_CPUS = os.getenv("BAZEL_LIMIT_CPUS")
 
 PICKLE5_SUBDIR = os.path.join("ray", "pickle5_files")
@@ -101,7 +111,7 @@ class SetupSpec:
 
     def get_packages(self):
         if self.type == SetupType.RAY:
-            return setuptools.find_packages()
+            return setuptools.find_packages(exclude=("tests", "*.tests", "*.tests.*"))
         else:
             return []
 
@@ -198,7 +208,14 @@ ray_files += [
     for dirpath, dirnames, filenames in os.walk("ray/dashboard/modules/metrics/export")
     for filename in filenames
 ]
-ray_files += ["ray/dashboard/modules/metrics/grafana_dashboard_base.json"]
+ray_files += [
+    os.path.join(dirpath, filename)
+    for dirpath, dirnames, filenames in os.walk(
+        "ray/dashboard/modules/metrics/dashboards"
+    )
+    for filename in filenames
+    if filename.endswith(".json")
+]
 
 # html templates for notebook integration
 ray_files += [
@@ -209,18 +226,11 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    if sys.version_info >= (3, 7):
-        pandas_dep = "pandas >= 1.3"
-        numpy_dep = "numpy >= 1.20"
-    else:
-        # Pandas dropped python 3.6 support in 1.2.
-        pandas_dep = "pandas >= 1.0.5"
-        # NumPy dropped python 3.6 support in 1.20.
-        numpy_dep = "numpy >= 1.19"
-    if sys.version_info >= (3, 7) and sys.platform != "win32":
+    pandas_dep = "pandas >= 1.3"
+    numpy_dep = "numpy >= 1.20"
+    if sys.platform != "win32":
         pyarrow_dep = "pyarrow >= 6.0.1"
     else:
-        # pyarrow dropped python 3.6 support in 7.0.0.
         # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
         pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
     setup_spec.extras = {
@@ -243,10 +253,15 @@ if setup_spec.type == SetupType.RAY:
             "pydantic",
             "prometheus_client >= 0.7.1",
             "smart_open",
+            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+        ],
+        "client": [
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issue: https://github.com/grpc/grpc/issues/31885
+            "grpcio >= 1.42.0, <= 1.50.0",
         ],
         "serve": ["uvicorn", "requests", "starlette", "fastapi", "aiorwlock"],
-        "tune": ["pandas", "tabulate", "tensorboardX>=1.9", "requests"],
-        "k8s": ["kubernetes", "urllib3"],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
@@ -298,20 +313,15 @@ if setup_spec.type == SetupType.RAY:
 # new releases candidates.
 if setup_spec.type == SetupType.RAY:
     setup_spec.install_requires = [
-        "attrs",
         "click >= 7.0",
-        "dataclasses; python_version < '3.7'",
         "filelock",
-        # Tracking issue: https://github.com/ray-project/ray/issues/30984
-        "grpcio >= 1.32.0, <= 1.49.1; python_version < '3.10' and sys_platform == 'darwin'",  # noqa
-        "grpcio >= 1.42.0, <= 1.49.1; python_version >= '3.10' and sys_platform == 'darwin'",  # noqa
-        "grpcio >= 1.32.0; python_version < '3.10' and sys_platform != 'darwin'",
-        "grpcio >= 1.42.0; python_version >= '3.10' and sys_platform != 'darwin'",
+        "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+        "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
         "jsonschema",
         "msgpack >= 1.0.0, < 2.0.0",
         "numpy >= 1.16; python_version < '3.9'",
         "numpy >= 1.19.3; python_version >= '3.9'",
-        "packaging; python_version >= '3.10'",
+        "packaging",
         "protobuf >= 3.15.3, != 3.19.5",
         "pyyaml",
         "aiosignal",
@@ -320,7 +330,6 @@ if setup_spec.type == SetupType.RAY:
         # Light weight requirement, can be replaced with "typing" once
         # we deprecate Python 3.7 (this will take a while).
         "typing_extensions; python_version < '3.8'",
-        "virtualenv>=20.0.24",  # For pip runtime env.
     ]
 
 
@@ -338,8 +347,8 @@ def is_invalid_windows_platform():
     return platform == "msys" or (platform == "win32" and ver and "GCC" in ver)
 
 
-# Calls Bazel in PATH, falling back to the standard user installatation path
-# (~/.bazel/bin/bazel) if it isn't found.
+# Calls Bazel in PATH, falling back to the standard user installation path
+# (~/bin/bazel) if it isn't found.
 def bazel_invoke(invoker, cmdline, *args, **kwargs):
     home = os.path.expanduser("~")
     first_candidate = os.getenv("BAZEL_PATH", "bazel")
@@ -349,7 +358,7 @@ def bazel_invoke(invoker, cmdline, *args, **kwargs):
         if mingw_dir:
             candidates.append(mingw_dir + "/bin/bazel.exe")
     else:
-        candidates.append(os.path.join(home, ".bazel", "bin", "bazel"))
+        candidates.append(os.path.join(home, "bin", "bazel"))
     result = None
     for i, cmd in enumerate(candidates):
         try:
@@ -550,9 +559,17 @@ def build(build_python, build_java, build_cpp):
         )
 
     bazel_flags = ["--verbose_failures"]
+    if BAZEL_ARGS:
+        bazel_flags.extend(shlex.split(BAZEL_ARGS))
+
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
         bazel_flags.append(f"--local_cpu_resources={n}")
+        warnings.warn(
+            "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
+            " version. Please use BAZEL_ARGS instead.",
+            FutureWarning,
+        )
 
     if not is_automated_build:
         bazel_precmd_flags = []
@@ -595,7 +612,7 @@ def build(build_python, build_java, build_cpp):
 
 def walk_directory(directory):
     file_list = []
-    for (root, dirs, filenames) in os.walk(directory):
+    for root, dirs, filenames in os.walk(directory):
         for name in filenames:
             file_list.append(os.path.join(root, name))
     return file_list
@@ -675,7 +692,7 @@ def pip_run(build_ext):
 
 def api_main(program, *args):
     parser = argparse.ArgumentParser()
-    choices = ["build", "bazel_version", "python_versions", "clean", "help"]
+    choices = ["build", "python_versions", "clean", "help"]
     parser.add_argument("command", type=str, choices=choices)
     parser.add_argument(
         "-l",
@@ -702,8 +719,6 @@ def api_main(program, *args):
             else:
                 raise ValueError("invalid language: {!r}".format(lang))
         result = build(**kwargs)
-    elif parsed_args.command == "bazel_version":
-        print(".".join(map(str, SUPPORTED_BAZEL)))
     elif parsed_args.command == "python_versions":
         for version in SUPPORTED_PYTHONS:
             # NOTE: On Windows this will print "\r\n" on the command line.
@@ -764,7 +779,6 @@ setuptools.setup(
         "reinforcement-learning deep-learning serving python"
     ),
     classifiers=[
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
@@ -789,6 +803,11 @@ setuptools.setup(
         "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
+    exclude_package_data={
+        # Empty string means "any package".
+        # Therefore, exclude BUILD from every package:
+        "": ["BUILD"],
+    },
     zip_safe=False,
     license="Apache 2.0",
 ) if __name__ == "__main__" else None

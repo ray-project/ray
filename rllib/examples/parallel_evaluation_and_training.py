@@ -43,7 +43,7 @@ parser.add_argument("--num-cpus", type=int, default=0)
 parser.add_argument(
     "--framework",
     choices=["tf", "tf2", "torch"],
-    default="tf",
+    default="torch",
     help="The DL framework specifier.",
 )
 parser.add_argument(
@@ -124,7 +124,7 @@ if __name__ == "__main__":
         .get_default_config()
         .environment("CartPole-v1")
         # Run with tracing enabled for tf2.
-        .framework(args.framework, eager_tracing=args.framework == "tf2")
+        .framework(args.framework)
         .training()
         .evaluation(
             # Parallel evaluation+training config.

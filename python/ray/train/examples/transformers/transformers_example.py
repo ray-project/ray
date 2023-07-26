@@ -43,8 +43,7 @@ from transformers import (
 from transformers.utils.versions import require_version
 
 import ray
-from ray.air import session
-from ray.train.torch import TorchTrainer
+from ray.train.huggingface import AccelerateTrainer
 from ray.air.config import ScalingConfig
 
 logger = logging.getLogger(__name__)
@@ -231,10 +230,6 @@ def parse_args():
 
 
 def train_func(config: Dict[str, Any]):
-    # Accelerator reads from this environment variable for GPU placement.
-    os.environ["LOCAL_RANK"] = str(session.get_local_rank())
-    os.environ["WORLD_SIZE"] = str(session.get_world_size())
-
     args = config["args"]
     # Initialize the accelerator. We will let the accelerator handle device
     # placement for us in this example.
@@ -615,9 +610,10 @@ def main():
         else:
             # Connect to a Ray cluster for distributed training.
             ray.init(address=args.address)
-        trainer = TorchTrainer(
+        trainer = AccelerateTrainer(
             train_func,
             train_loop_config=config,
+            accelerate_config={},
             scaling_config=ScalingConfig(
                 num_workers=args.num_workers, use_gpu=args.use_gpu
             ),

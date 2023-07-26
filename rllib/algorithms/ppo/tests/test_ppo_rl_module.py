@@ -1,164 +1,61 @@
 import itertools
-import ray
 import unittest
-import numpy as np
+
 import gymnasium as gym
-import torch
-import tensorflow as tf
+import numpy as np
 import tree
 
+import ray
 from ray.rllib import SampleBatch
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-    PPOTorchRLModule,
-    PPOModuleConfig,
-)
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import (
     PPOTfRLModule,
-    PPOTfModuleConfig,
 )
-from ray.rllib.core.rl_module.encoder import (
-    FCConfig,
-    IdentityConfig,
-    LSTMConfig,
-    STATE_IN,
-    STATE_OUT,
+from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+    PPOTorchRLModule,
 )
-from ray.rllib.core.rl_module.encoder_tf import (
-    FCTfConfig,
-    IdentityTfConfig,
-)
+from ray.rllib.core.models.base import STATE_IN, STATE_OUT
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.models.preprocessors import get_preprocessor
+from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
-def get_expected_model_config_torch(
-    env: gym.Env, lstm: bool, shared_encoder: bool
-) -> PPOModuleConfig:
+tf1, tf, _ = try_import_tf()
+tf1.enable_eager_execution()
+torch, nn = try_import_torch()
+
+
+def get_expected_module_config(
+    env: gym.Env,
+    model_config_dict: dict,
+    observation_space: gym.spaces.Space,
+) -> RLModuleConfig:
     """Get a PPOModuleConfig that we would expect from the catalog otherwise.
 
     Args:
         env: Environment for which we build the model later
-        lstm: If True, build recurrent pi encoder
-        shared_encoder: If True, build a shared encoder for pi and vf, where pi
-            encoder and vf encoder will be identity. If False, the shared encoder
-            will be identity.
+        model_config_dict: Model config to use for the catalog
+        observation_space: Observation space to use for the catalog.
 
     Returns:
          A PPOModuleConfig containing the relevant configs to build PPORLModule
     """
-    assert len(env.observation_space.shape) == 1, (
-        "No multidimensional obs space " "supported."
-    )
-    obs_dim = env.observation_space.shape[0]
-
-    if shared_encoder:
-        assert not lstm, "LSTM can only be used in PI"
-        shared_encoder_config = FCConfig(
-            input_dim=obs_dim,
-            hidden_layers=[32],
-            activation="ReLU",
-            output_dim=32,
-        )
-        pi_encoder_config = IdentityConfig(output_dim=32)
-        vf_encoder_config = IdentityConfig(output_dim=32)
-    else:
-        shared_encoder_config = IdentityConfig(output_dim=obs_dim)
-        if lstm:
-            pi_encoder_config = LSTMConfig(
-                input_dim=obs_dim,
-                hidden_dim=32,
-                batch_first=True,
-                output_dim=32,
-                num_layers=1,
-            )
-        else:
-            pi_encoder_config = FCConfig(
-                input_dim=obs_dim,
-                output_dim=32,
-                hidden_layers=[32],
-                activation="ReLU",
-            )
-        vf_encoder_config = FCConfig(
-            input_dim=obs_dim,
-            output_dim=32,
-            hidden_layers=[32],
-            activation="ReLU",
-        )
-
-    pi_config = FCConfig()
-    vf_config = FCConfig()
-
-    if isinstance(env.action_space, gym.spaces.Discrete):
-        pi_config.output_dim = env.action_space.n
-    else:
-        pi_config.output_dim = env.action_space.shape[0] * 2
-
-    return PPOModuleConfig(
-        observation_space=env.observation_space,
+    config = RLModuleConfig(
+        observation_space=observation_space,
         action_space=env.action_space,
-        shared_encoder_config=shared_encoder_config,
-        pi_encoder_config=pi_encoder_config,
-        vf_encoder_config=vf_encoder_config,
-        pi_config=pi_config,
-        vf_config=vf_config,
-        shared_encoder=shared_encoder,
+        model_config_dict=model_config_dict,
+        catalog_class=PPOCatalog,
     )
 
-
-def get_expected_model_config_tf(
-    env: gym.Env, shared_encoder: bool
-) -> PPOTfModuleConfig:
-    """Get a PPOTfModuleConfig that we would expect from the catalog otherwise.
-
-    Args:
-        env: Environment for which we build the model later
-        shared_encoder: If True, build a shared encoder for pi and vf, where pi
-            encoder and vf encoder will be identity. If False, the shared encoder
-            will be identity.
-
-    Returns:
-         A PPOTfModuleConfig containing the relevant configs to build PPOTfRLModule.
-    """
-    assert len(env.observation_space.shape) == 1, (
-        "No multidimensional obs space " "supported."
-    )
-    obs_dim = env.observation_space.shape[0]
-
-    if shared_encoder:
-        shared_encoder_config = FCTfConfig(
-            input_dim=obs_dim,
-            hidden_layers=[32],
-            activation="ReLU",
-            output_dim=32,
-        )
-    else:
-        shared_encoder_config = IdentityTfConfig(output_dim=obs_dim)
-    pi_config = FCConfig()
-    vf_config = FCConfig()
-    pi_config.input_dim = vf_config.input_dim = shared_encoder_config.output_dim
-
-    if isinstance(env.action_space, gym.spaces.Discrete):
-        pi_config.output_dim = env.action_space.n
-    else:
-        pi_config.output_dim = env.action_space.shape[0] * 2
-
-    pi_config.hidden_layers = vf_config.hidden_layers = [32]
-    pi_config.activation = vf_config.activation = "ReLU"
-
-    return PPOTfModuleConfig(
-        observation_space=env.observation_space,
-        action_space=env.action_space,
-        shared_encoder_config=shared_encoder_config,
-        pi_config=pi_config,
-        vf_config=vf_config,
-        shared_encoder=shared_encoder,
-    )
+    return config
 
 
-def dummy_torch_ppo_loss(batch, fwd_out):
+def dummy_torch_ppo_loss(module, batch, fwd_out):
     """Dummy PPO loss function for testing purposes.
 
-    Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
+    Will eventually use the actual PPO loss function implemented in PPO.
 
     Args:
         batch: SampleBatch used for training.
@@ -172,19 +69,24 @@ def dummy_torch_ppo_loss(batch, fwd_out):
     # this is not exactly a ppo loss, just something to show that the
     # forward train works
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    actor_loss = -(fwd_out[SampleBatch.ACTION_LOGP] * adv).mean()
+    action_dist_class = module.get_train_action_dist_cls()
+    action_probs = action_dist_class.from_logits(
+        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+    ).logp(batch[SampleBatch.ACTIONS])
+    actor_loss = -(action_probs * adv).mean()
     critic_loss = (adv**2).mean()
     loss = actor_loss + critic_loss
 
     return loss
 
 
-def dummy_tf_ppo_loss(batch, fwd_out):
+def dummy_tf_ppo_loss(module, batch, fwd_out):
     """Dummy PPO loss function for testing purposes.
 
-    Will eventually use the actual PPO loss function implemented in the PPOTfTrainer.
+    Will eventually use the actual PPO loss function implemented in PPO.
 
     Args:
+        module: PPOTfRLModule
         batch: SampleBatch used for training.
         fwd_out: Forward output of the model.
 
@@ -192,10 +94,39 @@ def dummy_tf_ppo_loss(batch, fwd_out):
         Loss tensor
     """
     adv = batch[SampleBatch.REWARDS] - fwd_out[SampleBatch.VF_PREDS]
-    action_probs = fwd_out[SampleBatch.ACTION_DIST].logp(batch[SampleBatch.ACTIONS])
+    action_dist_class = module.get_train_action_dist_cls()
+    action_probs = action_dist_class.from_logits(
+        fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+    ).logp(batch[SampleBatch.ACTIONS])
     actor_loss = -tf.reduce_mean(action_probs * adv)
     critic_loss = tf.reduce_mean(tf.square(adv))
     return actor_loss + critic_loss
+
+
+def _get_ppo_module(framework, env, lstm, observation_space):
+    model_config_dict = {"use_lstm": lstm}
+    config = get_expected_module_config(
+        env, model_config_dict=model_config_dict, observation_space=observation_space
+    )
+    if framework == "torch":
+        module = PPOTorchRLModule(config)
+    else:
+        module = PPOTfRLModule(config)
+    return module
+
+
+def _get_input_batch_from_obs(framework, obs, lstm):
+    if framework == "torch":
+        batch = {
+            SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
+        }
+    else:
+        batch = {
+            SampleBatch.OBS: tf.convert_to_tensor(obs)[None],
+        }
+    if lstm:
+        batch[SampleBatch.OBS] = batch[SampleBatch.OBS][None]
+    return batch
 
 
 class TestPPO(unittest.TestCase):
@@ -207,56 +138,44 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def get_ppo_module(self, framwework, env, lstm, shared_encoder):
-        if framwework == "torch":
-            config = get_expected_model_config_torch(env, lstm, shared_encoder)
-            module = PPOTorchRLModule(config)
-        else:
-            config = get_expected_model_config_tf(env, shared_encoder)
-            module = PPOTfRLModule(config)
-        return module
-
-    def get_input_batch_from_obs(self, framework, obs):
-        if framework == "torch":
-            batch = {
-                SampleBatch.OBS: convert_to_torch_tensor(obs)[None],
-            }
-        else:
-            batch = {SampleBatch.OBS: np.array([obs])}
-        return batch
-
     def test_rollouts(self):
-        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
+        # TODO: Add FrozenLake-v1 to cover LSTM case.
         frameworks = ["torch", "tf2"]
-        env_names = ["CartPole-v1", "Pendulum-v1"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         fwd_fns = ["forward_exploration", "forward_inference"]
-        shared_encoders = [False, True]
-        ltsms = [False, True]
-        config_combinations = [frameworks, env_names, fwd_fns, shared_encoders, ltsms]
+        lstm = [True, False]
+        config_combinations = [frameworks, env_names, fwd_fns, lstm]
         for config in itertools.product(*config_combinations):
-            fw, env_name, fwd_fn, shared_encoder, lstm = config
-            if lstm and shared_encoder:
-                # Not yet implemented
-                # TODO (Artur): Implement
-                continue
+            fw, env_name, fwd_fn, lstm = config
             if lstm and fw == "tf2":
                 # LSTM not implemented in TF2 yet
                 continue
-            print(f"[ENV={env_name}] | [SHARED={shared_encoder}] | LSTM" f"={lstm}")
-            env = gym.make(env_name)
-            module = self.get_ppo_module(fw, env, lstm, shared_encoder)
+            print(f"[FW={fw} | [ENV={env_name}] | [FWD={fwd_fn}] | LSTM" f"={lstm}")
+            if env_name.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=env_name)
+            else:
+                env = gym.make(env_name)
 
+            preprocessor_cls = get_preprocessor(env.observation_space)
+            preprocessor = preprocessor_cls(env.observation_space)
+
+            module = _get_ppo_module(
+                framework=fw,
+                env=env,
+                lstm=lstm,
+                observation_space=preprocessor.observation_space,
+            )
             obs, _ = env.reset()
+            obs = preprocessor.transform(obs)
 
-            batch = self.get_input_batch_from_obs(fw, obs)
+            batch = _get_input_batch_from_obs(fw, obs, lstm)
 
             if lstm:
                 state_in = module.get_initial_state()
-                state_in = tree.map_structure(
-                    lambda x: x[None], convert_to_torch_tensor(state_in)
-                )
+                if fw == "torch":
+                    state_in = convert_to_torch_tensor(state_in)
+                state_in = tree.map_structure(lambda x: x[None], state_in)
                 batch[STATE_IN] = state_in
-                batch[SampleBatch.SEQ_LENS] = torch.Tensor([1])
 
             if fwd_fn == "forward_exploration":
                 module.forward_exploration(batch)
@@ -264,54 +183,78 @@ class TestPPO(unittest.TestCase):
                 module.forward_inference(batch)
 
     def test_forward_train(self):
-        # TODO: Add BreakoutNoFrameskip-v4 to cover a 3D obs space
-        frameworks = ["torch", "tf2"]
-        env_names = ["CartPole-v1", "Pendulum-v1"]
-        shared_encoders = [False, True]
-        ltsms = [False, True]
-        config_combinations = [frameworks, env_names, shared_encoders, ltsms]
+        # TODO: Add FrozenLake-v1 to cover LSTM case.
+        frameworks = ["tf2", "torch"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
+        lstm = [False, True]
+        config_combinations = [frameworks, env_names, lstm]
         for config in itertools.product(*config_combinations):
-            fw, env_name, shared_encoder, lstm = config
-            if lstm and shared_encoder:
-                # Not yet implemented
-                # TODO (Artur): Implement
-                continue
-            if lstm and fw == "tf2":
-                # LSTM not implemented in TF2 yet
-                continue
-            print(f"[ENV={env_name}] | [SHARED=" f"{shared_encoder}] | LSTM={lstm}")
-            env = gym.make(env_name)
+            fw, env_name, lstm = config
+            print(f"[FW={fw} | [ENV={env_name}] | LSTM={lstm}")
+            # TODO(Artur): Figure out why this is needed and fix it.
+            if env_name.startswith("ALE/"):
+                env = gym.make("GymV26Environment-v0", env_id=env_name)
+            else:
+                env = gym.make(env_name)
 
-            module = self.get_ppo_module(fw, env, lstm, shared_encoder)
+            preprocessor_cls = get_preprocessor(env.observation_space)
+            preprocessor = preprocessor_cls(env.observation_space)
+
+            module = _get_ppo_module(
+                framework=fw,
+                env=env,
+                lstm=lstm,
+                observation_space=preprocessor.observation_space,
+            )
 
             # collect a batch of data
             batches = []
             obs, _ = env.reset()
+            obs = preprocessor.transform(obs)
             tstep = 0
+
             if lstm:
                 state_in = module.get_initial_state()
-                state_in = tree.map_structure(
-                    lambda x: x[None], convert_to_torch_tensor(state_in)
-                )
-                initial_state = state_in
-            while tstep < 10:
-                if lstm:
-                    input_batch = self.get_input_batch_from_obs(fw, obs)
-                    input_batch[STATE_IN] = state_in
-                    input_batch[SampleBatch.SEQ_LENS] = np.array([1])
+                if fw == "torch":
+                    state_in = tree.map_structure(
+                        lambda x: x[None], convert_to_torch_tensor(state_in)
+                    )
                 else:
-                    input_batch = self.get_input_batch_from_obs(fw, obs)
+                    state_in = tree.map_structure(
+                        lambda x: tf.convert_to_tensor(x)[None], state_in
+                    )
+                initial_state = state_in
+
+            while tstep < 10:
+                input_batch = _get_input_batch_from_obs(fw, obs, lstm=lstm)
+                if lstm:
+                    input_batch[STATE_IN] = state_in
+
                 fwd_out = module.forward_exploration(input_batch)
-                action = convert_to_numpy(fwd_out["action_dist"].sample()[0])
+                action_dist_cls = module.get_exploration_action_dist_cls()
+                action_dist = action_dist_cls.from_logits(
+                    fwd_out[SampleBatch.ACTION_DIST_INPUTS]
+                )
+                _action = action_dist.sample()
+                action = convert_to_numpy(_action[0])
+                action_logp = convert_to_numpy(action_dist.logp(_action)[0])
+                if lstm:
+                    # Since this is inference, fwd out should only contain one action
+                    assert len(action) == 1
+                    action = action[0]
                 new_obs, reward, terminated, truncated, _ = env.step(action)
+                new_obs = preprocessor.transform(new_obs)
                 output_batch = {
                     SampleBatch.OBS: obs,
                     SampleBatch.NEXT_OBS: new_obs,
                     SampleBatch.ACTIONS: action,
+                    SampleBatch.ACTION_LOGP: action_logp,
                     SampleBatch.REWARDS: np.array(reward),
                     SampleBatch.TERMINATEDS: np.array(terminated),
                     SampleBatch.TRUNCATEDS: np.array(truncated),
+                    STATE_IN: None,
                 }
+
                 if lstm:
                     assert STATE_OUT in fwd_out
                     state_in = fwd_out[STATE_OUT]
@@ -328,7 +271,11 @@ class TestPPO(unittest.TestCase):
                 }
                 if lstm:
                     fwd_in[STATE_IN] = initial_state
-                    fwd_in[SampleBatch.SEQ_LENS] = torch.Tensor([10])
+                    # If we test lstm, the collected timesteps make up only one batch
+                    fwd_in = {
+                        k: torch.unsqueeze(v, 0) if k != STATE_IN else v
+                        for k, v in fwd_in.items()
+                    }
 
                 # forward train
                 # before training make sure module is on the right device
@@ -336,16 +283,27 @@ class TestPPO(unittest.TestCase):
                 module.to("cpu")
                 module.train()
                 fwd_out = module.forward_train(fwd_in)
-                loss = dummy_torch_ppo_loss(fwd_in, fwd_out)
+                loss = dummy_torch_ppo_loss(module, fwd_in, fwd_out)
                 loss.backward()
 
                 # check that all neural net parameters have gradients
                 for param in module.parameters():
                     self.assertIsNotNone(param.grad)
             else:
+                fwd_in = tree.map_structure(
+                    lambda x: tf.convert_to_tensor(x, dtype=tf.float32), batch
+                )
+                if lstm:
+                    fwd_in[STATE_IN] = initial_state
+                    # If we test lstm, the collected timesteps make up only one batch
+                    fwd_in = {
+                        k: tf.expand_dims(v, 0) if k != STATE_IN else v
+                        for k, v in fwd_in.items()
+                    }
+
                 with tf.GradientTape() as tape:
-                    fwd_out = module.forward_train(batch)
-                    loss = dummy_tf_ppo_loss(batch, fwd_out)
+                    fwd_out = module.forward_train(fwd_in)
+                    loss = dummy_tf_ppo_loss(module, fwd_in, fwd_out)
                 grads = tape.gradient(loss, module.trainable_variables)
                 for grad in grads:
                     self.assertIsNotNone(grad)

@@ -5,21 +5,21 @@ from ray.actor import ActorHandle
 from ray.air.config import DatasetConfig
 
 from ray.data import Dataset, DatasetPipeline
+from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors import Chain
 from ray.air._internal.util import _estimate_avail_object_store_memory
 
 if TYPE_CHECKING:
-    from ray.data import DatasetIterator
-    from ray.data.preprocessor import Preprocessor
+    from ray.data import DataIterator
 
 RayDataset = Union["Dataset", "DatasetPipeline"]
 
 
 @dataclass
 class RayDatasetSpec:
-    """Configuration for Ray Datasets to pass to the training workers.
+    """Configuration for Datasets to pass to the training workers.
 
-    dataset_or_dict: An optional Ray Dataset (or DatasetPipeline) or a dictionary of
+    dataset_or_dict: An optional Dataset (or DatasetPipeline) or a dictionary of
         datasets to be sharded across all the training workers, which can be accessed
         from the training function via ``session.get_dataset_shard()``. Multiple
         Datasets can be passed in as a dictionary that maps each name key to a
@@ -32,7 +32,7 @@ class RayDatasetSpec:
         training workers (to use as locality hints). The Callable is expected to
         return a list of RayDatasets or a list of dictionaries of RayDatasets,
         with the length of the list equal to the length of the list of actor handles.
-        If None is provided, the provided Ray Dataset(s) will be equally split.
+        If None is provided, the provided Dataset(s) will be equally split.
 
     """
 
@@ -113,7 +113,9 @@ class DataParallelIngestSpec:
         self.preprocessor: Optional["Preprocessor"] = None
 
     def preprocess_datasets(
-        self, prep: "Preprocessor", datasets: Dict[str, "Dataset"]
+        self,
+        prep: "Preprocessor",
+        datasets: Dict[str, "Dataset"],
     ) -> Dict[str, "Dataset"]:
         """Preprocess the given datasets.
 
@@ -142,7 +144,10 @@ class DataParallelIngestSpec:
                     continue
                 if conf.fit:
                     ds_to_fit = datasets[k]
-            if ds_to_fit:
+            if ds_to_fit and prep.fit_status() in (
+                Preprocessor.FitStatus.NOT_FITTED,
+                Preprocessor.FitStatus.PARTIALLY_FITTED,
+            ):
                 prep.fit(ds_to_fit)
             new_datasets = {}
 
@@ -165,7 +170,7 @@ class DataParallelIngestSpec:
 
     def get_dataset_shards(
         self, training_worker_handles: List[ActorHandle]
-    ) -> List[Dict[str, "DatasetIterator"]]:
+    ) -> List[Dict[str, "DataIterator"]]:
         """Get the shards to pass to training workers.
 
         Note: this has to match the signature of DatasetSpec in legacy train.
@@ -232,7 +237,7 @@ class DataParallelIngestSpec:
                 dataset_splits = [dataset] * len(training_worker_handles)
 
             for i, dataset_split in enumerate(dataset_splits):
-                dataset_splits[i] = dataset_split.iterator()._with_backward_compat()
+                dataset_splits[i] = dataset_split.iterator()
 
             for i in range(len(dataset_splits)):
                 dataset_dict_splits[i][key] = dataset_splits[i]

@@ -47,6 +47,7 @@ class Raylet {
   /// manager.
   /// \param gcs_client A client connection to the GCS.
   /// \param metrics_export_port A port at which metrics are exposed to.
+  /// \param is_head_node Whether this node is the head node.
   Raylet(instrumented_io_context &main_service,
          const std::string &socket_name,
          const std::string &node_ip_address,
@@ -54,7 +55,8 @@ class Raylet {
          const NodeManagerConfig &node_manager_config,
          const ObjectManagerConfig &object_manager_config,
          std::shared_ptr<gcs::GcsClient> gcs_client,
-         int metrics_export_port);
+         int metrics_export_port,
+         bool is_head_node);
 
   /// Start this raylet.
   void Start();
