@@ -276,7 +276,8 @@ class RayServeHandle:
         return self.options(method_name=name)
 
     def shutdown(self):
-        self._router.shutdown()
+        if self._router:
+            self._router.shutdown()
 
 
 @PublicAPI(stability="beta")

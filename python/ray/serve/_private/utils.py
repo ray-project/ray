@@ -669,7 +669,8 @@ class MetricsPusher:
         if not self.stop_event.is_set():
             self.stop_event.set()
 
-        self.pusher_thread.join()
+        if self.pusher_thread:
+            self.pusher_thread.join()
 
 
 def call_function_from_import_path(import_path: str) -> Any:
