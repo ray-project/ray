@@ -281,7 +281,7 @@ class DataIterator(abc.ABC):
             ...     print(batch)
             {'id': tensor([0, 1, 2, 3])}
             {'id': tensor([4, 5, 6, 7])}
-            {'id': tensor([ 8, 9, 10, 11])}
+            {'id': tensor([8, 9, 10, 11])}
 
             Use the ``collate_fn`` to customize how the tensor batch is created.
 
