@@ -775,20 +775,20 @@ def test_get_cpu_profile_running_task():
     ray.shutdown()
     context = ray.init()
     dashboard_url = f"http://{context['webui_url']}"
+    logger.info(f"dashboard_url {type(dashboard_url)}: {dashboard_url}")
 
     @ray.remote
-    def f():
-        pass
+    def my_job(job_id):
+        print(f"Executing job {job_id}")
 
-    ray.get([f.remote() for _ in range(5)])
+    num_jobs = 5
+    job_ids = []
+    for i in range(num_jobs):
+        job_ids.append(ray.remote(my_job).remote(i))
 
-    @ray.remote
-    def long_running_task():
-        print("Long-running task began.")
-        while True:
-            time.sleep(0.1)
+    ray.get(job_ids)
 
-    task = long_running_task.remote()
+    task = my_job.remote()
 
     task_id = task.task_id().hex()
     node_id = ray.get_runtime_context().node_id.hex()
