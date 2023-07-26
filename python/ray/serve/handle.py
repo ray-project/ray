@@ -1,13 +1,12 @@
 import asyncio
 import concurrent.futures
 from dataclasses import dataclass
-from functools import wraps
-import inspect
 import threading
-from typing import Coroutine, Optional, Union
+from typing import Any, Coroutine, Optional, Union
 
 import ray
 from ray._private.utils import get_or_create_event_loop
+from ray._raylet import StreamingObjectRefGenerator
 
 from ray import serve
 from ray.serve._private.common import EndpointTag
@@ -68,16 +67,30 @@ class HandleOptions:
         )
 
 
-class DeploymentHandleRef:
+class DeploymentHandleResultBase:
     def __init__(self, assign_request_coro: Coroutine):
         self._task = asyncio.ensure_future(assign_request_coro)
 
-    def __await__(self) -> ObjectRef:
+    def __await__(self) -> ray.ObjectRef:
         return self._task.__await__()
 
-    async def result(self) -> Any:
+
+class DeploymentHandleResult(DeploymentHandleResultBase):
+    async def get(self) -> Any:
         obj_ref = await self
         return await obj_ref
+
+
+class DeploymentHandleResultGenerator(DeploymentHandleResultBase):
+    def __init__(self, assign_request_coro: Coroutine):
+        super().__init__(assign_request_coro)
+        self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
+
+    async def __anext__(self) -> Any:
+        if self._obj_ref_gen is None:
+            self._obj_ref_gen = await self._task
+
+        return await self._obj_ref_gen.__anext__()
 
 
 @PublicAPI(stability="beta")
@@ -233,7 +246,7 @@ class RayServeHandle:
             request_metadata, *args, **kwargs
         )
 
-    def remote(self, *args, **kwargs) -> DeploymentHandleRef:
+    def remote(self, *args, **kwargs) -> DeploymentHandleResult:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -249,11 +262,13 @@ class RayServeHandle:
             result = await obj_ref
 
         """
-        return DeploymentHandleRef(
-            self._remote(
-                self.deployment_name, self.handle_options, args, kwargs
-            )
+        result_coro = self._remote(
+            self.deployment_name, self.handle_options, args, kwargs
         )
+        if self.handle_options.stream:
+            return DeploymentHandleResultGenerator(result_coro)
+        else:
+            return DeploymentHandleResult(result_coro)
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"

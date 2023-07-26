@@ -81,16 +81,27 @@ class Query:
     kwargs: Dict[Any, Any]
     metadata: RequestMetadata
 
-    async def resolve_handle_refs(self):
-        """Find all unresolved asyncio.Task and gather them all at once."""
-        from ray.serve.handle import DeploymentHandleRef
-        scanner = _PyObjScanner(source_type=DeploymentHandleRef)
+    async def resolve_deployment_handle_results(self):
+        """Replace DeploymentHandleResults with their resolve ObjectRefs."""
+        from ray.serve.handle import (
+            DeploymentHandleResultBase,
+            DeploymentHandleResultGenerator,
+        )
+
+        scanner = _PyObjScanner(source_type=DeploymentHandleResultBase)
 
         try:
-            refs = scanner.find_nodes((self.args, self.kwargs))
-            if len(refs) > 0:
-                resolved = await asyncio.gather(*refs)
-                replacement_table = dict(zip(refs, resolved))
+            results = scanner.find_nodes((self.args, self.kwargs))
+            for result in results:
+                if isinstance(result, DeploymentHandleResultGenerator):
+                    raise RuntimeError(
+                        "Streaming deployment handle results cannot be passed to "
+                        "downstream handle calls. If you have a use case requiring "
+                        "this feature, please file a feature request on GitHub."
+                    )
+            if len(results) > 0:
+                resolved = await asyncio.gather(*results)
+                replacement_table = dict(zip(results, resolved))
                 self.args, self.kwargs = scanner.replace_nodes(replacement_table)
         finally:
             # Make the scanner GC-able to avoid memory leaks.
@@ -989,7 +1000,7 @@ class Router:
             kwargs=request_kwargs,
             metadata=request_meta,
         )
-        await query.resolve_handle_refs()
+        await query.resolve_deployment_handle_results()
         await query.buffer_starlette_requests_and_warn()
         result = await self._replica_scheduler.assign_replica(query)
 
