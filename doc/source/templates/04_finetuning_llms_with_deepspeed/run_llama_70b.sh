@@ -59,6 +59,6 @@ python finetune_hf_llm.py \
     --train_path ${TRAIN_PATH} \
     --test_path ${TEST_PATH}  \
     --special_token_path ${TOKEN_PATH} \
-    $additional_args
+    "$additional_args"
 
 echo "Process completed."
