@@ -161,7 +161,7 @@ class TestDeploymentHandleStreaming:
                 assert [i async for i in gen] == list(range(5))
 
                 # Test calling another method name.
-                gen = await h.other_method.remote(5)
+                gen = h.other_method.remote(5)
                 assert [i async for i in gen] == list(range(5))
 
                 # Test calling another method name via `.options`.
