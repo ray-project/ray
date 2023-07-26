@@ -2,8 +2,8 @@
 | Template Specification | Description |
 | ---------------------- | ----------- |
 | Summary | This template, demonstrates how to perform full parameter fine-tuning for Llama-2 series models (7B, 13B, and 70B) using TorchTrainer with the DeepSpeed ZeRO-3 strategy. |
-| Time to Run | ~15 min. for 7B for 1 epoch on 3.5M tokens. ~20 min for 13B for 1 epoch.  |
-| Minimum Compute Requirements | At least 1xg5.16xlarge for head-node and 15xg5.4xlarge for worker nodes for 7B |
+| Time to Run | ~14 min. for 7B for 1 epoch on 3.5M tokens. ~26 min for 13B for 1 epoch.  |
+| Minimum Compute Requirements | At least 1xg5.16xlarge for head-node and 15xg5.4xlarge for worker nodes for both 7B and 13B|
 | Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu116`](https://docs.anyscale.com/reference/base-images/overview). |
 
 ## Getting Started
@@ -22,6 +22,11 @@ And launch the following script:
 ```
 
 The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
+
+Similarly for 13B you can do
+```
+./run_llama_13b.sh [--as-test]
+```
 
 ## What is happening under the hood?
 
@@ -101,7 +106,7 @@ This script was tested across three model sizes on the following cluster configu
 | Model Size | Base HF Model ID             | Batch size per device | GPUs           | Time per epoch (min.) |
 |------------|------------------------------|-----------------------|----------------|-----------------------|
 | 7B         | `meta-llama/Llama-2-7b-hf`   | 16                    | 16x A10G (24G) | ~14 min.              |
-| 13B        | `meta-llama/Llama-2-13b-hf`  | 16                    | 16x A10G (24G) | ~20 min.              |
+| 13B        | `meta-llama/Llama-2-13b-hf`  | 16                    | 16x A10G (24G) | ~26 min.              |
 | 70B        | `meta-llama/Llama-2-70b-hf`  | 8                     | 32x A10G (24G) | ~190 min.             |
 
 
