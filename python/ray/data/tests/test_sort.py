@@ -7,6 +7,9 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler import (
+    PushBasedShuffleTaskScheduler,
+)
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
@@ -217,10 +220,15 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert ds.sort("id").count() == 0
 
 
-def test_push_based_shuffle_schedule():
+@pytest.mark.parametrize("streaming", [False, True])
+def test_push_based_shuffle_schedule(streaming):
     def _test(num_input_blocks, merge_factor, num_cpus_per_node_map):
         num_cpus = sum(v for v in num_cpus_per_node_map.values())
-        schedule = PushBasedShufflePlan._compute_shuffle_schedule(
+        if streaming:
+            op_cls = PushBasedShuffleTaskScheduler
+        else:
+            op_cls = PushBasedShufflePlan
+        schedule = op_cls._compute_shuffle_schedule(
             num_cpus_per_node_map, num_input_blocks, merge_factor, num_input_blocks
         )
         # All input blocks will be processed.
@@ -277,9 +285,22 @@ def test_push_based_shuffle_schedule():
             assert schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx) > 0
 
         reduce_idxs = list(range(schedule.merge_schedule.output_num_blocks))
+        actual_num_reducers_per_merge_idx = [
+            0 for _ in range(schedule.num_merge_tasks_per_round)
+        ]
         for reduce_idx in schedule.merge_schedule.round_robin_reduce_idx_iterator():
             reduce_idxs.pop(reduce_idxs.index(reduce_idx))
+            actual_num_reducers_per_merge_idx[
+                schedule.merge_schedule.get_merge_idx_for_reducer_idx(reduce_idx)
+            ] += 1
+        # Check that each reduce task is submitted exactly once.
         assert len(reduce_idxs) == 0
+        # Check that each merge and reduce task are correctly paired.
+        for i, num_reducers in enumerate(actual_num_reducers_per_merge_idx):
+            assert (
+                num_reducers == num_reducers_per_merge_idx[i]
+            ), f"""Merge task [{i}] has {num_reducers} downstream reduce tasks,
+            expected {num_reducers_per_merge_idx[i]}."""
 
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})
@@ -288,6 +309,7 @@ def test_push_based_shuffle_schedule():
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
     # Regression test for https://github.com/ray-project/ray/issues/25863.
     _test(1000, 2, {f"node{i}": 16 for i in range(20)})
+    _test(260, 2, {"node1": 128})
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):

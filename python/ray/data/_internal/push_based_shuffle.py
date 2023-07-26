@@ -40,7 +40,10 @@ class _MergeTaskSchedule:
         return partition_size
 
     def get_merge_idx_for_reducer_idx(self, reducer_idx: int) -> int:
-        if reducer_idx < self.merge_partition_size * self._partitions_with_extra_task:
+        if (
+            reducer_idx
+            < (self.merge_partition_size + 1) * self._partitions_with_extra_task
+        ):
             merge_idx = reducer_idx // (self.merge_partition_size + 1)
         else:
             reducer_idx -= (
