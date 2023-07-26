@@ -25,6 +25,7 @@ class BinaryDatasource(FileBasedDatasource):
     _COLUMN_NAME = "bytes"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
+        import pyarrow as pa
         from pyarrow.fs import HadoopFileSystem
 
         include_paths = reader_args.pop("include_paths", False)
@@ -43,20 +44,12 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             data = f.readall()
 
-        output_arrow_format = reader_args.pop("output_arrow_format", False)
-        if output_arrow_format:
-            builder = ArrowBlockBuilder()
-            if include_paths:
-                item = {self._COLUMN_NAME: data, "path": path}
-            else:
-                item = {self._COLUMN_NAME: data}
-            builder.add(item)
-            return builder.build()
+        if include_paths:
+            item = {self._COLUMN_NAME: data, "path": path}
         else:
-            if include_paths:
-                return [(path, data)]
-            else:
-                return [data]
+            item = {self._COLUMN_NAME: data}
+
+        return pa.Table.from_pylist([item])
 
     def _rows_per_file(self):
         return 1
