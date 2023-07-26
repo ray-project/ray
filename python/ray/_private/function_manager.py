@@ -27,7 +27,11 @@ from ray._private.utils import (
     format_error_message,
 )
 from ray._private.serialization import pickle_dumps
-from ray._raylet import JobID, PythonFunctionDescriptor, WORKER_SETUP_HOOK_KEY_NAME_GCS
+from ray._raylet import (
+    JobID,
+    PythonFunctionDescriptor,
+    WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS,
+)
 
 FunctionExecutionInfo = namedtuple(
     "FunctionExecutionInfo", ["function", "function_name", "max_calls"]
@@ -178,7 +182,8 @@ class FunctionActorManager:
     ) -> bytes:
         """Export the setup hook function and return the key."""
         pickled_function = pickle_dumps(
-            setup_func, f"Cannot serialize the worker_setup_hook {setup_func.__name__}"
+            setup_func,
+            "Cannot serialize the worker_process_setup_hook " f"{setup_func.__name__}",
         )
 
         function_to_run_id = hashlib.shake_128(pickled_function).digest(
@@ -187,7 +192,7 @@ class FunctionActorManager:
         key = make_function_table_key(
             # This value should match with gcs_function_manager.h.
             # Otherwise, it won't be GC'ed.
-            WORKER_SETUP_HOOK_KEY_NAME_GCS.encode(),
+            WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS.encode(),
             # b"FunctionsToRun",
             self._worker.current_job_id.binary(),
             function_to_run_id,

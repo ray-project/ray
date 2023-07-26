@@ -582,7 +582,7 @@ def read_parquet(
         ...           ("petal.length", pa.float32()),
         ...           ("petal.width", pa.float32()),
         ...           ("variety", pa.string())]
-        >>> ds = ray.data.read_parquet("example://iris.parquet",
+        >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet",
         ...     schema=pa.schema(fields))
         >>> ds.schema()
         Column        Type
@@ -604,7 +604,7 @@ def read_parquet(
             # Create a Dataset by reading a Parquet file, pushing column selection and
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
-                "example://iris.parquet",
+                "s3://anonymous@ray-example-data/iris.parquet",
                 columns=["sepal.length", "variety"],
                 filter=pa.dataset.field("sepal.length") > 5.0,
             )
@@ -730,7 +730,7 @@ def read_images(
 
         >>> import ray
         >>> from ray.data.datasource.partitioning import Partitioning
-        >>> root = "example://image-datasets/dir-partitioned"
+        >>> root = "s3://anonymous@ray-example-data/image-datasets/dir-partitioned"
         >>> partitioning = Partitioning("dir", field_names=["class"], base_dir=root)
         >>> ds = ray.data.read_images(root, size=(224, 224), partitioning=partitioning)
         >>> ds.schema()
@@ -933,18 +933,29 @@ def read_json(
     ignore_missing_paths: bool = False,
     **arrow_json_args,
 ) -> Dataset:
-    """Creates a :class:`~ray.data.Dataset` from JSON files.
+    """Creates a :class:`~ray.data.Dataset` from JSON and JSONL files.
+
+    For JSON file, the whole file is read as one row.
+    For JSONL file, each line of file is read as separate row.
 
     Examples:
-        Read a file in remote storage.
+        Read a JSON file in remote storage.
 
         >>> import ray
-        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/logs.json")
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/log.json")
         >>> ds.schema()
         Column     Type
         ------     ----
         timestamp  timestamp[s]
         size       int64
+
+        Read a JSONL file in remote storage.
+
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/train.jsonl")
+        >>> ds.schema()
+        Column  Type
+        ------  ----
+        input   string
 
         Read multiple local files.
 
@@ -962,7 +973,7 @@ def read_json(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_json("example://year=2022/month=09/sales.json")
+        >>> ds = ray.data.read_json("s3://anonymous@ray-example-data/year=2022/month=09/sales.json")
         >>> ds.take(1)
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
@@ -997,7 +1008,7 @@ def read_json(
             Use with a custom callback to read only selected partitions of a
             dataset.
             By default, this filters out any file paths whose file extension does not
-            match "*.json*".
+            match "*.json" or "*.jsonl".
         partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
             that describes how paths are organized. By default, this function parses
             `Hive-style partitions <https://athena.guide/articles/\
@@ -1010,7 +1021,7 @@ def read_json(
 
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
-    """
+    """  # noqa: E501
     return read_datasource(
         JSONDatasource(),
         parallelism=parallelism,
@@ -1071,7 +1082,7 @@ def read_csv(
         >>> from pyarrow import csv
         >>> parse_options = csv.ParseOptions(delimiter="\\t")
         >>> ds = ray.data.read_csv(
-        ...     "example://iris.tsv",
+        ...     "s3://anonymous@ray-example-data/iris.tsv",
         ...     parse_options=parse_options)
         >>> ds.schema()
         Column        Type
@@ -1088,7 +1099,7 @@ def read_csv(
         >>> convert_options = csv.ConvertOptions(
         ...     timestamp_parsers=["%m/%d/%Y"])
         >>> ds = ray.data.read_csv(
-        ...     "example://dow_jones.csv",
+        ...     "s3://anonymous@ray-example-data/dow_jones.csv",
         ...     convert_options=convert_options)
 
         By default, :meth:`~ray.data.read_csv` parses
@@ -1097,7 +1108,7 @@ def read_csv(
         from file paths. If your data adheres to a different partitioning scheme, set
         the ``partitioning`` parameter.
 
-        >>> ds = ray.data.read_csv("example://year=2022/month=09/sales.csv")
+        >>> ds = ray.data.read_csv("s3://anonymous@ray-example-data/year=2022/month=09/sales.csv")
         >>> ds.take(1)
         [{'order_number': 10107, 'quantity': 30, 'year': '2022', 'month': '09'}]
 
@@ -1107,7 +1118,7 @@ def read_csv(
         Read only ``*.csv`` files from a directory.
 
         >>> from ray.data.datasource import FileExtensionFilter
-        >>> ray.data.read_csv("example://different-extensions/",
+        >>> ray.data.read_csv("s3://anonymous@ray-example-data/different-extensions/",
         ...     partition_filter=FileExtensionFilter("csv"))
         Dataset(num_blocks=..., num_rows=1, schema={a: int64, b: int64})
 
@@ -1358,7 +1369,7 @@ def read_tfrecords(
 
     Examples:
         >>> import ray
-        >>> ray.data.read_tfrecords("example://iris.tfrecords")
+        >>> ray.data.read_tfrecords("s3://anonymous@ray-example-data/iris.tfrecords")
         Dataset(
            num_blocks=...,
            num_rows=150,
@@ -1370,7 +1381,7 @@ def read_tfrecords(
             generated/pyarrow.CompressedInputStream.html>`_:
 
         >>> ray.data.read_tfrecords(
-        ...     "example://iris.tfrecords.gz",
+        ...     "s3://anonymous@ray-example-data/iris.tfrecords.gz",
         ...     arrow_open_stream_args={"compression": "gzip"},
         ... )
         Dataset(
@@ -1624,6 +1635,15 @@ def read_sql(
         For examples of reading from larger databases like MySQL and PostgreSQL, see
         :ref:`Reading from SQL Databases <reading_sql>`.
 
+        .. testcode::
+            :hide:
+
+            import os
+            try:
+                os.remove("example.db")
+            except OSError:
+                pass
+            
         .. testcode::
 
             import sqlite3
@@ -2061,12 +2081,9 @@ def from_spark(
 
 
 @PublicAPI
-def from_huggingface(
-    dataset: Union["datasets.Dataset", "datasets.DatasetDict"],
-) -> Union[MaterializedDataset, Dict[str, MaterializedDataset]]:
+def from_huggingface(dataset: "datasets.Dataset") -> MaterializedDataset:
     """Create a :class:`~ray.data.Dataset` from a
-    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_
-    or `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_.
+    `Hugging Face Datasets Dataset <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.Dataset/>`_.
 
     This function isn't parallelized, and is intended to be used
     with Hugging Face Datasets that are loaded into memory (as opposed
@@ -2084,31 +2101,6 @@ def from_huggingface(
             import datasets
 
             hf_dataset = datasets.load_dataset("tweet_eval", "emotion")
-            ray_ds = ray.data.from_huggingface(hf_dataset)
-
-            print(ray_ds)
-
-        .. testoutput::
-            :options: +MOCK
-
-            {'train': MaterializedDataset(
-                num_blocks=...,
-                num_rows=3257,
-                schema={text: string, label: int64}
-            ), 'test': MaterializedDataset(
-                num_blocks=...,
-                num_rows=1421,
-                schema={text: string, label: int64}
-            ), 'validation': MaterializedDataset(
-                num_blocks=...,
-                num_rows=374,
-                schema={text: string, label: int64}
-            )}
-
-        Load only a single split of the Huggingface Dataset.
-
-        .. testcode::
-
             ray_ds = ray.data.from_huggingface(hf_dataset["train"])
             print(ray_ds)
 
@@ -2122,42 +2114,38 @@ def from_huggingface(
             )
 
     Args:
-        dataset: A `Hugging Face Datasets Dataset`_ or `DatasetDict`_.
-            :class:`~ray.data.IterableDataset` isn't supported.
+        dataset: A `Hugging Face Datasets Dataset`_.
+            ``IterableDataset`` and
+            `DatasetDict <https://huggingface.co/docs/datasets/package_reference/main_classes#datasets.DatasetDict/>`_
+            are not supported.
 
     Returns:
-        A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_,
-        or a dict of :class:`Datasets <ray.data.Dataset>` in case ``dataset`` is a `DatasetDict`_.
+        A :class:`~ray.data.Dataset` holding rows from the `Hugging Face Datasets Dataset`_.
     """  # noqa: E501
     import datasets
 
-    def convert(ds: "datasets.Dataset") -> Dataset:
+    if isinstance(dataset, datasets.Dataset):
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g. train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices
         # mapping from the transformations.
-        hf_ds_arrow = ds.with_format("arrow")
+        hf_ds_arrow = dataset.with_format("arrow")
         ray_ds = from_arrow(hf_ds_arrow[:])
         return ray_ds
-
-    if isinstance(dataset, datasets.DatasetDict):
+    elif isinstance(dataset, datasets.DatasetDict):
         available_keys = list(dataset.keys())
-        logger.warning(
-            "You provided a Huggingface DatasetDict which contains multiple "
-            "datasets. The output of `from_huggingface` is a dictionary of Ray "
-            "Datasets. To convert just a single Huggingface Dataset to a "
+        raise DeprecationWarning(
+            "You provided a Hugging Face DatasetDict which contains multiple "
+            "datasets, but `from_huggingface` now only accepts a single Hugging Face "
+            "Dataset. To convert just a single Hugging Face Dataset to a "
             "Ray Dataset, specify a split. For example, "
             "`ray.data.from_huggingface(my_dataset_dictionary"
             f"['{available_keys[0]}'])`. "
             f"Available splits are {available_keys}."
         )
-        return {k: convert(ds) for k, ds in dataset.items()}
-    elif isinstance(dataset, datasets.Dataset):
-        return convert(dataset)
     else:
         raise TypeError(
-            "`dataset` must be a `datasets.Dataset` or `datasets.DatasetDict`."
-            f"got {type(dataset)}"
+            f"`dataset` must be a `datasets.Dataset`, but got {type(dataset)}"
         )
 
 

@@ -180,7 +180,9 @@ class MLPHeadConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[4],  # must be 1D tensor
@@ -201,7 +203,9 @@ class MLPHeadConfig(_MLPConfig):
         # Linear(8, 2, bias=True)
 
     Example:
-    .. code-block:: python
+
+    .. testcode::
+
         # Configuration:
         config = MLPHeadConfig(
             input_dims=[2],
@@ -413,7 +417,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             ],
             cnn_transpose_activation="silu",  # or "swish", which is the same
             cnn_transpose_use_layernorm=False,
-            use_bias=True,
+            cnn_use_bias=True,
         )
         model = config.build(framework="torch)
 
@@ -446,7 +450,7 @@ class CNNTransposeHeadConfig(ModelConfig):
             ],
             cnn_transpose_activation="relu",
             cnn_transpose_use_layernorm=True,
-            use_bias=False,
+            cnn_use_bias=False,
         )
         model = config.build(framework="torch)
 
@@ -547,7 +551,8 @@ class CNNEncoderConfig(ModelConfig):
 
     Example:
 
-    .. code-block:: python
+    .. testcode::
+
         # Configuration:
         config = CNNEncoderConfig(
             input_dims=[84, 84, 3],  # must be 3D tensor (image: w x h x C)
@@ -557,7 +562,7 @@ class CNNEncoderConfig(ModelConfig):
             ],
             cnn_activation="relu",
             cnn_use_layernorm=False,
-            use_bias=True,
+            cnn_use_bias=True,
         )
         model = config.build(framework="torch")
 
@@ -698,7 +703,7 @@ class MLPEncoderConfig(_MLPConfig):
     See _MLPConfig for usage details.
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[4],  # must be 1D tensor
@@ -714,7 +719,7 @@ class MLPEncoderConfig(_MLPConfig):
         # ReLU()
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = MLPEncoderConfig(
             input_dims=[2],
@@ -790,7 +795,7 @@ class RecurrentEncoderConfig(ModelConfig):
     the `hidden_dims` value.
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="lstm",
@@ -809,7 +814,7 @@ class RecurrentEncoderConfig(ModelConfig):
         # (2, B, 128) for each c- and h-states.
 
     Example:
-    .. code-block:: python
+    .. testcode::
         # Configuration:
         config = RecurrentEncoderConfig(
             recurrent_layer_type="gru",
