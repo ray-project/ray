@@ -62,7 +62,7 @@ py_test_module_list(
     "test_kill_raylet_signal_log.py",
     "test_memstat.py",
     "test_node_label_scheduling_strategy.py",
-    ("test_protobuf_compatibility.py", "requires-network", "exclusive"),
+    ("test_protobuf_compatibility.py", "exclusive"),
   ],
   size = "medium",
   tags = ["medium_size_python_tests_a_to_j", "team:core"],
@@ -136,7 +136,7 @@ py_test_module_list(
     ("test_memory_pressure.py", "exclusive"),
     "test_nested_task.py",
     "test_metrics.py",
-    ("test_task_events.py", "requires-network", "exclusive"),
+    ("test_task_events.py", "exclusive"),
     "test_task_events_2.py",
     "test_task_metrics.py",
     "test_task_metrics_reconstruction.py",
@@ -159,10 +159,10 @@ py_test_module_list(
     "test_resource_metrics.py",
     "test_runtime_context.py",
     "test_runtime_env_env_vars.py",
-    ("test_runtime_env_packaging.py", "requires-network", "exclusive"),
+    ("test_runtime_env_packaging.py", "exclusive"),
     "test_runtime_env_plugin.py",
     "test_runtime_env_setup_func.py",
-    ("test_runtime_env_strong_type.py", "requires-network", "exclusive"),
+    ("test_runtime_env_strong_type.py", "exclusive"),
     "test_runtime_env_fork_process.py",
     "test_serialization.py",
     "test_shuffle.py",
@@ -172,7 +172,7 @@ py_test_module_list(
     "test_stress_sharded.py",
     "test_tempfile.py",
     "test_tensorflow.py",
-    ("test_tls_auth.py", "requires-network", "exclusive"),
+    ("test_tls_auth.py", "exclusive"),
     "test_ray_debugger.py",
     "test_worker_capping.py",
     "test_object_manager.py",
@@ -306,7 +306,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
-    ("test_actor_failures.py", "requires-network", "exclusive"),
+    ("test_actor_failures.py", "exclusive"),
     "test_actor_resources.py",
     "test_failure.py",
     "test_actor_advanced.py",
@@ -381,7 +381,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
-  tags = ["large_size_python_tests_shard_2", "team:core", "exclusive", "requires-network"],
+  tags = ["large_size_python_tests_shard_2", "team:core", "exclusive"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["pip_install_test-0.5-py3-none-any.whl"],
 )
@@ -395,7 +395,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_5.py",
   ],
   size = "large",
-  tags = ["exclusive", "requires-network", "post_wheel_build", "team:core"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -403,7 +403,7 @@ py_test(
   name = "test_runtime_env_complicated",
   size = "large",
   srcs = ["test_runtime_env_complicated.py"],
-  tags = ["exclusive", "requires-network", "post_wheel_build", "team:core"],
+  tags = ["exclusive", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["//python/ray/experimental/packaging/example_pkg"],
 )

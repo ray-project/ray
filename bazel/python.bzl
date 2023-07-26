@@ -34,24 +34,33 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
 
 
 def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], name_suffix="", **kwargs):
-    shard_num = 1
+    default_shard_num = 1
 
     if size == "large":
-        shard_num = 8
+        default_shard_num = 8
 
     if size == "medium":
-        shard_num = 4
+        default_shard_num = 4
 
     if size == "small":
-        shard_num = 2
+        default_shard_num = 2
 
-    env_items = env.items() + [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]
     for file in files:
+        test_tags = tags
         if type(file) != "string":
             file, extra_tags = file[0], list(file[1:])
-            tags = tags + extra_tags
+            tags = test_tags + extra_tags
         # remove .py
         name = paths.split_extension(file)[0] + name_suffix
+
+        shard_num = default_shard_num
+        extra_tags = []
+
+        if "exclusive" in tags:
+            shard_num = 1
+            test_tags += ["no-sandbox"]
+
+        env_items = env.items() + [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]
         if name == file:
             basename = basename + "_test"
         for shard_id in range(shard_num):
@@ -64,7 +73,7 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
                 name = test_name,
                 size = size,
                 main = file,
-                tags = tags,
+                tags = test_tags,
                 srcs = extra_srcs + [file],
                 deps = deps,
                 env=dict(test_env),
