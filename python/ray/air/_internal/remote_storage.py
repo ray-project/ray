@@ -1,25 +1,17 @@
-import fnmatch
 import os
-import pathlib
 import sys
 import time
 import urllib.parse
 from pathlib import Path
 from pkg_resources import packaging
 import psutil
-import shutil
 from typing import Any, Dict, List, Optional, Tuple
-
-from ray.air._internal.filelock import TempFileLock
-from ray.air._internal.uri_utils import is_uri
 
 try:
     import fsspec
-    from fsspec.implementations.local import LocalFileSystem
 
 except ImportError:
     fsspec = None
-    LocalFileSystem = object
 
 try:
     import pyarrow
@@ -28,76 +20,9 @@ try:
 except (ImportError, ModuleNotFoundError):
     pyarrow = None
 
-from ray import logger
-
 
 # Re-create fs objects after this amount of seconds
 _CACHE_VALIDITY_S = 300
-
-
-class _ExcludingLocalFilesystem(LocalFileSystem):
-    """LocalFileSystem wrapper to exclude files according to patterns.
-
-    Args:
-        exclude: List of patterns that are applied to files returned by
-            ``self.find()``. If a file path matches this pattern, it will
-            be excluded.
-
-    """
-
-    def __init__(self, exclude: List[str], **kwargs):
-        super().__init__(**kwargs)
-        self._exclude = exclude
-
-    @property
-    def fsid(self):
-        return "_excluding_local"
-
-    def _should_exclude(self, name: str) -> bool:
-        """Return True if `name` matches any of the `self._exclude` patterns."""
-        alt = None
-        if os.path.isdir(name):
-            # If this is a directory, also test it with trailing slash
-            alt = os.path.join(name, "")
-        for excl in self._exclude:
-            if fnmatch.fnmatch(name, excl):
-                return True
-            if alt and fnmatch.fnmatch(alt, excl):
-                return True
-        return False
-
-    def find(self, path, maxdepth=None, withdirs=False, detail=False, **kwargs):
-        """Call parent find() and exclude from result."""
-        names = super().find(
-            path, maxdepth=maxdepth, withdirs=withdirs, detail=detail, **kwargs
-        )
-        if detail:
-            return {
-                name: out
-                for name, out in names.items()
-                if not self._should_exclude(name)
-            }
-        else:
-            return [name for name in names if not self._should_exclude(name)]
-
-
-def _pyarrow_fs_copy_files(
-    source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
-):
-    if isinstance(source_filesystem, pyarrow.fs.S3FileSystem) or isinstance(
-        destination_filesystem, pyarrow.fs.S3FileSystem
-    ):
-        # Workaround multi-threading issue with pyarrow
-        # https://github.com/apache/arrow/issues/32372
-        kwargs.setdefault("use_threads", False)
-
-    return pyarrow.fs.copy_files(
-        source,
-        destination,
-        source_filesystem=source_filesystem,
-        destination_filesystem=destination_filesystem,
-        **kwargs,
-    )
 
 
 def _assert_pyarrow_installed():
@@ -133,7 +58,7 @@ def is_non_local_path_uri(uri: str) -> bool:
     if parsed.scheme == "file" or not parsed.scheme:
         return False
 
-    if bool(_get_fs_and_path(uri)[0]):
+    if bool(get_fs_and_path(uri)[0]):
         return True
 
     return False
@@ -352,16 +277,6 @@ def _get_fsspec_fs_and_path(uri: str) -> Optional["pyarrow.fs.FileSystem"]:
     return fs
 
 
-def _get_fs_and_path(
-    uri: str,
-) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
-    from ray.train._internal.storage import _use_storage_context
-
-    if _use_storage_context():
-        return pyarrow.fs.FileSystem.from_uri(uri)
-    return get_fs_and_path(uri)
-
-
 def get_fs_and_path(
     uri: str,
 ) -> Tuple[Optional["pyarrow.fs.FileSystem"], Optional[str]]:
@@ -372,7 +287,7 @@ def get_fs_and_path(
     if is_local_path(uri) and not scheme:
         # Append local filesys scheme such that the downstream operations work
         # properly on Linux and Windows.
-        uri = "file://" + pathlib.Path(uri).as_posix()
+        uri = "file://" + Path(uri).as_posix()
 
     parsed = urllib.parse.urlparse(uri)
     # for uri="hdfs://48bb8ca83706:8020/test":
@@ -423,31 +338,10 @@ def get_fs_and_path(
     return None, None
 
 
-def delete_at_uri(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None):
-    _assert_pyarrow_installed()
-
-    if not fs:
-        fs, fs_path = _get_fs_and_path(uri)
-        if not fs:
-            raise ValueError(
-                f"Could not clear URI contents: "
-                f"URI `{uri}` is not a valid or supported cloud target. "
-                f"Hint: {fs_hint(uri)}"
-            )
-    else:
-        fs_path = uri
-        assert not is_uri(fs_path), fs_path
-
-    try:
-        fs.delete_dir(fs_path)
-    except Exception as e:
-        logger.warning(f"Caught exception when clearing URI `{uri}`: {e}")
-
-
 def read_file_from_uri(uri: str) -> bytes:
     _assert_pyarrow_installed()
 
-    fs, file_path = _get_fs_and_path(uri)
+    fs, file_path = get_fs_and_path(uri)
     if not fs:
         raise ValueError(
             f"Could not download from URI: "
@@ -463,230 +357,96 @@ def download_from_uri(
     uri: str,
     local_path: str,
     filelock: bool = True,
-    source_filesystem: Optional[pyarrow.fs.FileSystem] = None,
 ):
-    """Downloads a directory or file at a URI to a local path.
-
-    If the URI points to a directory, then the full directory contents are
-    copied, and `local_path` is the downloaded directory.
-    If the download fails, the `local_path` contents are
-    cleaned up before raising, if the directory did not previously exist.
-    NOTE: This creates `local_path`'s parent directories if they do not
-    already exist. If the download fails, this does NOT clean up all the parent
-    directories that were created.
-
-    Args:
-        uri: The URI to download from.
-        local_path: The local path to download to.
-        filelock: Whether to require a file lock before downloading, useful for
-            multiple downloads to the same directory that may be happening in parallel.
-
-    Raises:
-        ValueError: if the URI scheme is not supported.
-        FileNotFoundError: if the URI doesn't exist.
-    """
-    _assert_pyarrow_installed()
-
+    source_filesystem, source_path = get_fs_and_path(uri)
     if not source_filesystem:
-        source_filesystem, source_path = _get_fs_and_path(uri)
-        if not source_filesystem:
-            raise ValueError(
-                f"Could not upload to URI: "
-                f"URI `{uri}` is not a valid or supported cloud target. "
-                f"Hint: {fs_hint(uri)}"
-            )
-    else:
-        source_path = uri
-        assert not is_uri(source_path), source_path
+        raise ValueError(
+            f"Could not upload to URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
 
-    _local_path = Path(local_path).resolve()
-    exists_before = _local_path.exists()
-    if is_directory(source_path, fs=source_filesystem):
-        _local_path.mkdir(parents=True, exist_ok=True)
-    else:
-        _local_path.parent.mkdir(parents=True, exist_ok=True)
+    from ray.train._internal.fs_utils import _download_from_fs_path
 
-    try:
-        if filelock:
-            with TempFileLock(f"{os.path.normpath(local_path)}.lock"):
-                _pyarrow_fs_copy_files(
-                    source_path, local_path, source_filesystem=source_filesystem
-                )
-        else:
-            _pyarrow_fs_copy_files(
-                source_path, local_path, source_filesystem=source_filesystem
-            )
-    except Exception as e:
-        # Clean up the directory if downloading was unsuccessful.
-        if not exists_before:
-            shutil.rmtree(local_path, ignore_errors=True)
-        raise e
+    _download_from_fs_path(
+        fs=source_filesystem,
+        fs_path=source_path,
+        local_path=local_path,
+        filelock=filelock,
+    )
 
 
 def upload_to_uri(
     local_path: str,
     uri: str,
     exclude: Optional[List[str]] = None,
-    destination_filesystem: Optional[pyarrow.fs.FileSystem] = None,
 ) -> None:
-    """Uploads a local directory or file to a URI.
-
-    NOTE: This will create all necessary directories at the URI destination.
-
-    Args:
-        local_path: The local path to upload.
-        uri: The URI to upload to.
-        exclude: A list of filename matches to exclude from upload. This includes
-            all files under subdirectories as well.
-            Ex: ["*.png"] to exclude all .png images.
-
-    Raises:
-        ValueError: if the URI scheme is not supported.
-    """
-    _assert_pyarrow_installed()
-
+    destination_filesystem, destination_path = get_fs_and_path(uri)
     if not destination_filesystem:
-        destination_filesystem, destination_path = _get_fs_and_path(uri)
-        if not destination_filesystem:
-            raise ValueError(
-                f"Could not upload to URI: "
-                f"URI `{uri}` is not a valid or supported cloud target. "
-                f"Hint: {fs_hint(uri)}"
-            )
-    else:
-        destination_path = uri
-        assert not is_uri(destination_path), destination_path
-
-    if not exclude:
-        _ensure_directory(destination_path, fs=destination_filesystem)
-        _pyarrow_fs_copy_files(
-            local_path, destination_path, destination_filesystem=destination_filesystem
-        )
-    elif fsspec:
-        # If fsspec is available, prefer it because it's more efficient than
-        # calling pyarrow.fs.copy_files multiple times
-        _upload_to_uri_with_exclude_fsspec(
-            local_path=local_path,
-            fs=destination_filesystem,
-            bucket_path=destination_path,
-            exclude=exclude,
-        )
-    else:
-        # Walk the filetree and upload
-        _upload_to_uri_with_exclude_pyarrow(
-            local_path=local_path,
-            fs=destination_filesystem,
-            bucket_path=destination_path,
-            exclude=exclude,
+        raise ValueError(
+            f"Could not upload to URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
         )
 
+    from ray.train._internal.fs_utils import _upload_to_fs_path
 
-def _upload_to_uri_with_exclude_fsspec(
-    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
-) -> None:
-    local_fs = _ExcludingLocalFilesystem(exclude=exclude)
-    handler = pyarrow.fs.FSSpecHandler(local_fs)
-    source_fs = pyarrow.fs.PyFileSystem(handler)
-
-    _ensure_directory(bucket_path, fs=fs)
-    _pyarrow_fs_copy_files(
-        local_path, bucket_path, source_filesystem=source_fs, destination_filesystem=fs
+    _upload_to_fs_path(
+        local_path=local_path,
+        fs=destination_filesystem,
+        fs_path=destination_path,
+        exclude=exclude,
     )
 
 
-def _upload_to_uri_with_exclude_pyarrow(
-    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
-) -> None:
-    def _should_exclude(candidate: str) -> bool:
-        for excl in exclude:
-            if fnmatch.fnmatch(candidate, excl):
-                return True
-        return False
-
-    for root, dirs, files in os.walk(local_path):
-        rel_root = os.path.relpath(root, local_path)
-        for file in files:
-            candidate = os.path.join(rel_root, file)
-
-            if _should_exclude(candidate):
-                continue
-
-            full_source_path = os.path.normpath(os.path.join(local_path, candidate))
-            full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
-
-            _ensure_directory(str(Path(full_target_path).parent), fs=fs)
-            _pyarrow_fs_copy_files(
-                full_source_path, full_target_path, destination_filesystem=fs
-            )
-
-
-def list_at_uri(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None) -> List[str]:
-    """Returns the list of filenames at a URI (similar to os.listdir).
-
-    If the URI doesn't exist, returns an empty list.
-    """
-    _assert_pyarrow_installed()
-
+def delete_at_uri(uri: str):
+    fs, fs_path = get_fs_and_path(uri)
     if not fs:
-        fs, fs_path = _get_fs_and_path(uri)
-        if not fs:
-            raise ValueError(
-                f"Could not list at URI: "
-                f"URI `{uri}` is not a valid or supported cloud target. "
-                f"Hint: {fs_hint(uri)}"
-            )
-    else:
-        fs_path = uri
-        assert not is_uri(fs_path), fs_path
+        raise ValueError(
+            f"Could not clear URI contents: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
+
+    from ray.train._internal.fs_utils import _delete_fs_path
+
+    _delete_fs_path(fs, fs_path)
+
+
+def list_at_uri(uri: str) -> List[str]:
+    fs, fs_path = get_fs_and_path(uri)
+    if not fs:
+        raise ValueError(
+            f"Could not list at URI: "
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
 
     if not is_non_local_path_uri(uri):
         # Make sure local paths get expanded fully
         fs_path = os.path.abspath(os.path.expanduser(fs_path))
 
-    selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
-    return [
-        os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))
-        for file_info in fs.get_file_info(selector)
-    ]
+    from ray.train._internal.fs_utils import _list_at_fs_path
+
+    return _list_at_fs_path(fs, fs_path)
 
 
-def is_directory(uri: str, fs: Optional[pyarrow.fs.FileSystem] = None) -> bool:
-    """Checks if a remote URI is a directory or a file.
-
-    Returns:
-        bool: True if the URI is a directory. False if it is a file.
-
-    Raises:
-        FileNotFoundError: if the URI doesn't exist.
-    """
-    _assert_pyarrow_installed()
-
+def is_directory(uri: str) -> bool:
+    fs, fs_path = get_fs_and_path(uri)
     if not fs:
-        fs, fs_path = _get_fs_and_path(uri)
-    else:
-        fs_path = uri
+        raise ValueError(
+            f"URI `{uri}` is not a valid or supported cloud target. "
+            f"Hint: {fs_hint(uri)}"
+        )
 
-    file_info = fs.get_file_info(fs_path)
-    return not file_info.is_file
+    from ray.train._internal.fs_utils import _is_directory
+
+    return _is_directory(fs=fs, fs_path=fs_path)
 
 
 def _ensure_directory(uri: str, fs: Optional["pyarrow.fs.FileSystem"] = None):
-    """Create directory at remote URI.
+    fs, fs_path = get_fs_and_path(uri)
 
-    Some external filesystems require directories to already exist, or at least
-    the `netloc` to be created (e.g. PyArrows ``mock://`` filesystem).
+    from ray.train._internal.fs_utils import _ensure_directory
 
-    Generally this should be done before and outside of Ray applications. This
-    utility is thus primarily used in testing, e.g. of ``mock://` URIs.
-
-    If a ``fs`` is passed, the ``uri`` is expected to be a path on this filesystem.
-    Otherwise, the fs and the uri are automatically detected.
-    """
-    if fs:
-        path = uri
-    else:
-        fs, path = _get_fs_and_path(uri)
-    try:
-        fs.create_dir(path)
-    except Exception:
-        pass
+    _ensure_directory(fs=fs, fs_path=fs_path)
