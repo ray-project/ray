@@ -381,7 +381,7 @@ py_test_module_list(
     "test_runtime_env_working_dir_remote_uri.py"
   ],
   size = "large",
-  tags = ["large_size_python_tests_shard_2", "team:core"],
+  tags = ["large_size_python_tests_shard_2", "team:core", "exclusive", "requires-network"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["pip_install_test-0.5-py3-none-any.whl"],
 )
@@ -395,7 +395,7 @@ py_test_module_list(
     "test_runtime_env_conda_and_pip_5.py",
   ],
   size = "large",
-  tags = ["exclusive", "post_wheel_build", "team:core"],
+  tags = ["exclusive", "requires-network", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -403,7 +403,7 @@ py_test(
   name = "test_runtime_env_complicated",
   size = "large",
   srcs = ["test_runtime_env_complicated.py"],
-  tags = ["exclusive", "post_wheel_build", "team:core"],
+  tags = ["exclusive", "requires-network", "post_wheel_build", "team:core"],
   deps = ["//:ray_lib", ":conftest"],
   data = ["//python/ray/experimental/packaging/example_pkg"],
 )
