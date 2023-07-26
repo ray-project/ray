@@ -27,8 +27,8 @@ import { HelpInfo } from "../../components/Tooltip";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
+import { useClusterStatusMap } from "./hook/useClusterStatusMap";
 import { useNodeList } from "./hook/useNodeList";
-import { useNodeLogicalResourceMap } from "./hook/useNodeLogicalResource";
 import { NodeRows } from "./NodeRow";
 
 const useStyles = makeStyles((theme) => ({
@@ -110,7 +110,7 @@ const columns = [
     helpInfo: (
       <Typography>
         <a href="https://docs.ray.io/en/latest/ray-core/scheduling/resources.html#physical-resources-and-logical-resources">
-          Logical resource usage
+          Logical resources usage
         </a>{" "}
         (e.g., CPU, memory) for a node. Alternatively, you can run the CLI
         command <p style={codeTextStyle}>ray status -v </p>
@@ -238,7 +238,10 @@ const Nodes = () => {
     mode,
     setMode,
   } = useNodeList();
-  const { nodeLogicalResourceMap } = useNodeLogicalResourceMap();
+  const { clusterStatusMap } = useClusterStatusMap();
+  const nodeLogicalResourcesMap = clusterStatusMap?.nodeLogicalResources;
+  console.info("nodeLogicalResourcesMap: ", nodeLogicalResourcesMap);
+
   return (
     <div className={classes.root}>
       <Loading loading={isLoading} />
@@ -363,11 +366,11 @@ const Nodes = () => {
                     <NodeRows
                       key={node.raylet.nodeId}
                       node={
-                        nodeLogicalResourceMap
+                        nodeLogicalResourcesMap
                           ? {
                               ...node,
-                              logicalResource:
-                                nodeLogicalResourceMap[node.raylet.nodeId],
+                              logicalResources:
+                                nodeLogicalResourcesMap[node.raylet.nodeId],
                             }
                           : node
                       }

@@ -8,14 +8,7 @@ import aiohttp.web
 
 import ray._private.utils
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
-from ray.autoscaler._private.node_provider_availability_tracker import (
-    NodeAvailabilitySummary,
-)
-from ray.autoscaler._private.util import (
-    LoadMetricsSummary,
-    get_per_node_breakdown_as_dict,
-    get_per_node_breakdown,
-)
+
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
@@ -243,39 +236,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             message="",
             **self.get_internal_states(),
         )
-
-    @routes.get("/nodes/logical_resource")
-    @dashboard_optional_utils.aiohttp_cache
-    async def get_all_nodes_logical_resource(self, req) -> aiohttp.web.Response:
-        (status, error) = await asyncio.gather(
-            *[
-                self._gcs_aio_client.internal_kv_get(
-                    key.encode(),
-                    namespace=None,
-                    timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-                )
-                for key in [
-                    ray_constants.DEBUG_AUTOSCALING_STATUS,
-                    ray_constants.DEBUG_AUTOSCALING_ERROR,
-                ]
-            ]
-        )
-
-        status_dict = json.loads(status)
-        lm_summary_dict = status_dict.get("load_metrics_report")
-        if lm_summary_dict:
-            lm_summary = LoadMetricsSummary(**lm_summary_dict)
-
-        node_logical_resource = get_per_node_breakdown_as_dict(lm_summary)
-
-        if node_logical_resource:
-            return dashboard_optional_utils.rest_response(
-                success=True,
-                message="Got the logical resource info for all clusters",
-                data=node_logical_resource,
-            )
-        else:
-            return aiohttp.web.HTTPInternalServerError(text=error)
 
     @routes.get("/nodes")
     @dashboard_optional_utils.aiohttp_cache

@@ -65,7 +65,7 @@ const useStyles = makeStyles((theme) =>
     helpInfo: {
       marginLeft: theme.spacing(1),
     },
-    logicalResource: {
+    logicalResources: {
       maxWidth: 200,
     },
   }),
@@ -89,7 +89,7 @@ export const NodeRow = ({
     networkSpeed = [0, 0],
     raylet,
     logUrl,
-    logicalResource,
+    logicalResources,
   } = node;
 
   const classes = useStyles();
@@ -187,11 +187,11 @@ export const NodeRow = ({
       <TableCell align="center">{memoryConverter(networkSpeed[0])}/s</TableCell>
       <TableCell align="center">{memoryConverter(networkSpeed[1])}/s</TableCell>
       <TableCell align="center">
-        {logicalResource ? (
+        {logicalResources ? (
           <CodeDialogButtonWithPreview
-            className={classes.logicalResource}
-            title="Logical Resource"
-            code={logicalResource}
+            className={classes.logicalResources}
+            title="Logical Resources"
+            code={logicalResources}
           />
         ) : (
           "-"

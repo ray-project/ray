@@ -1,14 +1,14 @@
 import useSWR from "swr";
 import { API_REFRESH_INTERVAL_MS } from "../../../common/constants";
-import { getNodeLogicalResourceMap } from "../../../service/node";
+import { getClusterStatusMap } from "../../../service/node";
 
-export const useNodeLogicalResourceMap = () => {
-  const { data: nodeLogicalResourceMap } = useSWR(
-    "useNodeLogicalResourceMap",
+export const useClusterStatusMap = () => {
+  const { data: clusterStatusMap } = useSWR(
+    "useClusterStatusMap",
     async () => {
       try {
-        const rsp = await getNodeLogicalResourceMap();
-        return rsp.data.data.data;
+        const rsp = await getClusterStatusMap();
+        return rsp.data.data;
       } catch (e) {
         console.error(
           "Cluster Error. Couldn't get the logical resource data from the dashboard server.",
@@ -19,6 +19,6 @@ export const useNodeLogicalResourceMap = () => {
   );
 
   return {
-    nodeLogicalResourceMap,
+    clusterStatusMap,
   };
 };

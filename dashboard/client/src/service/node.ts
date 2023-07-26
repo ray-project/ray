@@ -1,8 +1,4 @@
-import {
-  NodeDetailRsp,
-  NodeListRsp,
-  NodeLogicalResourceRsp,
-} from "../type/node";
+import { ClusterStatusMapRsp, NodeDetailRsp, NodeListRsp } from "../type/node";
 import { get } from "./requestHandlers";
 
 export const getNodeList = async () => {
@@ -13,6 +9,6 @@ export const getNodeDetail = async (id: string) => {
   return await get<NodeDetailRsp>(`nodes/${id}`);
 };
 
-export const getNodeLogicalResourceMap = async () => {
-  return await get<NodeLogicalResourceRsp>("nodes/logical_resource");
+export const getClusterStatusMap = async () => {
+  return await get<ClusterStatusMapRsp>("api/cluster_status");
 };

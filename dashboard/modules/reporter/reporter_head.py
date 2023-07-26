@@ -18,6 +18,10 @@ from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
 )
+from ray.autoscaler._private.util import (
+    LoadMetricsSummary,
+    get_per_node_breakdown_as_dict,
+)
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
@@ -91,11 +95,17 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             ]
         )
 
+        status_dict = json.loads(formatted_status_string)
+        lm_summary_dict = status_dict.get("load_metrics_report")
+        if lm_summary_dict:
+            lm_summary = LoadMetricsSummary(**lm_summary_dict)
+
         formatted_status = (
             json.loads(formatted_status_string.decode())
             if formatted_status_string
             else {}
         )
+        node_logical_resources = get_per_node_breakdown_as_dict(lm_summary)
 
         if not return_formatted_output:
             return dashboard_optional_utils.rest_response(
@@ -104,6 +114,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 autoscaling_status=legacy_status.decode() if legacy_status else None,
                 autoscaling_error=error.decode() if error else None,
                 cluster_status=formatted_status if formatted_status else None,
+                node_logical_resources=node_logical_resources,
             )
         else:
             return dashboard_optional_utils.rest_response(
