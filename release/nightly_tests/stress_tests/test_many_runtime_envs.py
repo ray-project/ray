@@ -19,6 +19,7 @@ def assert_file_content(file_name, expected_content):
     if actual_content != expected_content:
         raise ValueError(f"expected {expected_content}, got {actual_content}")
 
+
 @ray.remote
 def assert_n_files_in_working_dir(n):
     files = os.listdir()
