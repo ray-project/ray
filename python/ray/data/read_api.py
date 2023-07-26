@@ -1636,6 +1636,15 @@ def read_sql(
         :ref:`Reading from SQL Databases <reading_sql>`.
 
         .. testcode::
+            :hide:
+
+            import os
+            try:
+                os.remove("example.db")
+            except OSError:
+                pass
+            
+        .. testcode::
 
             import sqlite3
 
