@@ -170,7 +170,11 @@ During checkpointing in the middle of training, we have to aggregate the weights
 
 Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM on rank 0 machine where M is the model size. This would mean that for 70B we need 280GB of CPU on top of what we needed before (e.g. due to CPU offloading). This requirement is only for rank 0 though and not any other machine. So it's important to schedule this process on a machine with this much of RAM while the other processes can get scheduled on machines with lower RAM requirements. 
 
-Fortunately, Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom lable for those machines that satisifies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requiremnet for the `trainer` actor which is in the same machine that rank zero process will get executed on.
+For example, for 70B model, with 32-way sharding on a machine with 8xA10Gs (g5.48xlarge), you need 280G (because of checkpointing) and 315 GB (because of optimizer state offloading) making the total memory requirement ~595 GB.
+
+![Memory peak](./media/memory_pick.jpg)
+
+Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom lable for those machines that satisifies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requiremnet for the `trainer` actor which is in the same machine that rank zero process will get executed on.
 
 ```
 scaling_config=air.ScalingConfig(
