@@ -2,7 +2,7 @@
 
 # Variables for cleaner handling
 MODEL_ID="meta-llama/Llama-2-7b-hf"
-BASE_DIR="/mnt/local_storage/ray_results"
+BASE_DIR="/mnt/local_storage"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_7b.json"
 DATA_DIR="./data"
 TRAIN_PATH="${DATA_DIR}/train.jsonl"

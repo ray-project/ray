@@ -2,7 +2,7 @@
 
 # Variables for cleaner handling
 MODEL_ID="meta-llama/Llama-2-70b-hf"
-BASE_DIR="/mnt/local_storage/ray_results"
+BASE_DIR="/mnt/local_storage"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_70b.json"
 DATA_DIR="./data"
 TRAIN_PATH="${DATA_DIR}/train.jsonl"
@@ -51,8 +51,8 @@ done
 # Fine-tune the model
 echo "Fine-tuning model..."
 python finetune_hf_llm.py \
-    -bs 1 \
-    -nd 16 \
+    -bs 8 \
+    -nd 32 \
     --model_name ${MODEL_ID} \
     --output_dir ${BASE_DIR} \
     --ds-config ${CONFIG_DIR} \
