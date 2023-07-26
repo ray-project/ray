@@ -1,6 +1,6 @@
 # See https://hub.docker.com/r/anyscale/ray for full list of
 # available Ray, Python, and CUDA versions.
-base_image: anyscale/ray:2.6.1-py39-cu117
+base_image: {{ env["RAY_IMAGE_ML_NIGHTLY_GPU"] | default("anyscale/ray:2.6.1-py39-cu117") }}
 
 env_vars: {}
 
