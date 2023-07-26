@@ -136,6 +136,13 @@ def checkpoint_model(
 
 def training_function(kwargs: dict):
     print("training_function called")
+    
+    # Train has a bug somewhere that causes ACCELERATE_TORCH_DEVICE to not be set 
+    # properly on multi-gpu nodes
+    cuda_visible_device = os.environ["CUDA_VISIBLE_DEVICES"].split(",")
+    local_rank = int(os.environ["LOCAL_RANK"])
+    device_id = cuda_visible_device[local_rank]
+    os.environ["ACCELERATE_TORCH_DEVICE"] = f"cuda:{device_id}"
 
     config = kwargs["config"]
     args = argparse.Namespace(**kwargs["args"])
@@ -180,7 +187,7 @@ def training_function(kwargs: dict):
     # Get the trial directory from Ray Train
     # This will be local to every node (and will get synced to remote storage if
     # provided.)
-    ckpt_path = tempfile.mkdtemp()
+    ckpt_path = tempfile.mkdtemp(dir=config["output_dir"])
 
     pretrained_path = get_pretrained_path(model_id)
     print(f"Loading model from {pretrained_path} ...")
