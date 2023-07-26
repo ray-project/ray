@@ -12,3 +12,23 @@
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
       --test_tag_filters=client_tests,small_size_python_tests
       -- $(bazel query "attr(tags, team:core, tests(python/ray/tests/...))") $(yq -r ".flaky_tests | map(\"-\"+.) | join(\" \")" ci/v2/test/core.tests.yml)
+
+- label: ":python: (medium a-j)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - ./ci/env/env_info.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=medium_size_python_tests_a_to_j
+      -- $(bazel query "attr(tags, team:core, tests(python/ray/tests/...))") $(yq -r ".flaky_tests | map(\"-\"+.) | join(\" \")" ci/v2/test/core.tests.yml)
+
+- label: ":python: (medium k-z)"
+  conditions: ["RAY_CI_PYTHON_AFFECTED"]
+  instance_size: medium
+  commands:
+    - cleanup() { if [ "${BUILDKITE_PULL_REQUEST}" = "false" ]; then ./ci/build/upload_build_info.sh; fi }; trap cleanup EXIT
+    - DL=1 ./ci/env/install-dependencies.sh
+    - bazel test --config=ci $(./ci/run/bazel_export_options)
+      --test_tag_filters=medium_size_python_tests_k_to_z
+      -- $(bazel query "attr(tags, team:core, tests(python/ray/tests/...))") $(yq -r ".flaky_tests | map(\"-\"+.) | join(\" \")" ci/v2/test/core.tests.yml)
