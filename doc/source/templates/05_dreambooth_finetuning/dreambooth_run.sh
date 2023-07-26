@@ -7,6 +7,8 @@ set -xe
 pushd dreambooth || true
 
 # Step 0 cont
+# TODO: Change this path to a shared directory (ex: NFS)
+# if running on a multi-node cluster
 export DATA_PREFIX="/tmp"
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
 export ORIG_MODEL_HASH="249dd2d739844dea6a0bc7fc27b3c1d014720b28"
@@ -16,6 +18,8 @@ export TUNED_MODEL_DIR="$DATA_PREFIX/model-tuned"
 export IMAGES_REG_DIR="$DATA_PREFIX/images-reg"
 export IMAGES_OWN_DIR="$DATA_PREFIX/images-own"
 export IMAGES_NEW_DIR="$DATA_PREFIX/images-new"
+# TODO: Add more worker nodes and increase NUM_WORKERS for more data-parallelism
+export NUM_WORKERS=2
 
 mkdir -p $ORIG_MODEL_DIR $TUNED_MODEL_DIR $IMAGES_REG_DIR $IMAGES_OWN_DIR $IMAGES_NEW_DIR
 
@@ -69,13 +73,14 @@ python train.py \
   --class_prompt="photo of a $CLASS_NAME" \
   --train_batch_size=2 \
   --lr=5e-6 \
-  --max_train_steps=800
+  --max_train_steps=800 \
+  --num_workers $NUM_WORKERS
 # Step 4: END
 
 # Clear new dir
 rm -rf "$IMAGES_NEW_DIR"/*.jpg
 
-# ATTN: Reduced the number of samples per prompt for faster testing
+# TODO: Change the prompt to something more interesting!
 # Step 5: START
 python generate.py \
   --model_dir=$TUNED_MODEL_DIR \
