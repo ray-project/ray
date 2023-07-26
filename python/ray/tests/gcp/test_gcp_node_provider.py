@@ -1,7 +1,7 @@
 from typing import Dict
 from threading import RLock
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, call
 
 from ray.autoscaler._private.gcp.node import (
     GCPCompute,
@@ -46,7 +46,6 @@ def test_terminate_nodes():
         ({"dict": 2}, id2),
     ]
     mock_resource.delete_instance.return_value = "test"
-    expected_terminate_nodes_result_len = 2
 
     def __init__(self, provider_config: dict, cluster_name: str):
         self.lock = RLock()
@@ -57,9 +56,11 @@ def test_terminate_nodes():
     with patch.object(GCPNodeProvider, "__init__", __init__):
         node_provider = GCPNodeProvider({}, "")
         node_provider.create_node(mock_node_config, {}, 1)
-        create_results = node_provider.terminate_nodes(terminate_node_ids)
+        node_provider.terminate_nodes(terminate_node_ids)
 
-    assert len(create_results) == expected_terminate_nodes_result_len
+    mock_resource.delete_instance.assert_has_calls(
+        [call(node_id=id1), call(node_id=id2)], any_order=True
+    )
 
 
 @pytest.mark.parametrize(
