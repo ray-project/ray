@@ -203,7 +203,6 @@ py_test_run_all_subdirectory(
     exclude = [
         # Too large. Use a custom test below.
         "source/ray-air/doc_code/computer_vision.py",
-        "source/ray-air/doc_code/hf_trainer.py",  # Too large
     ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
@@ -224,7 +223,10 @@ py_test(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = ["source/train/doc_code/predictors.py"],  # too large
+    exclude = [
+        "source/train/doc_code/predictors.py",  # Too large
+        "source/train/doc_code/hf_trainer.py",  # Too large
+    ],
     extra_srcs = [],
     tags = ["exclusive", "team:ml"],
 )
