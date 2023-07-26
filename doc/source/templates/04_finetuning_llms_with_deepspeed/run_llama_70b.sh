@@ -23,30 +23,10 @@ if [ ! -d "${DATA_DIR}" ]; then
     python create_dataset.py
 fi
 
-# Dictionary to hold command-line arguments
-declare -A args
-
-# Check command-line arguments
-for arg in "$@"; do
-    case $arg in
-        --as-test)
-            args[--as-test]="--as-test"
-            ;;
-        # Here you can add more command-line arguments
-        # For example:
-        # --another-argument)
-        #     args[--another-argument]="--another-argument"
-        #     ;;
-        *)
-            ;;
-    esac
-done
-
-# Construct additional arguments string
-additional_args=""
-for key in "${!args[@]}"; do
-    additional_args+="${args[$key]} "
-done
+# Check if --as-test was passed as an argument
+if [[ "$@" == *"--as-test"* ]]; then
+    params+=" --as-test"
+fi
 
 # Fine-tune the model
 echo "Fine-tuning model..."
@@ -59,6 +39,6 @@ python finetune_hf_llm.py \
     --train_path ${TRAIN_PATH} \
     --test_path ${TEST_PATH}  \
     --special_token_path ${TOKEN_PATH} \
-    "$additional_args"
+    $params
 
 echo "Process completed."
