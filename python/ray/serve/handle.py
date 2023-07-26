@@ -2,7 +2,7 @@ import asyncio
 import concurrent.futures
 from dataclasses import dataclass
 import threading
-from typing import Any, Coroutine, Optional, Union
+from typing import Any, AsyncIterator, Coroutine, Optional, Union
 
 import ray
 from ray._private.utils import get_or_create_event_loop
@@ -67,12 +67,13 @@ class HandleOptions:
         )
 
 
-class DeploymentHandleResultBase:
-    def __init__(self, assign_request_coro: Coroutine):
-        self._task = asyncio.ensure_future(assign_request_coro)
-
-    def __await__(self) -> ray.ObjectRef:
-        return self._task.__await__()
+class DeploymentHandleResultBase(asyncio.Task):
+    def __init__(
+        self,
+        assign_request_coro: Coroutine,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ):
+        asyncio.Task.__init__(self, assign_request_coro, loop=loop)
 
 
 class DeploymentHandleResult(DeploymentHandleResultBase):
@@ -82,15 +83,23 @@ class DeploymentHandleResult(DeploymentHandleResultBase):
 
 
 class DeploymentHandleResultGenerator(DeploymentHandleResultBase):
-    def __init__(self, assign_request_coro: Coroutine):
-        super().__init__(assign_request_coro)
+    def __init__(
+        self,
+        assign_request_coro: Coroutine,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
+    ):
+        super().__init__(assign_request_coro, loop=loop)
         self._obj_ref_gen: Optional[StreamingObjectRefGenerator] = None
+
+    def __aiter__(self) -> AsyncIterator[Any]:
+        return self
 
     async def __anext__(self) -> Any:
         if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self._task
+            self._obj_ref_gen = await self
 
-        return await self._obj_ref_gen.__anext__()
+        next_ref = await self._obj_ref_gen.__anext__()
+        return await next_ref
 
 
 @PublicAPI(stability="beta")
@@ -246,7 +255,9 @@ class RayServeHandle:
             request_metadata, *args, **kwargs
         )
 
-    def remote(self, *args, **kwargs) -> DeploymentHandleResult:
+    def remote(
+        self, *args, **kwargs
+    ) -> Union[DeploymentHandleResult, DeploymentHandleResultGenerator]:
         """Issue an asynchronous request to the __call__ method of the deployment.
 
         Returns an `asyncio.Task` whose underlying result is a Ray ObjectRef that
@@ -262,13 +273,14 @@ class RayServeHandle:
             result = await obj_ref
 
         """
+        loop = self._get_or_create_router()._event_loop
         result_coro = self._remote(
             self.deployment_name, self.handle_options, args, kwargs
         )
         if self.handle_options.stream:
-            return DeploymentHandleResultGenerator(result_coro)
+            return DeploymentHandleResultGenerator(result_coro, loop=loop)
         else:
-            return DeploymentHandleResult(result_coro)
+            return DeploymentHandleResult(result_coro, loop=loop)
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"

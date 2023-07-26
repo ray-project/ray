@@ -159,7 +159,7 @@ def test_handle_in_endpoint(serve_instance):
             self.handle = handle
 
         async def __call__(self, _):
-            return await (await self.handle.remote())
+            return await self.handle.remote().get()
 
     end_p1 = Endpoint1.bind()
     end_p2 = Endpoint2.bind(end_p1)
@@ -298,7 +298,7 @@ async def test_handle_across_loops(serve_instance):
 
     async def refresh_get():
         handle = A.get_handle(sync=False)
-        assert await (await handle.exists.remote())
+        assert await handle.exists.remote().get()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
@@ -307,7 +307,7 @@ async def test_handle_across_loops(serve_instance):
     handle = A.get_handle(sync=False)
 
     async def cache_get():
-        assert await (await handle.exists.remote())
+        assert await handle.exists.remote().get()
 
     for _ in range(10):
         loop = _get_asyncio_loop_running_in_thread()
@@ -347,7 +347,7 @@ def test_call_function_with_argument(serve_instance):
             self._h = h
 
         async def __call__(self, name: str):
-            return await (await self._h.remote(name))
+            return await self._h.remote(name).get()
 
     h = serve.run(Ingress.bind(echo.bind()))
     assert ray.get(h.remote("sned")) == "Hi sned"
