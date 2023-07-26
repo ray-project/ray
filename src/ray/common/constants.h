@@ -66,6 +66,10 @@ constexpr char kRayVersion[] = "2.6.2";
 /*****************************/
 /* ENV labels for autoscaler */
 /*****************************/
+// Sync with python/ray/_private/ray_constants.py
+constexpr char kGcsAutoscalerStateNamespace[] = "__autoscaler";
+constexpr char kGcsAutoscalerV2EnabledKey[] = "__autoscaler_v2_enabled";
+
 /// Name for cloud instance id env
 constexpr char kNodeCloudInstanceIdEnv[] = "RAY_CLOUD_INSTANCE_ID";
 
