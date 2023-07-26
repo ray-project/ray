@@ -4,7 +4,7 @@ from typing import Optional
 
 import pyarrow.fs
 
-from ray.air._internal.uri_utils import is_uri
+from ray.air._internal.uri_utils import URI, is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _FilesystemSyncer
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.trainable.util import TrainableUtil
@@ -36,6 +36,8 @@ class StorageContext:
         ... )
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
         <pyarrow._fs._MockFileSystem object...
+        >>> storage.experiment_path
+        'mock:///bucket/path/exp_name'
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
         >>> storage.experiment_local_path
@@ -61,6 +63,8 @@ class StorageContext:
         '/tmp/ray_results'
         >>> storage.storage_local_path
         '/tmp/ray_results'
+        >>> storage.experiment_path
+        '/tmp/ray_results/exp_name'
         >>> storage.syncer is None
         True
         >>> storage.storage_filesystem   # Auto-resolved  # doctest: +ELLIPSIS
@@ -171,8 +175,23 @@ class StorageContext:
             )
 
     @property
+    def experiment_path(self) -> str:
+        """The path the experiment directory, where the format matches the
+        original `storage_path` format specified by the user.
+
+        Ex: If the user passed in storage_path="s3://bucket/path?param=1", then
+        this property returns "s3://bucket/path/exp_name?param=1".
+        """
+        return str(URI(self.storage_path) / self.experiment_dir_name)
+
+    @property
     def experiment_fs_path(self) -> str:
-        """The path on the `storage_filesystem` to the experiment directory."""
+        """The path on the `storage_filesystem` to the experiment directory.
+
+        NOTE: This does not have a URI prefix anymore, since it has been stripped
+        by pyarrow.fs.FileSystem.from_uri already. The URI scheme information is
+        kept in `storage_filesystem` instead.
+        """
         return os.path.join(self.storage_fs_path, self.experiment_dir_name)
 
     @property
