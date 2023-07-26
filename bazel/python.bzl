@@ -49,7 +49,7 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
         test_tags = tags
         if type(file) != "string":
             file, extra_tags = file[0], list(file[1:])
-            tags = test_tags + extra_tags
+            test_tags += extra_tags
         # remove .py
         name = paths.split_extension(file)[0] + name_suffix
 
