@@ -38,7 +38,7 @@ class StorageContext:
         <pyarrow._fs._MockFileSystem object...
         >>> storage.experiment_fs_path
         'bucket/path/exp_name'
-        >>> storage.experiment_cache_path
+        >>> storage.experiment_local_path
         '/tmp/ray_results/exp_name'
         >>> storage.trial_dir_name = "trial_dir"
         >>> storage.trial_fs_path
@@ -59,7 +59,7 @@ class StorageContext:
         ... )
         >>> storage.storage_path  # Auto-resolved
         '/tmp/ray_results'
-        >>> storage.storage_cache_path
+        >>> storage.storage_local_path
         '/tmp/ray_results'
         >>> storage.syncer is None
         True
@@ -86,11 +86,13 @@ class StorageContext:
         trial_dir_name: Optional[str] = None,
         current_checkpoint_id: Optional[int] = None,
     ):
-        self.storage_cache_path = _get_defaults_results_dir()
-        # If `storage_path=None`, then set it to the default cache path.
+        storage_path_provided = storage_path is not None
+
+        self.storage_local_path = _get_defaults_results_dir()
+        # If `storage_path=None`, then set it to the local path.
         # Invariant: (`storage_filesystem`, `storage_path`) is the location where
         # *all* results can be accessed.
-        self.storage_path = storage_path or self.storage_cache_path
+        self.storage_path = storage_path or self.storage_local_path
         self.experiment_dir_name = experiment_dir_name
         self.trial_dir_name = trial_dir_name
         self.current_checkpoint_id = current_checkpoint_id
@@ -120,15 +122,15 @@ class StorageContext:
                 self.storage_fs_path,
             ) = pyarrow.fs.FileSystem.from_uri(self.storage_path)
 
-        # Only initialize a syncer if the storage path is different from the cache path.
+        # Only initialize a syncer if a `storage_path` was provided.
         self.syncer: Optional[Syncer] = (
-            None
-            if self.storage_path == self.storage_cache_path
-            else _FilesystemSyncer(
+            _FilesystemSyncer(
                 storage_filesystem=self.storage_filesystem,
                 sync_period=self.sync_config.sync_period,
                 sync_timeout=self.sync_config.sync_timeout,
             )
+            if storage_path_provided
+            else None
         )
 
         self._create_validation_file()
@@ -137,7 +139,7 @@ class StorageContext:
     def __str__(self):
         attrs = [
             "storage_path",
-            "storage_cache_path",
+            "storage_local_path",
             "storage_filesystem",
             "storage_fs_path",
             "experiment_dir_name",
@@ -174,13 +176,13 @@ class StorageContext:
         return os.path.join(self.storage_fs_path, self.experiment_dir_name)
 
     @property
-    def experiment_cache_path(self) -> str:
+    def experiment_local_path(self) -> str:
         """The local filesystem path to the experiment directory.
 
         This local "cache" path refers to location where files are dumped before
         syncing them to the `storage_path` on the `storage_filesystem`.
         """
-        return os.path.join(self.storage_cache_path, self.experiment_dir_name)
+        return os.path.join(self.storage_local_path, self.experiment_dir_name)
 
     @property
     def trial_fs_path(self) -> str:

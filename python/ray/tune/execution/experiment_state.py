@@ -228,12 +228,12 @@ class _ExperimentCheckpointManager:
             wait: Wait until sync to cloud has finished.
 
         """
-        experiment_cache_path = (
-            self._storage.experiment_cache_path
+        experiment_local_path = (
+            self._storage.experiment_local_path
             if _use_storage_context()
             else self._local_checkpoint_dir
         )
-        if not experiment_cache_path:
+        if not experiment_local_path:
             return
 
         force = force or self._should_force_cloud_sync
@@ -263,7 +263,7 @@ class _ExperimentCheckpointManager:
 
         # Finish
         self._last_save_time = time.time()
-        return experiment_cache_path
+        return experiment_local_path
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
         # self._remote_checkpoint_dir can be empty in tests, but shouldn't
@@ -281,7 +281,7 @@ class _ExperimentCheckpointManager:
             # But for now, this is needed to upload driver artifacts that live in the
             # trial directory.
             exclude = ["*/checkpoint_*"]
-            experiment_cache_path = self._storage.experiment_cache_path
+            experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
             if bool(self._remote_checkpoint_dir):
@@ -291,7 +291,7 @@ class _ExperimentCheckpointManager:
             else:
                 # Otherwise, we sync the full trial dir.
                 exclude = None
-            experiment_cache_path = self._local_checkpoint_dir
+            experiment_local_path = self._local_checkpoint_dir
             experiment_fs_path = self._remote_checkpoint_dir
 
         if force:
@@ -310,13 +310,13 @@ class _ExperimentCheckpointManager:
                     f"failed with the error: {str(e)}\nSyncing will be retried."
                 )
             synced = syncer.sync_up(
-                local_dir=experiment_cache_path,
+                local_dir=experiment_local_path,
                 remote_dir=experiment_fs_path,
                 exclude=exclude,
             )
         else:
             synced = syncer.sync_up_if_needed(
-                local_dir=experiment_cache_path,
+                local_dir=experiment_local_path,
                 remote_dir=experiment_fs_path,
                 exclude=exclude,
             )
@@ -328,7 +328,7 @@ class _ExperimentCheckpointManager:
             except Exception as e:
                 raise RuntimeError(
                     "Uploading the experiment directory from the driver "
-                    f"(local path: {experiment_cache_path}) to the the cloud "
+                    f"(local path: {experiment_local_path}) to the the cloud "
                     f"(remote path: {experiment_fs_path}) failed. "
                     "Please check the error message above."
                 ) from e
@@ -387,7 +387,7 @@ class _ExperimentCheckpointManager:
             # TODO(justinvyu): sync_down doesn't actually implement exclude right now
             exclude = ["*/checkpoint_*"]
             syncer = self._storage.syncer
-            experiment_cache_path = self._storage.experiment_cache_path
+            experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
             if not self._syncer or not self._remote_checkpoint_dir:
@@ -401,7 +401,7 @@ class _ExperimentCheckpointManager:
                 # Otherwise, we sync the full trial dir.
                 exclude = None
             syncer = self._syncer
-            experiment_cache_path = self._local_checkpoint_dir
+            experiment_local_path = self._local_checkpoint_dir
             experiment_fs_path = self._remote_checkpoint_dir
 
         if force:
@@ -422,13 +422,13 @@ class _ExperimentCheckpointManager:
 
             synced = syncer.sync_down(
                 remote_dir=experiment_fs_path,
-                local_dir=experiment_cache_path,
+                local_dir=experiment_local_path,
                 exclude=exclude,
             )
         else:
             synced = syncer.sync_down_if_needed(
                 remote_dir=experiment_fs_path,
-                local_dir=experiment_cache_path,
+                local_dir=experiment_local_path,
                 exclude=exclude,
             )
 
@@ -439,7 +439,7 @@ class _ExperimentCheckpointManager:
                 raise RuntimeError(
                     "Downloading the remote experiment directory from the cloud "
                     f"(remote path: {experiment_fs_path}) to the driver "
-                    f"(local path: {experiment_cache_path}) failed. "
+                    f"(local path: {experiment_local_path}) failed. "
                     "Please check the error message above. "
                     "If you expected an experiment to already exist, check if "
                     "you supplied the correct restoration path."
@@ -449,11 +449,11 @@ class _ExperimentCheckpointManager:
 
     def _resume_auto(self) -> bool:
         if _use_storage_context():
-            experiment_cache_path = self._storage.experiment_cache_path
+            experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
             syncer = self._storage.syncer
         else:
-            experiment_cache_path = self._local_checkpoint_dir
+            experiment_local_path = self._local_checkpoint_dir
             experiment_fs_path = self._remote_checkpoint_dir
             syncer = self._syncer
 
@@ -467,7 +467,7 @@ class _ExperimentCheckpointManager:
             try:
                 syncer.sync_down_if_needed(
                     remote_dir=experiment_fs_path,
-                    local_dir=experiment_cache_path,
+                    local_dir=experiment_local_path,
                 )
                 syncer.wait()
             except Exception as e:
@@ -486,7 +486,7 @@ class _ExperimentCheckpointManager:
                     "Ray Tune will now start a new experiment."
                 )
                 return False
-            if not _experiment_checkpoint_exists(experiment_cache_path):
+            if not _experiment_checkpoint_exists(experiment_local_path):
                 logger.warning(
                     "A remote checkpoint was fetched, but no checkpoint "
                     "data was found. This can happen when e.g. the cloud "
@@ -499,7 +499,7 @@ class _ExperimentCheckpointManager:
                 "used to restore the previous experiment state."
             )
             return True
-        elif not _experiment_checkpoint_exists(experiment_cache_path):
+        elif not _experiment_checkpoint_exists(experiment_local_path):
             logger.info(
                 "No local checkpoint was found. "
                 "Ray Tune will now start a new experiment."
@@ -531,7 +531,7 @@ class _ExperimentCheckpointManager:
         resume_type, resume_config = _resume_str_to_config(resume_type)
 
         if _use_storage_context():
-            experiment_cache_path = self._storage.experiment_cache_path
+            experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
             # Not clear if we need this assertion, since we should always have a
@@ -539,7 +539,7 @@ class _ExperimentCheckpointManager:
             assert self._local_checkpoint_dir or (
                 self._remote_checkpoint_dir and self._syncer
             )
-            experiment_cache_path = self._local_checkpoint_dir
+            experiment_local_path = self._local_checkpoint_dir
             experiment_fs_path = self._remote_checkpoint_dir
 
         if resume_type == "AUTO":
@@ -549,11 +549,11 @@ class _ExperimentCheckpointManager:
             return None
 
         if resume_type in ["LOCAL", "PROMPT"]:
-            if not _experiment_checkpoint_exists(experiment_cache_path):
+            if not _experiment_checkpoint_exists(experiment_local_path):
                 raise ValueError(
                     f"You called resume ({resume_type}) when no checkpoint "
                     f"exists in local directory "
-                    f"({experiment_cache_path}). If you want to start "
+                    f"({experiment_local_path}). If you want to start "
                     f'a new experiment, use `resume="AUTO"` or '
                     f"`resume=None`. If you expected an experiment to "
                     f"already exist, check if you supplied the correct "
@@ -561,7 +561,7 @@ class _ExperimentCheckpointManager:
                 )
             elif resume_type == "PROMPT":
                 if click.confirm(
-                    f"Resume from local directory? " f"({experiment_cache_path})"
+                    f"Resume from local directory? " f"({experiment_local_path})"
                 ):
                     return resume_config
 
@@ -584,7 +584,7 @@ class _ExperimentCheckpointManager:
             )
             self.sync_down(force=True, wait=True)
 
-            if not _experiment_checkpoint_exists(experiment_cache_path):
+            if not _experiment_checkpoint_exists(experiment_local_path):
                 raise ValueError(
                     "Called resume when no checkpoint exists "
                     "in remote or local directory."

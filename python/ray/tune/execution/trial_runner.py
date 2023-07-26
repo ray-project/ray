@@ -334,7 +334,7 @@ class _TuneControllerBase:
         """Returns the local experiment checkpoint path."""
         if _use_storage_context():
             return os.path.join(
-                self._storage.experiment_cache_path, self.experiment_state_file_name
+                self._storage.experiment_local_path, self.experiment_state_file_name
             )
         return os.path.join(
             self._local_experiment_path, self.experiment_state_file_name
@@ -375,7 +375,7 @@ class _TuneControllerBase:
         """
         if _use_storage_context():
             assert not experiment_dir, "Remove the `experiment_dir` argument."
-            experiment_dir = self._storage.experiment_cache_path
+            experiment_dir = self._storage.experiment_local_path
         else:
             experiment_dir = experiment_dir or self._local_experiment_path
 
@@ -422,7 +422,7 @@ class _TuneControllerBase:
                 "Restoration is not fully working. TODO for a follow-up PR."
             )
             assert not experiment_dir, "Remove the `experiment_dir` argument."
-            experiment_dir = self._storage.experiment_cache_path
+            experiment_dir = self._storage.experiment_local_path
         else:
             experiment_dir = experiment_dir or self._local_experiment_path
 

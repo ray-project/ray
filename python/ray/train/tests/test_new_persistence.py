@@ -52,7 +52,7 @@ def train_fn(config):
 def test_tuner(monkeypatch, storage_path_type, tmp_path):
     """End-to-end test that the new persistence mode works with the Tuner API.
     This test covers many `storage_path_type` options:
-    - storage_path=None --> save locally to the default cache path (e.g., ~/ray_results)
+    - storage_path=None --> save locally to the default local path (e.g., ~/ray_results)
     - storage_path="nfs" --> save locally to a fake NFS path
     - storage_path="cloud" --> save to a mock S3 bucket
     - storage_path="custom_fs" --> save to a custom pyarrow filesystem
