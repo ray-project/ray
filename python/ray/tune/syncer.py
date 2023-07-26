@@ -46,11 +46,6 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.exceptions import RayActorError
-from ray.train._internal.fs_utils import (
-    _upload_to_fs_path,
-    _download_from_fs_path,
-    _delete_fs_path,
-)
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.result import TIME_TOTAL_S
@@ -60,8 +55,6 @@ from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.widgets import Template
 
 if TYPE_CHECKING:
-    import pyarrow.fs
-
     from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
@@ -702,45 +695,6 @@ class _DefaultSyncer(_BackgroundSyncer):
 
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
         return delete_at_uri, dict(uri=uri)
-
-
-class _FilesystemSyncer(_BackgroundSyncer):
-    """Syncer between local filesystem and a `storage_filesystem`."""
-
-    def __init__(self, storage_filesystem: Optional["pyarrow.fs.FileSystem"], **kwargs):
-        self.storage_filesystem = storage_filesystem
-        super().__init__(**kwargs)
-
-    def _sync_up_command(
-        self, local_path: str, uri: str, exclude: Optional[List] = None
-    ) -> Tuple[Callable, Dict]:
-        # TODO(justinvyu): Defer this cleanup up as part of the
-        # external-facing Syncer deprecation.
-        fs_path = uri
-        return (
-            _upload_to_fs_path,
-            dict(
-                local_path=local_path,
-                fs=self.storage_filesystem,
-                fs_path=fs_path,
-                exclude=exclude,
-            ),
-        )
-
-    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
-        fs_path = uri
-        return (
-            _download_from_fs_path,
-            dict(
-                fs=self.storage_filesystem,
-                fs_path=fs_path,
-                local_path=local_path,
-            ),
-        )
-
-    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
-        fs_path = uri
-        return _delete_fs_path, dict(fs=self.storage_filesystem, fs_path=fs_path)
 
 
 @DeveloperAPI

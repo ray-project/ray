@@ -9,7 +9,7 @@ import pyarrow.fs
 
 from ray import air, train, tune
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
-from ray.train._internal.fs_utils import _download_from_fs_path
+from ray.train._internal.storage import _download_from_fs_path
 
 
 @contextmanager
