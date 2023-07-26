@@ -36,7 +36,8 @@ enum class SchedulingType {
   BUNDLE_SPREAD = 5,
   BUNDLE_STRICT_PACK = 6,
   BUNDLE_STRICT_SPREAD = 7,
-  AFFINITY_WITH_BUNDLE = 8
+  AFFINITY_WITH_BUNDLE = 8,
+  NODE_LABEL = 9
 };
 
 // Options that controls the scheduling behavior.
@@ -108,6 +109,19 @@ struct SchedulingOptions {
         std::move(scheduling_context));
   }
 
+  static SchedulingOptions NodeLabelScheduling(
+      const rpc::SchedulingStrategy &scheduling_strategy) {
+    auto scheduling_context =
+        std::make_unique<NodeLabelSchedulingContext>(scheduling_strategy);
+    return SchedulingOptions(
+        SchedulingType::NODE_LABEL,
+        /*spread_threshold*/ 0,
+        /*avoid_local_node*/ false,
+        /*require_node_available*/ true,
+        /*avoid_gpu_nodes*/ RayConfig::instance().scheduler_avoid_gpu_nodes(),
+        /*max_cpu_fraction_per_node*/ 0,
+        std::move(scheduling_context));
+  }
   /*
    * Bundle scheduling options.
    */

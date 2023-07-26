@@ -48,15 +48,15 @@ Quick Start
 -----------
 
 Below, we walk through how AIR's unified ML API enables scaling of end-to-end ML workflows, focusing on
-a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow). The ML workflow we're going to build is summarized by the following diagram:
+a few of the popular frameworks AIR integrates with (XGBoost, Pytorch, and Tensorflow).
 
 ..
   https://docs.google.com/drawings/d/1z0r_Yc7-0NAPVsP2jWUkLV2jHVHdcJHdt9uN1GDANSY/edit
 
-.. figure:: images/why-air.svg
+.. .. figure:: images/why-air.svg
 
-  AIR provides a unified API for the ML ecosystem.
-  This diagram shows how AIR enables an ecosystem of libraries to be run at scale in just a few lines of code.
+..   AIR provides a unified API for the ML ecosystem.
+..   This diagram shows how AIR enables an ecosystem of libraries to be run at scale in just a few lines of code.
 
 Get started by installing Ray AIR:
 
@@ -195,7 +195,6 @@ Next Steps
 ----------
 
 - :ref:`air-key-concepts`
-- :ref:`air-examples-ref`
 - :ref:`API reference <air-api-ref>`
 - :ref:`Technical whitepaper <whitepaper>`
 - To check how your application is doing, you can use the :ref:`Ray dashboard<observability-getting-started>`.

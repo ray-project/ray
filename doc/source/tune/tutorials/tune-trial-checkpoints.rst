@@ -62,7 +62,7 @@ In the above code snippet:
         :end-before: __function_api_checkpointing_periodic_end__
 
 
-See :ref:`here for more information on creating checkpoints <air-checkpoint-ref>`.
+See :ref:`here for more information on creating checkpoints <checkpoint-api-ref>`.
 If using framework-specific trainers from Ray AIR, see :ref:`here <air-trainer-ref>` for
 references to framework-specific checkpoints such as `TensorflowCheckpoint`.
 
