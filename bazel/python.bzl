@@ -33,7 +33,7 @@ def doctest(files, gpu = False, name="doctest", deps=[], srcs=[], data=[], args=
     )
 
 
-def py_test_module_list(files, size, deps, env = {}, extra_srcs=[], name_suffix="", **kwargs):
+def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], name_suffix="", **kwargs):
     shard_num = 1
 
     if size == "large":
@@ -47,6 +47,9 @@ def py_test_module_list(files, size, deps, env = {}, extra_srcs=[], name_suffix=
 
     env_items = env.items() + [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]
     for file in files:
+        if type(file) != "string":
+            file, extra_tags = file[0], list(file[1:])
+            tags = tags + extra_tags
         # remove .py
         name = paths.split_extension(file)[0] + name_suffix
         if name == file:
@@ -61,6 +64,7 @@ def py_test_module_list(files, size, deps, env = {}, extra_srcs=[], name_suffix=
                 name = test_name,
                 size = size,
                 main = file,
+                tags = tags,
                 srcs = extra_srcs + [file],
                 deps = deps,
                 env=dict(test_env),
