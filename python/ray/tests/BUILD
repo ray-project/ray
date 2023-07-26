@@ -93,14 +93,6 @@ py_test_module_list(
     "test_client_builder.py",
     "test_client_init.py",
     "test_client_proxy.py",
-  ],
-  size = "medium",
-  tags = ["exclusive", "client_tests", "team:serverless", "civ1"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
     "test_client_compat.py",
     "test_client_multi.py",
     "test_client_references.py",
@@ -247,14 +239,6 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_autoscaler.py",
-  ],
-  size = "small",
-  tags = ["exclusive", "small_size_python_tests", "team:serverless", "civ1"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
     "test_batch_node_provider_unit.py",
     "test_batch_node_provider_integration.py",
     "test_autoscaler_drain_node_api.py",
@@ -510,23 +494,12 @@ py_test(
 # no way to filter by both flaky and client mode tests in bazel.
 py_test_module_list(
   files = [
-    "test_basic_3.py",
-    "test_asyncio.py",
-    "test_object_assign_owner.py",
-  ],
-  size = "large",
-  name_suffix = "_client_mode",
-  env = {"RAY_CLIENT_MODE": "1", "RAY_PROFILING": "1"},
-  tags = ["exclusive", "client_tests", "team:serverless", "civ1"],
-  deps = ["//:ray_lib", ":conftest"],
-)
-
-py_test_module_list(
-  files = [
     "test_actor.py",
     "test_advanced.py",
+    "test_asyncio.py",
     "test_basic.py",
     "test_basic_2.py",
+    "test_basic_3.py",
     "test_basic_4.py",
     "test_basic_5.py",
     "test_multiprocessing.py",
@@ -534,6 +507,7 @@ py_test_module_list(
     "test_list_actors_2.py",
     "test_list_actors_3.py",
     "test_list_actors_4.py",
+    "test_object_assign_owner.py",
   ],
   size = "large",
   name_suffix = "_client_mode",
