@@ -45,59 +45,10 @@ type NodeLogicalResourcesMap = {
   [nodeId: string]: str;
 };
 
-export type ClusterStatusMapRsp = {
-  result: boolean;
-  msg: string;
-  data: {
-    autoscalingStatus: string;
-    autoscalingError: null;
-    clusterStatus: {
-      gcsRequestTime: number;
-      time: number;
-      monitorPid: number;
-      autoscalerUpdateTime: number;
-      autoscalerReport: {
-        activeNodes: {
-          [nodeId: string]: number;
-        };
-        pendingNodes: any[];
-        pendingLaunches: any[];
-        failedNodes: any[];
-        nodeAvailabilitySummary: {
-          nodeAvailabilities: any;
-        };
-        pendingResources: any[];
-        nodeTypeMapping: {
-          [nodeId: string]: string;
-        };
-      };
-      nonTerminatedNodesTime: number;
-      loadMetricsReport: {
-        usage: {
-          [metric: string]: [number, number];
-        };
-        resourceDemand: any[];
-        pgDemand: any[];
-        requestDemand: any[];
-        nodeTypes: Array<{
-          [metric: string]: number;
-        }>;
-        headIp: null;
-        usageByNode: {
-          [nodeId: string]: {
-            [metric: string]: [number, number];
-          };
-        };
-        nodeTypeMapping: null;
-      };
-    };
-    nodeLogicalResources: NodeLogicalResourcesMap;
-  };
-};
-
 export type NodeListRsp = {
   data: {
     summary: NodeDetail[];
+    nodeLogicalResources: NodeLogicalResourcesMap;
   };
   result: boolean;
   msg: string;

@@ -297,7 +297,7 @@ export const WorkerRow = ({ node, worker }: WorkerRowProps) => {
       <TableCell>N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
       <TableCell align="center">N/A</TableCell>
-      <TableCell align="center">-</TableCell>
+      <TableCell align="center">N/A</TableCell>
     </TableRow>
   );
 };

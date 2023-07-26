@@ -27,7 +27,6 @@ import { HelpInfo } from "../../components/Tooltip";
 import { NodeDetail } from "../../type/node";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
-import { useClusterStatusMap } from "./hook/useClusterStatusMap";
 import { useNodeList } from "./hook/useNodeList";
 import { NodeRows } from "./NodeRow";
 
@@ -238,8 +237,6 @@ const Nodes = () => {
     mode,
     setMode,
   } = useNodeList();
-  const { clusterStatusMap } = useClusterStatusMap();
-  const nodeLogicalResourcesMap = clusterStatusMap?.nodeLogicalResources;
 
   return (
     <div className={classes.root}>
@@ -364,15 +361,7 @@ const Nodes = () => {
                   .map((node) => (
                     <NodeRows
                       key={node.raylet.nodeId}
-                      node={
-                        nodeLogicalResourcesMap
-                          ? {
-                              ...node,
-                              logicalResources:
-                                nodeLogicalResourcesMap[node.raylet.nodeId],
-                            }
-                          : node
-                      }
+                      node={node}
                       isRefreshing={isRefreshing}
                       startExpanded={nodeList.length === 1}
                     />
