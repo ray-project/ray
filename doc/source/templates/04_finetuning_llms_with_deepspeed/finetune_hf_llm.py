@@ -1,3 +1,5 @@
+from typing import Tuple
+
 import torch
 import argparse
 import json
@@ -88,25 +90,39 @@ def create_ray_dataset(path):
 
 
 def evaluate(
-    model, eval_dataset_len, eval_dataloader, accelerator, bsize, as_test: bool = False
-):
+    *,
+    model, 
+    eval_ds, 
+    accelerator, 
+    bsize, 
+    ds_kwargs, 
+    as_test: bool = False
+) -> Tuple[float, float]:
     model.eval()
     losses = []
+    
+    eval_dataloader = eval_ds.iter_torch_batches(batch_size=bsize, **ds_kwargs)
+    eval_ds_len = len(list(eval_ds.iter_batches(batch_size=1)))
     for step, batch in tqdm.tqdm(
-        enumerate(eval_dataloader), total=eval_dataset_len // (bsize + 1)
-    ):
+        enumerate(eval_dataloader), total=eval_ds_len // (bsize + 1)
+    ):  
         with torch.no_grad():
             outputs = model(**batch)
 
         loss = outputs.loss
-        losses.append(accelerator.gather(loss.repeat(bsize)))
+        # The tensors are gathered by concatenating them on the first dimension, so we 
+        # add a new dimension to the scalar loss to get a tensor of shape (K,) for K 
+        # workers. 
+        losses.append(accelerator.gather(loss[None]))
 
         if as_test:
             break
 
-    losses = torch.cat(losses)
+    # We stack losses so that we have a tensor of shape (T, K) where T is the number of
+    # steps and K is the number of workers.
+    losses = torch.stack(losses)
     try:
-        eval_loss = torch.mean(losses)
+        eval_loss = torch.mean(losses).item()   
         perplexity = math.exp(eval_loss)
     except OverflowError:
         perplexity = float("inf")
@@ -318,20 +334,15 @@ def training_function(kwargs: dict):
 
         e_epoch = time.time()
         accelerator.print("Train time per epoch: ", e_epoch - s_epoch)
-
+        
         eval_s_epoch = time.time()
-        valid_dataloader = valid_ds.iter_torch_batches(
-            batch_size=batch_size,
-            collate_fn=collate_partial,
-        )
-
         print("Running evaluation ...")
         perplex, eloss = evaluate(
-            model,
-            valid_ds_len,
-            valid_dataloader,
-            accelerator,
+            model=model,
+            eval_ds=valid_ds,
+            accelerator=accelerator,
             bsize=config["eval_batch_size"],
+            ds_kwargs={"collate_fn": collate_partial},
             as_test=config["as_test"],
         )
         accelerator.print("Eval result loss", eloss)
@@ -355,6 +366,7 @@ def training_function(kwargs: dict):
 
         accelerator.wait_for_everyone()
 
+        checkpointing_time_s = time.time()
         # This checkpointing method makes deepspeed checkpoints on each node and then
         # Ray Train will aggregate them to a central s3 bucket.
         # It should be done on all processes (not just the Rank 0)
@@ -384,7 +396,7 @@ def training_function(kwargs: dict):
                 "epoch": epoch,
                 "iteration": step,
                 "train_loss": loss_sum.item() / (step + 1),
-                "eval_loss": eloss.item(),
+                "eval_loss": eloss,
                 "perplexity": perplex,
                 "num_iterations": step + 1,
                 "train_time_per_epoch": e_epoch - s_epoch,
@@ -401,6 +413,8 @@ def training_function(kwargs: dict):
             # iterations.
             checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
+        
+        print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
 
 def parse_args():
@@ -562,11 +576,9 @@ def main():
             "train": train_ds,
             "valid": valid_ds,
         },
-        # # Make sure both datasets are sharded, so that we can maximally use our GPUs.
-        # (un-comment on 2.6)
-        # dataset_config=ray.train.DataConfig(
-        #     datasets_to_split=["train", "valid"],
-        # ),
+        dataset_config=ray.train.DataConfig(
+            datasets_to_split=["train", "valid"],
+        ),
     )
 
     results = trainer.fit()
