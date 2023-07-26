@@ -226,7 +226,7 @@ class StateDataSourceClient:
     # Returns all node_ids who has runtime_env_agent listening.
     def get_all_registered_runtime_env_agent_ids(self) -> List[str]:
         return self._runtime_env_agent_addresses.keys()
-    
+
     # Returns all nod_ids which registered their log_agent_stub.
     def get_all_registered_log_agent_ids(self) -> List[str]:
         return self._log_agent_stub.keys()
