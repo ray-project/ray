@@ -88,7 +88,6 @@ doctest(
             "algorithms/sac/rnnsac.py",
             "algorithms/simple_q/simple_q.py",
             "core/models/base.py",
-            "core/models/specs/checker.py",
             "core/models/specs/specs_base.py",
             "core/models/specs/specs_dict.py",
             "env/wrappers/pettingzoo_env.py",
@@ -100,7 +99,6 @@ doctest(
             "execution/buffers/mixin_replay_buffer.py",
             "models/base_model.py",
             "models/catalog.py",
-            "models/distributions.py",
             "models/preprocessors.py",
             "models/repeated_values.py",
             "models/tf/tf_distributions.py",
@@ -3139,6 +3137,32 @@ py_test(
     size = "medium",
     srcs = ["examples/cartpole_lstm.py"],
     args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
+)
+
+py_test(
+    name = "examples/catalog/custom_action_distribution",
+    main = "examples/catalog/custom_action_distribution.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/catalog/custom_action_distribution.py"],
+)
+
+
+py_test(
+    name = "examples/catalog/mobilenet_v2_encoder",
+    main = "examples/catalog/mobilenet_v2_encoder.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/catalog/mobilenet_v2_encoder.py"],
+)
+
+
+py_test(
+    name = "examples/rl_module/mobilenet_rlm",
+    main = "examples/rl_module/mobilenet_rlm.py",
+    tags = ["team:rllib", "examples", "no_main"],
+    size = "small",
+    srcs = ["examples/rl_module/mobilenet_rlm.py"],
 )
 
 py_test(

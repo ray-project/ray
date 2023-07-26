@@ -22,5 +22,5 @@ show you how achieve several tasks.
     working-with-tensors
     working-with-pytorch
     batch_inference
-    data-internals
     performance-tips
+    preprocessors

@@ -1,9 +1,10 @@
 import json
 import os
 import posixpath
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import pandas as pd
+import pyarrow
 import pyarrow as pa
 import pytest
 from pyarrow.fs import FileType
@@ -12,14 +13,13 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 from ray.data.block import Block
 from ray.data.dataset import Dataset
-from ray.data.datasource import (
-    FileBasedDatasource,
-    PartitionStyle,
-    PathPartitionEncoder,
-    PathPartitionParser,
-)
+from ray.data.datasource import FileBasedDatasource, PathPartitionParser
 from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
-from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
+from ray.data.datasource.partitioning import (
+    Partitioning,
+    PartitionStyle,
+    PathPartitionFilter,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -54,6 +54,112 @@ def read_csv(
 ) -> Dataset:
     datasource = CSVDatasource(block_type=block_type)
     return ray.data.read_datasource(datasource, paths=paths, partitioning=partitioning)
+
+
+class PathPartitionEncoder:
+    """Callable that generates directory path strings for path-based partition formats.
+    Path-based partition formats embed all partition keys and values directly in
+    their dataset file paths.
+    Two path partition formats are currently supported - `HIVE` and `DIRECTORY`.
+    For `HIVE` Partitioning, all partition directories will be generated using a
+    `{key1}={value1}/{key2}={value2}` naming convention under the base directory.
+    An accompanying ordered list of partition key field names must also be
+    provided, where the order and length of all partition values must match the
+    order and length of field names
+    For `DIRECTORY` Partitioning, all directories will be generated from partition
+    values using a `{value1}/{value2}` naming convention under the base directory.
+    """
+
+    @staticmethod
+    def of(
+        style: PartitionStyle = PartitionStyle.HIVE,
+        base_dir: Optional[str] = None,
+        field_names: Optional[List[str]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+    ) -> "PathPartitionEncoder":
+        """Creates a new partition path encoder.
+        Args:
+            style: The partition style - may be either HIVE or DIRECTORY.
+            base_dir: "/"-delimited base directory that all partition paths will be
+                generated under (exclusive).
+            field_names: The partition key field names (i.e. column names for tabular
+                datasets). Required for HIVE partition paths, optional for DIRECTORY
+                partition paths. When non-empty, the order and length of partition key
+                field names must match the order and length of partition values.
+            filesystem: Filesystem that will be used for partition path file I/O.
+        Returns:
+            The new partition path encoder.
+        """
+        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        return PathPartitionEncoder(scheme)
+
+    def __init__(self, partitioning: Partitioning):
+        """Creates a new partition path encoder.
+        Args:
+            partitioning: The path-based partition scheme. All partition paths
+                will be generated under this scheme's base directory. Field names are
+                required for HIVE partition paths, optional for DIRECTORY partition
+                paths. When non-empty, the order and length of partition key field
+                names must match the order and length of partition values.
+        """
+        style = partitioning.style
+        field_names = partitioning.field_names
+        if style == PartitionStyle.HIVE and not field_names:
+            raise ValueError(
+                "Hive partition path generation requires a corresponding list of "
+                "partition key field names. Please retry your request with one "
+                "or more field names specified."
+            )
+        generators = {
+            PartitionStyle.HIVE: self._as_hive_partition_dirs,
+            PartitionStyle.DIRECTORY: self._as_directory_partition_dirs,
+        }
+        self._encoder_fn: Callable[[List[str]], List[str]] = generators.get(style)
+        if self._encoder_fn is None:
+            raise ValueError(
+                f"Unsupported partition style: {style}. "
+                f"Supported styles: {generators.keys()}"
+            )
+        self._scheme = partitioning
+
+    def __call__(self, partition_values: List[str]) -> str:
+        """Returns the partition directory path for the given partition value strings.
+        All files for this partition should be written to this directory. If a base
+        directory is set, then the partition directory path returned will be rooted in
+        this base directory.
+        Args:
+            partition_values: The partition value strings to include in the partition
+                path. For HIVE partition paths, the order and length of partition
+                values must match the order and length of partition key field names.
+        Returns:
+            Partition directory path for the given partition values.
+        """
+        partition_dirs = self._as_partition_dirs(partition_values)
+        return posixpath.join(self._scheme.normalized_base_dir, *partition_dirs)
+
+    @property
+    def scheme(self) -> Partitioning:
+        """Returns the partitioning for this encoder."""
+        return self._scheme
+
+    def _as_hive_partition_dirs(self, values: List[str]) -> List[str]:
+        """Creates HIVE directory names for the given values."""
+        field_names = self._scheme.field_names
+        return [f"{field_names[i]}={val}" for i, val in enumerate(values)]
+
+    def _as_directory_partition_dirs(self, values: List[str]) -> List[str]:
+        """Creates DIRECTORY partition directory names for the given values."""
+        return values
+
+    def _as_partition_dirs(self, values: List[str]) -> List[str]:
+        """Creates a list of partition directory names for the given values."""
+        field_names = self._scheme.field_names
+        if field_names:
+            assert len(values) == len(field_names), (
+                f"Expected {len(field_names)} partition value(s) but found "
+                f"{len(values)}: {values}."
+            )
+        return self._encoder_fn(values)
 
 
 @pytest.mark.parametrize("block_type", [pd.DataFrame, pa.Table])

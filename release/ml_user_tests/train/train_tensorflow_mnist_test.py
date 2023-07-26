@@ -16,7 +16,9 @@ if __name__ == "__main__":
     else:
         ray.init(address="auto")
 
-    train_tensorflow_mnist(num_workers=6, use_gpu=True, epochs=20)
+    train_tensorflow_mnist(
+        num_workers=6, use_gpu=True, epochs=20, storage_path="/mnt/cluster_storage"
+    )
 
     taken = time.time() - start
     result = {
