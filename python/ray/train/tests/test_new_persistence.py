@@ -50,6 +50,35 @@ def train_fn(config):
 
 @pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
 def test_tuner(monkeypatch, storage_path_type, tmp_path):
+    """End-to-end test that the new persistence mode works with the Tuner API.
+    This test covers many `storage_path_type` options:
+    - storage_path=None --> save locally to the default cache path (e.g., ~/ray_results)
+    - storage_path="nfs" --> save locally to a fake NFS path
+    - storage_path="cloud" --> save to a mock S3 bucket
+    - storage_path="custom_fs" --> save to a custom pyarrow filesystem
+        - The custom fs is a local filesystem that appends a path prefix to every path.
+
+    This is the expected output at the storage path:
+
+    {storage_path}/{exp_name}
+    ├── tuner.pkl                   <- Driver artifacts (global experiment state)
+    ├── basic-variant-state.json
+    ├── experiment_state.json
+    ├── train_fn_a2b9e_00000_0_...
+    │   ├── artifact-0.txt          <- Trial artifacts
+    │   ├── ...
+    │   ├── checkpoint_000000       <- Trial checkpoints
+    │   │   └── dummy.pkl
+    │   ├── ...
+    │   ├── events.out.tfevents...  <- Driver artifacts (trial results)
+    │   ├── params.json
+    │   ├── params.pkl
+    │   ├── progress.csv
+    │   └── result.json
+    └── train_fn_a2b9e_00001_1_...
+        └── ...                     <- Same as above
+    """
+
     # Set the cache dir to some temp directory
     LOCAL_CACHE_DIR = tmp_path / "ray_results"
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
