@@ -5,16 +5,19 @@ from typing import Union, List, Dict, Set, Optional
 
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
+    DeploymentStatusInfo,
+    ApplicationStatusInfo,
     ApplicationStatus,
     DeploymentStatus,
     DeploymentInfo,
+    StatusOverview,
     ReplicaState,
     ServeDeployMode,
     HTTPProxyStatus,
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
@@ -829,6 +832,62 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
                 for app_name, app in self.applications.items()
             },
         )
+
+
+@PublicAPI(stability="beta")
+class ServeStatusSchema(BaseModel, extra=Extra.forbid):
+    """
+    Describes the status of an application and all its deployments.
+
+    This is the response JSON schema for the v1 REST API
+    `GET /api/serve/deployments/status`.
+    """
+
+    name: str = Field(description="Application name", default="")
+    app_status: ApplicationStatusInfo = Field(
+        ...,
+        description=(
+            "Describes if the Serve application is DEPLOYING, if the "
+            "DEPLOY_FAILED, or if the app is RUNNING. Includes a timestamp of "
+            "when the application was deployed."
+        ),
+    )
+    deployment_statuses: List[DeploymentStatusInfo] = Field(
+        default=[],
+        description=(
+            "List of statuses for all the deployments running in this Serve "
+            "application. Each status contains the deployment name, the "
+            "deployment's status, and a message providing extra context on "
+            "the status."
+        ),
+    )
+
+    @staticmethod
+    def get_empty_schema_dict() -> Dict:
+        """Returns an empty status schema dictionary.
+
+        Schema represents Serve status for a Ray cluster where Serve hasn't
+        started yet.
+        """
+
+        return {
+            "app_status": {
+                "status": ApplicationStatus.NOT_STARTED.value,
+                "message": "",
+                "deployment_timestamp": 0,
+            },
+            "deployment_statuses": [],
+        }
+
+
+@DeveloperAPI
+def serve_status_to_schema(serve_status: StatusOverview) -> ServeStatusSchema:
+
+    return ServeStatusSchema(
+        name=serve_status.name,
+        app_status=serve_status.app_status,
+        deployment_statuses=serve_status.deployment_statuses,
+    )
 
 
 @PublicAPI(stability="alpha")
