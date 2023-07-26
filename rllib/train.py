@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import typer
 from typing import Optional
+import uuid
 import yaml
 
 import ray
@@ -109,7 +110,7 @@ def load_experiments_from_file(
         # run the algo.
         config = algo_config.to_dict()
         experiments = {
-            "default": {
+            f"default_{uuid.uuid4().hex}": {
                 "run": algo_config.__class__.__name__.replace("Config", ""),
                 "env": config.get("env"),
                 "config": config,
