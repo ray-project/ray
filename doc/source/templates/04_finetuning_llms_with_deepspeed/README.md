@@ -172,8 +172,6 @@ Emprically the implementation that `accelerate` provides needs `O(4M)` CPU RAM o
 
 For example, for 70B model, with 32-way sharding on a machine with 8xA10Gs (g5.48xlarge), you need 280G (because of checkpointing) and 315 GB (because of optimizer state offloading) making the total memory requirement ~595 GB.
 
-![Memory peak](./media/memory_pick.jpg)
-
 Ray provides an easy way to control which process gets launched on what machine type. To do this, in your cluster config add a custom lable for those machines that satisifies the CPU RAM requirement of rank 0 and call them `large_cpu_mem` instances. Then in our script we specify the custom tag as a resource requiremnet for the `trainer` actor which is in the same machine that rank zero process will get executed on.
 
 ```
