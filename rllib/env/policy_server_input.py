@@ -35,6 +35,10 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     For an example, run `examples/serving/cartpole_server.py` along
     with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
 
+    WARNING: This class is not meant to be publicly exposed. Anyone that can
+    communicate with this server can execute arbitary code on the machine. Use
+    this with caution, in isolated environments, and at your own risk.
+
     Examples:
         >>> import gymnasium as gym
         >>> from ray.rllib.algorithms.pg import PGConfig
