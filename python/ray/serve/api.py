@@ -10,7 +10,7 @@ from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 import ray
 from ray import cloudpickle
 from ray.dag import DAGNode
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated, PublicAPI, DeveloperAPI
 
 from ray.serve.built_application import BuiltApplication
 from ray.serve._private.client import ServeControllerClient
@@ -34,7 +34,7 @@ from ray.serve._private.deployment_graph_build import (
     get_and_validate_ingress_deployment,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import RayServeSyncHandle
+from ray.serve.handle import RayServeHandle, RayServeSyncHandle
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -731,18 +731,37 @@ def get_multiplexed_model_id() -> str:
 @PublicAPI(stability="alpha")
 def get_app_handle(
     name: str, sync: Optional[bool] = None
-) -> Optional[RayServeSyncHandle]:
+) -> Optional[Union[RayServeHandle, RayServeSyncHandle]]:
     """Get a handle to the application's ingress deployment by name.
 
     This handle will send requests to the deployment across application
     versions if an upgrade occurs, so the ingress deployment must handle
     interface compatibility.
 
-    When called from within a deployment `sync` will default to `False`,
-    returning an `RayServeHandle`.
+    When called from within a deployment `sync` will default to `False`.
+    When called from outside a deployment `sync` will default to `True`.
 
-    When called from outside a deployment `sync` will default to `True`,
-    returning a `RayServeSyncHandle`.
+    Args:
+        name: Name of application to get a handle to.
+        sync: If false, then returns a RayServeHandle, which is
+            asynchronous. If true, then returns a RayServeSyncHandle,
+            which is synchronous.
+
+    Raises:
+        RayServeException: If no Serve controller is running.
+
+    .. code-block:: python
+
+            import ray
+            from ray import serve
+
+            @serve.deployment
+            def f(val: int) -> int:
+                return val * 2
+
+            serve.run(f.bind(), name="my_app")
+            handle = serve.get_app_handle("my_app")
+            assert ray.get(handle.remote(3)) == 6
     """
 
     client = get_global_client()
@@ -755,3 +774,52 @@ def get_app_handle(
         sync = internal_replica_context is None
 
     return client.get_handle(ingress, sync=sync)
+
+
+@DeveloperAPI
+def get_deployment_handle(
+    deployment_name: str, app_name: Optional[str] = None, sync: Optional[bool] = None
+) -> Union[RayServeHandle, RayServeSyncHandle]:
+    """Get a handle to the named deployment.
+
+    This handle will send requests to the deployment across application
+    versions if an upgrade occurs, so the ingress deployment must handle
+    interface compatibility.
+
+    When called from within a deployment `sync` will default to `False`.
+    When called from outside a deployment `sync` will default to `True`.
+
+    Args:
+        deployment_name: Name of deployment to get a handle to.
+        app_name: Application in which deployment resides. If calling
+            from inside a Serve application and `app_name` is not
+            specified, this will default to the application from which
+            this API is called.
+        sync: If false, then returns a RayServeHandle, which is
+            asynchronous. If true, then returns a RayServeSyncHandle,
+            which is synchronous.
+
+    Raises:
+        RayServeException: If no Serve controller is running, or if
+            calling from outside a Serve application and no application
+            name is specified.
+    """
+
+    client = get_global_client()
+
+    internal_replica_context = get_internal_replica_context()
+    if app_name is None:
+        if internal_replica_context is None:
+            raise RayServeException(
+                "Please specify an application name when getting a deployment handle "
+                "outside of a Serve application."
+            )
+        else:
+            app_name = internal_replica_context.app_name
+
+    if sync is None:
+        # If sync is unspecified, default to async within a deployment
+        # and default to sync outside a deployment
+        sync = internal_replica_context is None
+
+    return client.get_handle(f"{app_name}_{deployment_name}", sync=sync)
