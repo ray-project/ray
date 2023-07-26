@@ -95,6 +95,9 @@ def _pyarrow_fs_copy_files(
     )
 
 
+# TODO(justinvyu): Add unit tests for all these utils.
+
+
 def _delete_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str):
     assert not is_uri(fs_path), fs_path
 
@@ -110,25 +113,31 @@ def _download_from_fs_path(
     local_path: str,
     filelock: bool = True,
 ):
-    """Downloads a directory or file at a URI to a local path.
+    """Downloads a directory or file from (fs, fs_path) to a local path.
 
-    If the URI points to a directory, then the full directory contents are
-    copied, and `local_path` is the downloaded directory.
+    If fs_path points to a directory:
+    - The full directory contents are downloaded directly into `local_path`,
+      rather than to a subdirectory of `local_path`.
+
+    If fs_path points to a file:
+    - The file is downloaded to `local_path`, which is expected to be a file path.
+
     If the download fails, the `local_path` contents are
     cleaned up before raising, if the directory did not previously exist.
-    NOTE: This creates `local_path`'s parent directories if they do not
+
+    NOTE: This method creates `local_path`'s parent directories if they do not
     already exist. If the download fails, this does NOT clean up all the parent
     directories that were created.
 
     Args:
-        uri: The URI to download from.
+        fs: The filesystem to download from.
+        fs_path: The filesystem path (either a directory or a file) to download.
         local_path: The local path to download to.
         filelock: Whether to require a file lock before downloading, useful for
             multiple downloads to the same directory that may be happening in parallel.
 
     Raises:
-        ValueError: if the URI scheme is not supported.
-        FileNotFoundError: if the URI doesn't exist.
+        FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
 
@@ -158,53 +167,53 @@ def _upload_to_fs_path(
     fs_path: str,
     exclude: Optional[List[str]] = None,
 ) -> None:
-    """Uploads a local directory or file to a URI.
+    """Uploads a local directory or file to (fs, fs_path).
 
-    NOTE: This will create all necessary directories at the URI destination.
+    NOTE: This will create all necessary parent directories at the destination.
 
     Args:
         local_path: The local path to upload.
-        uri: The URI to upload to.
+        fs: The filesystem to upload to.
+        fs_path: The filesystem path where the dir/file will be uploaded to.
         exclude: A list of filename matches to exclude from upload. This includes
             all files under subdirectories as well.
             Ex: ["*.png"] to exclude all .png images.
-
-    Raises:
-        ValueError: if the URI scheme is not supported.
     """
     assert not is_uri(fs_path), fs_path
 
     if not exclude:
-        _ensure_directory(fs_path, fs=fs)
+        # TODO(justinvyu): uploading a single file doesn't work
+        # (since we always create a directory at fs_path)
+        _create_directory(fs=fs, fs_path=fs_path)
         _pyarrow_fs_copy_files(local_path, fs_path, destination_filesystem=fs)
     elif fsspec:
         # If fsspec is available, prefer it because it's more efficient than
         # calling pyarrow.fs.copy_files multiple times
         _upload_to_uri_with_exclude_fsspec(
-            local_path=local_path, fs=fs, bucket_path=fs_path, exclude=exclude
+            local_path=local_path, fs=fs, fs_path=fs_path, exclude=exclude
         )
     else:
         # Walk the filetree and upload
         _upload_to_uri_with_exclude_pyarrow(
-            local_path=local_path, fs=fs, bucket_path=fs_path, exclude=exclude
+            local_path=local_path, fs=fs, fs_path=fs_path, exclude=exclude
         )
 
 
 def _upload_to_uri_with_exclude_fsspec(
-    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+    local_path: str, fs: "pyarrow.fs", fs_path: str, exclude: Optional[List[str]]
 ) -> None:
     local_fs = _ExcludingLocalFilesystem(exclude=exclude)
     handler = pyarrow.fs.FSSpecHandler(local_fs)
     source_fs = pyarrow.fs.PyFileSystem(handler)
 
-    _ensure_directory(bucket_path, fs=fs)
+    _create_directory(fs=fs, fs_path=fs_path)
     _pyarrow_fs_copy_files(
-        local_path, bucket_path, source_filesystem=source_fs, destination_filesystem=fs
+        local_path, fs_path, source_filesystem=source_fs, destination_filesystem=fs
     )
 
 
 def _upload_to_uri_with_exclude_pyarrow(
-    local_path: str, fs: "pyarrow.fs", bucket_path: str, exclude: Optional[List[str]]
+    local_path: str, fs: "pyarrow.fs", fs_path: str, exclude: Optional[List[str]]
 ) -> None:
     def _should_exclude(candidate: str) -> bool:
         for excl in exclude:
@@ -221,18 +230,18 @@ def _upload_to_uri_with_exclude_pyarrow(
                 continue
 
             full_source_path = os.path.normpath(os.path.join(local_path, candidate))
-            full_target_path = os.path.normpath(os.path.join(bucket_path, candidate))
+            full_target_path = os.path.normpath(os.path.join(fs_path, candidate))
 
-            _ensure_directory(str(Path(full_target_path).parent), fs=fs)
+            _create_directory(fs=fs, fs_path=str(Path(full_target_path).parent))
             _pyarrow_fs_copy_files(
                 full_source_path, full_target_path, destination_filesystem=fs
             )
 
 
 def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
-    """Returns the list of filenames at a URI (similar to os.listdir).
+    """Returns the list of filenames at (fs, fs_path), similar to os.listdir.
 
-    If the URI doesn't exist, returns an empty list.
+    If the path doesn't exist, returns an empty list.
     """
     assert not is_uri(fs_path), fs_path
 
@@ -244,30 +253,24 @@ def _list_at_fs_path(fs: pyarrow.fs.FileSystem, fs_path: str) -> List[str]:
 
 
 def _is_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> bool:
-    """Checks if a remote URI is a directory or a file.
-
-    Returns:
-        bool: True if the URI is a directory. False if it is a file.
+    """Checks if (fs, fs_path) is a directory or a file.
 
     Raises:
-        FileNotFoundError: if the URI doesn't exist.
+        FileNotFoundError: if (fs, fs_path) doesn't exist.
     """
     assert not is_uri(fs_path), fs_path
     file_info = fs.get_file_info(fs_path)
     return not file_info.is_file
 
 
-def _ensure_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> None:
-    """Create directory at remote URI.
+def _create_directory(fs: pyarrow.fs.FileSystem, fs_path: str) -> None:
+    """Create directory at (fs, fs_path).
 
     Some external filesystems require directories to already exist, or at least
     the `netloc` to be created (e.g. PyArrows ``mock://`` filesystem).
 
     Generally this should be done before and outside of Ray applications. This
     utility is thus primarily used in testing, e.g. of ``mock://` URIs.
-
-    If a ``fs`` is passed, the ``uri`` is expected to be a path on this filesystem.
-    Otherwise, the fs and the uri are automatically detected.
     """
     try:
         fs.create_dir(fs_path)
