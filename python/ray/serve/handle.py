@@ -276,10 +276,6 @@ class RayServeHandle:
         return self.options(method_name=name)
 
     def shutdown(self):
-        """Shutdown ray serve handle gracefully.
-
-        The router needs to be shutdown separately.
-        """
         self._router.shutdown()
 
 
