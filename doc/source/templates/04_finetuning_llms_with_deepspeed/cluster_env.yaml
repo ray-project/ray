@@ -1,30 +1,32 @@
 # See https://hub.docker.com/r/anyscale/ray for full list of
 # available Ray, Python, and CUDA versions.
-base_image: anyscale/ray:2.5.1-py39-cu116
+base_image: anyscale/ray:2.6.1-py39-cu117
 
 env_vars: {}
 
-debian_packages: []
+debian_packages: [
+  libaio1
+]
 
 python:
   pip_packages: [
-    torch==2.0.0
-    torchvision==0.15.1
-    torchaudio==2.0.1
-    deepspeed
-    fairscale
-    transformers
-    dataset
-    accelerate
-    evaluate
-    bitsandbytes
-    wandb
-    pytorch-lightning
-    protobuf<3.21.0
-    torchmetrics
-    lm_eval==0.3.0
-    tiktoken==0.1.2
-    sentencepiece
+    torch==2.0.0,
+    torchvision==0.15.1,
+    torchaudio==2.0.1,
+    deepspeed,
+    fairscale,
+    transformers,
+    dataset,
+    accelerate,
+    evaluate,
+    bitsandbytes,
+    wandb,
+    pytorch-lightning,
+    protobuf<3.21.0,
+    torchmetrics,
+    lm_eval==0.3.0,
+    tiktoken==0.1.2,
+    sentencepiece,
   ]
   conda_packages: []
 
