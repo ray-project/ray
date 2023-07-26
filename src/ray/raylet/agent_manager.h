@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <atomic>
 #include <boost/asio/deadline_timer.hpp>
 #include <csignal>
 #include <string>
@@ -58,7 +59,7 @@ class AgentManager {
                         bool start_agent = true /* for test */)
       : options_(std::move(options)),
         delay_executor_(std::move(delay_executor)),
-        kill_raylet_if_process_exits_(options_.fate_shares) {
+        fate_shares_(options_.fate_shares) {
     if (options_.agent_name.empty()) {
       RAY_LOG(FATAL) << "AgentManager agent_name must not be empty.";
     }
@@ -75,10 +76,11 @@ class AgentManager {
   void StartAgent();
 
  private:
-  Options options_;
+  const Options options_;
   Process process_;
   DelayExecutorFn delay_executor_;
-  bool kill_raylet_if_process_exits_;
+  // If true, when the agent dies, raylet kills itself.
+  std::atomic<bool> fate_shares_;
   std::unique_ptr<std::thread> monitor_thread_;
 };
 
