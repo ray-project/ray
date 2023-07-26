@@ -10,5 +10,5 @@
     - ./ci/env/env_info.sh
     - pip install ray[client]
     - bazel test --config=ci $(./ci/run/bazel_export_options) 
-      --test_tag_filters=client_tests,small_size_python_tests,-civ1
-      -- python/ray/tests/...
+      --test_tag_filters=client_tests,small_size_python_tests
+      -- $(bazel query "attr(tags, team:core, tests(python/ray/tests/...))") $(yq -r ".flaky_tests | map(\"-\"+.) | join(\" \")" ci/v2/test/core.tests.yml)
