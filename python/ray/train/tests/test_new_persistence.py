@@ -5,9 +5,11 @@ import pytest
 import tempfile
 import time
 
+import pyarrow.fs
+
 from ray import air, train, tune
 from ray.air.tests.test_checkpoints import mock_s3_bucket_uri
-from ray.air._internal.remote_storage import download_from_uri
+from ray.train._internal.fs_utils import _download_from_fs_path
 
 
 @contextmanager
@@ -70,8 +72,6 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
             from fsspec.implementations.dirfs import DirFileSystem
             from fsspec.implementations.local import LocalFileSystem
 
-            import pyarrow.fs
-
             storage_path = "mock_bucket"
             storage_filesystem = pyarrow.fs.PyFileSystem(
                 pyarrow.fs.FSSpecHandler(
@@ -102,10 +102,12 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
 
         local_inspect_dir = tmp_path / "inspect"
         if storage_path:
-            download_from_uri(
-                storage_path,
-                str(local_inspect_dir),
-                source_filesystem=storage_filesystem,
+            if storage_filesystem:
+                fs, fs_path = storage_filesystem, storage_path
+            else:
+                fs, fs_path = pyarrow.fs.FileSystem.from_uri(storage_path)
+            _download_from_fs_path(
+                fs=fs, fs_path=fs_path, local_path=str(local_inspect_dir)
             )
         else:
             local_inspect_dir = LOCAL_CACHE_DIR
@@ -117,3 +119,9 @@ def test_tuner(monkeypatch, storage_path_type, tmp_path):
     assert len(list(exp_dir.glob("basic-variant-state-*"))) == 1
     assert len(list(exp_dir.glob("experiment_state-*"))) == 1
     assert len(list(exp_dir.glob("tuner.pkl"))) == 1
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", __file__]))
