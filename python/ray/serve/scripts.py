@@ -33,7 +33,6 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
-    ServeStatus,
 )
 
 APP_DIR_HELP_STR = (
@@ -572,23 +571,21 @@ def status(address: str, name: Optional[str]):
     serve_details = ServeInstanceDetails(
         **ServeSubmissionClient(address).get_serve_details()
     )
+    status = asdict(serve_details._get_status())
 
     # Ensure multi-line strings in app_status is dumped/printed correctly
     yaml.SafeDumper.add_representer(str, str_presenter)
 
     if name is None:
-        if len(serve_details.applications) == 0:
-            print("There are no applications running on this cluster.")
-        else:
-            status = asdict(serve_details._get_status())
-            print(
-                yaml.safe_dump(
-                    # Ensure exception traceback in app_status are printed correctly
-                    process_dict_for_yaml_dump(status),
-                    default_flow_style=False,
-                    sort_keys=False,
-                )
-            )
+        print(
+            yaml.safe_dump(
+                # Ensure exception traceback in app_status are printed correctly
+                process_dict_for_yaml_dump(status),
+                default_flow_style=False,
+                sort_keys=False,
+            ),
+            end="",
+        )
     else:
         if name not in serve_details.applications:
             cli_logger.error(f'Application "{name}" does not exist.')
@@ -596,9 +593,7 @@ def status(address: str, name: Optional[str]):
             print(
                 yaml.safe_dump(
                     # Ensure exception tracebacks in app_status are printed correctly
-                    process_dict_for_yaml_dump(
-                        serve_details.applications.get(name).get_status_dict()
-                    ),
+                    process_dict_for_yaml_dump(status["applications"][name]),
                     default_flow_style=False,
                     sort_keys=False,
                 ),

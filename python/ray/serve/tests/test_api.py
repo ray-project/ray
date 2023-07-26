@@ -886,8 +886,8 @@ def test_pass_starlette_request_over_handle(serve_instance):
 
 
 def test_status_basic(serve_instance):
-    # Before Serve is started, serve.status() should just return empty list
-    assert len(serve.status()) == 0
+    # Before Serve is started, serve.status() should have an empty list of applications
+    assert len(serve.status().applications) == 0
 
     @serve.deployment(ray_actor_options={"num_cpus": 0.1})
     class A:
@@ -915,12 +915,15 @@ def test_status_basic(serve_instance):
     expected_dep_1 = {"plus_A"}
     expected_dep_2 = {"hello_MyDriver", "hello_f"}
 
-    status = serve.status()
-    assert len(status) == 2
-    assert {d.name for d in status[0].deployment_statuses} == expected_dep_1
-    assert {d.name for d in status[1].deployment_statuses} == expected_dep_2
-    assert all(d.status == "HEALTHY" for d in status[0].deployment_statuses)
-    assert all(d.status == "HEALTHY" for d in status[1].deployment_statuses)
+    app_status = serve.status().applications
+    assert len(app_status) == 2
+    assert set(app_status["plus"].deployments.keys()) == expected_dep_1
+    assert set(app_status["hello"].deployments.keys()) == expected_dep_2
+    assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
+    assert all(d.status == "HEALTHY" for d in app_status["plus"].deployments.values())
+
+    proxy_status = serve.status().http_proxies
+    assert all(p == "HEALTHY" for p in proxy_status.values())
 
 
 def test_status_constructor_error(serve_instance):
@@ -936,11 +939,11 @@ def test_status_constructor_error(serve_instance):
     serve.run(A.bind(), _blocking=False)
 
     def check_for_failed_deployment():
-        status = serve.status()[0]
+        default_app = serve.status().applications["default"]
         error_substr = "ZeroDivisionError: division by zero"
         return (
-            status.app_status.status == "DEPLOY_FAILED"
-            and error_substr in status.deployment_statuses[0].message
+            default_app.status == "DEPLOY_FAILED"
+            and error_substr in default_app.deployments["default_A"].message
         )
 
     wait_for_condition(check_for_failed_deployment)
@@ -971,10 +974,11 @@ def test_status_package_unavailable_in_controller(serve_instance):
     )
 
     def check_for_failed_deployment():
-        status = serve.status()[0]
+        default_app = serve.status().applications["default"]
         return (
-            status.app_status.status == "DEPLOY_FAILED"
-            and "some_wrong_url" in status.deployment_statuses[0].message
+            default_app.status == "DEPLOY_FAILED"
+            and "some_wrong_url"
+            in default_app.deployments["default_MyDeployment"].message
         )
 
     wait_for_condition(check_for_failed_deployment, timeout=15)

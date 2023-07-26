@@ -1,7 +1,7 @@
 import collections
 import inspect
 import logging
-from typing import Any, Callable, Dict, Optional, Tuple, Union, List
+from typing import Any, Callable, Dict, Optional, Tuple, Union
 from functools import wraps
 
 from fastapi import APIRouter, FastAPI
@@ -722,13 +722,11 @@ def get_multiplexed_model_id() -> str:
 
 
 @PublicAPI(stability="alpha")
-def status() -> List[ServeStatus]:
-    """Get statuses of all active applications on the cluster.
+def status() -> ServeStatus:
+    """Get status of Serve on the cluster.
 
-    Each item in the list is a pydantic ServeStatusSchema model,
-    which includes the application status, all deployment statuses,
-    status messages, etc. If Serve hasn't been started on the cluster
-    yet, this returns an empty list.
+    Includes status of all HTTP Proxies, all active applications, and
+    their deployments.
 
     .. code-block:: python
 
@@ -736,16 +734,15 @@ def status() -> List[ServeStatus]:
             class MyDeployment:
                 pass
 
-            app = MyDeployment.bind()
-            serve.run(app)
+            serve.run(MyDeployment.bind())
             status = serve.status()
-            assert status[0].app_status.status == "RUNNING"
+            assert status.applications["default"].status == "RUNNING"
     """
 
-    client = get_global_client(raise_if_no_controller_running=True)
+    client = get_global_client(raise_if_no_controller_running=False)
     if client is None:
         # Serve has not started yet
-        return []
+        return ServeStatus()
 
     details = ServeInstanceDetails(**client.get_serve_details())
     return details._get_status()

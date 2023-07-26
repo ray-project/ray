@@ -1,15 +1,12 @@
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field
 import json
 from pydantic import BaseModel, Field, Extra, root_validator, validator
 from typing import Union, List, Dict, Set, Optional
 
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
-    DeploymentStatusInfo,
-    ApplicationStatusInfo,
     ApplicationStatus,
     DeploymentStatus,
-    StatusOverview,
     DeploymentInfo,
     ReplicaState,
     ServeDeployMode,
@@ -17,7 +14,7 @@ from ray.serve._private.common import (
 )
 from ray.serve.config import DeploymentMode
 from ray.serve._private.utils import DEFAULT, dict_keys_snake_to_camel_case
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import PublicAPI
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
@@ -756,30 +753,6 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
         "route_prefix", allow_reuse=True
     )(_route_prefix_format)
 
-    def get_status_dict(self) -> Dict:
-        # NOTE(zcin): We use json.loads(model.json()) since model.dict() doesn't expand
-        # dataclasses (ApplicationStatusInfo and DeploymentStatusInfo are dataclasses)
-        # See https://github.com/pydantic/pydantic/issues/3764.
-        return json.loads(self.get_status().json())
-
-    # def get_status(self) -> "ServeStatusSchema":
-    #     return ServeStatusSchema(
-    #         name=self.name,
-    #         app_status=ApplicationStatusInfo(
-    #             status=self.status,
-    #             message=self.message,
-    #             deployment_timestamp=self.last_deployed_time_s,
-    #         ),
-    #         deployment_statuses=[
-    #             DeploymentStatusInfo(
-    #                 name=name,
-    #                 status=d.status,
-    #                 message=d.message,
-    #             )
-    #             for name, d in self.deployments.items()
-    #         ],
-    #     )
-
 
 @PublicAPI(stability="alpha")
 class HTTPProxyDetails(ServeActorDetails, frozen=True):
@@ -807,7 +780,7 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         ),
     )
     http_options: Optional[HTTPOptionsSchema] = Field(description="HTTP Proxy options.")
-    http_proxies: Optional[Dict[str, HTTPProxyDetails]] = Field(
+    http_proxies: Dict[str, HTTPProxyDetails] = Field(
         description=(
             "Mapping from node_id to details about the HTTP Proxy running on that node."
         )
@@ -829,7 +802,12 @@ class ServeInstanceDetails(BaseModel, extra=Extra.forbid):
         Represents no Serve instance running on the cluster.
         """
 
-        return {"deploy_mode": "UNSET", "controller_info": {}, "applications": {}}
+        return {
+            "deploy_mode": "UNSET",
+            "controller_info": {},
+            "http_proxies": {},
+            "applications": {},
+        }
 
     def _get_status(self) -> "ServeStatus":
         return ServeStatus(
@@ -872,5 +850,5 @@ class ApplicationStatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass(eq=True)
 class ServeStatus:
-    http_proxies: Dict[str, HTTPProxyStatus]
-    applications: Dict[str, ApplicationStatusOverview]
+    http_proxies: Dict[str, HTTPProxyStatus] = field(default_factory=dict)
+    applications: Dict[str, ApplicationStatusOverview] = field(default_factory=dict)
