@@ -1100,8 +1100,15 @@ def run(
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
+        if _use_storage_context():
+            experiment_local_path = runner._storage.experiment_local_path
+            experiment_dir_name = runner._storage.experiment_dir_name
+        else:
+            experiment_local_path = runner._legacy_local_experiment_path
+            experiment_dir_name = runner._legacy_experiment_dir_name
+
         if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
-            tensorboard_path = runner._local_experiment_path
+            tensorboard_path = experiment_local_path
         else:
             tensorboard_path = None
 
@@ -1111,7 +1118,7 @@ def run(
             stack.enter_context(air_progress_reporter.with_live())
         elif air_progress_reporter:
             air_progress_reporter.experiment_started(
-                experiment_name=runner._experiment_dir_name,
+                experiment_name=experiment_dir_name,
                 experiment_path=runner.experiment_path,
                 searcher_str=search_alg.__class__.__name__,
                 scheduler_str=scheduler.__class__.__name__,

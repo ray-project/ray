@@ -150,14 +150,14 @@ class _TuneControllerBase:
         self._max_pending_trials = _get_max_pending_trials(self._search_alg)
 
         self._storage = storage
-        self._sync_config = sync_config or SyncConfig()
+        self._legacy_sync_config = sync_config or SyncConfig()
 
         if _use_storage_context():
             assert storage
-            self._experiment_dir_name = None
-            self._local_experiment_path = None
-            self._remote_experiment_path = None
-            self._sync_config = None
+            self._legacy_experiment_dir_name = None
+            self._legacy_local_experiment_path = None
+            self._legacy_remote_experiment_path = None
+            self._legacy_sync_config = None
         else:
             # Rename for better code readability
             local_experiment_path, remote_experiment_path = _split_remote_local_path(
@@ -178,9 +178,9 @@ class _TuneControllerBase:
                 )
                 os.makedirs(local_experiment_path, exist_ok=True)
 
-            self._experiment_dir_name = experiment_dir_name
+            self._legacy_experiment_dir_name = experiment_dir_name
 
-            if self._sync_config.upload_dir and self._experiment_dir_name:
+            if self._legacy_sync_config.upload_dir and self._legacy_experiment_dir_name:
                 if remote_experiment_path:
                     if not remote_experiment_path.startswith(
                         self.sync_config.upload_dir
@@ -199,14 +199,15 @@ class _TuneControllerBase:
                     )
                 else:
                     remote_experiment_path = str(
-                        URI(self._sync_config.upload_dir) / self._experiment_dir_name
+                        URI(self._legacy_sync_config.upload_dir)
+                        / self._legacy_experiment_dir_name
                     )
 
-            self._local_experiment_path = local_experiment_path
-            if self._local_experiment_path:
-                os.makedirs(self._local_experiment_path, exist_ok=True)
+            self._legacy_local_experiment_path = local_experiment_path
+            if self._legacy_local_experiment_path:
+                os.makedirs(self._legacy_local_experiment_path, exist_ok=True)
 
-            self._remote_experiment_path = remote_experiment_path
+            self._legacy_remote_experiment_path = remote_experiment_path
 
         self._metric = metric
 
@@ -337,14 +338,14 @@ class _TuneControllerBase:
                 self._storage.experiment_local_path, self.experiment_state_file_name
             )
         return os.path.join(
-            self._local_experiment_path, self.experiment_state_file_name
+            self._legacy_local_experiment_path, self.experiment_state_file_name
         )
 
     @property
     def experiment_path(self) -> str:
         if _use_storage_context():
-            return self._storage.experiment_fs_path
-        return self._remote_experiment_path or self._local_experiment_path
+            return self._storage.experiment_path
+        return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
@@ -352,9 +353,9 @@ class _TuneControllerBase:
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
             storage=self._storage,
             # TODO(justinvyu): Remove these.
-            local_checkpoint_dir=self._local_experiment_path,
-            remote_checkpoint_dir=self._remote_experiment_path,
-            sync_config=self._sync_config,
+            local_checkpoint_dir=self._legacy_local_experiment_path,
+            remote_checkpoint_dir=self._legacy_remote_experiment_path,
+            sync_config=self._legacy_sync_config,
         )
 
     @classmethod
@@ -377,7 +378,7 @@ class _TuneControllerBase:
             assert not experiment_dir, "Remove the `experiment_dir` argument."
             experiment_dir = self._storage.experiment_local_path
         else:
-            experiment_dir = experiment_dir or self._local_experiment_path
+            experiment_dir = experiment_dir or self._legacy_local_experiment_path
 
         # Get state from trial executor and runner
         runner_state = {
@@ -424,10 +425,10 @@ class _TuneControllerBase:
             assert not experiment_dir, "Remove the `experiment_dir` argument."
             experiment_dir = self._storage.experiment_local_path
         else:
-            experiment_dir = experiment_dir or self._local_experiment_path
+            experiment_dir = experiment_dir or self._legacy_local_experiment_path
 
             # Update local checkpoint dir
-            self._local_experiment_path = experiment_dir
+            self._legacy_local_experiment_path = experiment_dir
 
         # Find newest state file
         newest_state_path = _find_newest_experiment_checkpoint(experiment_dir)
@@ -471,10 +472,10 @@ class _TuneControllerBase:
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
             # ATTN: Set `local_experiment_path` to update trial checkpoints!
-            trial.local_experiment_path = self._local_experiment_path
-            trial.remote_experiment_path = self._remote_experiment_path
-            trial.sync_config = self._sync_config
-            trial.experiment_dir_name = self._experiment_dir_name
+            trial.local_experiment_path = self._legacy_local_experiment_path
+            trial.remote_experiment_path = self._legacy_remote_experiment_path
+            trial.sync_config = self._legacy_sync_config
+            trial.experiment_dir_name = self._legacy_experiment_dir_name
 
             # Avoid creating logdir in client mode for returned trial results,
             # since the dir might not be creatable locally.
@@ -487,7 +488,7 @@ class _TuneControllerBase:
         return trials
 
     def checkpoint(self, force: bool = False, wait: bool = False):
-        """Saves execution state to `self._local_experiment_path`.
+        """Saves execution state to `self._legacy_local_experiment_path`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
@@ -1187,10 +1188,10 @@ class _TuneControllerBase:
             "_callbacks",
             "_checkpoint_manager",
             "_storage",
-            "_local_experiment_path",
-            "_remote_experiment_path",
-            "_sync_config",
-            "_experiment_dir_name",
+            "_legacy_local_experiment_path",
+            "_legacy_remote_experiment_path",
+            "_legacy_sync_config",
+            "_legacy_experiment_dir_name",
             "_insufficient_resources_manager",
         ]:
             del state[k]

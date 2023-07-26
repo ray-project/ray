@@ -135,20 +135,20 @@ class _ExperimentCheckpointManager:
         if _use_storage_context():
             assert storage
 
-            self._local_checkpoint_dir = None
-            self._remote_checkpoint_dir = None
-            self._sync_config = None
-            self._syncer = None
+            self._legacy_local_checkpoint_dir = None
+            self._legacy_remote_checkpoint_dir = None
+            self._legacy_sync_config = None
+            self._legacy_syncer = None
         else:
             # Checkpoint directories
-            self._local_checkpoint_dir = local_checkpoint_dir
-            self._remote_checkpoint_dir = remote_checkpoint_dir
+            self._legacy_local_checkpoint_dir = local_checkpoint_dir
+            self._legacy_remote_checkpoint_dir = remote_checkpoint_dir
 
             # Synch to/from cloud
-            self._sync_config = sync_config or SyncConfig()
+            self._legacy_sync_config = sync_config or SyncConfig()
             # Resolves syncer="auto" to an actual syncer if needed
-            self._syncer = get_node_to_storage_syncer(
-                self._sync_config, self._remote_checkpoint_dir
+            self._legacy_syncer = get_node_to_storage_syncer(
+                self._legacy_sync_config, self._legacy_remote_checkpoint_dir
             )
 
         # Last save + sync time
@@ -213,7 +213,7 @@ class _ExperimentCheckpointManager:
         force: bool = False,
         wait: bool = False,
     ):
-        """Saves execution state to `self._local_checkpoint_dir`.
+        """Saves execution state to `self._legacy_local_checkpoint_dir`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
@@ -231,7 +231,7 @@ class _ExperimentCheckpointManager:
         experiment_local_path = (
             self._storage.experiment_local_path
             if _use_storage_context()
-            else self._local_checkpoint_dir
+            else self._legacy_local_checkpoint_dir
         )
         if not experiment_local_path:
             return
@@ -266,13 +266,13 @@ class _ExperimentCheckpointManager:
         return experiment_local_path
 
     def sync_up(self, force: bool = False, wait: bool = False) -> bool:
-        # self._remote_checkpoint_dir can be empty in tests, but shouldn't
+        # self._legacy_remote_checkpoint_dir can be empty in tests, but shouldn't
         # be empty when using in end-to-end tune.
         # Todo (krfricke): We may want to not store directories in this manager
         # but instead always pass them from the trial runner.
-        syncer = self._storage.syncer if _use_storage_context() else self._syncer
+        syncer = self._storage.syncer if _use_storage_context() else self._legacy_syncer
 
-        if not syncer:  # or not self._remote_checkpoint_dir:
+        if not syncer:  # or not self._legacy_remote_checkpoint_dir:
             return False
 
         if _use_storage_context():
@@ -284,15 +284,15 @@ class _ExperimentCheckpointManager:
             experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
-            if bool(self._remote_checkpoint_dir):
+            if bool(self._legacy_remote_checkpoint_dir):
                 # If an upload dir is given, trainable actors upload checkpoints
                 # themselves. Then the driver does not need to sync checkpoints.
                 exclude = ["*/checkpoint_*"]
             else:
                 # Otherwise, we sync the full trial dir.
                 exclude = None
-            experiment_local_path = self._local_checkpoint_dir
-            experiment_fs_path = self._remote_checkpoint_dir
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if force:
             # Wait until previous sync command finished
@@ -390,19 +390,19 @@ class _ExperimentCheckpointManager:
             experiment_local_path = self._storage.experiment_local_path
             experiment_fs_path = self._storage.experiment_fs_path
         else:
-            if not self._syncer or not self._remote_checkpoint_dir:
+            if not self._legacy_syncer or not self._legacy_remote_checkpoint_dir:
                 return False
 
-            if bool(self._remote_checkpoint_dir):
+            if bool(self._legacy_remote_checkpoint_dir):
                 # If an upload dir is given, trainable actors upload checkpoints
                 # themselves. Then the driver does not need to sync checkpoints.
                 exclude = ["*/checkpoint_*"]
             else:
                 # Otherwise, we sync the full trial dir.
                 exclude = None
-            syncer = self._syncer
-            experiment_local_path = self._local_checkpoint_dir
-            experiment_fs_path = self._remote_checkpoint_dir
+            syncer = self._legacy_syncer
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if force:
             # Wait until previous sync command finished
@@ -453,9 +453,9 @@ class _ExperimentCheckpointManager:
             experiment_fs_path = self._storage.experiment_fs_path
             syncer = self._storage.syncer
         else:
-            experiment_local_path = self._local_checkpoint_dir
-            experiment_fs_path = self._remote_checkpoint_dir
-            syncer = self._syncer
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
+            syncer = self._legacy_syncer
 
         if experiment_fs_path and syncer:
             logger.info(
@@ -536,11 +536,11 @@ class _ExperimentCheckpointManager:
         else:
             # Not clear if we need this assertion, since we should always have a
             # local checkpoint dir.
-            assert self._local_checkpoint_dir or (
-                self._remote_checkpoint_dir and self._syncer
+            assert self._legacy_local_checkpoint_dir or (
+                self._legacy_remote_checkpoint_dir and self._legacy_syncer
             )
-            experiment_local_path = self._local_checkpoint_dir
-            experiment_fs_path = self._remote_checkpoint_dir
+            experiment_local_path = self._legacy_local_checkpoint_dir
+            experiment_fs_path = self._legacy_remote_checkpoint_dir
 
         if resume_type == "AUTO":
             if self._resume_auto():
@@ -570,7 +570,7 @@ class _ExperimentCheckpointManager:
                 f"Try downloading from remote directory? " f"({experiment_fs_path})"
             ):
                 return None
-            if not experiment_fs_path or not self._syncer:
+            if not experiment_fs_path or not self._legacy_syncer:
                 raise ValueError(
                     "Called resume from remote without remote directory or "
                     "without valid syncer. "
