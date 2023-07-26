@@ -1946,8 +1946,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the sum. If ``False``,
                 when a null value is encountered, the output is ``None``.
-                Ray Data considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                Ray Data considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The sum result.
@@ -1988,8 +1988,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the min; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The min result.
@@ -2030,8 +2030,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the max; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The max result.
@@ -2072,8 +2072,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the mean; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The mean result.
@@ -2108,7 +2108,8 @@ class Dataset:
             numerical stability, and is computable in a single pass. This may give
             different (but more accurate) results than NumPy, Pandas, and sklearn, which
             use a less numerically stable two-pass algorithm.
-            To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
+            To learn more, see
+            `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
 
         Examples:
             >>> import ray
@@ -2127,8 +2128,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the std; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The standard deviation result.
@@ -2144,7 +2145,7 @@ class Dataset:
 
             If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
-        """
+        """  # noqa: E501
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
