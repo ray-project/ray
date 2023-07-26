@@ -249,16 +249,18 @@ def test_push_based_shuffle_schedule(streaming):
         )
         # Each round of tasks does not over-subscribe CPUs.
         assert (
-            schedule.num_map_tasks_per_round + schedule.num_merge_tasks_per_round
+            schedule.num_map_tasks_per_round
+            + schedule.merge_schedule.num_merge_tasks_per_round
             <= max(num_cpus, 2)
         )
         # Merge factor between map : merge tasks is approximately correct.
         if schedule.num_map_tasks_per_round > merge_factor:
             actual_merge_factor = (
-                schedule.num_map_tasks_per_round // schedule.num_merge_tasks_per_round
+                schedule.num_map_tasks_per_round
+                // schedule.merge_schedule.num_merge_tasks_per_round
             )
             next_highest_merge_factor = schedule.num_map_tasks_per_round // (
-                schedule.num_merge_tasks_per_round + 1
+                schedule.merge_schedule.num_merge_tasks_per_round + 1
             )
             assert next_highest_merge_factor <= merge_factor <= actual_merge_factor, (
                 next_highest_merge_factor,
@@ -266,14 +268,14 @@ def test_push_based_shuffle_schedule(streaming):
                 actual_merge_factor,
             )
         else:
-            assert schedule.num_merge_tasks_per_round == 1, (
+            assert schedule.merge_schedule.num_merge_tasks_per_round == 1, (
                 schedule.num_map_tasks_per_round,
                 merge_factor,
             )
 
         # Tasks are evenly distributed.
         tasks_per_node = defaultdict(int)
-        for i in range(schedule.num_merge_tasks_per_round):
+        for i in range(schedule.merge_schedule.num_merge_tasks_per_round):
             task_options = schedule.get_merge_task_options(i)
             node_id = task_options["scheduling_strategy"].node_id
             tasks_per_node[node_id] += 1
@@ -284,13 +286,13 @@ def test_push_based_shuffle_schedule(streaming):
         # Reducers are evenly distributed across mergers.
         num_reducers_per_merge_idx = [
             schedule.merge_schedule.get_num_reducers_per_merge_idx(i)
-            for i in range(schedule.num_merge_tasks_per_round)
+            for i in range(schedule.merge_schedule.num_merge_tasks_per_round)
         ]
         high = max(num_reducers_per_merge_idx)
         for num_reducers in num_reducers_per_merge_idx:
             assert num_reducers == high or num_reducers == high - 1
 
-        for merge_idx in range(schedule.num_merge_tasks_per_round):
+        for merge_idx in range(schedule.merge_schedule.num_merge_tasks_per_round):
             assert isinstance(
                 schedule.merge_schedule.get_num_reducers_per_merge_idx(merge_idx), int
             )
@@ -298,7 +300,7 @@ def test_push_based_shuffle_schedule(streaming):
 
         reduce_idxs = list(range(schedule.merge_schedule.output_num_blocks))
         actual_num_reducers_per_merge_idx = [
-            0 for _ in range(schedule.num_merge_tasks_per_round)
+            0 for _ in range(schedule.merge_schedule.num_merge_tasks_per_round)
         ]
         for reduce_idx in schedule.merge_schedule.round_robin_reduce_idx_iterator():
             reduce_idxs.pop(reduce_idxs.index(reduce_idx))
@@ -313,6 +315,7 @@ def test_push_based_shuffle_schedule(streaming):
                 num_reducers == num_reducers_per_merge_idx[i]
             ), f"""Merge task [{i}] has {num_reducers} downstream reduce tasks,
             expected {num_reducers_per_merge_idx[i]}."""
+            assert num_reducers > 0
 
     for num_cpus in range(1, 20):
         _test(20, 3, {"node1": num_cpus})
@@ -321,7 +324,9 @@ def test_push_based_shuffle_schedule(streaming):
     _test(100, 10, {"node1": 10, "node2": 10, "node3": 10})
     # Regression test for https://github.com/ray-project/ray/issues/25863.
     _test(1000, 2, {f"node{i}": 16 for i in range(20)})
+    # Regression test for https://github.com/ray-project/ray/issues/37754.
     _test(260, 2, {"node1": 128})
+    _test(1, 2, {"node1": 128})
 
 
 def test_push_based_shuffle_stats(ray_start_cluster):
