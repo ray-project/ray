@@ -46,6 +46,11 @@ from ray.air.constants import (
     TRAINING_ITERATION,
 )
 from ray.exceptions import RayActorError
+from ray.train._internal.fs_utils import (
+    _upload_to_fs_path,
+    _download_from_fs_path,
+    _delete_fs_path,
+)
 from ray.tune import TuneError
 from ray.tune.callback import Callback
 from ray.tune.result import TIME_TOTAL_S
@@ -681,37 +686,61 @@ class _BackgroundSyncer(Syncer):
 class _DefaultSyncer(_BackgroundSyncer):
     """Default syncer between local and remote storage, using `pyarrow.fs.copy_files`"""
 
-    def __init__(
-        self, storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None, **kwargs
-    ):
+    def _sync_up_command(
+        self, local_path: str, uri: str, exclude: Optional[List] = None
+    ) -> Tuple[Callable, Dict]:
+        return (
+            upload_to_uri,
+            dict(local_path=local_path, uri=uri, exclude=exclude),
+        )
+
+    def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        return (
+            download_from_uri,
+            dict(uri=uri, local_path=local_path),
+        )
+
+    def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
+        return delete_at_uri, dict(uri=uri)
+
+
+class _FilesystemSyncer(_BackgroundSyncer):
+    """Syncer between local filesystem and a `storage_filesystem`."""
+
+    def __init__(self, storage_filesystem: Optional["pyarrow.fs.FileSystem"], **kwargs):
         self.storage_filesystem = storage_filesystem
         super().__init__(**kwargs)
 
     def _sync_up_command(
         self, local_path: str, uri: str, exclude: Optional[List] = None
     ) -> Tuple[Callable, Dict]:
+        # TODO(justinvyu): Defer this cleanup up as part of the
+        # external-facing Syncer deprecation.
+        fs_path = uri
         return (
-            upload_to_uri,
+            _upload_to_fs_path,
             dict(
                 local_path=local_path,
-                uri=uri,
+                fs=self.storage_filesystem,
+                fs_path=fs_path,
                 exclude=exclude,
-                destination_filesystem=self.storage_filesystem,
             ),
         )
 
     def _sync_down_command(self, uri: str, local_path: str) -> Tuple[Callable, Dict]:
+        fs_path = uri
         return (
-            download_from_uri,
+            _download_from_fs_path,
             dict(
-                uri=uri,
+                fs=self.storage_filesystem,
+                fs_path=fs_path,
                 local_path=local_path,
-                source_filesystem=self.storage_filesystem,
             ),
         )
 
     def _delete_command(self, uri: str) -> Tuple[Callable, Dict]:
-        return delete_at_uri, dict(uri=uri, fs=self.storage_filesystem)
+        fs_path = uri
+        return _delete_fs_path, dict(fs=self.storage_filesystem, fs_path=fs_path)
 
 
 @DeveloperAPI

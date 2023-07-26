@@ -5,7 +5,7 @@ from typing import Optional
 import pyarrow.fs
 
 from ray.air._internal.uri_utils import is_uri
-from ray.tune.syncer import Syncer, SyncConfig, _DefaultSyncer
+from ray.tune.syncer import Syncer, SyncConfig, _FilesystemSyncer
 from ray.tune.result import _get_defaults_results_dir
 from ray.tune.trainable.util import TrainableUtil
 
@@ -124,10 +124,10 @@ class StorageContext:
         self.syncer: Optional[Syncer] = (
             None
             if self.storage_path == self.storage_cache_path
-            else _DefaultSyncer(
+            else _FilesystemSyncer(
+                storage_filesystem=self.storage_filesystem,
                 sync_period=self.sync_config.sync_period,
                 sync_timeout=self.sync_config.sync_timeout,
-                storage_filesystem=self.storage_filesystem,
             )
         )
 
