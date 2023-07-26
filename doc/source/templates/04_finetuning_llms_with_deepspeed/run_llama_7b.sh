@@ -31,7 +31,7 @@ fi
 # Fine-tune the model
 echo "Fine-tuning model..."
 python finetune_hf_llm.py \
-    -bs 32 \
+    -bs 16 \
     -nd 16 \
     --model_name ${MODEL_ID} \
     --output_dir ${BASE_DIR} \

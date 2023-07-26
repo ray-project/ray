@@ -47,7 +47,7 @@ def get_number_of_params(model: nn.Module):
 def collate_fn(batch, tokenizer, block_size, device):
     out_batch = tokenizer(
         list(batch["input"]),
-        padding="longest",
+        padding="max_length",
         max_length=block_size,
         truncation=True,
         return_tensors="pt",
@@ -190,7 +190,6 @@ def training_function(kwargs: dict):
     valid_ds = session.get_dataset_shard("valid")
 
     train_ds_len = len(list(train_ds.iter_batches(batch_size=1)))
-    valid_ds_len = len(list(valid_ds.iter_batches(batch_size=1)))
 
     tokenizer = get_tokenizer(model_name=args.model_name, special_tokens=special_tokens)
     collate_partial = functools.partial(

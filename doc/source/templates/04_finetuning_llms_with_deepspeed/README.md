@@ -18,7 +18,7 @@ For 7B, set up a cluster on AWS with the following settings:
 And launch the following script:
 
 ```
-./run_llama_7b_chat.sh [--as-test]
+./run_llama_7b.sh [--as-test]
 ```
 
 The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
