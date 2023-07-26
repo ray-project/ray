@@ -221,7 +221,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
 
 def test_sort_with_one_block(shutdown_only, use_push_based_shuffle):
-    ray.init(num_cpus=128)
+    ray.init(num_cpus=8)
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.verbose_progress = True
     ctx.use_push_based_shuffle = True
