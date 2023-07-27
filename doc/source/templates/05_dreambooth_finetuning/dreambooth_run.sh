@@ -11,7 +11,7 @@ pushd dreambooth || true
 # if running on a multi-node cluster
 export DATA_PREFIX="/tmp"
 export ORIG_MODEL_NAME="CompVis/stable-diffusion-v1-4"
-export ORIG_MODEL_HASH="249dd2d739844dea6a0bc7fc27b3c1d014720b28"
+export ORIG_MODEL_HASH="b95be7d6f134c3a9e62ee616f310733567f069ce"
 export ORIG_MODEL_DIR="$DATA_PREFIX/model-orig"
 export ORIG_MODEL_PATH="$ORIG_MODEL_DIR/models--${ORIG_MODEL_NAME/\//--}/snapshots/$ORIG_MODEL_HASH"
 export TUNED_MODEL_DIR="$DATA_PREFIX/model-tuned"

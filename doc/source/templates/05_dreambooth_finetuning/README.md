@@ -34,7 +34,24 @@ Here are a few modifications to the `dreambooth_run.sh` script that you may want
 
 ## Interact with the fine-tuned model
 
-See the Jupyter notebook for a more interactive way to generate images with the fine-tuned model. Click on the Jupyter or VSCode icon above and open this notebook.
+### Generate images with a script
+
+Use the `generate.py` script to generate images with a prompt.
+Replace the variables with the values that you used in the fine-tuning script.
+See `run_model_flags` in `flags.py` for a full list of available command line arguments to pass to the script.
+
+```bash
+python generate.py \
+  --model_dir=$TUNED_MODEL_DIR \
+  --output_dir=$IMAGES_NEW_DIR \
+  --prompts="photo of a $UNIQUE_TOKEN $CLASS_NAME" \
+  --num_samples_per_prompt=5
+```
+
+### Generate images interactively in a notebook
+
+See the `playground.ipynb` notebook for a more interactive way to generate images with the fine-tuned model.
+Click on the Jupyter or VSCode icon on the workspace page and open the notebook.
 
 ## Appendix
 
