@@ -18,14 +18,14 @@ For 7B, set up a cluster on AWS with the following settings:
 And launch the following script:
 
 ```
-./run_llama_7b.sh [--as-test]
+./run_llama_ft.sh --size=7b [--as-test]
 ```
 
 The flag `--as-test` is for demo / testing purposes as it runs through only one forward and backward pass of the model. The model loading, and remote checkpointing would still run. 
 
 Similarly for 13B you can do
 ```
-./run_llama_13b.sh [--as-test]
+./run_llama_ft.sh --size=13b [--as-test]
 ```
 
 ## What is happening under the hood?
