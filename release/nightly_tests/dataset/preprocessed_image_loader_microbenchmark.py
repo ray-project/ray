@@ -243,17 +243,13 @@ if __name__ == "__main__":
             metrics,
         )
 
-    metrics_list = []
+    metrics_dict = {}
     for label, tput in metrics.items():
-        metrics_list.append(
-            {
-                "perf_metric_name": label,
-                "perf_metric_value": tput,
-                "perf_metric_type": "THROUGHPUT",
-            }
-        )
+        metrics_dict[label] = {
+            "THROUGHPUT": tput,
+        }
     result_dict = {
-        "perf_metrics": metrics_list,
+        "perf_metrics": metrics_dict,
         "success": 1,
     }
 
