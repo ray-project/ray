@@ -2,14 +2,11 @@ import logging
 import os
 import sys
 
-import aiohttp
-import threading
-
 import requests
 import numpy as np
 import time
 import copy
-
+import pytest
 from collections import defaultdict
 from multiprocessing import Process
 from unittest.mock import MagicMock
@@ -728,14 +725,14 @@ def test_get_task_traceback_running_task():
 
     task = long_running_task.remote()
 
-    task_id = task.task_id().hex()
-    node_id = ray.get_runtime_context().node_id.hex()
-    attempt_number = 0
+    params = {
+        "task_id": task.task_id().hex(),
+        "attempt_number": 0,
+        "node_id": ray.get_runtime_context().node_id.hex(),
+    }
 
     def verify():
-        resp = requests.get(
-            f"{dashboard_url}/task/traceback?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}"
-        )
+        resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
         print(f"resp.text {type(resp.text)}: {resp.text}")
 
         assert "Process" in resp.text
@@ -758,12 +755,16 @@ def test_get_task_traceback_non_running_task():
 
     ray.get([f.remote() for _ in range(5)])
 
+    params = {
+        "task_id": TASK["task_id"],
+        "attempt_number": TASK["attempt_number"],
+        "node_id": TASK["node_id"],
+    }
+
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(
-                f"{dashboard_url}/task/traceback?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}&node_id={TASK['node_id']}"
-            )
+            resp = requests.get(f"{dashboard_url}/task/traceback", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
@@ -785,12 +786,16 @@ def test_get_cpu_profile_non_running_task():
 
     ray.get([f.remote() for _ in range(5)])
 
+    params = {
+        "task_id": TASK["task_id"],
+        "attempt_number": TASK["attempt_number"],
+        "node_id": TASK["node_id"],
+    }
+
     # Make sure the API works.
     def verify():
         with pytest.raises(requests.exceptions.HTTPError) as exc_info:
-            resp = requests.get(
-                f"{dashboard_url}/task/cpu_profile?task_id={TASK['task_id']}&attempt_number={TASK['attempt_number']}&node_id={TASK['node_id']}"
-            )
+            resp = requests.get(f"{dashboard_url}/task/cpu_profile", params=params)
             resp.raise_for_status()
         assert isinstance(exc_info.value, requests.exceptions.HTTPError)
         return True
