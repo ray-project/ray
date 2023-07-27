@@ -175,7 +175,7 @@ gsutil==5.25
 gunicorn==20.1.0
 gym==0.26.2
 gym-notices==0.0.8
-gymnasium==0.26.3
+gymnasium==0.28.1
 gymnasium-notices==0.0.1
 h11==0.12.0
 h5py==3.7.0
