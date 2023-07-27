@@ -1,5 +1,7 @@
 .. algorithm-reference-docs:
 
+.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+
 Algorithms
 ==========
 
