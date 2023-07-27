@@ -6,7 +6,7 @@ Ray records and emits time-series metrics using the [Prometheus format](https://
 
 
 ## System and application metrics
-Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsbile for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
+Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other installation commands <installation>` that include Dashboard component. Dashboard agent process is responsible for aggregating and reporting metrics to the endpoints for Prometheus to scrape.
 
 **System metrics**: Ray exports a number of system metrics. View {ref}`system metrics <system-metrics>` for more details about the emitted metrics.
 
@@ -14,7 +14,7 @@ Ray exports metrics if you use `ray[default]`, `ray[air]`, or {ref}`other instal
 
 (prometheus-setup)=
 ## Setting up your Prometheus server
-Use Promtheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from Clusters.
+Use Prometheus to scrape metrics from Ray Clusters. Ray doesn't start Prometheus servers for users. Users need to decide where to host and configure it to scrape the metrics from Clusters.
 
 ```{admonition} Tip
 :class: tip
