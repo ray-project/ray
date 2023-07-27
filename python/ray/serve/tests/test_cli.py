@@ -463,12 +463,12 @@ def test_cli_without_config_deploy(ray_start_stop):
     def check_cli():
         info_response = subprocess.check_output(["serve", "config"])
         status_response = subprocess.check_output(["serve", "status"])
-        fetched_status = yaml.safe_load(status_response)
+        fetched_status = yaml.safe_load(status_response)["applications"]["default"]
 
         return (
             "No config has been deployed" in info_response.decode("utf-8")
-            and fetched_status["app_status"]["status"] == "RUNNING"
-            and fetched_status["deployment_statuses"][0]["status"] == "HEALTHY"
+            and fetched_status["status"] == "RUNNING"
+            and fetched_status["deployments"]["default_fn"]["status"] == "HEALTHY"
         )
 
     wait_for_condition(check_cli)
@@ -501,10 +501,10 @@ def test_config_with_deleting_app(ray_start_stop):
         info_response = subprocess.check_output(["serve", "config"])
         status_response = subprocess.check_output(["serve", "status"])
         fetched_configs = list(yaml.safe_load_all(info_response))
-        fetched_statuses = list(yaml.safe_load_all(status_response))
+        statuses = yaml.safe_load(status_response)
 
         return (
-            len([s for s in fetched_statuses if s["app_status"]["status"] == "RUNNING"])
+            len([s for s in statuses["applications"].values() if s["status"] == "RUNNING"])
             == expected_statuses
             and fetched_configs == expected_configs
         )
