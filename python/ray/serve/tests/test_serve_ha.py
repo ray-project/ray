@@ -32,7 +32,10 @@ import requests
 def get_pid():
     return requests.get("http://127.0.0.1:8000/").json()["pid"]
 
-pids = set(ray.get([get_pid.remote() for _ in range(10)]))
+pids = {{
+    requests.get("http://127.0.0.1:8000/").json()["pid"]
+    for _ in range(20)
+}}
 print(pids)
 assert len(pids) == {num_replicas}
 """
@@ -67,29 +70,27 @@ def test_ray_serve_basic(docker_cluster):
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
 
-    # Kill the head node
+    # Kill the head node.
     head.kill()
 
-    # Make sure serve is still working
+    # Make sure the Serve application can still handle traffic.
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
 
-    # Script is running on another thread so that it won't block the main thread.
+    # Scale up the application in a background thread so we can concurrently kill the
+    # head node.
     def reconfig():
         worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=2)}'")
 
     t = threading.Thread(target=reconfig)
     t.start()
+    sleep(1)
 
-    # make sure the script started
-    sleep(5)
-
-    # serve reconfig should continue once GCS is back
+    # Updating the application should continue once the head node is back online.
     head.restart()
-
     t.join()
 
-    # Ensure head node is up before calling check_script on the worker again
+    # Ensure head node is up before calling check_script on the worker again.
     def check_for_head_node_come_back_up():
         _output = head.exec_run(cmd=f"python -c '{check_ray_nodes_script}'")
         return (
@@ -99,10 +100,11 @@ def test_ray_serve_basic(docker_cluster):
 
     wait_for_condition(check_for_head_node_come_back_up)
 
+    # Check that the application has been updated.
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
     assert output.exit_code == 0, output.output
 
-    # Make sure the serve controller still runs on the head node after restart
+    # Make sure the serve controller still runs on the head node after restart.
     check_controller_head_node_script = """
 import ray
 import requests
