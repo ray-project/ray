@@ -1011,6 +1011,30 @@ class AlgorithmConfig(_Config):
             else:
                 self.rl_module_spec = default_rl_module_spec
 
+            not_compatible_w_rlm_msg = (
+                "Cannot use `{}` option with RLModule API. `{"
+                "}` is part of the ModelV2 API and Policy API,"
+                " which are not compatible with the RLModule "
+                "API. You can either deactivate the RLModule "
+                "API by setting `config.rl_module( "
+                "_enable_rl_module_api=False)` and "
+                "`config.training(_enable_learner_api=False)` ,"
+                "or use the RLModule API and implement your "
+                "custom model as an RLModule."
+            )
+
+            if self.model["custom_model"] is not None:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format("custom_model", "custom_model")
+                )
+
+            if self.model["custom_model_config"] != {}:
+                raise ValueError(
+                    not_compatible_w_rlm_msg.format(
+                        "custom_model_config", "custom_model_config"
+                    )
+                )
+
             if self.exploration_config:
                 # This is not compatible with RLModules, which have a method
                 # `forward_exploration` to specify custom exploration behavior.
