@@ -447,6 +447,14 @@ py_test(
 )
 
 py_test(
+    name = "test_new_persistence",
+    size = "small",
+    srcs = ["tests/test_new_persistence.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_predictor",
     size = "small",
     srcs = ["tests/test_predictor.py"],

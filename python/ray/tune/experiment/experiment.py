@@ -25,6 +25,10 @@ from typing import (
 from ray.air import CheckpointConfig
 from ray.air._internal.uri_utils import URI
 from ray.exceptions import RpcError
+from ray.train._internal.storage import (
+    _use_storage_context,
+    StorageContext,
+)
 from ray.tune.error import TuneError
 from ray.tune.registry import register_trainable, is_function_trainable
 from ray.tune.result import _get_defaults_results_dir
@@ -37,8 +41,11 @@ from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, Deprecated
 
 if TYPE_CHECKING:
+    import pyarrow.fs
+
     from ray.tune.experiment import Trial
     from ray.tune import PlacementGroupFactory
+
 
 logger = logging.getLogger(__name__)
 
@@ -138,6 +145,7 @@ class Experiment:
         ] = None,
         num_samples: int = 1,
         storage_path: Optional[str] = None,
+        storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         _experiment_checkpoint_dir: Optional[str] = None,
         sync_config: Optional[Union[SyncConfig, dict]] = None,
         checkpoint_config: Optional[Union[CheckpointConfig, dict]] = None,
@@ -179,15 +187,25 @@ class Experiment:
         # If set, it should be a subpath under `local_dir`. Also deduce `dir_name`.
         if _experiment_checkpoint_dir:
             experiment_checkpoint_dir_path = Path(_experiment_checkpoint_dir)
-            local_dir_path = Path(full_local_storage_path)
-            assert local_dir_path in experiment_checkpoint_dir_path.parents, (
-                local_dir_path,
-                str(list(experiment_checkpoint_dir_path.parents)),
-            )
-            # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
-            self.dir_name = os.path.relpath(
-                _experiment_checkpoint_dir, full_local_storage_path
-            )
+            if _use_storage_context():
+                # TODO(justinvyu): This is a temporary hack for the
+                # custom storage_filesystem case.
+                # With a custom storage_filesystem, the storage path is possibly
+                # a "local path" (ex: [fs, path] = CustomS3FileSystem, "bucket/subdir")
+                # Our current path resolution treats a local storage_path as
+                # the cache dir, so the assertion in the else case would fail.
+                # This will be re-worked in a follow-up.
+                self.dir_name = experiment_checkpoint_dir_path.name
+            else:
+                local_dir_path = Path(full_local_storage_path)
+                assert local_dir_path in experiment_checkpoint_dir_path.parents, (
+                    local_dir_path,
+                    str(list(experiment_checkpoint_dir_path.parents)),
+                )
+                # `dir_name` is set by `_experiment_checkpoint_dir` indirectly.
+                self.dir_name = os.path.relpath(
+                    _experiment_checkpoint_dir, full_local_storage_path
+                )
 
         self._local_storage_path = full_local_storage_path
         self._remote_storage_path = remote_storage_path
@@ -300,6 +318,18 @@ class Experiment:
             if restore
             else None,
         }
+
+        self.storage = None
+        if _use_storage_context():
+            storage = StorageContext(
+                storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
+                sync_config=sync_config,
+                experiment_dir_name=self.dir_name,
+            )
+            self.storage = spec["storage"] = storage
+            logger.debug(f"StorageContext on the DRIVER:\n{storage}")
+
         self.spec = spec
 
     @classmethod
