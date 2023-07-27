@@ -467,7 +467,9 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared, enable_optim
     assert physical_op.name == "ReadParquet->MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
-    assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
+    input = physical_op.input_dependencies[0]
+    assert isinstance(input, InputDataBuffer)
+    assert physical_op in input.output_dependencies, input.output_dependencies
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared, enable_optimizer):
