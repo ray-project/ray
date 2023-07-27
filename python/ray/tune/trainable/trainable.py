@@ -622,6 +622,9 @@ class Trainable:
         return bool(artifact_files)
 
     def _maybe_save_artifacts_to_cloud(self) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self._should_upload_artifacts:
             return False
 
@@ -656,6 +659,9 @@ class Trainable:
         Returns:
             bool: True if (successfully) saved to cloud
         """
+        if _use_storage_context():
+            return False
+
         if not self.uses_cloud_checkpointing:
             return False
 
@@ -697,6 +703,9 @@ class Trainable:
         Return:
             bool: True if the checkpoint was synced down successfully from cloud.
         """
+        if _use_storage_context():
+            return False
+
         if os.path.exists(checkpoint_path):
             try:
                 TrainableUtil.find_checkpoint_dir(checkpoint_path)
@@ -726,6 +735,9 @@ class Trainable:
         return success
 
     def _maybe_load_artifacts_from_cloud(self) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self.sync_config.sync_artifacts:
             return False
 
@@ -753,6 +765,9 @@ class Trainable:
     def _maybe_load_from_cloud(
         self, remote_dir: str, local_dir: str, exclude: List[str] = None
     ) -> bool:
+        if _use_storage_context():
+            return False
+
         if not self.uses_cloud_checkpointing or not list_at_uri(remote_dir):
             return False
 
