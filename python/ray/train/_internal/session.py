@@ -131,7 +131,7 @@ class _TrainSession:
         self.storage = storage
 
         # Only used if checkpoint_upload_from_workers is True.
-        self.checkpoint_uri = None
+        self.legacy_checkpoint_uri = None
 
         # Function to encode checkpoint dict before sending to the driver.
         if not encode_data_fn:
@@ -376,18 +376,18 @@ class _TrainSession:
         upload_from_workers = (
             checkpoint_type == "local_path"
             and self.checkpoint_upload_from_workers
-            and self.checkpoint_uri
+            and self.legacy_checkpoint_uri
         )
         if upload_from_workers:
             self._create_checkpoint_file_list(checkpoint)
             logger.info(
                 f"Uploading checkpoint files from worker rank {self.world_rank} "
-                f"to cloud URI {self.checkpoint_uri}."
+                f"to cloud URI {self.legacy_checkpoint_uri}."
             )
             # We want to upload the files directly to cloud storage,
             # so that they won't need to be shipped to the driver node
             # via object store.
-            checkpoint.to_uri(self.checkpoint_uri)
+            checkpoint.to_uri(self.legacy_checkpoint_uri)
             logger.info("Done uploading checkpoint files.")
             self._remove_uploaded_checkpoint_files(checkpoint)
 
@@ -433,7 +433,7 @@ class _TrainSession:
         Args:
             uri: URI to the location where next checkpoint should be saved.
         """
-        self.checkpoint_uri = uri
+        self.legacy_checkpoint_uri = uri
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
