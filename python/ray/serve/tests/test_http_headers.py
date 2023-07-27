@@ -83,6 +83,30 @@ class TestUserProvidedRequestIDHeader:
         serve.run(Model.bind())
         self.verify_result()
 
+def test_set_request_id_headers_with_two_attributes(serve_instance):
+    """Test that request id is set with X-Request-ID and RAY_SERVE_REQUEST_ID.
+    x-request-id has higher priority.
+    """
+
+    @serve.deployment
+    class Model:
+        def __call__(self):
+            request_id = ray.serve.context._serve_request_context.get().request_id
+            return request_id
+
+    serve.run(Model.bind())
+    resp = requests.get(
+        "http://localhost:8000",
+        headers={
+            RAY_SERVE_REQUEST_ID_HEADER: "123",
+            "X-Request-ID": "234",
+        },
+    )
+
+    assert resp.status_code == 200
+    assert "x-request-id" in resp.headers
+    assert "234" == resp.headers["x-request-id"]
+
 
 if __name__ == "__main__":
     import sys

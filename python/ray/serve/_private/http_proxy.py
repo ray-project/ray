@@ -483,7 +483,7 @@ class HTTPProxy:
                 scope["path"] = route_path.replace(route_prefix, "", 1)
                 scope["root_path"] = root_path + route_prefix
 
-            # RequestIdMiddleware makes sure scoep has x-request-id attribute
+            # RequestIdMiddleware makes sure scope has x-request-id attribute.
             request_id = MutableHeaders(scope=scope).get("x-request-id")
             request_context_info = {
                 "route": route_path,
@@ -866,6 +866,7 @@ class RequestIdMiddleware:
             # generate a new request ID.
             request_id = str(uuid.uuid4())
             headers.append("x-request-id", request_id)
+            headers.append(RAY_SERVE_REQUEST_ID_HEADER, request_id)
         elif "x-request-id" in headers:
             request_id = headers["x-request-id"]
         else:
