@@ -39,7 +39,8 @@ routes = dashboard_optional_utils.ClassMethodRouteTable
 EMOJI_WARNING = "&#x26A0;&#xFE0F;"
 WARNING_FOR_MULTI_TASK_IN_A_WORKER = """
 Warning: This task is running in a worker process that is running multiple tasks.
-This can happen if you are profiling a task right as it finishes or if you are using the Async Actor or Threaded Actors pattern.
+This can happen if you are profiling a task right as it finishes or if you are using
+the Async Actor or Threaded Actors pattern.
 The information that follows may come from any of these tasks:
 """
 SVG_STYLE = """<style>
