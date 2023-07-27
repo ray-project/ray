@@ -5,7 +5,7 @@ from typing import List, Generator, Optional, Tuple
 
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.generated import serve_pb2
-
+from ray.serve._private.utils import DEFAULT
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -77,7 +77,10 @@ class GRPCServeRequest(ServeRequest):
 
     @property
     def multiplexed_model_id(self) -> str:
-        return self.request.multiplexed_model_id
+        if self.request.multiplexed_model_id:
+            return self.request.multiplexed_model_id
+
+        return DEFAULT.VALUE
 
     @property
     def request_id(self) -> str:

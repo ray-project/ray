@@ -122,6 +122,21 @@ g4 = FruitMarket.options(name="grpc-deployment-multi-app").bind(
 
 
 @serve.deployment
+class GrpcDeploymentMultiplexing:
+    @serve.multiplexed(max_num_models_per_replica=3)
+    async def get_model(self, model_id: str) -> str:
+        return f"loading model: {model_id}"
+
+    async def __call__(self, request: bytes) -> bytes:
+        model_id = serve.get_multiplexed_model_id()
+        model = await self.get_model(model_id)
+        return model.encode("utf-8")
+
+
+g5 = GrpcDeploymentMultiplexing.options(name="grpc-deployment-multiplexing").bind()
+
+
+@serve.deployment
 class HttpDeployment:
     async def __call__(self, request: Request) -> str:
         body = await request.body()

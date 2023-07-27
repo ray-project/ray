@@ -743,22 +743,23 @@ class RayServeReplica:
                 )
 
     async def call_user_method_grpc_unary(self, request_metadata, request) -> bytes:
-        user_request = request.grpc_user_request
+        async with self.wrap_user_method_call(request_metadata):
+            user_request = request.grpc_user_request
 
-        runner_method = self.get_runner_method(request_metadata)
-        if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
-            runner_method
-        ):
-            raise TypeError(
-                f"Method '{runner_method.__name__}' is a generator function. "
-                "You must use `handle.options(stream=True)` to call "
-                "generators on a deployment."
-            )
+            runner_method = self.get_runner_method(request_metadata)
+            if inspect.isgeneratorfunction(runner_method) or inspect.isasyncgenfunction(
+                runner_method
+            ):
+                raise TypeError(
+                    f"Method '{runner_method.__name__}' is a generator function. "
+                    "You must use `handle.options(stream=True)` to call "
+                    "generators on a deployment."
+                )
 
-        method_to_call = sync_to_async(runner_method)
+            method_to_call = sync_to_async(runner_method)
 
-        result = await method_to_call(user_request)
-        return result
+            result = await method_to_call(user_request)
+            return result
 
     async def call_user_method(
         self,

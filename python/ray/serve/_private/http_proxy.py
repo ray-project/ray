@@ -802,6 +802,8 @@ class GRPCProxy(GenericProxy):
         wraps the request in a ServeRequest object and calls proxy_request. The return
         value is protobuf RayServeResponse object.
         """
+        print("in predict, request:", request)
+        print("multiplexed_model_id is ", request.multiplexed_model_id)
         app_name = request.application
         route_path, handle = self.prefix_router.match_target(app_name)
         serve_request = GRPCServeRequest(
@@ -852,15 +854,14 @@ class GRPCProxy(GenericProxy):
         handle = handle.options(
             stream=serve_request.stream,
             serve_grpc_request=True,
+            multiplexed_model_id=multiplexed_model_id,
         )
-        if multiplexed_model_id:
-            handle = handle.options(multiplexed_model_id=multiplexed_model_id)
 
         request_context_info = {
             "route": route_path,
             "request_id": request_id,
             "app_name": app_name,
-            "multiplexed_model_id": serve_request.multiplexed_model_id,
+            "multiplexed_model_id": multiplexed_model_id,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context.RequestContext(**request_context_info)
