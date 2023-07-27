@@ -1,0 +1,20 @@
+head_node_type:
+  name: head_node_type
+  instance_type: g5.48xlarge
+  resources:
+    custom_resources: 
+      large_cpu_mem: 1
+
+worker_node_types:
+  - name: gpu_worker
+    instance_type: g5.48xlarge
+    min_workers: 3
+    max_workers: 3
+    use_spot: false
+
+aws:
+  TagSpecifications:
+    - ResourceType: "instance"
+      Tags:
+        - Key: ttl-hours
+          Value: '24'
