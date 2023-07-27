@@ -160,5 +160,5 @@ if __name__ == "__main__":
 
     ray.init()
 
-    preprocess_mosaic(args.data_root, args.tf_data_root)
+    preprocess_mosaic(args.data_root, args.mosaic_data_root)
     preprocess_tfdata(args.data_root, args.tf_data_root, args.max_images_per_file)
