@@ -1079,12 +1079,12 @@
   cluster:
     byod:
       type: cu118
-    cluster_env: ./cluster_env.yaml
-    cluster_compute: ./compute_configs/aws_7b_or_13b.yaml
+    cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/aws_7b_or_13b.yaml
 
   run:
     timeout: 600
-    script: chmod +x ./run_llama_7b.sh && ./run_llama_7b.sh --as-test
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=7b --as-test
 
   variations:
       - __suffix__: aws
@@ -1092,8 +1092,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ./cluster_env.yaml
-          cluster_compute: ./compute_configs/gce_7b_or_13b.yaml
+          cluster_env: ./testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 
 
@@ -1106,12 +1106,12 @@
   cluster:
     byod:
       type: cu118
-    cluster_env: ./cluster_env.yaml
-    cluster_compute: ./compute_configs/aws_7b_or_13b.yaml
+    cluster_env: ../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+    cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
   run:
     timeout: 1200
-    script: chmod +x ./run_llama_13b.sh && ./run_llama_13b.sh --as-test
+    script: chmod +x ./run_llama_ft.sh && ./run_llama_ft.sh --size=13b --as-test
 
   variations:
       - __suffix__: aws
@@ -1119,8 +1119,8 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ./cluster_env.yaml
-          cluster_compute: ./compute_configs/gce_7b_or_13b.yaml
+          cluster_env: ./testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 #######################
 # XGBoost release tests
