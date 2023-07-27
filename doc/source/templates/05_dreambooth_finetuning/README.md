@@ -3,7 +3,7 @@
 | Template Specification | Description |
 | ---------------------- | ----------- |
 | Summary | This example shows how to do [DreamBooth fine-tuning](https://dreambooth.github.io/) of a Stable Diffusion model using Ray Train for data-parallel training with many workers and Ray Data for data ingestion. Use one of the provided datasets, or supply your own photos. By the end of this example, you'll be able to generate images of your subject in a variety of situations, just by feeding in a text prompt! |
-| Time to Run | Less than 10 minutes to generate a regularization dataset and fine-tune the model on photos of your subject. |
+| Time to Run | ~10-15 minutes to generate a regularization dataset and fine-tune the model on photos of your subject. |
 | Minimum Compute Requirements | At least 2 GPUs, where each GPU has >= 24GB GRAM. The default is 1 node with an A10G GPU (AWS) or a A100G GPU 40GB (GCE). |
 | Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). See the appendix below for more details. |
 
@@ -30,7 +30,10 @@ Here are a few modifications to the `dreambooth_run.sh` script that you may want
     - If you add more worker nodes to the cluster, you should `$DATA_PREFIX` this to a shared NFS filesystem such as `/mnt/cluster_storage`. See [this page of the docs](https://docs.anyscale.com/develop/workspaces/storage#storage-shared-across-nodes) for all the options.
     - Note that each run of the script will overwrite the fine-tuned model checkpoint from the previous run, so consider changing the `$DATA_PREFIX` environment variable on each run if you don't want to lose the models/data of previous runs.
 3. The `$NUM_WORKERS` variable sets the number of data-parallel workers used during fine-tuning. The default is 2 workers (2 workers, each using 2 GPUs), and you should increase this number if you add more GPU worker nodes to the cluster.
-4. `generate.py` is used to generate stable diffusion images after loading the model from a checkpoint. You should modify the prompt at the end to be something more interesting, rather than just a photo of your subject.
+4. Setting `--num_epochs` and `--max_train_steps` determines the number of fine-tuning steps to take.
+    - Depending on the batch size and number of data-parallel workers, one epoch will run for a certain number of steps. The run will terminate when one of these values (epoch vs. total number of steps) is reached.
+5. `generate.py` is used to generate stable diffusion images after loading the model from a checkpoint. You should modify the prompt at the end to be something more interesting, rather than just a photo of your subject.
+6. If you want to launch another fine-tuning run, you may want to run *only* the `python train.py ...` command. Running the bash script will start from the beginning (generating another regularization dataset).
 
 ## Interact with the fine-tuned model
 
