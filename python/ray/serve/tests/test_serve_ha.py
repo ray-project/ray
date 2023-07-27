@@ -17,7 +17,6 @@ import ray
 from ray import serve
 
 @serve.deployment
-@serve.ingress(app)
 class GetPID:
     def __call__(self, *args):
         return {{"pid": os.getpid()}}
