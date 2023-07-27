@@ -1123,13 +1123,14 @@ def stop(force: bool, grace_period: int):
     grace_period_to_kill_gcs = int(grace_period / 2)
     grace_period_to_kill_components = grace_period - grace_period_to_kill_gcs
 
-    # Kill evertyhing except GCS.
-    found, stopped, alive = kill_procs(
-        force, grace_period_to_kill_components, processes_to_kill[1:]
-    )
-    total_procs_found += found
-    total_procs_stopped += stopped
-    procs_not_gracefully_killed.extend(alive)
+    # Kill evertyhing except GCS, one kind at a time.
+    for process in processes_to_kill[1:]:
+        found, stopped, alive = kill_procs(
+            force, grace_period_to_kill_components, [process]
+        )
+        total_procs_found += found
+        total_procs_stopped += stopped
+        procs_not_gracefully_killed.extend(alive)
 
     # Kill GCS.
     found, stopped, alive = kill_procs(force, grace_period_to_kill_gcs, [gcs])
