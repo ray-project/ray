@@ -3138,7 +3138,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3218,7 +3218,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3322,7 +3322,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3410,7 +3410,7 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3501,7 +3501,7 @@ Pending:
 Recent failures:
  A100: InstanceLimitExceeded (latest_attempt: 13:03:02)
  Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3590,7 +3590,7 @@ Pending:
 Recent failures:
  A100: InstanceLimitExceeded (latest_attempt: 13:03:02) - you should fix it
  Inferentia-Spot: InsufficientInstanceCapacity (latest_attempt: 13:03:01) - desc
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.6)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.6)
 
 Resources
 --------------------------------------------------------
@@ -3657,25 +3657,25 @@ Pending:
  1.2.3.4: m4.4xlarge, waiting-for-ssh
  1.2.3.5: m4.4xlarge, waiting-for-ssh
 Recent failures:
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.99)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.98)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.97)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.96)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.95)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.94)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.93)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.92)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.91)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.90)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.89)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.88)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.87)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.86)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.85)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.84)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.83)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.82)
- p3.2xlarge: RayletUnexpectedlyDied (ip: 1.2.3.81)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.99)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.98)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.97)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.96)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.95)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.94)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.93)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.92)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.91)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.90)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.89)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.88)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.87)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.86)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.85)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.84)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.83)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.82)
+ p3.2xlarge: NodeTerminated (ip: 1.2.3.81)
 
 Resources
 --------------------------------------------------------

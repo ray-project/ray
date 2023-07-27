@@ -513,7 +513,7 @@ Pending:
  127.0.0.3: worker_node, starting ray
 Recent failures:
  worker_node: LaunchFailed (latest_attempt: 02:46:40) - Insufficient capacity
- worker_node: RayletUnexpectedlyDied (ip: 127.0.0.5)
+ worker_node: NodeTerminated (ip: 127.0.0.5)
 
 Resources
 --------------------------------------------------------
