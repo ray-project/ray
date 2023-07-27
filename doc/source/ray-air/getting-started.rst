@@ -59,6 +59,9 @@ The following highlights feature companies leveraging Ray's unified API to build
 - `[Talk] Ray Summit Panel - ML Platform on Ray <https://www.youtube.com/watch?v=_L0lsShbKaY>`_
 
 
+.. Deployments on Ray.
+.. include:: /ray-air/deployment.rst
+
 
 What's Next
 -----------

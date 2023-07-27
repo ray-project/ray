@@ -13,9 +13,7 @@ parts:
         title: "Use Cases"
         sections:
           - file: ray-air/getting-started
-            sections:
-              - file: ray-air/deployment
-              - file: ray-air/computer-vision
+          - file: ray-air/computer-vision
 
       - file: ray-overview/examples
         title: "Example Gallery"

@@ -27,4 +27,4 @@ The following map visualizes the landscape and maturity of Ray components and th
 * **Alpha**: This component is in early development.
 * **Community-Maintained**: These integrations are community-maintained and may vary in quality.
 
-.. image:: images/air-ecosystem.svg
+.. image:: /images/air-ecosystem.svg
