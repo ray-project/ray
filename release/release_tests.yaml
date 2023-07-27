@@ -6262,7 +6262,6 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
@@ -6288,7 +6287,6 @@
 
   frequency: nightly
   team: data
-  python: "3.8"
   cluster:
     byod:
       type: gpu
