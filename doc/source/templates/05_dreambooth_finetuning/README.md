@@ -7,6 +7,8 @@
 | Minimum Compute Requirements | At least 2 GPUs, where each GPU has >= 24GB GRAM. The default is 1 node with an A10G GPU (AWS) or a A100G GPU 40GB (GCE). |
 | Cluster Environment | This template uses a docker image built on top of the latest Anyscale-provided Ray image using Python 3.9: [`anyscale/ray:latest-py39-cu118`](https://docs.anyscale.com/reference/base-images/overview). See the appendix below for more details. |
 
+![Dreambooth fine-tuning sample results](dreambooth/images/dreambooth_example.png)
+
 ## Run the example
 
 This README will only contain minimal instructions on running this example on Anyscale.
