@@ -26,10 +26,12 @@ from ray.air._internal.remote_storage import download_from_uri, is_non_local_pat
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
+from ray.train._internal.storage import _use_storage_context
 from ray.tune import Experiment, TuneError, ExperimentAnalysis
 from ray.tune.execution.experiment_state import _ResumeConfig
 from ray.tune.tune import _Config
 from ray.tune.registry import is_function_trainable
+from ray.tune.result import _get_defaults_results_dir
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import run
@@ -523,7 +525,11 @@ class TunerInternal:
         """Sets up experiment checkpoint dir before actually running the experiment."""
         path = Experiment.get_experiment_checkpoint_dir(
             trainable,
-            run_config.storage_path,
+            # TODO(justinvyu): This is a result of the old behavior of parsing
+            # local vs. remote storage paths and should be reworked in a follow-up.
+            _get_defaults_results_dir()
+            if _use_storage_context()
+            else run_config.storage_path,
             run_config.name,
         )
         if not os.path.exists(path):
@@ -662,6 +668,7 @@ class TunerInternal:
 
         return dict(
             storage_path=self._run_config.storage_path,
+            storage_filesystem=self._run_config.storage_filesystem,
             mode=self._tune_config.mode,
             metric=self._tune_config.metric,
             callbacks=self._run_config.callbacks,
