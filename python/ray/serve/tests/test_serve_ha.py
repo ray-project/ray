@@ -29,11 +29,11 @@ check_script = """
 import ray
 import requests
 
-pids = set(ray.get([
-    requests.get("http://127.0.0.1:8000/").json()["pid"]
-    for _ in range(10)
-]))
+@ray.remote
+def get_pid():
+    return requests.get("http://127.0.0.1:8000/").json()["pid"]
 
+pids = set(ray.get([get_pid.remote() for _ in range(10)]))
 print(pids)
 assert len(pids) == {num_replicas}
 """
