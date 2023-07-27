@@ -1,15 +1,18 @@
-{
+{   
     "fp16": {
-        "enabled": false
+        "enabled": "auto"
     },
     "bf16": {
-        "enabled": true
+        "enabled": "auto"
     },
     "zero_optimization": {
         "stage": 3,
         "offload_optimizer": {
-            "device": "cpu",
-            "pin_memory": false
+            "device": "nvme",
+            "nvme_path": "/mnt/local_storage/zero",
+            "pin_memory": false,
+            "buffer_count": 4,
+            "fast_init": true
         },
         "overlap_comm": true,
         "contiguous_gradients": true,
