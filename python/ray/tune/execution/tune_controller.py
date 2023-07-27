@@ -14,6 +14,7 @@ from ray.air.config import CheckpointConfig
 from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedCheckpoint
 from ray.air.execution import ResourceManager, PlacementGroupResourceManager
 from ray.air.execution._internal import RayActorManager, TrackedActor
+from ray.train._internal.storage import StorageContext
 from ray.exceptions import RayActorError
 from ray.tune.error import _AbortTrialExecution
 from ray.tune.execution.ray_trial_executor import _class_cache
@@ -64,6 +65,7 @@ class TuneController(_TuneControllerBase):
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        storage: Optional[StorageContext] = None,
         chdir_to_trial_dir: bool = False,
         reuse_actors: bool = False,
         resource_manager_factory: Optional[Callable[[], ResourceManager]] = None,
@@ -161,6 +163,7 @@ class TuneController(_TuneControllerBase):
             callbacks=callbacks,
             metric=metric,
             trial_checkpoint_config=trial_checkpoint_config,
+            storage=storage,
             _trainer_api=_trainer_api,
         )
 
