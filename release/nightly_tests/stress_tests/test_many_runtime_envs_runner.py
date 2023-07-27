@@ -15,6 +15,7 @@ import itertools
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+ray.init(address="auto")
 
 
 def all_node_ids():
