@@ -1,4 +1,5 @@
 import time
+from collections import defaultdict
 from typing import List, Optional
 
 import ray
@@ -43,7 +44,22 @@ def request_cluster_resources(
         timeout: Timeout in seconds for the request to be timeout
 
     """
-    get_gcs_client().request_cluster_resource_constraint(to_request, timeout_s=timeout)
+
+    # Aggregate bundle by shape.
+    resource_requests_by_count = defaultdict(int)
+    for request in to_request:
+        bundle = frozenset(request.items())
+        resource_requests_by_count[bundle] += 1
+
+    bundles = []
+    counts = []
+    for bundle, count in resource_requests_by_count.items():
+        bundles.append(dict(bundle))
+        counts.append(count)
+
+    get_gcs_client().request_cluster_resource_constraint(
+        bundles, counts, timeout_s=timeout
+    )
 
 
 def get_cluster_status(

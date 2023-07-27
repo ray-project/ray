@@ -148,8 +148,11 @@ def test_cluster_status_parser_cluster_resource_state():
                 {
                     "min_bundles": [
                         {
-                            "resources_bundle": {"GPU": 2, "CPU": 100},
-                            "placement_constraints": [],
+                            "request": {
+                                "resources_bundle": {"GPU": 2, "CPU": 100},
+                                "placement_constraints": [],
+                            },
+                            "count": 1,
                         },
                     ]
                 }
