@@ -704,14 +704,14 @@ void NodeManager::HandleRequestObjectSpillage(
     rpc::RequestObjectSpillageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   std::vector<ObjectID> object_ids;
-  for(const auto &object_id : request.object_ids()) {
+  for (const auto &object_id : request.object_ids()) {
     object_ids.push_back(ObjectID::FromBinary(object_id));
     RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_ids.back();
   }
 
   local_object_manager_.SpillObjects(
       object_ids, [object_ids, reply, send_reply_callback](const ray::Status &status) {
-        for(const auto &object_id : object_ids) {
+        for (const auto &object_id : object_ids) {
           RAY_LOG(DEBUG) << "Object " << object_id
                          << " has been spilled: " << status.ok();
           reply->add_success(status.ok());

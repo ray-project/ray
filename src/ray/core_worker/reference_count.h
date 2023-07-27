@@ -547,8 +547,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Release all local references which registered on this local.
   void ReleaseAllLocalReferences();
 
-  std::unordered_map<NodeID, std::vector<ObjectID>>
-  DumpOwnerInfo(std::filesystem::path prefix) LOCKS_EXCLUDED(mutex_);
+  std::unordered_map<NodeID, std::vector<ObjectID>> DumpOwnerInfo(
+      std::filesystem::path prefix) LOCKS_EXCLUDED(mutex_);
 
  private:
   /// Contains information related to nested object refs only.

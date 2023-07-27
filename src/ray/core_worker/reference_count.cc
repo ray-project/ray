@@ -553,7 +553,8 @@ void ReferenceCounter::RemoveSubmittedTaskReferences(
   }
 }
 
-std::unordered_map<NodeID, std::vector<ObjectID>> ReferenceCounter::DumpOwnerInfo(std::filesystem::path prefix) {
+std::unordered_map<NodeID, std::vector<ObjectID>> ReferenceCounter::DumpOwnerInfo(
+    std::filesystem::path prefix) {
   size_t owned_objs = 0;
   absl::MutexLock lock(&mutex_);
   std::unordered_map<NodeID, std::vector<ObjectID>> node_to_objects;
