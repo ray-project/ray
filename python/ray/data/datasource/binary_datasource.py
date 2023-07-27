@@ -1,7 +1,7 @@
 from io import BytesIO
 from typing import TYPE_CHECKING
 
-from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.datasource.file_based_datasource import FileBasedDatasource
 from ray.util.annotations import PublicAPI
 
@@ -25,7 +25,6 @@ class BinaryDatasource(FileBasedDatasource):
     _COLUMN_NAME = "bytes"
 
     def _read_file(self, f: "pyarrow.NativeFile", path: str, **reader_args):
-        import pyarrow as pa
         from pyarrow.fs import HadoopFileSystem
 
         include_paths = reader_args.pop("include_paths", False)
@@ -49,7 +48,9 @@ class BinaryDatasource(FileBasedDatasource):
         else:
             item = {self._COLUMN_NAME: data}
 
-        return pa.Table.from_pylist([item])
+        block_builder = DelegatingBlockBuilder()
+        block_builder.add(item)
+        return block_builder.build()
 
     def _rows_per_file(self):
         return 1
