@@ -341,10 +341,12 @@ void raylet::RayletClient::RequestWorkerLease(
 
 /// Spill objects to external storage.
 void raylet::RayletClient::RequestObjectSpillage(
-    const ObjectID &object_id,
+    const std::vector<ObjectID> &object_ids,
     const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback) {
   rpc::RequestObjectSpillageRequest request;
-  request.add_object_ids(object_id.Binary());
+  for(const auto& object_id : object_ids) {
+    request.add_object_ids(object_id.Binary());
+  }
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 

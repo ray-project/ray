@@ -647,41 +647,17 @@ int64_t LocalObjectManager::GetPrimaryBytes() const {
   return pinned_objects_size_ + num_bytes_pending_spill_;
 }
 
-void LocalObjectManager::DumpPrimaryCopies(std::filesystem::path path) {
-  if (!std::filesystem::exists(path)) {
-    std::filesystem::create_directories(path);
-  }
-
-  for (auto &[obj_id, obj_info] : local_objects_) {
+void LocalObjectManager::SpillPrimaryCopies(std::function<void(const ray::Status &)> callback) {
+  std::vector<ObjectID> object_ids;
+  for (auto &[obj_id, _] : local_objects_) {
     if (auto iter = pinned_objects_.find(obj_id); iter != pinned_objects_.end()) {
-      auto p = path / std::filesystem::path(obj_id.Hex());
-      RAY_LOG(INFO) << "Dumpping: " << obj_id << " to " << p;
-      std::ofstream out(p, std::ios::binary);
-      auto &obj = *iter->second;
-      auto &nested_objs = obj.GetNestedRefs();
-      auto cnt = nested_objs.size();
-      out.write(reinterpret_cast<const char *>(&cnt), sizeof(cnt));
-      for (auto &obj_ref_proto : nested_objs) {
-        std::string buffer;
-        obj_ref_proto.SerializeToString(&buffer);
-        auto size = buffer.size();
-        out.write(reinterpret_cast<const char *>(&size), sizeof(size));
-        out.write(buffer.data(), buffer.size());
-      }
-      auto data = obj.GetData();
-      auto size = data->Size();
-      out.write(reinterpret_cast<const char *>(&size), sizeof(size));
-      out.write(reinterpret_cast<const char *>(data->Data()), data->Size());
-
-      auto metadata = obj.GetMetadata();
-      size = metadata->Size();
-      out.write(reinterpret_cast<const char *>(&size), sizeof(size));
-      out.write(reinterpret_cast<const char *>(metadata->Data()), metadata->Size());
+      object_ids.emplace_back(obj_id);
     } else {
       RAY_LOG(INFO) << "Failed to dump: " << obj_id
                     << " because it's not a pinned object";
     }
   }
+  SpillObjects(object_ids, callback);
 }
 
 bool LocalObjectManager::HasLocallySpilledObjects() const {

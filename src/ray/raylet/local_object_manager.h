@@ -170,7 +170,7 @@ class LocalObjectManager {
   /// filesystem.
   bool HasLocallySpilledObjects() const;
 
-  void DumpPrimaryCopies(std::filesystem::path path);
+  void SpillPrimaryCopies(std::function<void(const ray::Status&)> callback);
 
   std::string DebugString() const;
 
