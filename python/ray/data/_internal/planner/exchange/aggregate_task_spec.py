@@ -47,15 +47,17 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
 
         block = SortAggregateTaskSpec._prune_unused_columns(block, key, aggs)
 
-        def make_key(keys: Union[str, Tuple[str, str], List[str], List[Tuple[str, str]]]) -> List[Tuple[str, str]]:
+        def make_key(
+            keys: Union[str, Tuple[str, str], List[str], List[Tuple[str, str]]]
+        ) -> List[Tuple[str, str]]:
             if isinstance(keys, str):
                 return [(keys, "ascending")]
-            
+
             if isinstance(keys, tuple):
                 return keys
-            
+
             out_keys = []
-            
+
             for key in keys:
                 if isinstance(key, str):
                     out_keys.append((key, "ascending"))

@@ -87,7 +87,7 @@ class ArrowRow(TableRow):
             ):
                 # Build a tensor row.
                 return ArrowBlockAccessor._build_tensor_row(self._row, col_name=key)
-        
+
         is_single_item = not isinstance(key, list)
         keys = [key] if is_single_item else key
 
@@ -326,7 +326,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         indices: Union[List[int], "pyarrow.Array", "pyarrow.ChunkedArray"],
     ) -> "pyarrow.Table":
         """Select rows from the underlying table.
- 
+
         This method is an alternative to pyarrow.Table.take(), which breaks for
         extension arrays.
         """
@@ -594,7 +594,11 @@ class ArrowBlockAccessor(TableBlockAccessor):
         stats = BlockExecStats.builder()
 
         keys = key if isinstance(key, list) else [key]
-        key_fn = (lambda r: tuple(r[r._row.schema.names[:len(keys)]])) if key is not None else (lambda r: (0,))
+        key_fn = (
+            (lambda r: tuple(r[r._row.schema.names[: len(keys)]]))
+            if key is not None
+            else (lambda r: (0,))
+        )
 
         iter = heapq.merge(
             *[
@@ -610,7 +614,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 if next_row is None:
                     next_row = next(iter)
                 next_keys = key_fn(next_row)
-                next_key_names = next_row._row.schema.names[:len(keys)] if key is not None else None
+                next_key_names = (
+                    next_row._row.schema.names[: len(keys)] if key is not None else None
+                )
 
                 def gen():
                     nonlocal iter

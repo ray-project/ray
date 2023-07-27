@@ -380,7 +380,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: Union[str, List[str]], aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(
+        self, key: Union[str, List[str]], aggs: Tuple[AggregateFn]
+    ) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -403,11 +405,11 @@ class PandasBlockAccessor(TableBlockAccessor):
                 "on Pandas blocks, but "
                 f"got: {type(key)}."
             )
-        
+
         def equals(first, second) -> bool:
             if isinstance(first, pd.Series):
                 return (first == second).all()
-            
+
             return first == second
 
         def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
@@ -518,7 +520,11 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         stats = BlockExecStats.builder()
         keys = key if isinstance(key, list) else [key]
-        key_fn = (lambda r: tuple(r[r._row.columns[:len(keys)]])) if key is not None else (lambda r: (0,))
+        key_fn = (
+            (lambda r: tuple(r[r._row.columns[: len(keys)]]))
+            if key is not None
+            else (lambda r: (0,))
+        )
 
         iter = heapq.merge(
             *[
@@ -534,7 +540,9 @@ class PandasBlockAccessor(TableBlockAccessor):
                 if next_row is None:
                     next_row = next(iter)
                 next_keys = key_fn(next_row)
-                next_key_names = next_row._row.columns[:len(keys)] if key is not None else None
+                next_key_names = (
+                    next_row._row.columns[: len(keys)] if key is not None else None
+                )
 
                 def gen():
                     nonlocal iter
