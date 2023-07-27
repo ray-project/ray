@@ -1,7 +1,5 @@
 (serve-getting-started)=
 
-(getting-started)=
-
 # Getting Started
 
 This tutorial will walk you through the process of writing and testing a Ray Serve application. It will show you how to
