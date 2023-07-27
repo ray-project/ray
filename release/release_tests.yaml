@@ -5347,28 +5347,14 @@
   frequency: nightly
   team: core
   cluster:
-    byod: {}
-    cluster_env: stress_tests/stress_tests_app_config.yaml
-    cluster_compute: stress_tests/stress_tests_compute.yaml
+    app_config: stress_tests/stress_tests_app_config.yaml
+    cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
     timeout: 14400
     wait_for_nodes:
-      num_nodes: 101
-
+      num_nodes: 5
     script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=10000
-
-  smoke_test:
-    frequency: nightly
-    cluster:
-      app_config: stress_tests/stress_tests_app_config.yaml
-      cluster_compute: stress_tests/smoke_test_compute.yaml
-
-    run:
-      timeout: 3600
-      wait_for_nodes:
-        num_nodes: 5
-      script: python stress_tests/test_many_runtime_envs_runner.py --num_runtime_envs=200
 
   variations:
     - __suffix__: aws
