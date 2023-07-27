@@ -1085,7 +1085,7 @@
 
   run:
     timeout: 600
-    script: ./run_llama_7b.sh --as-test
+    script: chmod +x ./run_llama_7b.sh && ./run_llama_7b.sh --as-test
 
   variations:
       - __suffix__: aws
@@ -1112,7 +1112,7 @@
 
   run:
     timeout: 1200
-    script: ./run_llama_13b.sh --as-test
+    script: chmod +x ./run_llama_13b.sh && ./run_llama_13b.sh --as-test
 
   variations:
       - __suffix__: aws
