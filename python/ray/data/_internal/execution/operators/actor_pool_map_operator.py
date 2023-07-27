@@ -1,4 +1,5 @@
 import collections
+import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
@@ -29,6 +30,10 @@ logger = DatasetLogger(__name__)
 # Higher values here are better for prefetching and locality. It's ok for this to be
 # fairly high since streaming backpressure prevents us from overloading actors.
 DEFAULT_MAX_TASKS_IN_FLIGHT = 4
+
+# The default time, in seconds, to wait for minimum requested actors
+# to start before raising a timeout.
+DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 60 * 10
 
 
 class ActorPoolMapOperator(MapOperator):
@@ -93,6 +98,8 @@ class ActorPoolMapOperator(MapOperator):
         # Whether no more submittable bundles will be added.
         self._inputs_done = False
         self._next_task_idx = 0
+        # Start time of when actors are requested.
+        self._actors_requested_ts = None
 
     def get_init_fn(self) -> Callable[[], None]:
         return self._init_fn
@@ -128,6 +135,25 @@ class ActorPoolMapOperator(MapOperator):
     ) -> None:
         free_slots = self._actor_pool.num_free_slots()
         if input_queue_size > free_slots and under_resource_limits:
+            # The first time we request actors, we record the timestamp.
+            if self._actors_requested_ts is None:
+                self._actors_requested_ts = time.time()
+
+            # If the minimum requested actors are not available in a timely manner,
+            # raise a timeout.
+            exceeds_timeout = (
+                time.time() - self._actors_requested_ts
+                > DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
+            )
+            if (
+                exceeds_timeout
+                and self._actor_pool.num_running_actors()
+                < self._autoscaling_policy.min_workers
+            ):
+                raise TimeoutError(
+                    "Unable to create requested minimum actors "
+                    f"in {DEFAULT_WAIT_FOR_MIN_ACTORS_SEC} seconds.",
+                )
             # Try to scale up if work remains in the work queue.
             self._scale_up_if_needed()
         else:
