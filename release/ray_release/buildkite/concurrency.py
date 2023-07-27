@@ -16,7 +16,7 @@ Condition = namedtuple(
 )
 
 aws_gpu_cpu_to_concurrency_groups = [
-    Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu", limit=4),
+    Condition(min_gpu=9, max_gpu=-1, min_cpu=0, max_cpu=-1, group="large-gpu", limit=100),
     Condition(
         min_gpu=1, max_gpu=9, min_cpu=0, max_cpu=-128, group="small-gpu", limit=8
     ),
