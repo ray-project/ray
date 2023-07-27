@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_client/gcs_client.h"
 
+#include <chrono>
+#include <thread>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -188,7 +190,7 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       } else if (!connect_status.IsGrpcError()) {
         return HandleGcsError(reply.status());
       }
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1000));
     }
     RAY_RETURN_NOT_OK(connect_status);
   } else {
