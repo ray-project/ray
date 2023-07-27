@@ -3,7 +3,7 @@
 # Environment adapters.
 # ---------------------
 # Atari
-gymnasium[atari]==0.28.1
+gymnasium==0.28.1
 imageio==2.31.1
 ale_py==0.8.1
 # For testing MuJoCo envs with gymnasium.
