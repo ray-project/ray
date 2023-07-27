@@ -66,5 +66,4 @@ The following highlights feature companies leveraging Ray's unified API to build
 What's Next
 -----------
 
-* Take a look at our :ref:`deployment guide <mlplatform-deployment>`.
 * Take a look at how to use Ray for end-to-end :ref:`computer vision workloads <computer-vision>`.
