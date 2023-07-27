@@ -59,7 +59,6 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.utils import (
     calculate_remaining_timeout,
     call_function_from_import_path,
-    get_random_letters,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

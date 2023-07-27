@@ -83,6 +83,7 @@ class TestUserProvidedRequestIDHeader:
         serve.run(Model.bind())
         self.verify_result()
 
+
 def test_set_request_id_headers_with_two_attributes(serve_instance):
     """Test that request id is set with X-Request-ID and RAY_SERVE_REQUEST_ID.
     x-request-id has higher priority.
