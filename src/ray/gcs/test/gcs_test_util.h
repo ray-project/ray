@@ -378,11 +378,17 @@ struct Mocker {
     return placement_group_table_data;
   }
   static rpc::autoscaler::ClusterResourceConstraint GenClusterResourcesConstraint(
-      const std::vector<std::unordered_map<std::string, double>> &request_resources) {
+      const std::vector<std::unordered_map<std::string, double>> &request_resources,
+      const std::vector<int64_t> &count_array) {
     rpc::autoscaler::ClusterResourceConstraint constraint;
-    for (const auto &resource : request_resources) {
+    RAY_CHECK(request_resources.size() == count_array.size());
+    for (size_t i = 0; i < request_resources.size(); i++) {
+      auto &resource = request_resources[i];
+      auto count = count_array[i];
       auto bundle = constraint.add_min_bundles();
-      bundle->mutable_resources_bundle()->insert(resource.begin(), resource.end());
+      bundle->set_count(count);
+      bundle->mutable_request()->mutable_resources_bundle()->insert(resource.begin(),
+                                                                    resource.end());
     }
     return constraint;
   }

@@ -593,22 +593,22 @@ TEST_F(GcsAutoscalerStateManagerTest, TestClusterResourcesConstraint) {
   // Generate one constraint.
   {
     RequestClusterResourceConstraint(
-        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}));
+        Mocker::GenClusterResourcesConstraint({{{"CPU", 2}, {"GPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
     ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
+    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
                          {{"CPU", 2}, {"GPU", 1}});
   }
 
   // Override it
   {
-    RequestClusterResourceConstraint(
-        Mocker::GenClusterResourcesConstraint({{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}));
+    RequestClusterResourceConstraint(Mocker::GenClusterResourcesConstraint(
+        {{{"CPU", 4}, {"GPU", 5}, {"TPU", 1}}}, {1}));
     const auto &state = GetClusterResourceStateSync();
     ASSERT_EQ(state.cluster_resource_constraints_size(), 1);
     ASSERT_EQ(state.cluster_resource_constraints(0).min_bundles_size(), 1);
-    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0),
+    CheckResourceRequest(state.cluster_resource_constraints(0).min_bundles(0).request(),
                          {{"CPU", 4}, {"GPU", 5}, {"TPU", 1}});
   }
 }

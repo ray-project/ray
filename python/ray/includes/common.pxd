@@ -395,7 +395,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
             int64_t timeout_ms, c_vector[CJobTableData]& result)
         CRayStatus RequestClusterResourceConstraint(
             int64_t timeout_ms,
-            const c_vector[unordered_map[c_string, double]] &bundles)
+            const c_vector[unordered_map[c_string, double]] &bundles,
+            const c_vector[int64_t] &count_array)
         CRayStatus GetClusterStatus(
             int64_t timeout_ms,
             c_string &serialized_reply)
