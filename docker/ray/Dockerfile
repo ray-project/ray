@@ -5,9 +5,11 @@ ARG FIND_LINKS_PATH=".whl"
 # For Click
 ENV LC_ALL=C.UTF-8
 ENV LANG=C.UTF-8
+COPY requirements_compiled.txt ./
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
-RUN $HOME/anaconda3/bin/pip --no-cache-dir install `basename $WHEEL_PATH`[all] \
---find-links $FIND_LINKS_PATH && sudo rm `basename $WHEEL_PATH`
+RUN $HOME/anaconda3/bin/pip --no-cache-dir install -c requirements_compiled.txt \
+    `basename $WHEEL_PATH`[all] \
+    --find-links $FIND_LINKS_PATH && sudo rm `basename $WHEEL_PATH`
 
 RUN $HOME/anaconda3/bin/pip freeze > /home/ray/pip-freeze.txt

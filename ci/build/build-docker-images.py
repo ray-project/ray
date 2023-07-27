@@ -419,6 +419,18 @@ def build_or_pull_base_images(
         return False
 
 
+def prep_ray_base():
+    root_dir = _get_root_dir()
+    requirements_files = [
+        "python/requirements_compiled.txt",
+    ]
+    for requirement_file in requirements_files:
+        shutil.copy(
+            os.path.join(root_dir, requirement_file),
+            os.path.join(root_dir, "docker/ray/"),
+        )
+
+
 def prep_ray_ml():
     root_dir = _get_root_dir()
 
@@ -917,6 +929,7 @@ def main(
                 for py_version in py_versions
                 if py_version in ML_IMAGES_PY_VERSIONS
             ]
+            prep_ray_base()
 
             if len(ml_image_types) > 0:
                 prep_ray_ml()
