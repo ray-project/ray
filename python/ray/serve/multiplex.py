@@ -92,9 +92,9 @@ class _ModelMultiplexWrapper:
 
         # Model cache lock to ensure that only one model is loading/unloading at a time.
         self._model_cache_lock = asyncio.Lock()
-        # The set of model IDs that are being loaded. This is used to early push model ids
-        # info to the controller. The tasks will be added when there is cache miss, and
-        # removed when the model is loaded or failed to load.
+        # The set of model IDs that are being loaded. This is used to early push
+        # model ids info to the controller. The tasks will be added when there is cache
+        # miss, and will be removed when the model is loaded successfully or failed to load.
         self._model_load_tasks: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
@@ -106,8 +106,8 @@ class _ModelMultiplexWrapper:
 
     def _get_loading_and_loaded_model_ids(self) -> List[str]:
         """Get the model IDs of the loaded models & loading models in the replica.
-        This is to push the model id information early to the controller, so that requests
-        can be routed to the replica.
+        This is to push the model id information early to the controller, so that
+        requests can be routed to the replica.
         """
         models_list = set(self.models.keys())
         models_list.update(self._model_load_tasks)
