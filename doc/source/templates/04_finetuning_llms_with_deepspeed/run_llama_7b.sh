@@ -39,9 +39,12 @@ if [ ! -d "${DATA_DIR}" ]; then
 fi
 
 # Check if --as-test was passed as an argument
-if [[ "$@" == *"--as-test"* ]]; then
-    params+=" --as-test"
-fi
+for arg in "$@"
+do
+    if [ "$arg" = "--as-test" ]; then
+        params+=" --as-test"
+    fi
+done
 
 # Fine-tune the model
 echo "Fine-tuning model..."
