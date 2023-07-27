@@ -45,6 +45,10 @@ When you start a single-node Ray cluster on your laptop, you can access the dash
 
 When you start a remote Ray cluster with the {ref}`VM cluster launcher <vm-cluster-quick-start>`, {ref}`KubeRay operator <kuberay-quickstart>`, or manual configuration, the Ray Dashboard launches on the head node but the dashboard port may not be publicly exposed. You need an additional setup to access the Ray Dashboard from outside the head node.
 
+:::{danger}
+For security purpose, do not expose Ray Dashboard publicly without proper authentication in place.
+:::
+
 ::::{tab-set}
 
 :::{tab-item} VM Cluster Launcher
@@ -87,7 +91,6 @@ For more information about configuring network access to a Ray cluster on Kubern
 :::
 
 ::::
-
 
 ## Running behind a reverse proxy
 
@@ -193,20 +196,15 @@ To view embedded time-series visualizations in Ray Dashboard, the following must
 1. The head node of the cluster is able to access Prometheus and Grafana
 2. The browser of the dashboard user is able to access Grafana. 
 
-Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, `RAY_PROMETHEUS_NAME`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
+Configure these settings using the `RAY_GRAFANA_HOST`, `RAY_PROMETHEUS_HOST`, and `RAY_GRAFANA_IFRAME_HOST` environment variables when you start the Ray Clusters.
 
 * Set `RAY_GRAFANA_HOST` to an address that the head node can use to access Grafana. Head node does health checks on Grafana on the backend.
 * Set `RAY_PROMETHEUS_HOST` to an address the head node can use to access Prometheus.
-* Set `RAY_PROMETHEUS_NAME` is used when you select a different data source to use for the Grafana dashboard panles. Default is "Prometheus".
-* Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` is not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
+* Set `RAY_GRAFANA_IFRAME_HOST` to an address that the user's browsers can use to access Grafana and embed visualizations. If `RAY_GRAFANA_IFRAME_HOST` not set, Ray Dashboard uses the value of `RAY_GRAFANA_HOST`.
 
-For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=55.66.77.88:3000`.
+For example, if the IP of the head node is 55.66.77.88 and Grafana is hosted on port 3000. Set the value to `RAY_GRAFANA_HOST=http://55.66.77.88:3000`.
 
 If all the environment variables are set properly, you should see time-series metrics in {ref}`Ray Dashboard <observability-getting-started>`.
-
-:::{note}
-If you use a different Prometheus server for each Ray Cluster and use the same Grafana server for all Clusters, set the `RAY_PROMETHEUS_NAME` environment variable to different values for each Ray Cluster and add these datasources in Grafana. Follow {ref}`these instructions <grafana>` to set up Grafana.
-:::
 
 #### Alternate Prometheus host location
 By default, Ray Dashboard assumes Prometheus is hosted at `localhost:9090`. You can choose to run Prometheus on a non-default port or on a different machine. In this case, make sure that Prometheus can scrape the metrics from your Ray nodes following instructions {ref}`here <scrape-metrics>`.

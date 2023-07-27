@@ -1,0 +1,31 @@
+# See https://hub.docker.com/r/anyscale/ray for full list of
+# available Ray, Python, and CUDA versions.
+base_image: anyscale/ray:2.5.1-py39-cu116
+
+env_vars: {}
+
+debian_packages: []
+
+python:
+  pip_packages: []
+  conda_packages: []
+
+post_build_cmds: [
+    pip install torch==2.0.0+cu117 torchvision==0.15.1+cu117 torchaudio==2.0.1 --index-url https://download.pytorch.org/whl/cu117,
+    pip install flash-attn==1.0.3.post0,
+    pip install git+https://github.com/EleutherAI/lm_dataformat.git@4eec05349977071bf67fc072290b95e31c8dd836,
+    pip install deepspeed,
+    pip install fairscale,
+    pip install transformers ,
+    pip install dataset ,
+    pip install accelerate ,
+    pip install evaluate,
+    pip install bitsandbytes ,
+    pip install wandb,
+    pip install pytorch-lightning ,
+    pip install protobuf<3.21.0 ,
+    pip install torchmetrics ,
+    pip install lm_eval==0.3.0, 
+    pip install tiktoken==0.1.2,
+    pip install sentencepiece,
+]

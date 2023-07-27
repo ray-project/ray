@@ -91,6 +91,26 @@ def setup_component_logger(
     return logger
 
 
+def run_callback_on_events_in_ipython(event: str, cb: Callable):
+    """
+    Register a callback to be run after each cell completes in IPython.
+    E.g.:
+        This is used to flush the logs after each cell completes.
+
+    If IPython is not installed, this function does nothing.
+
+    Args:
+        cb: The callback to run.
+    """
+    if "IPython" in sys.modules:
+        from IPython import get_ipython
+
+        ipython = get_ipython()
+        # Register a callback on cell completion.
+        if ipython is not None:
+            ipython.events.register(event, cb)
+
+
 """
 All components underneath here is used specifically for the default_worker.py.
 """
@@ -225,6 +245,8 @@ class LogDeduplicator:
         # This buffer is cleared if the pattern isn't seen within the window.
         self.recent: Dict[str, DedupState] = {}
         self.timesource = _timesource or (lambda: time.time())
+
+        run_callback_on_events_in_ipython("post_execute", self.flush)
 
     def deduplicate(self, batch: LogBatch) -> List[LogBatch]:
         """Rewrite a batch of lines to reduce duplicate log messages.

@@ -5,7 +5,9 @@ import os
 import json
 import time
 from typing import Dict, List, Set
+from pathlib import Path
 
+from ray_release.bazel import bazel_runfile
 from ray_release.logger import logger
 from ray_release.buildkite.step import get_step
 from ray_release.byod.build import (
@@ -17,6 +19,7 @@ from ray_release.config import (
     parse_python_version,
     DEFAULT_WHEEL_WAIT_TIMEOUT,
 )
+from ray_release.configs.global_config import init_global_config
 from ray_release.test import (
     Test,
     DEFAULT_PYTHON_VERSION,
@@ -54,6 +57,14 @@ from ray_release.wheels import find_and_wait_for_ray_wheels_url
     default=False,
     help=("Use the full, non-smoke version of the test"),
 )
+@click.option(
+    "--global-config",
+    default="oss_config.yaml",
+    type=click.Choice(
+        [x.name for x in (Path(__file__).parent.parent / "configs").glob("*.yaml")]
+    ),
+    help="Global config to use for test execution.",
+)
 def main(
     test_name: str,
     passing_commit: str,
@@ -61,7 +72,11 @@ def main(
     concurrency: int = 1,
     run_per_commit: int = 1,
     is_full_test: bool = False,
+    global_config: str = "oss_config.yaml",
 ) -> None:
+    init_global_config(
+        bazel_runfile("release/ray_release/configs", global_config),
+    )
     if concurrency <= 0:
         raise ValueError(
             f"Concurrency input need to be a positive number, received: {concurrency}"

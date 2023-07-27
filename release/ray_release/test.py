@@ -20,7 +20,7 @@ from ray_release.util import dict_hash
 AWS_TEST_KEY = "ray_tests"
 AWS_TEST_RESULT_KEY = "ray_test_results"
 DEFAULT_PYTHON_VERSION = tuple(
-    int(v) for v in os.environ.get("RELEASE_PY", "3.7").split(".")
+    int(v) for v in os.environ.get("RELEASE_PY", "3.8").split(".")
 )
 DATAPLANE_ECR_REPO = "anyscale/ray"
 DATAPLANE_ECR_ML_REPO = "anyscale/ray-ml"
@@ -225,10 +225,8 @@ class Test(dict):
         if branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
             ray_version = f"{release_name}.{ray_version}"
-        byod_type = self.get_byod_type()
-        image_suffix = f"-{byod_type}" if byod_type != "cpu" else ""
         python_version = f"py{self.get_python_version().replace('.',   '')}"
-        return f"{ray_version}-{python_version}{image_suffix}"
+        return f"{ray_version}-{python_version}-{self.get_byod_type()}"
 
     def get_byod_image_tag(self) -> str:
         """
@@ -255,9 +253,14 @@ class Test(dict):
         """
         Returns the ray docker image to use for this test.
         """
-        ray_project = "ray" if self.get_byod_type() == "cpu" else "ray-ml"
+        config = get_global_config()
+        ray_project = (
+            config["byod_ray_cr_repo"]
+            if self.get_byod_type() == "cpu"
+            else config["byod_ray_ml_cr_repo"]
+        )
         return (
-            f"{get_global_config()['byod_ray_ecr']}/"
+            f"{config['byod_ray_ecr']}/"
             f"{ray_project}:{self.get_byod_base_image_tag()}"
         )
 

@@ -653,7 +653,35 @@ void GcsServer::InitGcsWorkerManager() {
 }
 
 void GcsServer::InitGcsAutoscalerStateManager() {
+  RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
+  auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
+  RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
+
+  kv_manager_->GetInstance().Put(
+      kGcsAutoscalerStateNamespace,
+      kGcsAutoscalerV2EnabledKey,
+      v2_enabled,
+      /*overwrite=*/true,
+      [this, v2_enabled](bool new_value_put) {
+        if (!new_value_put) {
+          // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g. when
+          // GCS re-started), so we just try to get the value to check if it's correct.
+          // TODO(rickyx): We could probably load some system configs from internal kv
+          // when we initialize GCS from restart to avoid this.
+          kv_manager_->GetInstance().Get(
+              kGcsAutoscalerStateNamespace,
+              kGcsAutoscalerV2EnabledKey,
+              [v2_enabled](std::optional<std::string> value) {
+                RAY_CHECK(value.has_value()) << "Autoscaler v2 feature flag wasn't found "
+                                                "in GCS, this is unexpected.";
+                RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
+                                                   "doesn't match the one we put.";
+              });
+        }
+      });
+
   gcs_autoscaler_state_manager_ = std::make_unique<GcsAutoscalerStateManager>(
+      config_.session_name,
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_resource_manager_,
       *gcs_node_manager_,
@@ -827,8 +855,8 @@ std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
     // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        main_service_, redis_client_->GetPrimaryContext(), []() {
+    gcs_redis_failure_detector_ =
+        std::make_shared<GcsRedisFailureDetector>(main_service_, redis_client_, []() {
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
