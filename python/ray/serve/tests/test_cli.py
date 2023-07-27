@@ -504,7 +504,13 @@ def test_config_with_deleting_app(ray_start_stop):
         statuses = yaml.safe_load(status_response)
 
         return (
-            len([s for s in statuses["applications"].values() if s["status"] == "RUNNING"])
+            len(
+                [
+                    s
+                    for s in statuses["applications"].values()
+                    if s["status"] == "RUNNING"
+                ]
+            )
             == expected_statuses
             and fetched_configs == expected_configs
         )
