@@ -5347,7 +5347,7 @@
   frequency: nightly
   team: core
   cluster:
-    app_config: stress_tests/stress_tests_app_config.yaml
+    cluster_env: stress_tests/stress_tests_app_config.yaml
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
