@@ -29,7 +29,6 @@ from ray.air._internal.filelock import TempFileLock
 from ray.air._internal.uri_utils import URI, is_uri
 from ray.tune.syncer import Syncer, SyncConfig, _BackgroundSyncer
 from ray.tune.result import _get_defaults_results_dir
-from ray.tune.trainable.util import TrainableUtil
 
 
 logger = logging.getLogger(__file__)
@@ -506,6 +505,8 @@ class StorageContext:
 
         Raises a ValueError if `current_checkpoint_id` is not set beforehand.
         """
+        from ray.tune.trainable.util import TrainableUtil
+
         if self.current_checkpoint_id is None:
             raise RuntimeError(
                 "Should not access `checkpoint_fs_path` without setting "
