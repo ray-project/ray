@@ -806,6 +806,8 @@ class Algorithm(Trainable, AlgorithmBase):
         This class will be used by an Algorithm in case
         the policy class is not provided by the user in any single- or
         multi-agent PolicySpec.
+
+        Note: This method is ignored when the RLModule API is enabled.
         """
         return None
 
