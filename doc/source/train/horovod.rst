@@ -8,7 +8,7 @@ for more information.
 
 
 Updating your training function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 First, you'll want to update your training function to support distributed
 training.
@@ -58,7 +58,7 @@ For more configurability, please reference the :py:class:`~ray.train.data_parall
 
 
 Running your training function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training!
@@ -66,3 +66,18 @@ ready to start training!
 .. code-block:: python
 
     trainer.fit()
+
+
+Further reading
+---------------
+Ray Train's :class:`~ray.train.horovod.HorovodTrainer` replaces the distributed
+communication backend of the native libraries with its own implementation.
+Thus, the remaining integration points remain the same. If you're using Horovod
+with :ref:`PyTorch <train-pytorch-overview>` or :ref:`Tensorflow <train-tensorflow-overview>`,
+refer to the respective guides for further configuration
+and information.
+
+If you are implementing your own Horovod-based training routine without using any of
+the training libraries, we still encourage you to read through e.g. the
+:ref:`PyTorch <train-pytorch-overview>` guide, as many of the contents are applicable
+to generic use cases and can be easily adapted.

@@ -1,10 +1,10 @@
 .. _train-config:
 
-Ray Train Configuration User Guide
+Common configuration
 ==================================
 
 The following overviews how to configure scale-out, run options, and fault-tolerance for Train.
-For more details on how to configure data ingest, also refer to :ref:`air-ingest`.
+For more details on how to configure data ingest, also refer to :ref:`data-ingest-torch`.
 
 Scaling Configurations in Train (``ScalingConfig``)
 ---------------------------------------------------

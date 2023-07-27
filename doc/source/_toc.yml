@@ -67,28 +67,30 @@ parts:
             sections:
               - file: train/distributed-pytorch/quickstart
               - file: train/distributed-pytorch/converting-existing-training-loop
+              - file: train/distributed-pytorch/hf_trainers
               - file: train/distributed-pytorch/data-loading-preprocessing
+              - file: train/distributed-pytorch/configuring-scale
+              - file: train/distributed-pytorch/using-gpus
+              - file: train/distributed-pytorch/reporting-results
+              - file: train/distributed-pytorch/checkpoints
+              - file: train/distributed-pytorch/experiment-tracking
+              - file: train/distributed-pytorch/advanced
           - file: train/distributed-tensorflow-keras
           - file: train/distributed-xgboost-lightgbm
           - file: train/horovod
-          - file: train/user-guides
-            title: "User Guides"
+          - file: train/configuration/index
+            title: "Common configuration"
             sections:
-              - file: train/config_guide
-                title: "Configuring Ray Train"
-              - file: train/hf_trainers
-                title: "Hugging Face Trainers"
-              - file: train/architecture
-                title: "Ray Train Architecture"
+              - file: train/configuration/persistent-storage
+              - file: train/configuration/fault-tolerance
+          - file: train/internals/index
+            title: "Ray Train internals and advanced usage"
+            sections:
+              - file: train/internals/architecture
+              - file: train/internals/benchmarks
               - file: train/train-with-tune
                 title: "Using Ray Train with Ray Tune"
-              - file: train/check-ingest
-                title: "Configuring Training Datasets"
               - file: train/predictors
-              - file: train/benchmarks
-#          - file: train/user-guides
-#            title: "User Guides"
-#            sections:
           - file: train/examples
             title: "Examples"
             sections:

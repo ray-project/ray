@@ -1,3 +1,5 @@
+.. _train-tensorflow-overview:
+
 Distributed Tensorflow & Keras
 ==============================
 
@@ -12,7 +14,7 @@ Ray Train also works with vanilla Tensorflow.
 
 
 Updating your training function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-------------------------------
 
 First, you'll want to update your training function to support distributed
 training.
@@ -101,7 +103,7 @@ For more configurability, please reference the :py:class:`~ray.train.data_parall
 
 
 Running your training function
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+------------------------------
 
 With a distributed training function and a Ray Train ``Trainer``, you are now
 ready to start training!
@@ -109,3 +111,7 @@ ready to start training!
 .. code-block:: python
 
     trainer.fit()
+
+Data loading and preprocessing
+------------------------------
+
