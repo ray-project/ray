@@ -122,7 +122,7 @@ documentation, sorted alphabetically.
         different AIR components and libraries. A Checkpoint can have its data
         represented as a directory on local (on-disk) storage, as a directory on an
         external storage (e.g., cloud storage), and as an in-memory dictionary.
-        :ref:`Learn more<air-checkpoint-ref>`,
+        :ref:`Learn more<checkpoint-api-ref>`,
 
         .. TODO: How does this relate to RLlib checkpoints etc.? Be clear here
 

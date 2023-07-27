@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", function() {
             "Ray Core", "Ray Core API",
             "Ray Clusters", "Deploying on Kubernetes", "Deploying on VMs",
             "Applications Guide", "Ray Cluster Management API",
-            "Ray AI Runtime (AIR)", "Ray AIR API",
+            "Ray AIR API",
             "Ray Data", "Ray Data API", "Integrations",
             "Ray Train", "Ray Train API",
             "Ray Tune", "Ray Tune Examples", "Ray Tune API",
@@ -50,7 +50,7 @@ document.addEventListener("DOMContentLoaded", function() {
             "Ray RLlib", "Ray RLlib API",
             "More Libraries", "Ray Workflows (Alpha)",
             "Monitoring and Debugging",
-            "References",
+            "References", "Use Cases",
             "Developer Guides", "Getting Involved / Contributing",
         ];
 
