@@ -495,9 +495,10 @@ class HTTPProxy:
                 if key.decode() == "x-request-id":
                     request_context_info["request_id"] = value.decode()
                 if (
-                    key.decode() == RAY_SERVE_REQUEST_ID_HEADER
+                    key.decode() == RAY_SERVE_REQUEST_ID_HEADER.lower()
                     and "request_id" not in request_context_info
                 ):
+                    # "x-request-id" has higher priority than "RAY_SERVE_REQUEST_ID".
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)
