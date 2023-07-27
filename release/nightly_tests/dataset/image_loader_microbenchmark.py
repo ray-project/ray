@@ -20,7 +20,10 @@ def iterate(dataset, label, metrics):
     it = iter(dataset)
     num_rows = 0
     for batch in it:
-        num_rows += len(batch[0])
+        # NOTE(swang): This will be slightly off if batch_size does not divide
+        # evenly into number of images but should be okay for large enough
+        # datasets.
+        num_rows += batch_size
     end = time.time()
     print(label, end - start, "epoch", i)
 
