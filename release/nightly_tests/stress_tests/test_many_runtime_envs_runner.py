@@ -20,7 +20,7 @@ ray.init(address="auto")
 
 def all_node_ids():
     nodes = ray.nodes()
-    return [node['NodeID'] for node in nodes]
+    return [node["NodeID"] for node in nodes]
 
 
 def create_file_and_assert_n_times(n):
