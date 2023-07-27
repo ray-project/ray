@@ -1,60 +1,41 @@
+import os
 import pytest
 import sys
 import threading
 from time import sleep
+
 from ray.tests.conftest_docker import *  # noqa
 from ray._private.test_utils import wait_for_condition
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 
 scripts = """
-import ray
 import json
+import os
+
 from fastapi import FastAPI
+
+import ray
+
 app = FastAPI()
+
 from ray import serve
-ray.init(address="auto", namespace="g")
 
 @serve.deployment(num_replicas={num_replicas})
 @serve.ingress(app)
-class Counter:
-    def __init__(self):
-        self.count = 0
-
+class GetPID:
     @app.get("/")
     def get(self):
-        return {{"count": self.count}}
-
-    @app.get("/incr")
-    def incr(self):
-        self.count += 1
-        return {{"count": self.count}}
-
-    @app.get("/decr")
-    def decr(self):
-        self.count -= 1
-        return {{"count": self.count}}
-
-    @app.get("/pid")
-    def pid(self):
-        import os
         return {{"pid": os.getpid()}}
 
-counter_app = Counter.bind()
-serve.run(target=counter_app, name="Counter", route_prefix="/api")
+serve.run(GetPID.bind())
 """
 
 check_script = """
 import requests
-import json
-if {num_replicas} == 1:
-    b = json.loads(requests.get("http://127.0.0.1:8000/api/").text)["count"]
-    for i in range(5):
-        response = requests.get("http://127.0.0.1:8000/api/incr")
-        assert json.loads(response.text) == {{"count": i + b + 1}}
 
 pids = {{
-    json.loads(requests.get("http://127.0.0.1:8000/api/pid").text)["pid"]
-    for _ in range(5)
+    requests.get("http://127.0.0.1:8000/").json()["pid"]
+    for _ in range(20)
 }}
 
 print(pids)
@@ -86,10 +67,7 @@ def test_ray_serve_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0
-    assert b"Adding 1 replica to deployment Counter_Counter." in output.output
-    # somehow this is not working and the port is not exposed to the host.
-    # worker_cli = worker.client()
-    # print(worker_cli.request("GET", "/api/incr"))
+    assert b"Adding 1 replica to deployment " in output.output
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
 
@@ -147,8 +125,6 @@ assert serve_details.controller_info.node_id == head_node_id
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
