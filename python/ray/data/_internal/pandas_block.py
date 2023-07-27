@@ -395,12 +395,20 @@ class PandasBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
+        import pandas as pd
+
         if key is not None and not isinstance(key, (str, list)):
             raise ValueError(
                 "key must be a string, list of strings or None when aggregating "
                 "on Pandas blocks, but "
                 f"got: {type(key)}."
             )
+        
+        def equals(first, second) -> bool:
+            if isinstance(first, pd.Series):
+                return (first == second).all()
+            
+            return first == second
 
         def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
             """Creates an iterator over zero-copy group views."""
@@ -417,7 +425,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_key = next_row[key]
-                    while (next_row[key] == next_key).all():
+                    while equals(next_row[key], next_key):
                         end += 1
                         try:
                             next_row = next(iter)
