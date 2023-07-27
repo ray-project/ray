@@ -45,8 +45,8 @@ def setup_mlflow(
 ) -> Union[ModuleType, _NoopModule]:
     """Set up a MLflow session.
 
-    This function can be used to initialize an MLflow session in a
-    (distributed) training or tuning run.
+    This function can be used to initialize a MLflow session in a
+    (distributed) training or tuning run. The session will be created on the trainable.
 
     By default, the MLflow experiment ID is the Ray trial ID and the
     MLlflow experiment name is the Ray trial name. These settings can be overwritten by
@@ -197,6 +197,11 @@ class MLflowLoggerCallback(LoggerCallback):
     recording and querying experiments. This Ray Tune ``LoggerCallback``
     sends information (config parameters, training results & metrics,
     and artifacts) to MLflow for automatic experiment tracking.
+
+    Keep in mind, that the callback will open a Mlflow session on the driver and
+    not on the trainable. Therefore, it is not possible to call mlflow methods
+    like ``mlflow.log_figure()`` inside the trainable as there is no Mlflow session
+    on the trainable. Use :func:`setup_mlflow` if you need more fine grained control.
 
     Args:
         tracking_uri: The tracking URI for where to manage experiments
