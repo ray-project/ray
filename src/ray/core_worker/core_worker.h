@@ -1534,6 +1534,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   const CoreWorkerOptions options_;
 
+  std::function<std::shared_ptr<raylet::RayletClient>(const std::string&, int)> raylet_client_factory_;
+
   /// Callback to get the current language (e.g., Python) call site.
   std::function<void(std::string *)> get_call_site_;
 

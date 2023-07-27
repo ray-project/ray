@@ -422,11 +422,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
   }
 
-  auto raylet_client_factory = [this](const std::string ip_address, int port) {
+  raylet_client_factory_ = [this](const std::string& ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
-    return std::shared_ptr<raylet::RayletClient>(
-        new raylet::RayletClient(std::move(grpc_client)));
+    return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
   };
 
   auto on_excess_queueing = [this](const ActorID &actor_id, uint64_t num_queued) {
@@ -474,7 +473,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       rpc_address_,
       local_raylet_client_,
       core_worker_client_pool_,
-      raylet_client_factory,
+      raylet_client_factory_,
       std::move(lease_policy),
       memory_store_,
       task_manager_,
@@ -535,7 +534,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   };
   object_recovery_manager_ = std::make_unique<ObjectRecoveryManager>(
       rpc_address_,
-      raylet_client_factory,
+      raylet_client_factory_,
       local_raylet_client_,
       object_lookup_fn,
       task_manager_,

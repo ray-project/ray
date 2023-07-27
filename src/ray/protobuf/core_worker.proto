@@ -413,7 +413,15 @@ message ReportGeneratorItemReturnsRequest {
 message ReportGeneratorItemReturnsReply {}
 
 message ExportObjectOwnershipRequest {}
-message ExportObjectOwnershipReply {}
+
+
+message ExportObjectOwnershipReply {
+  message PrimaryCopyLocation {
+    bytes node_id = 1;
+    repeated bytes object_ids = 2;
+  }
+  repeated PrimaryCopyLocation locations = 1;
+}
 
 service CoreWorkerService {
   // Notify core worker GCS has restarted.
