@@ -80,6 +80,7 @@ const colorMap = {
     [ServeSystemActorStatus.UNHEALTHY]: red,
     [ServeSystemActorStatus.STARTING]: orange,
     [ServeSystemActorStatus.DRAINING]: blueGrey,
+    [ServeSystemActorStatus.DRAINED]: grey,
   },
   serveController: {
     [ServeSystemActorStatus.HEALTHY]: green,

@@ -92,6 +92,7 @@ export enum ServeSystemActorStatus {
   HEALTHY = "HEALTHY",
   UNHEALTHY = "UNHEALTHY",
   DRAINING = "DRAINING",
+  DRAINED = "DRAINED",
 }
 
 export type ServeSystemActor = {

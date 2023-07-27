@@ -44,6 +44,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
+    PROXY_DRAINING_MIN_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
@@ -242,7 +243,7 @@ class HTTPProxy:
             ray.get_actor(controller_name, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.ROUTE_TABLE: self._update_routes,
-                LongPollNamespace.ACTIVE_NODES: self._update_draining,
+                LongPollNamespace.HTTP_PROXY_NODES: self._update_draining,
             },
             call_in_event_loop=get_or_create_event_loop(),
         )
@@ -288,14 +289,20 @@ class HTTPProxy:
                 "status_code",
             ),
         )
-        # `self._ongoing_requests` is used to count the number of ongoing requests
-        # and determine whether to set/unset `self._prevent_node_downscale_ref`
-        self._ongoing_requests = 0
         # `self._prevent_node_downscale_ref` is used to prevent the node from being
         # downscaled when there are ongoing requests
-        self._prevent_node_downscale_ref = None
-        # `self._draining` is used to indicate whether the node is the draining state.
-        self._draining = False
+        self._prevent_node_downscale_ref = ray.put("prevent_node_downscale_object")
+        # `self._ongoing_requests` is used to count the number of ongoing requests
+        self._ongoing_requests = 0
+        # The time when the node starts to drain.
+        # The node is not draining if it's 0.0.
+        self._draining_start_time: float = 0.0
+        # The timer that will be fired
+        # when the draining time exceeds `PROXY_DRAINING_MIN_PERIOD_S`.
+        self._draining_timer = None
+
+    def _is_draining(self) -> bool:
+        return self._draining_start_time != 0
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -305,7 +312,16 @@ class HTTPProxy:
 
         self.prefix_router.update_routes(endpoints)
 
-    def _update_draining(self, active_nodes: Set[str]):
+    def _exit_if_drained(self):
+        assert self._is_draining()
+        drained = (not self._ongoing_requests) and (not self._draining_timer)
+        if drained:
+            logger.info(
+                f"The proxy actor on node {self._node_id} is drained. Exiting..."
+            )
+            ray.actor.exit_actor()
+
+    def _update_draining(self, http_proxy_nodes: Set[str]):
         """Update draining flag on http proxy.
 
         This is a callback for when controller detects there being a change in active
@@ -313,15 +329,24 @@ class HTTPProxy:
         draining flag accordingly. Also, log a message when the draining flag is
         changed.
         """
-        draining = self._node_id not in active_nodes
-        if draining != self._draining:
-            logger.info(f"Setting draining flag on node {self._node_id} to {draining}.")
-            self._draining = draining
 
-            # Since the draining flag is changed, we need to check if
-            # `self._prevent_node_downscale_ref` is set to prevent the node from being
-            # downscaled when there are ongoing requests.
-            self._try_set_prevent_downscale_ref()
+        def draining_timer_callback():
+            self._draining_timer = None
+            self._exit_if_drained()
+
+        draining = self._node_id not in http_proxy_nodes
+        if draining and (not self._is_draining()):
+            logger.info(f"Start to drain the proxy actor on node {self._node_id}")
+            self._draining_start_time = time.time()
+            self._draining_timer = get_or_create_event_loop().call_later(
+                PROXY_DRAINING_MIN_PERIOD_S, draining_timer_callback
+            )
+        if (not draining) and self._is_draining():
+            logger.info(f"Stop draining the proxy actor on node {self._node_id}")
+            self._draining_start_time = 0.0
+            if self._draining_timer:
+                self._draining_timer.cancel()
+                self._draining_timer = None
 
     async def block_until_endpoint_exists(
         self, endpoint: EndpointTag, timeout_s: float
@@ -359,23 +384,6 @@ class HTTPProxy:
         await queue.wait_for_message()
         return queue.get_messages_nowait()
 
-    def _try_set_prevent_downscale_ref(self):
-        """Try to set put a primary copy of object in the object store to prevent node
-        from downscale.
-
-        The only time we need to put the object store is when there are ongoing
-        requests, the node is not draining, and the object reference is not set yet.
-        This should be checked when either `self._ongoing_requests` or `self._draining`
-        is changed. Also, log when the object reference is set.
-        """
-        if (
-            self._ongoing_requests > 0
-            and self._draining
-            and self._prevent_node_downscale_ref is None
-        ):
-            logger.info("Putting keep alive object reference to prevent downscaling.")
-            self._prevent_node_downscale_ref = ray.put("ongoing_requests")
-
     def _ongoing_requests_start(self):
         """Ongoing requests start.
 
@@ -385,10 +393,6 @@ class HTTPProxy:
         alive while draining requests, so they are not dropped unintentionally.
         """
         self._ongoing_requests += 1
-        # Since the ongoing request is changed, we need to check if
-        # `self._prevent_node_downscale_ref` is set to prevent the node from being
-        # downscaled when the draining flag is true.
-        self._try_set_prevent_downscale_ref()
 
     def _ongoing_requests_end(self):
         """Ongoing requests end.
@@ -397,12 +401,8 @@ class HTTPProxy:
         signaling that the node can be downscaled safely.
         """
         self._ongoing_requests -= 1
-        if self._ongoing_requests == 0:
-            logger.info(
-                "Dropping keep alive object reference to allow downscaling.",
-                extra={"log_to_stderr": False},
-            )
-            self._prevent_node_downscale_ref = None
+        if self._ongoing_requests == 0 and self._is_draining():
+            self._exit_if_drained()
 
     async def __call__(self, scope, receive, send):
         """Implements the ASGI protocol.
@@ -419,7 +419,7 @@ class HTTPProxy:
         route_path = scope["path"][len(root_path) :]
 
         if route_path == "/-/routes":
-            if self._draining:
+            if self._is_draining():
                 return await self._draining_response(scope, receive, send)
 
             self.request_counter.inc(
@@ -435,7 +435,7 @@ class HTTPProxy:
             )
 
         if route_path == "/-/healthz":
-            if self._draining:
+            if self._is_draining():
                 return await self._draining_response(scope, receive, send)
 
             self.request_counter.inc(

@@ -193,6 +193,14 @@ class HTTPProxyState:
                         else HTTPProxyStatus.DRAINING
                     )
                     self.try_update_status(status)
+                except ray.exceptions.RayActorError:
+                    # The proxy actor dies.
+                    status = (
+                        HTTPProxyStatus.UNHEALTHY
+                        if not draining
+                        else HTTPProxyStatus.DRAINED
+                    )
+                    self.try_update_status(status)
                 except Exception as e:
                     logger.warning(
                         f"Health check for HTTP proxy {self._actor_name} failed: {e}"
@@ -266,8 +274,6 @@ class HTTPProxyStateManager:
         config: HTTPOptions,
         head_node_id: str,
         gcs_client: GcsClient,
-        # Used by unit testing
-        _start_proxies_on_init: bool = True,
     ):
         self._controller_name = controller_name
         self._detached = detached
@@ -281,10 +287,6 @@ class HTTPProxyStateManager:
         self._gcs_client = gcs_client
 
         assert isinstance(head_node_id, str)
-
-        # Will populate self.proxy_actors with existing actors.
-        if _start_proxies_on_init:
-            self._start_proxies_if_needed()
 
     def shutdown(self) -> None:
         for proxy_state in self._proxy_states.values():
@@ -320,29 +322,34 @@ class HTTPProxyStateManager:
             for node_id, state in self._proxy_states.items()
         }
 
-    def update(self, active_nodes: Set[NodeId] = None):
+    def update(self, http_proxy_nodes: Set[NodeId] = None):
         """Update the state of all HTTP proxies.
 
         Start proxies on all nodes if not already exist and stop the proxies on nodes
         that are no longer exist. Update all proxy states. Kill and restart
         unhealthy proxies.
         """
-        # Ensure head node is always active.
-        if active_nodes is None:
-            active_nodes = {self._head_node_id}
+        # Ensure head node always has a proxy.
+        if http_proxy_nodes is None:
+            http_proxy_nodes = {self._head_node_id}
         else:
-            active_nodes.add(self._head_node_id)
+            http_proxy_nodes.add(self._head_node_id)
 
-        self._start_proxies_if_needed()
-        self._stop_proxies_if_needed()
         for node_id, proxy_state in self._proxy_states.items():
-            draining = node_id not in active_nodes
+            draining = node_id not in http_proxy_nodes
             proxy_state.update(draining)
 
-    def _get_target_nodes(self) -> List[Tuple[str, str]]:
+        self._stop_proxies_if_needed()
+        self._start_proxies_if_needed(http_proxy_nodes)
+
+    def _get_target_nodes(self, http_proxy_nodes) -> List[Tuple[str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
         location = self._config.location
-        target_nodes = get_all_node_ids(self._gcs_client)
+        target_nodes = [
+            (node_id, ip_address)
+            for node_id, ip_address in get_all_node_ids(self._gcs_client)
+            if node_id in http_proxy_nodes
+        ]
 
         if location == DeploymentMode.NoServer:
             return []
@@ -422,10 +429,10 @@ class HTTPProxyStateManager:
         )
         return proxy
 
-    def _start_proxies_if_needed(self) -> None:
+    def _start_proxies_if_needed(self, http_proxy_nodes) -> None:
         """Start a proxy on every node if it doesn't already exist."""
 
-        for node_id, node_ip_address in self._get_target_nodes():
+        for node_id, node_ip_address in self._get_target_nodes(http_proxy_nodes):
             if node_id in self._proxy_states:
                 continue
 
@@ -464,6 +471,9 @@ class HTTPProxyStateManager:
                     f"HTTP proxy on node '{node_id}' UNHEALTHY. Shutting down "
                     "the unhealthy proxy and starting a new one."
                 )
+                to_stop.append(node_id)
+            elif proxy_state.status == HTTPProxyStatus.DRAINED:
+                logger.info(f"Removing drained HTTP proxy on node '{node_id}'.")
                 to_stop.append(node_id)
 
         for node_id in to_stop:
