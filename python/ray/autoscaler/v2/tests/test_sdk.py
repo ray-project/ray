@@ -52,7 +52,7 @@ def get_node_ids() -> Tuple[str, List[str]]:
 
 
 def assert_cluster_resource_constraints(
-    state: ClusterResourceState, expected: List[dict]
+    state: ClusterResourceState, expected_bundles: List[dict], expected_count: List[int]
 ):
     """
     Assert a GetClusterResourceStateReply has cluster_resource_constraints that
@@ -62,16 +62,26 @@ def assert_cluster_resource_constraints(
     assert len(state.cluster_resource_constraints) == 1
 
     min_bundles = state.cluster_resource_constraints[0].min_bundles
-    assert len(min_bundles) == len(expected)
+    assert len(min_bundles) == len(expected_bundles) == len(expected_count)
 
     # Sort all the bundles by bundle's resource names
     min_bundles = sorted(
-        min_bundles, key=lambda bundle: "".join(bundle.resources_bundle.keys())
+        min_bundles,
+        key=lambda bundle_by_count: "".join(
+            bundle_by_count.request.resources_bundle.keys()
+        ),
     )
-    expected = sorted(expected, key=lambda bundle: "".join(bundle.keys()))
+    expected = zip(expected_bundles, expected_count)
+    expected = sorted(
+        expected, key=lambda bundle_count: "".join(bundle_count[0].keys())
+    )
 
-    for actual_bundle, expected_bundle in zip(min_bundles, expected):
-        assert dict(actual_bundle.resources_bundle) == expected_bundle
+    for actual_bundle_count, expected_bundle_count in zip(min_bundles, expected):
+        assert (
+            dict(actual_bundle_count.request.resources_bundle)
+            == expected_bundle_count[0]
+        )
+        assert actual_bundle_count.count == expected_bundle_count[1]
 
 
 @dataclass
@@ -240,7 +250,7 @@ def test_request_cluster_resources_basic(shutdown_only):
 
     def verify():
         state = get_cluster_resource_state(stub)
-        assert_cluster_resource_constraints(state, [{"CPU": 1}])
+        assert_cluster_resource_constraints(state, [{"CPU": 1}], [1])
         return True
 
     wait_for_condition(verify)
@@ -250,7 +260,17 @@ def test_request_cluster_resources_basic(shutdown_only):
 
     def verify():
         state = get_cluster_resource_state(stub)
-        assert_cluster_resource_constraints(state, [{"CPU": 2, "GPU": 1}, {"CPU": 1}])
+        assert_cluster_resource_constraints(
+            state, [{"CPU": 2, "GPU": 1}, {"CPU": 1}], [1, 1]
+        )
+        return True
+
+    # Request multiple is aggregated by shape.
+    request_cluster_resources([{"CPU": 1}] * 100)
+
+    def verify():
+        state = get_cluster_resource_state(stub)
+        assert_cluster_resource_constraints(state, [{"CPU": 1}], [100])
         return True
 
     wait_for_condition(verify)

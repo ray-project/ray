@@ -80,7 +80,7 @@ message GangResourceRequest {
 message ClusterResourceConstraint {
   // If not emtpy, the cluster should have the capacity (total resource) to fit
   // the min_bundles.
-  repeated ResourceRequest min_bundles = 1;
+  repeated ResourceRequestByCount min_bundles = 1;
 }
 
 // Node status for a ray node.

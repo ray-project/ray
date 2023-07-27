@@ -399,18 +399,24 @@ Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
 
 Status PythonGcsClient::RequestClusterResourceConstraint(
     int64_t timeout_ms,
-    const std::vector<std::unordered_map<std::string, double>> &bundles) {
+    const std::vector<std::unordered_map<std::string, double>> &bundles,
+    const std::vector<int64_t> &count_array) {
   grpc::ClientContext context;
   GrpcClientContextWithTimeoutMs(context, timeout_ms);
 
   rpc::autoscaler::RequestClusterResourceConstraintRequest request;
   rpc::autoscaler::RequestClusterResourceConstraintReply reply;
+  RAY_CHECK(bundles.size() == count_array.size());
+  for (size_t i = 0; i < bundles.size(); ++i) {
+    const auto &bundle = bundles[i];
+    auto count = count_array[i];
 
-  for (auto bundle : bundles) {
-    request.mutable_cluster_resource_constraint()
-        ->add_min_bundles()
-        ->mutable_resources_bundle()
-        ->insert(bundle.begin(), bundle.end());
+    auto new_resource_requests_by_count =
+        request.mutable_cluster_resource_constraint()->add_min_bundles();
+
+    new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
+        bundle.begin(), bundle.end());
+    new_resource_requests_by_count->set_count(count);
   }
 
   grpc::Status status =
