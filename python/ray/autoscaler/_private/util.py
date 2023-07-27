@@ -796,7 +796,7 @@ def format_info_string(
 
     failure_lines = []
     for ip, node_type in autoscaler_summary.failed_nodes:
-        line = f" {node_type}: RayletUnexpectedlyDied (ip: {ip})"
+        line = f" {node_type}: NodeTerminated (ip: {ip})"
         failure_lines.append(line)
     if autoscaler_summary.node_availability_summary:
         records = sorted(
