@@ -162,10 +162,10 @@ if __name__ == "__main__":
         args.data_root, batch_size=args.batch_size, image_size=FULL_IMAGE_SIZE
     )
     for i in range(args.num_epochs):
-        iterate(tf_dataset, "tf.data", metrics)
+        iterate(tf_dataset, "tf_data", metrics)
     tf_dataset = tf_dataset.map(lambda img, label: (tf_crop_and_flip(img), label))
     for i in range(args.num_epochs):
-        iterate(tf_dataset, "tf.data+transform", metrics)
+        iterate(tf_dataset, "tf_data+transform", metrics)
 
     torch_dataset = build_torch_dataset(
         args.data_root, args.batch_size, transform=torchvision.transforms.ToTensor()
@@ -184,7 +184,7 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+transform",
+            "ray_data+transform",
             metrics,
         )
 
@@ -194,7 +194,7 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+transform+zerocopy",
+            "ray_data+transform+zerocopy",
             metrics,
         )
 
@@ -202,7 +202,7 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data",
+            "ray_data",
             metrics,
         )
 
@@ -212,7 +212,7 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+dummy_pyarrow_transform",
+            "ray_data+dummy_pyarrow_transform",
             metrics,
         )
 
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data+dummy_np_transform",
+            "ray_data+dummy_np_transform",
             metrics,
         )
 
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     for i in range(args.num_epochs):
         iterate(
             ray_dataset.iter_torch_batches(batch_size=args.batch_size),
-            "ray.data_manual_load",
+            "ray_data_manual_load",
             metrics,
         )
 
