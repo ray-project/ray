@@ -59,7 +59,6 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
         if "exclusive" in test_tags:
             shard_num = 1
             test_tags += ["no-sandbox"]
-        print(test_tags)
         env_items = env.items()
         if shard_num != 1:
             env_items += [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]

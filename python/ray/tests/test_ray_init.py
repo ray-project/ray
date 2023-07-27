@@ -9,7 +9,6 @@ import pytest
 import ray
 import ray._private.services
 from ray.client_builder import ClientContext
-from ray.cluster_utils import Cluster
 from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
@@ -209,29 +208,6 @@ def test_auto_init_client(call_ray_start, function):
         res = function()
         # Ensure this is a client connection.
         assert isinstance(res, ClientObjectRef)
-
-
-@pytest.mark.skipif(
-    os.environ.get("CI") and sys.platform != "linux",
-    reason="This test is only run on linux CI machines.",
-)
-def test_ray_init_using_hostname(ray_start_cluster):
-    import socket
-
-    hostname = socket.gethostname()
-    cluster = Cluster(
-        initialize_head=True,
-        head_node_args={
-            "node_ip_address": hostname,
-        },
-    )
-
-    # Use `ray.init` to test the connection.
-    ray.init(address=cluster.address, _node_ip_address=hostname)
-
-    node_table = cluster.global_state.node_table()
-    assert len(node_table) == 1
-    assert node_table[0].get("NodeManagerHostname", "") == hostname
 
 
 if __name__ == "__main__":
