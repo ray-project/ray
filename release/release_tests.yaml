@@ -1070,6 +1070,7 @@
           cluster_env: ../testing/cluster_envs/03_serving_stable_diffusion.yaml
           cluster_compute: ../testing/compute_configs/gpu/gce.yaml
 
+
 #######################
 # XGBoost release tests
 #######################
