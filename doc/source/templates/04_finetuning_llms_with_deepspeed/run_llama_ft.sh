@@ -104,8 +104,8 @@ MODEL_ID="meta-llama/Llama-2-${SIZE}-hf"
 CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_${SIZE}.json"
 
 setup_aws
-prepare_nodes $MODEL_ID
-check_and_create_dataset $DATA_DIR
+prepare_nodes "${MODEL_ID}"
+check_and_create_dataset "${DATA_DIR}"
 fine_tune "$BS" "$ND" "$MODEL_ID" "$BASE_DIR" "$CONFIG_DIR" "$TRAIN_PATH" "$TEST_PATH" "$TOKEN_PATH" "${params[@]}"
 
 echo "Process completed."
