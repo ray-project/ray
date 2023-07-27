@@ -547,6 +547,7 @@ xxhash==3.2.0
 y-py==0.5.9
 yarl==1.9.2
 ypy-websocket==0.8.2
+yq==3.2.2
 zict==3.0.0
 zipp==3.15.0
 zoopt==0.4.1

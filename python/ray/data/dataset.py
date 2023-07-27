@@ -18,6 +18,7 @@ from typing import (
     Optional,
     Tuple,
     Type,
+    TypeVar,
     Union,
 )
 from uuid import uuid4
@@ -152,7 +153,6 @@ if TYPE_CHECKING:
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     from ray.data._internal.execution.interfaces import Executor, NodeIdStr
-    from ray.data._internal.torch_iterable_dataset import TorchTensorBatchType
     from ray.data.dataset_pipeline import DatasetPipeline
     from ray.data.grouped_data import GroupedData
 
@@ -164,6 +164,9 @@ TensorflowFeatureTypeSpec = Union[
 ]
 
 TensorFlowTensorBatchType = Union["tf.Tensor", Dict[str, "tf.Tensor"]]
+
+CollatedData = TypeVar("CollatedData")
+TorchBatchType = Union[Dict[str, "torch.Tensor"], CollatedData]
 
 
 @PublicAPI
@@ -1946,8 +1949,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the sum. If ``False``,
                 when a null value is encountered, the output is ``None``.
-                Ray Data considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                Ray Data considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The sum result.
@@ -1988,8 +1991,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the min; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The min result.
@@ -2030,8 +2033,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the max; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The max result.
@@ -2072,8 +2075,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the mean; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The mean result.
@@ -2108,7 +2111,8 @@ class Dataset:
             numerical stability, and is computable in a single pass. This may give
             different (but more accurate) results than NumPy, Pandas, and sklearn, which
             use a less numerically stable two-pass algorithm.
-            To learn more, see `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
+            To learn more, see
+            `the Wikapedia article <https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Welford's_online_algorithm>`_.
 
         Examples:
             >>> import ray
@@ -2127,8 +2131,8 @@ class Dataset:
             ignore_nulls: Whether to ignore null values. If ``True``, null
                 values are ignored when computing the std; if ``False``,
                 when a null value is encountered, the output is ``None``.
-                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null values.
-                Default is ``True``.
+                This method considers ``np.nan``, ``None``, and ``pd.NaT`` to be null
+                values. Default is ``True``.
 
         Returns:
             The standard deviation result.
@@ -2144,7 +2148,7 @@ class Dataset:
 
             If the dataset is empty, all values are null. If ``ignore_nulls`` is
             ``False`` and any value is null, then the output is ``None``.
-        """
+        """  # noqa: E501
         ret = self._aggregate_on(Std, on, ignore_nulls, ddof=ddof)
         return self._aggregate_result(ret)
 
@@ -3335,7 +3339,7 @@ class Dataset:
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
-        _collate_fn: Optional[Callable[[DataBatch], Any]] = None,
+        _collate_fn: Optional[Callable[[DataBatch], CollatedData]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
     ) -> Iterator[DataBatch]:
@@ -3407,14 +3411,14 @@ class Dataset:
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
         dtypes: Optional[Union["torch.dtype", Dict[str, "torch.dtype"]]] = None,
-        device: Optional[str] = None,
-        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], Any]] = None,
+        device: str = "auto",
+        collate_fn: Optional[Callable[[Dict[str, np.ndarray]], CollatedData]] = None,
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         # Deprecated
         prefetch_blocks: int = 0,
-    ) -> Iterator["TorchTensorBatchType"]:
+    ) -> Iterator[TorchBatchType]:
         """Return an iterator over batches of data represented as Torch tensors.
 
         This iterator yields batches of type ``Dict[str, torch.Tensor]``.
@@ -3422,22 +3426,34 @@ class Dataset:
         your data to Torch tensors.
 
         Examples:
+            >>> import ray
+            >>> for batch in ray.data.range(
+            ...     12,
+            ... ).iter_torch_batches(batch_size=4):
+            ...     print(batch)
+            {'id': tensor([0, 1, 2, 3])}
+            {'id': tensor([4, 5, 6, 7])}
+            {'id': tensor([ 8,  9, 10, 11])}
 
-            .. testcode::
+            Use the ``collate_fn`` to customize how the tensor batch is created.
 
-                import ray
+            >>> from typing import Any, Dict
+            >>> import torch
+            >>> import numpy as np
+            >>> import ray
+            >>> def collate_fn(batch: Dict[str, np.ndarray]) -> Any:
+            ...     return torch.stack(
+            ...         [torch.as_tensor(array) for array in batch.values()],
+            ...         axis=1
+            ...     )
+            >>> dataset = ray.data.from_items([
+            ...     {"col_1": 1, "col_2": 2},
+            ...     {"col_1": 3, "col_2": 4}])
+            >>> for batch in dataset.iter_torch_batches(collate_fn=collate_fn):
+            ...     print(batch)
+            tensor([[1, 2],
+                    [3, 4]])
 
-                # This dataset contains three images.
-                ds = ray.data.read_images("example://image-datasets/simple")
-
-                for batch in ds.iter_torch_batches(batch_size=2):
-                    print(batch)
-
-            .. testoutput::
-                :options: +MOCK
-
-                {'image': <tf.Tensor: shape=(2, 32, 32, 3), dtype=uint8, numpy=array([[[[...]]]], dtype=uint8)>}
-                {'image': <tf.Tensor: shape=(1, 32, 32, 3), dtype=uint8, numpy=array([[[[...]]]], dtype=uint8)>}
 
         Time complexity: O(1)
 
@@ -3450,17 +3466,25 @@ class Dataset:
                 blocks as batches (blocks may contain different number of rows).
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
-            dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the
-                dtype is inferred from the tensor data.
-            device: The device on which the tensor should be placed; if ``None``, the
-                Torch tensor is constructed on CPU.
+            dtypes: The Torch dtype(s) for the created tensor(s); if ``None``, the dtype
+                is inferred from the tensor data. You can't use this parameter with
+                ``collate_fn``.
+            device: The device on which the tensor should be placed. Defaults to
+                "auto" which moves the tensors to the appropriate device when the
+                Dataset is passed to Ray Train and ``collate_fn`` is not provided.
+                Otherwise, defaults to CPU. You can't use this parameter with
+                ``collate_fn``.
             collate_fn: A function to convert a Numpy batch to a PyTorch tensor batch.
-                Potential use cases include collating along a dimension other than the
-                first, padding sequences of various lengths, or generally handling
-                batches of different length tensors. If not provided, the default
-                collate function is used which simply converts the batch of numpy
-                arrays to a batch of PyTorch tensors. This API is still experimental
-                and is subject to change.
+                When this parameter is specified, the user should manually handle the
+                host to device data transfer outside of collate_fn.
+                This is useful for further processing the data after it has been
+                batched. Potential use cases include collating along a dimension other
+                than the first, padding sequences of various lengths, or generally
+                handling batches of different length tensors. If not provided, the
+                default collate function is used which simply converts the batch of
+                numpy arrays to a batch of PyTorch tensors. This API is still
+                experimental and is subject to change. You can't use this parameter in
+                conjunction with ``dtypes`` or ``device``.
             drop_last: Whether to drop the last batch if it's incomplete.
             local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
                 using a local in-memory shuffle buffer, and this value serves as the
