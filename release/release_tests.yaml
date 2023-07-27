@@ -1092,7 +1092,7 @@
         env: gce
         frequency: manual
         cluster:
-          cluster_env: ./testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
+          cluster_env: ../../testing/cluster_envs/04_finetuning_llms_with_deepspeed.yaml
           cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b_or_13b.yaml
 
 
