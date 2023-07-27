@@ -94,7 +94,8 @@ class _ModelMultiplexWrapper:
         self._model_cache_lock = asyncio.Lock()
         # The set of model IDs that are being loaded. This is used to early push
         # model ids info to the controller. The tasks will be added when there is cache
-        # miss, and will be removed when the model is loaded successfully or failed to load.
+        # miss, and will be removed when the model is loaded successfully or
+        # failed to load.
         self._model_load_tasks: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
