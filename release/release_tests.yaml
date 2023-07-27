@@ -6297,7 +6297,7 @@
 
   run:
     timeout: 1800
-    script: python image_train_benchmark.py --num-workers 4 --file-type image
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type image
 
   variations:
     - __suffix__: aws
@@ -6323,7 +6323,7 @@
 
   run:
     timeout: 1800
-    script: python image_train_benchmark.py --num-workers 16 --file-type image
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image
 
   variations:
     - __suffix__: aws
@@ -6349,7 +6349,7 @@
 
   run:
     timeout: 1800
-    script: python image_train_benchmark.py --num-workers 16 --file-type image --preserve-order
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type image --preserve-order
 
   variations:
     - __suffix__: aws
@@ -6375,7 +6375,7 @@
 
   run:
     timeout: 1800
-    script: python image_train_benchmark.py --num-workers 4 --file-type parquet
+    script: python multi_node_train_benchmark.py --num-workers 4 --file-type parquet
 
   variations:
     - __suffix__: aws
@@ -6401,7 +6401,7 @@
 
   run:
     timeout: 1800
-    script: python image_train_benchmark.py --num-workers 16 --file-type parquet
+    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet
 
   variations:
     - __suffix__: aws

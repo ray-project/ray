@@ -136,7 +136,7 @@ if __name__ == "__main__":
                 local_shuffle_buffer_size=args.local_shuffle_buffer_size,
                 prefetch_batches=10,
             ):
-                num_rows += len(batch["image"])
+                num_rows += args.batch_size
             end_t = time.time()
             # Record throughput per epoch.
             epoch_tput = num_rows / (end_t - start_t)
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     result = torch_trainer.fit()
 
     # Report the throughput of the last training epoch.
-    metrics["ray.TorchTrainer.fit"] = list(result.metrics_dataframe["tput"])[-1]
+    metrics["ray_TorchTrainer_fit"] = list(result.metrics_dataframe["tput"])[-1]
 
     # Gather up collected metrics, and write to output JSON file.
     metrics_dict = defaultdict(dict)
@@ -171,7 +171,7 @@ if __name__ == "__main__":
     }
 
     test_output_json = os.environ.get(
-        "TEST_OUTPUT_JSON", "/tmp/train_torch_image_benchmark.json"
+        "TEST_OUTPUT_JSON", "/tmp/multi_node_train_benchmark.json"
     )
 
     with open(test_output_json, "wt") as f:
