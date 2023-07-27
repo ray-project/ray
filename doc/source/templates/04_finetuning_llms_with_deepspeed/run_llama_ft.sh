@@ -14,7 +14,7 @@ setup_aws() {
 prepare_nodes() {
     local model_id=$1
     echo "Preparing nodes..."
-    if ! python prepare_nodes.py --hf-model-id ${model_id}; then
+    if ! python prepare_nodes.py --hf-model-id "${model_id}"; then
         echo "Failed to prepare nodes. Exiting..."
         exit 1
     fi
@@ -45,14 +45,14 @@ fine_tune() {
     local params=("${@:9}")
     echo "Fine-tuning model..."
     if ! python finetune_hf_llm.py \
-        -bs ${bs} \
-        -nd ${nd} \
-        --model_name ${model_name} \
-        --output_dir ${output_dir} \
-        --ds-config ${ds_config} \
-        --train_path ${train_path} \
-        --test_path ${test_path}  \
-        --special_token_path ${token_path} \
+        -bs "${bs}" \
+        -nd "${nd}" \
+        --model_name "${model_name}" \
+        --output_dir "${output_dir}" \
+        --ds-config "${ds_config}" \
+        --train_path "${train_path}" \
+        --test_path "${test_path}"  \
+        --special_token_path "${token_path}" \
         "${params[@]}"; then
         echo "Failed to fine-tune the model. Exiting..."
         exit 1
@@ -106,6 +106,6 @@ CONFIG_DIR="./deepspeed_configs/zero_3_llama_2_${SIZE}.json"
 setup_aws
 prepare_nodes $MODEL_ID
 check_and_create_dataset $DATA_DIR
-fine_tune $BS $ND $MODEL_ID $BASE_DIR $CONFIG_DIR $TRAIN_PATH $TEST_PATH $TOKEN_PATH "${params[@]}"
+fine_tune "$BS" "$ND" "$MODEL_ID" "$BASE_DIR" "$CONFIG_DIR" "$TRAIN_PATH" "$TEST_PATH" "$TOKEN_PATH" "${params[@]}"
 
 echo "Process completed."
