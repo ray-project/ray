@@ -16,6 +16,7 @@ from ray.air._internal.checkpoint_manager import CheckpointStorage, _TrackedChec
 from ray.air.config import CheckpointConfig
 from ray.air.constants import TIME_THIS_ITER_S
 from ray.exceptions import RayTaskError
+from ray.train._internal.storage import _use_storage_context, StorageContext
 from ray.tune.error import _TuneStopTrialError, _TuneRestoreError
 from ray.tune.execution.experiment_state import (
     _ExperimentCheckpointManager,
@@ -134,6 +135,7 @@ class _TuneControllerBase:
         callbacks: Optional[List[Callback]] = None,
         metric: Optional[str] = None,
         trial_checkpoint_config: Optional[CheckpointConfig] = None,
+        storage: Optional[StorageContext] = None,
         _trainer_api: bool = False,
     ):
         self._search_alg = search_alg or BasicVariantGenerator()
@@ -147,51 +149,65 @@ class _TuneControllerBase:
 
         self._max_pending_trials = _get_max_pending_trials(self._search_alg)
 
-        self._sync_config = sync_config or SyncConfig()
+        self._storage = storage
+        self._legacy_sync_config = sync_config or SyncConfig()
 
-        # Rename for better code readability
-        local_experiment_path, remote_experiment_path = _split_remote_local_path(
-            experiment_path, None
-        )
-
-        # Derive experiment dir name from local path
-        if not experiment_dir_name and local_experiment_path:
-            # Maybe derive experiment dir name from local storage dir
-            experiment_dir_name = Path(local_experiment_path).name
-        elif not experiment_dir_name:
-            experiment_dir_name = DEFAULT_EXPERIMENT_NAME
-
-        # Set default experiment dir name
-        if not local_experiment_path:
-            local_experiment_path = str(
-                Path(_get_defaults_results_dir()) / experiment_dir_name
+        if _use_storage_context():
+            assert storage
+            self._legacy_experiment_dir_name = None
+            self._legacy_local_experiment_path = None
+            self._legacy_remote_experiment_path = None
+            self._legacy_sync_config = None
+        else:
+            # Rename for better code readability
+            local_experiment_path, remote_experiment_path = _split_remote_local_path(
+                experiment_path, None
             )
-            os.makedirs(local_experiment_path, exist_ok=True)
 
-        self._experiment_dir_name = experiment_dir_name
+            # Derive experiment dir name from local path
+            if not experiment_dir_name and local_experiment_path:
+                # Maybe derive experiment dir name from local storage dir
+                experiment_dir_name = Path(local_experiment_path).name
+            elif not experiment_dir_name:
+                experiment_dir_name = DEFAULT_EXPERIMENT_NAME
 
-        if self._sync_config.upload_dir and self._experiment_dir_name:
-            if remote_experiment_path:
-                if not remote_experiment_path.startswith(self.sync_config.upload_dir):
-                    raise ValueError(
-                        f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
-                        f"pointing to remote storage were passed, but they do not "
-                        f"point to the same location. Got: "
-                        f"`experiment_path={experiment_path}` and "
-                        f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+            # Set default experiment dir name
+            if not local_experiment_path:
+                local_experiment_path = str(
+                    Path(_get_defaults_results_dir()) / experiment_dir_name
+                )
+                os.makedirs(local_experiment_path, exist_ok=True)
+
+            self._legacy_experiment_dir_name = experiment_dir_name
+
+            if self._legacy_sync_config.upload_dir and self._legacy_experiment_dir_name:
+                if remote_experiment_path:
+                    if not remote_experiment_path.startswith(
+                        self.sync_config.upload_dir
+                    ):
+                        raise ValueError(
+                            f"Both a `SyncConfig.upload_dir` and an `experiment_path` "
+                            f"pointing to remote storage were passed, but they do not "
+                            f"point to the same location. Got: "
+                            f"`experiment_path={experiment_path}` and "
+                            f"`SyncConfig.upload_dir={self.sync_config.upload_dir}`. "
+                        )
+                    warnings.warn(
+                        "If `experiment_path` points to a remote storage location, "
+                        "do not set `SyncConfig.upload_dir`. ",
+                        DeprecationWarning,
                     )
-                warnings.warn(
-                    "If `experiment_path` points to a remote storage location, "
-                    "do not set `SyncConfig.upload_dir`. ",
-                    DeprecationWarning,
-                )
-            else:
-                remote_experiment_path = str(
-                    URI(self._sync_config.upload_dir) / self._experiment_dir_name
-                )
+                else:
+                    remote_experiment_path = str(
+                        URI(self._legacy_sync_config.upload_dir)
+                        / self._legacy_experiment_dir_name
+                    )
 
-        self._local_experiment_path = local_experiment_path
-        self._remote_experiment_path = remote_experiment_path
+            self._legacy_local_experiment_path = local_experiment_path
+            if self._legacy_local_experiment_path:
+                os.makedirs(self._legacy_local_experiment_path, exist_ok=True)
+
+            self._legacy_remote_experiment_path = remote_experiment_path
 
         self._metric = metric
 
@@ -230,9 +246,6 @@ class _TuneControllerBase:
 
         self._stop_queue = []
         self._should_stop_experiment = False  # used by TuneServer
-
-        if self._local_experiment_path:
-            os.makedirs(self._local_experiment_path, exist_ok=True)
 
         self._stopper = stopper or NoopStopper()
 
@@ -320,21 +333,29 @@ class _TuneControllerBase:
     @property
     def experiment_state_path(self) -> str:
         """Returns the local experiment checkpoint path."""
+        if _use_storage_context():
+            return os.path.join(
+                self._storage.experiment_local_path, self.experiment_state_file_name
+            )
         return os.path.join(
-            self._local_experiment_path, self.experiment_state_file_name
+            self._legacy_local_experiment_path, self.experiment_state_file_name
         )
 
     @property
     def experiment_path(self) -> str:
-        return self._remote_experiment_path or self._local_experiment_path
+        if _use_storage_context():
+            return self._storage.experiment_path
+        return self._legacy_remote_experiment_path or self._legacy_local_experiment_path
 
     def _create_checkpoint_manager(self):
         return _ExperimentCheckpointManager(
-            local_checkpoint_dir=self._local_experiment_path,
-            remote_checkpoint_dir=self._remote_experiment_path,
             checkpoint_period=self._checkpoint_period,
-            sync_config=self._sync_config,
             sync_every_n_trial_checkpoints=self._trial_checkpoint_config.num_to_keep,
+            storage=self._storage,
+            # TODO(justinvyu): Remove these.
+            local_checkpoint_dir=self._legacy_local_experiment_path,
+            remote_checkpoint_dir=self._legacy_remote_experiment_path,
+            sync_config=self._legacy_sync_config,
         )
 
     @classmethod
@@ -353,7 +374,11 @@ class _TuneControllerBase:
         This method will save the trial runner state, the searcher state,
         and the callback states into the experiment directory.
         """
-        experiment_dir = experiment_dir or self._local_experiment_path
+        if _use_storage_context():
+            assert not experiment_dir, "Remove the `experiment_dir` argument."
+            experiment_dir = self._storage.experiment_local_path
+        else:
+            experiment_dir = experiment_dir or self._legacy_local_experiment_path
 
         # Get state from trial executor and runner
         runner_state = {
@@ -380,12 +405,8 @@ class _TuneControllerBase:
             os.path.join(experiment_dir, self.experiment_state_file_name),
         )
 
-        self._search_alg.save_to_dir(
-            self._local_experiment_path, session_str=self._session_str
-        )
-        self._callbacks.save_to_dir(
-            self._local_experiment_path, session_str=self._session_str
-        )
+        self._search_alg.save_to_dir(experiment_dir, session_str=self._session_str)
+        self._callbacks.save_to_dir(experiment_dir, session_str=self._session_str)
 
     def restore_from_dir(self, experiment_dir: Optional[str] = None) -> List[Trial]:
         """Restore TrialRunner state from experiment directory.
@@ -397,26 +418,31 @@ class _TuneControllerBase:
         and the callback states. It will then parse the trial states
         and return them as a list of Trial objects.
         """
-        experiment_dir = experiment_dir or self._local_experiment_path
+        if _use_storage_context():
+            raise NotImplementedError(
+                "Restoration is not fully working. TODO for a follow-up PR."
+            )
+            assert not experiment_dir, "Remove the `experiment_dir` argument."
+            experiment_dir = self._storage.experiment_local_path
+        else:
+            experiment_dir = experiment_dir or self._legacy_local_experiment_path
 
-        # Update local checkpoint dir
-        self._local_experiment_path = experiment_dir
+            # Update local checkpoint dir
+            self._legacy_local_experiment_path = experiment_dir
 
         # Find newest state file
-        newest_state_path = _find_newest_experiment_checkpoint(
-            self._local_experiment_path
-        )
+        newest_state_path = _find_newest_experiment_checkpoint(experiment_dir)
 
         if not newest_state_path:
             raise ValueError(
                 f"Tried to resume experiment from directory "
-                f"`{self._local_experiment_path}`, but no "
+                f"`{experiment_dir}`, but no "
                 f"experiment checkpoint data was found."
             )
 
         # Set checkpoint file to load
         logger.warning(
-            f"Attempting to resume experiment from {self._local_experiment_path}. "
+            f"Attempting to resume experiment from {experiment_dir}. "
             "This will ignore any new changes to the specification."
         )
         logger.info(
@@ -432,11 +458,11 @@ class _TuneControllerBase:
         self.__setstate__(runner_state["runner_data"])
 
         # 2. Restore search algorithm and callback state
-        if self._search_alg.has_checkpoint(self._local_experiment_path):
-            self._search_alg.restore_from_dir(self._local_experiment_path)
+        if self._search_alg.has_checkpoint(experiment_dir):
+            self._search_alg.restore_from_dir(experiment_dir)
 
-        if self._callbacks.can_restore(self._local_experiment_path):
-            self._callbacks.restore_from_dir(self._local_experiment_path)
+        if self._callbacks.can_restore(experiment_dir):
+            self._callbacks.restore_from_dir(experiment_dir)
 
         # 3. Load trials
         trials = []
@@ -446,10 +472,10 @@ class _TuneControllerBase:
             # The following properties may be updated on restoration
             # Ex: moved local/cloud experiment directory
             # ATTN: Set `local_experiment_path` to update trial checkpoints!
-            trial.local_experiment_path = self._local_experiment_path
-            trial.remote_experiment_path = self._remote_experiment_path
-            trial.sync_config = self._sync_config
-            trial.experiment_dir_name = self._experiment_dir_name
+            trial.local_experiment_path = self._legacy_local_experiment_path
+            trial.remote_experiment_path = self._legacy_remote_experiment_path
+            trial.sync_config = self._legacy_sync_config
+            trial.experiment_dir_name = self._legacy_experiment_dir_name
 
             # Avoid creating logdir in client mode for returned trial results,
             # since the dir might not be creatable locally.
@@ -462,7 +488,7 @@ class _TuneControllerBase:
         return trials
 
     def checkpoint(self, force: bool = False, wait: bool = False):
-        """Saves execution state to `self._local_experiment_path`.
+        """Saves execution state to `self._legacy_local_experiment_path`.
 
         Overwrites the current session checkpoint, which starts when self
         is instantiated. Throttle depends on self._checkpoint_period.
@@ -1161,10 +1187,11 @@ class _TuneControllerBase:
             "_pending_trial_queue_times",
             "_callbacks",
             "_checkpoint_manager",
-            "_local_experiment_path",
-            "_remote_experiment_path",
-            "_sync_config",
-            "_experiment_dir_name",
+            "_storage",
+            "_legacy_local_experiment_path",
+            "_legacy_remote_experiment_path",
+            "_legacy_sync_config",
+            "_legacy_experiment_dir_name",
             "_insufficient_resources_manager",
         ]:
             del state[k]

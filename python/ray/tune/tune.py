@@ -28,6 +28,7 @@ from ray.air import CheckpointConfig
 from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
+from ray.train._internal.storage import _use_storage_context
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
@@ -92,6 +93,8 @@ from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
 if TYPE_CHECKING:
+    import pyarrow.fs
+
     from ray.tune.experimental.output import ProgressReporter as AirProgressReporter
 
 logger = logging.getLogger(__name__)
@@ -303,6 +306,7 @@ def run(
     ] = None,
     num_samples: int = 1,
     storage_path: Optional[str] = None,
+    storage_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     search_alg: Optional[Union[Searcher, SearchAlgorithm, str]] = None,
     scheduler: Optional[Union[TrialScheduler, str]] = None,
     checkpoint_config: Optional[CheckpointConfig] = None,
@@ -685,18 +689,22 @@ def run(
             f"Got '{type(config)}' instead."
         )
 
-    (
-        storage_path,
-        local_path,
-        remote_path,
-        sync_config,
-    ) = _resolve_and_validate_storage_path(
-        storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
-    )
+    if _use_storage_context():
+        local_path, remote_path = None, None
+        # TODO(justinvyu): Fix telemetry for the new persistence.
+    else:
+        (
+            storage_path,
+            local_path,
+            remote_path,
+            sync_config,
+        ) = _resolve_and_validate_storage_path(
+            storage_path=storage_path, local_dir=local_dir, sync_config=sync_config
+        )
 
-    air_usage.tag_ray_air_storage_config(
-        local_path=local_path, remote_path=remote_path, sync_config=sync_config
-    )
+        air_usage.tag_ray_air_storage_config(
+            local_path=local_path, remote_path=remote_path, sync_config=sync_config
+        )
 
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
@@ -846,6 +854,8 @@ def run(
         placeholder_resolvers,
     )
 
+    # TODO(justinvyu): We should remove the ability to pass a list of
+    # trainables to tune.run.
     if isinstance(run_or_experiment, list):
         experiments = run_or_experiment
     else:
@@ -862,6 +872,7 @@ def run(
                 resources_per_trial=resources_per_trial,
                 num_samples=num_samples,
                 storage_path=storage_path,
+                storage_filesystem=storage_filesystem,
                 _experiment_checkpoint_dir=_experiment_checkpoint_dir,
                 sync_config=sync_config,
                 checkpoint_config=checkpoint_config,
@@ -1032,8 +1043,13 @@ def run(
         runner_kwargs.pop("trial_executor")
         runner_kwargs["reuse_actors"] = reuse_actors
         runner_kwargs["chdir_to_trial_dir"] = chdir_to_trial_dir
+        runner_kwargs["storage"] = experiments[0].storage
     else:
         trial_runner_cls = TrialRunner
+        if _use_storage_context():
+            raise ValueError(
+                "The old execution path does not support the new persistence mode."
+            )
 
     runner = trial_runner_cls(**runner_kwargs)
 
@@ -1084,8 +1100,15 @@ def run(
     with contextlib.ExitStack() as stack:
         from ray.tune.experimental.output import TuneRichReporter
 
+        if _use_storage_context():
+            experiment_local_path = runner._storage.experiment_local_path
+            experiment_dir_name = runner._storage.experiment_dir_name
+        else:
+            experiment_local_path = runner._legacy_local_experiment_path
+            experiment_dir_name = runner._legacy_experiment_dir_name
+
         if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
-            tensorboard_path = runner._local_experiment_path
+            tensorboard_path = experiment_local_path
         else:
             tensorboard_path = None
 
@@ -1095,7 +1118,7 @@ def run(
             stack.enter_context(air_progress_reporter.with_live())
         elif air_progress_reporter:
             air_progress_reporter.experiment_started(
-                experiment_name=runner._experiment_dir_name,
+                experiment_name=experiment_dir_name,
                 experiment_path=runner.experiment_path,
                 searcher_str=search_alg.__class__.__name__,
                 scheduler_str=scheduler.__class__.__name__,
@@ -1131,7 +1154,6 @@ def run(
             _report_air_progress(runner, air_progress_reporter, force=True)
 
     all_trials = runner.get_trials()
-    experiment_checkpoint = runner.experiment_state_path
 
     runner.cleanup()
 
@@ -1167,6 +1189,15 @@ def run(
                 f"Experiment has been interrupted, but the most recent state was "
                 f"saved.\nResume experiment with: {restore_entrypoint}"
             )
+
+    if _use_storage_context():
+        # TODO(justinvyu): Leave refactoring the ExperimentAnalysis to use
+        # StorageContext for a follow-up PR.
+        # Just plug in the "remote_storage_path" for now.
+        remote_path = experiments[0].storage.storage_path
+
+    experiment_checkpoint = runner.experiment_state_path
+
     ea = ExperimentAnalysis(
         experiment_checkpoint,
         trials=all_trials,
