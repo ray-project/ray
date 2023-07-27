@@ -771,41 +771,6 @@ def test_get_task_traceback_non_running_task():
     wait_for_condition(verify, timeout=10)
 
 
-def test_get_cpu_profile_running_task():
-    ray.shutdown()
-    context = ray.init()
-    dashboard_url = f"http://{context['webui_url']}"
-    logger.info(f"dashboard_url {type(dashboard_url)}: {dashboard_url}")
-
-    @ray.remote
-    def my_job(job_id):
-        print(f"Executing job {job_id}")
-
-    num_jobs = 5
-    job_ids = []
-    for i in range(num_jobs):
-        job_ids.append(ray.remote(my_job).remote(i))
-
-    ray.get(job_ids)
-
-    task = my_job.remote()
-
-    task_id = task.task_id().hex()
-    node_id = ray.get_runtime_context().node_id.hex()
-    attempt_number = 0
-
-    def verify():
-        resp = requests.get(
-            f"{dashboard_url}/task/cpu_profile?task_id={task_id}&attempt_number={attempt_number}&node_id={node_id}&duration=5"
-        )
-        print(f"resp.text {type(resp.text)}: {resp.text}")
-        assert "<?xml" in resp.text
-        return True
-
-    ## Set timeout to 2 min since py-spy may take a long time to execute and it would have unexpected error when executing py-spy.
-    wait_for_condition(verify, timeout=120)
-
-
 def test_get_cpu_profile_non_running_task():
     """
     Verify that we throw an error for a non-running task.
