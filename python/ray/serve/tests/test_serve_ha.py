@@ -12,31 +12,27 @@ scripts = """
 import json
 import os
 
-from fastapi import FastAPI
-
 import ray
-
-app = FastAPI()
 
 from ray import serve
 
-@serve.deployment(num_replicas={num_replicas})
+@serve.deployment
 @serve.ingress(app)
 class GetPID:
-    @app.get("/")
-    def get(self):
+    def __call__(self, *args):
         return {{"pid": os.getpid()}}
 
-serve.run(GetPID.bind())
+serve.run(GetPID.options(num_replicas={num_replicas}).bind())
 """
 
 check_script = """
+import ray
 import requests
 
-pids = {{
+pids = set(ray.get([
     requests.get("http://127.0.0.1:8000/").json()["pid"]
-    for _ in range(20)
-}}
+    for _ in range(10)
+]))
 
 print(pids)
 assert len(pids) == {num_replicas}
