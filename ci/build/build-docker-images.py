@@ -897,6 +897,8 @@ def main(
             # TODO Currently don't push ray_worker_container
         else:
             # Build Ray Docker images.
+            prep_ray_base()
+
             all_tagged_images = []
 
             all_tagged_images += build_for_all_versions(
@@ -929,7 +931,6 @@ def main(
                 for py_version in py_versions
                 if py_version in ML_IMAGES_PY_VERSIONS
             ]
-            prep_ray_base()
 
             if len(ml_image_types) > 0:
                 prep_ray_ml()
