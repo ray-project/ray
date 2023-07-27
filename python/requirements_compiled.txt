@@ -442,8 +442,8 @@ safetensors==0.3.1
 sarif-om==1.0.4
 scikit-image==0.19.3 ; python_version < "3.11"
 scikit-learn==1.0.2 ; python_version < "3.11"
-scikit-optimize==0.9.0
-scipy==1.10.1
+scikit-optimize==0.9.0 ; python_version >= "3.8"
+scipy==1.10.1 ; python_version >= "3.8"
 segment-analytics-python==2.2.0
 semantic-version==2.10.0
 send2trash==1.8.2
