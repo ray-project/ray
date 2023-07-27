@@ -231,7 +231,7 @@ if __name__ == "__main__":
     # Tf.data.
     tf_ds = build_tf_dataset(args.tf_data_root, args.batch_size)
     for i in range(args.num_epochs):
-        iterate(tf_ds, "tf.data", args.batch_size, metrics)
+        iterate(tf_ds, "tf_data", args.batch_size, metrics)
 
     # ray.data.
     ray_ds = build_ray_dataset(args.tf_data_root, args.batch_size)
