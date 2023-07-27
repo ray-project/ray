@@ -16,7 +16,6 @@ from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
 from ray.data._internal.sort import SortKey
 from ray.data._internal.stats import StatsDict
 from ray.data._internal.util import unify_block_metadata_schema
-from ray.data.block import _validate_key_fn
 from ray.data.context import DataContext
 
 
@@ -38,8 +37,7 @@ def generate_sort_fn(
                 metadata.append(block_metadata)
         if len(blocks) == 0:
             return (blocks, {})
-        unified_schema = unify_block_metadata_schema(metadata)
-        _validate_key_fn(unified_schema, sort_key.get_columns())
+        sort_key.validate_schema(unify_block_metadata_schema(metadata))
 
         num_mappers = len(blocks)
         # Use same number of output partitions.

@@ -17,7 +17,6 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data.aggregate import AggregateFn
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -34,6 +33,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.sort import SortKey
+    from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
 
@@ -347,10 +347,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List[Block]:
         columns, ascending = sort_key.to_pandas_sort_args()
-        if len(columns) > 1:
-            raise NotImplementedError(
-                "sorting by multiple columns is not supported yet"
-            )
 
         if self._table.shape[0] == 0:
             # If the pyarrow table is empty we may not have schema
@@ -383,7 +379,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         partitions.append(table[last_idx:])
         return partitions
 
-    def combine(self, key: str, aggs: Tuple[AggregateFn]) -> "pandas.DataFrame":
+    def combine(self, key: str, aggs: Tuple["AggregateFn"]) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
@@ -477,7 +473,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
         key: str,
-        aggs: Tuple[AggregateFn],
+        aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
         """Aggregate sorted, partially combined blocks with the same key range.

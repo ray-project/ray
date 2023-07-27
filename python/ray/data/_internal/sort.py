@@ -16,7 +16,7 @@ Merging: a merge task would receive a block from every worker that consists
 of items in a certain range. It then merges the sorted blocks into one sorted
 block and becomes part of the new, sorted dataset.
 """
-from typing import List, Optional, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -31,6 +31,9 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 
+if TYPE_CHECKING:
+    import pyarrow
+
 T = TypeVar("T")
 
 
@@ -42,14 +45,23 @@ class SortKey:
         key: Optional[Union[str, List[str]]] = None,
         descending: bool = False,
     ):
-        if isinstance(key, list) and not key:
+        if callable(key):
+            raise ValueError("`key` must be a column name")
+        elif isinstance(key, list) and not key:
             raise ValueError("`key` must be a list of non-zero length")
+        elif isinstance(key, list) and len(key) > 1:
+            raise NotImplementedError(
+                "Sorting by multiple columns is not supported yet"
+            )
 
         self._columns = [key] if isinstance(key, str) else key
         self._descending = descending
 
     def get_columns(self) -> List[str]:
         return self._columns
+
+    def get_descending(self) -> bool:
+        return self._descending
 
     def to_arrow_sort_args(self) -> List[Tuple[str, str]]:
         return [
@@ -59,6 +71,20 @@ class SortKey:
 
     def to_pandas_sort_args(self) -> Tuple[List[str], bool]:
         return self._columns, not self._descending
+
+    def validate_schema(self, schema: Optional[Union[type, "pyarrow.lib.Schema"]]):
+        """Check the key function is valid on the given schema."""
+        if schema is None:
+            # Dataset is empty/cleared, validation not possible.
+            return
+
+        if self._columns and len(schema.names) > 0:
+            for column in self._columns:
+                if column not in schema.names:
+                    raise ValueError(
+                        "The column '{}' does not exist in the "
+                        "schema '{}'.".format(column, schema)
+                    )
 
 
 class _SortOp(ShuffleOp):

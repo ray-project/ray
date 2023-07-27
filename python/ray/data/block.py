@@ -51,41 +51,6 @@ KeyType = TypeVar("KeyType")
 AggType = TypeVar("AggType")
 
 
-def _validate_key_fn(
-    schema: Optional[Union[type, "pyarrow.lib.Schema"]],
-    key: Optional[Union[str, List[str]]],
-) -> None:
-    """Check the key function is valid on the given schema."""
-    if schema is None:
-        # Dataset is empty/cleared, validation not possible.
-        return
-    is_simple_format = isinstance(schema, type)
-    if isinstance(key, str):
-        if is_simple_format:
-            raise ValueError(
-                "String key '{}' requires dataset format to be "
-                "'arrow' or 'pandas', was 'simple'.".format(key)
-            )
-        if len(schema.names) > 0 and key not in schema.names:
-            raise ValueError(
-                "The column '{}' does not exist in the "
-                "schema '{}'.".format(key, schema)
-            )
-    elif isinstance(key, list):
-        if isinstance(key, list):
-            if not key:
-                raise ValueError("`key` must be a list of non-zero length")
-        if len(schema.names) > 0:
-            for _key in key:
-                if _key not in schema.names:
-                    raise ValueError(
-                        "The column '{}' does not exist in the "
-                        "schema '{}'.".format(_key, schema)
-                    )
-    else:
-        raise ValueError(f"In Ray 2.5, the key must be a string, was: {key}")
-
-
 # Represents a batch of records to be stored in the Ray object store.
 #
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`

@@ -258,8 +258,10 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
 def concat_and_sort(
     blocks: List["pyarrow.Table"], sort_key: "SortKey"
 ) -> "pyarrow.Table":
+    import pyarrow.compute as pac
+
     ret = concat(blocks)
-    indices = pyarrow.compute.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
+    indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(ret, indices)
 
 

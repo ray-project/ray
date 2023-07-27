@@ -103,7 +103,6 @@ from ray.data.block import (
     UserDefinedFunction,
     _apply_strict_mode_batch_format,
     _apply_strict_mode_batch_size,
-    _validate_key_fn,
 )
 from ray.data.context import (
     ESTIMATED_SAFE_MEMORY_FRACTION,
@@ -1731,8 +1730,7 @@ class Dataset:
 
         # Always allow None since groupby interprets that as grouping all
         # records into a single global group.
-        if key is not None:
-            _validate_key_fn(self.schema(fetch_if_missing=True), key)
+        SortKey(key).validate_schema(self.schema(fetch_if_missing=True))
 
         return GroupedData(self, key)
 

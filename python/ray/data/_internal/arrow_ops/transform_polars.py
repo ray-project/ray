@@ -25,16 +25,16 @@ def check_polars_installed():
 
 def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     check_polars_installed()
-    columns, ascending = sort_key.to_pandas_sort_args()
     df = pl.from_arrow(table)
-    return df.sort(columns, reverse=not ascending).to_arrow()
+    return df.sort(sort_key.get_columns(), reverse=sort_key.get_descending()).to_arrow()
 
 
 def concat_and_sort(
     blocks: List["pyarrow.Table"], sort_key: "SortKey"
 ) -> "pyarrow.Table":
     check_polars_installed()
-    columns, ascending = sort_key.to_pandas_sort_args()
     blocks = [pl.from_arrow(block) for block in blocks]
-    df = pl.concat(blocks).sort(columns, reverse=not ascending)
+    df = pl.concat(blocks).sort(
+        sort_key.get_columns(), reverse=sort_key.get_descending()
+    )
     return df.to_arrow()

@@ -20,7 +20,6 @@ from ray.data.block import (
     BlockExecStats,
     BlockMetadata,
     BlockPartition,
-    _validate_key_fn,
 )
 from ray.data.context import DataContext
 
@@ -327,8 +326,7 @@ class SortStage(AllToAllStage):
                 block_list.clear()
             else:
                 blocks = block_list
-            schema = ds.schema(fetch_if_missing=True)
-            _validate_key_fn(schema, sort_key.get_columns())
+            sort_key.validate_schema(ds.schema(fetch_if_missing=True))
             return sort_impl(blocks, clear_input_blocks, sort_key, ctx)
 
         super().__init__(
