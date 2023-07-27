@@ -63,17 +63,21 @@ parts:
             title: "Getting Started"
           - file: train/key-concepts
             title: "Key Concepts"
+          - file: train/distributed-pytorch
+            sections:
+              - file: train/distributed-pytorch/quickstart
+              - file: train/distributed-pytorch/converting-existing-training-loop
+              - file: train/distributed-pytorch/data-loading-preprocessing
+          - file: train/distributed-tensorflow-keras
+          - file: train/distributed-xgboost-lightgbm
+          - file: train/horovod
           - file: train/user-guides
             title: "User Guides"
             sections:
               - file: train/config_guide
                 title: "Configuring Ray Train"
-              - file: train/dl_guide
-                title: "Deep Learning Guide"
               - file: train/hf_trainers
                 title: "Hugging Face Trainers"
-              - file: train/gbdt
-                title: "XGBoost/LightGBM guide"
               - file: train/architecture
                 title: "Ray Train Architecture"
               - file: train/train-with-tune
@@ -82,6 +86,9 @@ parts:
                 title: "Configuring Training Datasets"
               - file: train/predictors
               - file: train/benchmarks
+#          - file: train/user-guides
+#            title: "User Guides"
+#            sections:
           - file: train/examples
             title: "Examples"
             sections:
