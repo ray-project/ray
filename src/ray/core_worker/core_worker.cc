@@ -422,7 +422,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
     }
   }
 
-  raylet_client_factory_ = [this](const std::string& ip_address, int port) {
+  raylet_client_factory_ = [this](const std::string &ip_address, int port) {
     auto grpc_client =
         rpc::NodeManagerWorkerClient::make(ip_address, port, *client_call_manager_);
     return std::make_shared<raylet::RayletClient>(std::move(grpc_client));
@@ -3169,7 +3169,13 @@ void CoreWorker::HandleExportObjectOwnership(rpc::ExportObjectOwnershipRequest r
   RAY_LOG(INFO) << "HandleExportObjectOwnership";
   auto dumpped_objects =
       reference_counter_->DumpOwnerInfo(options_.session_dir + "/drain_object_meta");
-
+  for(const auto& [node_id, object_ids] : dumpped_objects) {
+    auto* location = reply->add_locations();
+    location->set_node_id(node_id.Binary());
+    for(const auto& object_id : object_ids) {
+      location->add_object_ids(object_id.Binary());
+    }
+  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
