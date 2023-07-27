@@ -62,19 +62,18 @@ def test_ray_serve_basic(docker_cluster):
 
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
     assert b"Adding 1 replica to deployment " in output.output
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
-
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
 
     # Kill the head node
     head.kill()
 
     # Make sure serve is still working
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
 
     # Script is running on another thread so that it won't block the main thread.
     def reconfig():
@@ -102,7 +101,7 @@ def test_ray_serve_basic(docker_cluster):
     wait_for_condition(check_for_head_node_come_back_up)
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=2)}'")
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
 
     # Make sure the serve controller still runs on the head node after restart
     check_controller_head_node_script = """
@@ -117,7 +116,7 @@ serve_details = ServeInstanceDetails(
 assert serve_details.controller_info.node_id == head_node_id
 """
     output = head.exec_run(cmd=f"python -c '{check_controller_head_node_script}'")
-    assert output.exit_code == 0
+    assert output.exit_code == 0, output.output
 
 
 if __name__ == "__main__":
