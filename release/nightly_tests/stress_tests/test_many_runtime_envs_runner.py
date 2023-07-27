@@ -9,9 +9,17 @@ import subprocess
 import tempfile
 import shutil
 import shlex
+import ray
+import itertools
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def all_node_ids():
+    nodes = ray.nodes()
+    return [node['NodeID'] for node in nodes]
 
 
 def create_file_and_assert_n_times(n):
@@ -22,7 +30,11 @@ def create_file_and_assert_n_times(n):
     - submit the job with runtime_env to assert the file content matches and the number
         of files created so far.
     - run ray CLI to make sure we can see all these runtime envs.
+
+    The tasks are scheduled to each node in a round robin style.
     """
+    node_ids = itertools.cycle(all_node_ids())
+
     with tempfile.TemporaryDirectory() as temp_dir:
         job_file_dir = os.path.dirname(os.path.abspath(__file__))
         job_file = os.path.join(job_file_dir, "test_many_runtime_envs.py")
@@ -37,7 +49,8 @@ def create_file_and_assert_n_times(n):
                 " python test_many_runtime_envs.py "
                 f"--file-name {file_name} "
                 f"--expected-content {shlex.quote(content)} "
-                f"--expected-file-count-in-working-dir {i + 2}",
+                f"--expected-file-count-in-working-dir {i + 2}"
+                f"--node_id {next(node_ids)}",
                 shell=True,
             )
 
