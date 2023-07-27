@@ -185,9 +185,6 @@ class Trainable:
         self._monitor = UtilMonitor(start=log_sys_usage)
 
         self._storage = storage
-        # Set a globally accessible storage context on the remote Trainable process
-        # This is accessible from the training loop thread for FunctionTrainable's
-        init_shared_storage_context(storage)
 
         if _use_storage_context():
             assert storage
@@ -195,22 +192,23 @@ class Trainable:
             logger.debug(f"StorageContext on the TRAINABLE:\n{storage}")
             storage._check_validation_file()
 
-            self.remote_checkpoint_dir = storage.trial_fs_path
-            self.sync_config = storage.sync_config
-        else:
-            self.remote_checkpoint_dir = remote_checkpoint_dir
-            # If no sync_config is provided, but we save to a remote_checkpoint_dir,
-            # then provide a default syncer. `upload_dir` here is just a dummy directory
-            # that tells the SyncConfig to create a default syncer.
-            self.sync_config = sync_config or SyncConfig(
-                upload_dir=self.remote_checkpoint_dir, syncer="auto"
-            )
+            # Set a globally accessible storage context on the remote Trainable process
+            # This is accessible from the training loop thread for FunctionTrainable's
+            init_shared_storage_context(storage)
 
-            # Resolves syncer="auto" to an actual syncer cloud storage is used
-            # If sync_config.syncer is a custom Syncer instance, this is a no-op.
-            self.sync_config.syncer = get_node_to_storage_syncer(
-                self.sync_config, self.remote_checkpoint_dir
-            )
+        self.remote_checkpoint_dir = remote_checkpoint_dir
+        # If no sync_config is provided, but we save to a remote_checkpoint_dir,
+        # then provide a default syncer. `upload_dir` here is just a dummy directory
+        # that tells the SyncConfig to create a default syncer.
+        self.sync_config = sync_config or SyncConfig(
+            upload_dir=self.remote_checkpoint_dir, syncer="auto"
+        )
+
+        # Resolves syncer="auto" to an actual syncer cloud storage is used
+        # If sync_config.syncer is a custom Syncer instance, this is a no-op.
+        self.sync_config.syncer = get_node_to_storage_syncer(
+            self.sync_config, self.remote_checkpoint_dir
+        )
 
         self.sync_num_retries = int(os.getenv("TUNE_CHECKPOINT_CLOUD_RETRY_NUM", "2"))
         self.sync_sleep_time = float(
