@@ -45,7 +45,7 @@ class SortKey:
         key: Optional[Union[str, List[str]]] = None,
         descending: bool = False,
     ):
-        if isinstance(key， str):
+        if isinstance(key, str):
             key = [key]
         if not (isinstance(key, list) and all(isinstance(k, str) for k in key)):
             raise ValueError(
