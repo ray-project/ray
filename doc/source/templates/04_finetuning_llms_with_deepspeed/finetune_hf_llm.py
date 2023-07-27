@@ -90,29 +90,23 @@ def create_ray_dataset(path):
 
 
 def evaluate(
-    *,
-    model, 
-    eval_ds, 
-    accelerator, 
-    bsize, 
-    ds_kwargs, 
-    as_test: bool = False
+    *, model, eval_ds, accelerator, bsize, ds_kwargs, as_test: bool = False
 ) -> Tuple[float, float]:
     model.eval()
     losses = []
-    
+
     eval_dataloader = eval_ds.iter_torch_batches(batch_size=bsize, **ds_kwargs)
     eval_ds_len = len(list(eval_ds.iter_batches(batch_size=1)))
     for step, batch in tqdm.tqdm(
         enumerate(eval_dataloader), total=eval_ds_len // (bsize + 1)
-    ):  
+    ):
         with torch.no_grad():
             outputs = model(**batch)
 
         loss = outputs.loss
-        # The tensors are gathered by concatenating them on the first dimension, so we 
-        # add a new dimension to the scalar loss to get a tensor of shape (K,) for K 
-        # workers. 
+        # The tensors are gathered by concatenating them on the first dimension, so we
+        # add a new dimension to the scalar loss to get a tensor of shape (K,) for K
+        # workers.
         losses.append(accelerator.gather(loss[None]))
 
         if as_test:
@@ -122,7 +116,7 @@ def evaluate(
     # steps and K is the number of workers.
     losses = torch.stack(losses)
     try:
-        eval_loss = torch.mean(losses).item()   
+        eval_loss = torch.mean(losses).item()
         perplexity = math.exp(eval_loss)
     except OverflowError:
         perplexity = float("inf")
@@ -152,8 +146,8 @@ def checkpoint_model(
 
 def training_function(kwargs: dict):
     print("training_function called")
-    
-    # Train has a bug somewhere that causes ACCELERATE_TORCH_DEVICE to not be set 
+
+    # Train has a bug somewhere that causes ACCELERATE_TORCH_DEVICE to not be set
     # properly on multi-gpu nodes
     cuda_visible_device = os.environ["CUDA_VISIBLE_DEVICES"].split(",")
     local_rank = int(os.environ["LOCAL_RANK"])
@@ -333,7 +327,7 @@ def training_function(kwargs: dict):
 
         e_epoch = time.time()
         accelerator.print("Train time per epoch: ", e_epoch - s_epoch)
-        
+
         eval_s_epoch = time.time()
         print("Running evaluation ...")
         perplex, eloss = evaluate(
@@ -412,7 +406,7 @@ def training_function(kwargs: dict):
             # iterations.
             checkpoint=air.Checkpoint.from_directory(ckpt_path_epoch),
         )
-        
+
         print("Checkpointing time: ", time.time() - checkpointing_time_s)
 
 
