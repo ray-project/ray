@@ -88,7 +88,6 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  RAY_LOG(INFO) << "yiweizh: Entering raylet main.cc";
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   const std::string raylet_socket_name = FLAGS_raylet_socket_name;
@@ -128,9 +127,6 @@ int main(int argc, char *argv[]) {
   const bool is_head_node = FLAGS_head;
   gflags::ShutDownCommandLineFlags();
 
-  RAY_LOG(INFO) << "main.cc :" << plugin_name;
-  RAY_LOG(INFO) << "main.cc :" << plugin_path;
-  RAY_LOG(INFO) << "main.cc :" << plugin_params;
   // Configuration for the node manager.
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;

@@ -44,6 +44,9 @@ class MockWorker {
     options.store_socket = store_socket;
     options.raylet_socket = raylet_socket;
     options.gcs_options = gcs_options;
+    options.plugin_name = "default";
+    options.plugin_path = "";
+    options.plugin_params = "{}";
     options.enable_logging = true;
     options.install_failure_signal_handler = true;
     options.node_ip_address = "127.0.0.1";
@@ -189,3 +192,4 @@ int main(int argc, char **argv) {
   worker.RunTaskExecutionLoop();
   return 0;
 }
+

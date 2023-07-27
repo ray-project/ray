@@ -127,9 +127,11 @@ struct CoreWorkerOptions {
   std::string stdout_file;
   /// The stderr file of this process.
   std::string stderr_file;
-
+  /// The name of the plugin.
   std::string plugin_name;
+  /// The path to the plugin shared library.
   std::string plugin_path;
+  /// The parameters of the plugin.
   std::string plugin_params;
   /// Language worker callback to execute tasks.
   TaskExecutionCallback task_execution_callback;

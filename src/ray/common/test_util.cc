@@ -145,6 +145,9 @@ std::string TestSetupUtil::StartRaylet(const std::string &node_ip_address,
                                     "--node_ip_address=" + node_ip_address,
                                     "--min-worker-port=0",
                                     "--max-worker-port=0",
+                                    "--plugin-name=default",
+                                    "--plugin-path=",
+                                    "--plugin-params={}",
                                     "--maximum_startup_concurrency=10",
                                     "--static_resource_list=" + resource,
                                     "--python_worker_command=" + mock_worker_command,
@@ -265,3 +268,4 @@ std::string TEST_RAYLET_EXEC_PATH;
 std::string TEST_MOCK_WORKER_EXEC_PATH;
 
 }  // namespace ray
+

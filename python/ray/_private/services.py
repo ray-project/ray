@@ -452,7 +452,6 @@ def wait_for_node(
         object_store_socket_names = [
             client["ObjectStoreSocketName"] for client in clients
         ]
-        print("services.py wait_for_node, object_store_socket_names {}".format(object_store_socket_names))
         if node_plasma_store_socket_name in object_store_socket_names:
             return
         else:
@@ -1442,7 +1441,6 @@ def start_raylet(
     """
     assert node_manager_port is not None and type(node_manager_port) == int
 
-    print("Entering service.start_raylet()")
     if use_valgrind and use_profiler:
         raise ValueError("Cannot use valgrind and profiler at the same time.")
 
@@ -1615,7 +1613,6 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--session-name={session_name}",
     ]
-    print("yiweizh: " + "".join(command)) ## yiweizh
     if is_head_node:
         command.append("--head")
 
@@ -1645,7 +1642,6 @@ def start_raylet(
         fate_share=fate_share,
         env_updates=env_updates,
     )
-    print("Exiting service.start_raylet()")
     return process_info
 
 

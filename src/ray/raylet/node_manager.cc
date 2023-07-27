@@ -42,7 +42,6 @@
 
 namespace {
 
-
 ray::PluginManager& plugin_manager = ray::PluginManager::GetInstance();
 
 #define RAY_CHECK_ENUM(x, y) \
@@ -233,8 +232,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
-      //store_client_(object_manager_.CreateObjectStoreClientInstance()),
-      store_client_(plugin_manager.CreateCurrentClientInstance()),
+      store_client_(plugin_manager.CreateObjectStoreClientInstance(object_manager_config.plugin_name)),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -297,8 +295,6 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
           RayConfig::instance().min_memory_free_bytes(),
           RayConfig::instance().memory_monitor_refresh_ms(),
           CreateMemoryUsageRefreshCallback())) {
-  RAY_LOG(INFO) << "Initializing NodeManager with ID " << self_node_id_;
-  RAY_LOG(INFO) << "Inside NodeManager " << plugin_manager.GetCurrentObjectStoreName();
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
       scheduling::NodeID(self_node_id_.Binary()),
       config.resource_config.ToResourceMap(),
@@ -374,7 +370,7 @@ NodeManager::NodeManager(instrumented_io_context &io_service,
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms());
-  
+
   RAY_CHECK_OK(store_client_->Connect(config.store_socket_name.c_str(),""));
   // Run the node manger rpc server.
   node_manager_server_.RegisterService(node_manager_service_);

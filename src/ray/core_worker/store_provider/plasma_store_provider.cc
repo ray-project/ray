@@ -18,7 +18,6 @@
 #include "ray/core_worker/context.h"
 #include "ray/core_worker/core_worker.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "ray/util/logging.h"
 #include "ray/object_manager/plugin_manager.h"
 
 namespace ray {
@@ -66,22 +65,13 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
-      //store_client_(plugin_manager.CreateCurrentClientInstance()),
       reference_counter_(reference_counter),
       check_signals_(check_signals) {
 
-  //ray::PluginManager& plugin_manager = ray::PluginManager::GetInstance();
-  //RAY_LOG(INFO) << "Inside plasma_store_provider current object store name: " << plugin_manager.GetCurrentObjectStoreName();
-  //store_client_ = ray::PluginManager::GetInstance().CreateCurrentClientInstance();
-  RAY_LOG(INFO) << "Inside plasma_store_provider current plugin_name: " << plugin_name ;
-  RAY_LOG(INFO) << "Inside plasma_store_provider current plugin_path: " << plugin_path ;
-  RAY_LOG(INFO) << "Inside plasma_store_provider current plugin_params: " << plugin_params;
-
   ray::PluginManager& plugin_manager = ray::PluginManager::GetInstance();
-  RAY_LOG(INFO) << "Inside plasma_store_provider current object store name: " << plugin_manager.GetCurrentObjectStoreName();
   plugin_manager.SetObjectStoreClients(plugin_name, plugin_path, plugin_params);
-  RAY_LOG(INFO) << "Inside plasma_store_provider current object store name: "  << plugin_manager.GetCurrentObjectStoreName();
-  store_client_ = plugin_manager.CreateCurrentClientInstance();
+  store_client_ = plugin_manager.CreateObjectStoreClientInstance(plugin_name);
+
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -89,9 +79,6 @@ CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
   }
   object_store_full_delay_ms_ = RayConfig::instance().object_store_full_delay_ms();
   buffer_tracker_ = std::make_shared<BufferTracker>();
-  
-  RAY_LOG(INFO) << store_client_->DebugString();
-
   RAY_CHECK_OK(store_client_->Connect(store_socket,""));
   if (warmup) {
     RAY_CHECK_OK(WarmupStore());

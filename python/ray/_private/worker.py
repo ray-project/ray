@@ -1118,7 +1118,6 @@ def init(
     num_cpus: Optional[int] = None,
     num_gpus: Optional[int] = None,
     resources: Optional[Dict[str, float]] = None,
-    ## my part
     plugin_name: Optional[str] = None,
     plugin_path: Optional[str] = None,
     plugin_params: Optional[Dict[str, Any]] = None,
@@ -1201,6 +1200,9 @@ def init(
             raylet. By default, this is set based on detected GPUs.
         resources: A dictionary mapping the names of custom resources to the
             quantities for them available.
+        plugin_name: The name of the object store plugin.
+        plugin_path: The path to the object store plugin shared library.
+        plugin_params: The parameters of the object store plugin.
         object_store_memory: The amount of memory (in bytes) to start the
             object store with. By default, this is automatically set based on
             available system memory.
@@ -1280,7 +1282,6 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
-    print("Entering ray._private.worker.init()")
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
 
@@ -1501,7 +1502,6 @@ def init(
             dashboard_host=dashboard_host,
             dashboard_port=dashboard_port,
             memory=_memory,
-            ## my part
             plugin_name = plugin_name,
             plugin_path = plugin_path,
             plugin_params = plugin_params,
@@ -1527,7 +1527,6 @@ def init(
             ray_params=ray_params,
         )
     else:
-        print("Worker.py connect only")
         # In this case, we are connecting to an existing cluster.
         if num_cpus is not None or num_gpus is not None:
             raise ValueError(
@@ -1539,22 +1538,6 @@ def init(
                 "When connecting to an existing cluster, "
                 "resources must not be provided."
             )
-        ## my part
-        # if plugin_name is not None:
-        #     raise ValueError(
-        #         "When connecting to an existing cluster, "
-        #         "plugin_name must not be provided."
-        #     )
-        # if plugin_path is not None:
-        #     raise ValueError(
-        #         "When connecting to an existing cluster, "
-        #         "plugin_path must not be provided."
-        #     )
-        # if plugin_params is not None:
-        #     raise ValueError(
-        #         "When connecting to an existing cluster, "
-        #         "plugin_params must not be provided."
-        #     )
         if object_store_memory is not None:
             raise ValueError(
                 "When connecting to an existing cluster, "
@@ -1580,7 +1563,7 @@ def init(
                 "_node_name cannot be configured when connecting to "
                 "an existing cluster."
             )
-        
+
         # In this case, we only need to connect the node.
         ray_params = ray._private.parameter.RayParams(
             node_ip_address=node_ip_address,
@@ -2207,10 +2190,7 @@ def connect(
     else:
         logs_dir = node.get_logs_dir_path()
 
-
-    print("Executing here")
     
-    print("Executing here")
     worker.core_worker = ray._raylet.CoreWorker(
         mode,
         node.plasma_store_socket_name,

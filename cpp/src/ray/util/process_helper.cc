@@ -21,7 +21,6 @@
 #include "ray/util/process.h"
 #include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
-#include "ray/util/logging.h"
 
 namespace ray {
 namespace internal {

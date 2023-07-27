@@ -77,11 +77,11 @@ struct ObjectManagerConfig {
   int rpc_service_threads_number;
   /// Initial memory allocation for store.
   int64_t object_store_memory = -1;
-  /// Plugin name (yiweizh)
+  /// The name of the plugin.
   std::string plugin_name;
-  /// Plugin path (yiweizh)
+  /// The path to the plugin shared library.
   std::string plugin_path;
-  /// Plugin params (yiweizh)
+  /// The parameters of the plugin.
   std::string plugin_params;
   /// The directory for shared memory files.
   std::string plasma_directory;
@@ -418,7 +418,6 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Used by the buffer pool to read and write objects in the local store
   /// during object transfers.
-  // std::shared_ptr<plasma::PlasmaClient> buffer_pool_store_client_;
   std::shared_ptr<plasma::ObjectStoreClientInterface> buffer_pool_store_client_;
 
   /// Manages accesses to local objects for object transfers.

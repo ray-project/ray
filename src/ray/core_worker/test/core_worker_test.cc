@@ -137,6 +137,9 @@ class CoreWorkerTest : public ::testing::Test {
       options.enable_logging = true;
       options.install_failure_signal_handler = true;
       options.node_ip_address = "127.0.0.1";
+      options.plugin_name = "default";
+      options.plugin_path = "";
+      options.plugin_params = "{}";
       options.node_manager_port = node_manager_port;
       options.raylet_ip_address = "127.0.0.1";
       options.driver_name = "core_worker_test";
@@ -1080,3 +1083,4 @@ int main(int argc, char **argv) {
 
   return RUN_ALL_TESTS();
 }
+

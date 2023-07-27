@@ -23,8 +23,6 @@
 #include "absl/strings/str_split.h"
 #include "nlohmann/json.hpp"
 
-#include "ray/util/logging.h"
-
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
@@ -188,15 +186,12 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
       node_ip_address = FLAGS_ray_node_ip_address.CurrentValue();
     }
     if (!FLAGS_ray_plugin_name.CurrentValue().empty()){
-      RAY_LOG(INFO) << FLAGS_ray_plugin_name.CurrentValue();
       plugin_name = FLAGS_ray_plugin_name.CurrentValue();
     }
     if (!FLAGS_ray_plugin_path.CurrentValue().empty()){
-      RAY_LOG(INFO) << FLAGS_ray_plugin_path.CurrentValue();
       plugin_path = FLAGS_ray_plugin_path.CurrentValue();
     }
     if (!FLAGS_ray_plugin_params.CurrentValue().empty()){
-      RAY_LOG(INFO) << FLAGS_ray_plugin_params.CurrentValue();
       plugin_params = FLAGS_ray_plugin_params.CurrentValue();
     }
     if (!FLAGS_ray_head_args.CurrentValue().empty()) {

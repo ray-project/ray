@@ -69,8 +69,6 @@ class Node:
                 new processes.
             default_worker: Whether it's running from a ray worker or not
         """
-        ##  my part
-        print("Entering ray._private.node.__init__")
         if shutdown_at_exit:
             if connect_only:
                 raise ValueError(
@@ -286,67 +284,37 @@ class Node:
         if head:
             self.start_head_processes()
 
-        print("node.py line 293, after start_head_process, before start_ray_processes")
-        print(self.head, connect_only)
-        print(ray_params.plugin_name, ray_params.plugin_path, ray_params.plugin_params)
-
         if ray_params.plugin_name:
             self._plugin_name = ray_params.plugin_name
-            os.environ[ray_constants.RAY_PLUGIN_NAME] = ray_params.plugin_name
+            os.environ[ray_constants.RAY_PLUGIN_NAME_ENVIRONMENT_VARIABLE] = ray_params.plugin_name
         else:
-            env_plugin_name =  os.environ.get(ray_constants.RAY_PLUGIN_NAME)
+            env_plugin_name =  os.environ.get(ray_constants.RAY_PLUGIN_NAME_ENVIRONMENT_VARIABLE)
             if env_plugin_name is not None and env_plugin_name != "":
                 self._plugin_name = env_plugin_name
             else:
                 self._plugin_name = "default"
-                #os.environ[ray_constants.RAY_PLUGIN_NAME] = self._plugin_name
 
-        # env_plugin_name = os.environ.get(ray_constants.RAY_PLUGIN_NAME)
-        # if env_plugin_name is not None and env_plugin_name != "":
-        #     self._plugin_name = env_plugin_name
-        # else:
-        #     self._plugin_name = ray_params.plugin_name if ray_params.plugin_name else "default"
-        #     os.environ[ray_constants.RAY_PLUGIN_NAME] = self._plugin_name
 
         if ray_params.plugin_path:
             self._plugin_path = ray_params.plugin_path
-            os.environ[ray_constants.RAY_PLUGIN_PATH] = ray_params.plugin_path
+            os.environ[ray_constants.RAY_PLUGIN_PATH_ENVIRONMENT_VARIABLE] = ray_params.plugin_path
         else:
-            env_plugin_path =  os.environ.get(ray_constants.RAY_PLUGIN_PATH)
+            env_plugin_path =  os.environ.get(ray_constants.RAY_PLUGIN_PATH_ENVIRONMENT_VARIABLE)
             if env_plugin_path is not None and env_plugin_path != "":
                 self._plugin_path = env_plugin_path
             else:
                 self._plugin_path = ""
-                #os.environ[ray_constants.RAY_PLUGIN_PATH] = self._plugin_path
 
-        # env_plugin_path = os.environ.get(ray_constants.RAY_PLUGIN_PATH)
-        # if env_plugin_path is not None and env_plugin_path != "":
-        #     self._plugin_path = env_plugin_path
-        # else:
-        #     self._plugin_path = ray_params.plugin_path if ray_params.plugin_path else ""
-        #     os.environ[ray_constants.RAY_PLUGIN_PATH] = self._plugin_path
 
         if ray_params.plugin_params:
             self._plugin_params_str = json.dumps(ray_params.plugin_params)
-            os.environ[ray_constants.RAY_PLUGIN_PARAMS_STR] = ray_params.plugin_params
+            os.environ[ray_constants.RAY_PLUGIN_PARAMS_ENVIRONMENT_VARIABLE_STR] = ray_params.plugin_params
         else:
-            env_plugin_params_str =  os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_STR)
+            env_plugin_params_str =  os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_ENVIRONMENT_VARIABLE_STR)
             if env_plugin_params_str is not None and env_plugin_params_str != "":
                 self._plugin_params_str = env_plugin_params_str
             else:
                 self._plugin_params_str = "{}"
-                #os.environ[ray_constants.RAY_PLUGIN_NAME] = self._plugin_name
-
-        print(self._plugin_name, self._plugin_path, self._plugin_params_str)
-        # self._plugin_params_str = ""
-        # env_plugin_params_str = os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_STR)
-        # if env_plugin_params_str is not None and env_plugin_params_str != "":
-        #     self._plugin_params_str = env_plugin_params_str
-        # else:
-        #     self._plugin_params = ray_params.plugin_params
-        #     self._plugin_params['store_socket_name'] = self._plasma_store_socket_name
-        #     self._plugin_params['huge_pages'] = ray_params.huge_pages
-        #     self._plugin_params['temp_dir'] = self._temp_dir
 
         if not connect_only:
             self.start_ray_processes()
@@ -369,37 +337,6 @@ class Node:
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info.node_manager_port
 
-        # if connect_only :
-        #     ## Should be when it is both connect_only and not on the same node of the driver
-        #     resource_spec = self.get_resource_spec()
-        #     (
-        #         plasma_directory,
-        #         object_store_memory,
-        #     ) = ray._private.services.determine_plasma_store_config(
-        #         resource_spec.object_store_memory,
-        #         plasma_directory=self._ray_params.plasma_directory,
-        #         huge_pages=self._ray_params.huge_pages,
-        #     )
-            
-        #     self._plugin_params = {}
-        #     self._plugin_params['store_socket_name'] = self._plasma_store_socket_name
-        #     self._plugin_params['huge_pages'] = self._ray_params.huge_pages
-        #     self._plugin_params['temp_dir'] = self._temp_dir
-        #     self._plugin_params["object_store_memory"] = object_store_memory
-        #     self._plugin_params["plasma_directory"] = plasma_directory
-
-        #     if self._ray_params.plugin_params: 
-        #         ### different node might have different configurations
-        #         for key, value in self._ray_params.plugin_params.items():
-        #             self._plugin_params[key] = value
-        #         self._plugin_params_str = json.dumps(self._plugin_params)
-        #         os.environ[ray_constants.RAY_PLUGIN_PARAMS_STR] = self._plugin_params_str
-        #     else:
-        #         env_plugin_params_str = os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_STR)
-        #         if env_plugin_params_str is not None and env_plugin_params_str != "":
-        #             self._plugin_params_str = env_plugin_params_str
-        #         else:
-        #             self._plugin_params_str = json.dumps(self._plugin_params)
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
@@ -1081,7 +1018,7 @@ class Node:
         self,
         plasma_directory: str,
         object_store_memory: int,
-        plugin_name: str, ## yiweizh
+        plugin_name: str, 
         plugin_path: str,
         plugin_params: str,
         use_valgrind: bool = False,
@@ -1311,31 +1248,6 @@ class Node:
             plasma_directory=self._ray_params.plasma_directory,
             huge_pages=self._ray_params.huge_pages,
         )
-
-        print(self._ray_params.plugin_params)
-        # self._plugin_params = {}
-        # self._plugin_params['store_socket_name'] = self._plasma_store_socket_name
-        # self._plugin_params['huge_pages'] = self._ray_params.huge_pages
-        # self._plugin_params['temp_dir'] = self._temp_dir
-        # self._plugin_params["object_store_memory"] = object_store_memory
-        # self._plugin_params["plasma_directory"] = plasma_directory
-
-        # if self._ray_params.plugin_params: 
-        #     ### different node might have different configurations
-        #     for key, value in self._ray_params.plugin_params.items():
-        #         self._plugin_params[key] = value
-        #     self._plugin_params_str = json.dumps(self._plugin_params)
-        #     os.environ[ray_constants.RAY_PLUGIN_PARAMS_STR] = self._plugin_params_str
-        # else:
-        #     env_plugin_params_str = os.environ.get(ray_constants.RAY_PLUGIN_PARAMS_STR)
-        #     if env_plugin_params_str is not None and env_plugin_params_str != "":
-        #         self._plugin_params_str = env_plugin_params_str
-        #     else:
-        #         self._plugin_params_str = json.dumps(self._plugin_params)
-        #         os.environ[ray_constants.RAY_PLUGIN_PARAMS_STR] = self._plugin_params_str
-
-        print("In _private.node.py start_ray_processes")
-        print(self._plugin_params_str)
 
         self.start_raylet(plasma_directory, object_store_memory, self._plugin_name, 
                                                                  self._plugin_path,  
