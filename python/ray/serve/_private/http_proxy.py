@@ -482,11 +482,8 @@ class HTTPProxy:
                 scope["path"] = route_path.replace(route_prefix, "", 1)
                 scope["root_path"] = root_path + route_prefix
 
-            # RequestIdMiddleware makes sure scope has x-request-id attribute.
-            request_id = MutableHeaders(scope=scope).get("x-request-id")
             request_context_info = {
                 "route": route_path,
-                "request_id": request_id,
                 "app_name": app_name,
             }
             start_time = time.time()
@@ -495,7 +492,12 @@ class HTTPProxy:
                     multiplexed_model_id = value.decode()
                     handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                     request_context_info["multiplexed_model_id"] = multiplexed_model_id
-                if key.decode().upper() == RAY_SERVE_REQUEST_ID_HEADER:
+                if key.decode() == "x-request-id":
+                    request_context_info["request_id"] = value.decode()
+                if (
+                    key.decode() == RAY_SERVE_REQUEST_ID_HEADER
+                    and "request_id" not in request_context_info
+                ):
                     request_context_info["request_id"] = value.decode()
             ray.serve.context._serve_request_context.set(
                 ray.serve.context.RequestContext(**request_context_info)

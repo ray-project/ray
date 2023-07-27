@@ -93,6 +93,8 @@ def test_set_request_id_headers_with_two_attributes(serve_instance):
     class Model:
         def __call__(self):
             request_id = ray.serve.context._serve_request_context.get().request_id
+            print("wtf: ", request_id)
+            assert request_id == "234"
             return request_id
 
     serve.run(Model.bind())
