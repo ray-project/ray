@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 # the failure detail with the actual termination message. As of now,
 # we will use a more generic message to include cases such as:
 # (idle termination, node death, crash, preemption, etc)
-NODE_DEATH_CAUSE_RAYLET_DIED = "RayletTerminated"
+NODE_DEATH_CAUSE_RAYLET_DIED = "NodeTerminated"
 
 
 @dataclass
