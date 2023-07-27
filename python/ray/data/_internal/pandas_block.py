@@ -55,24 +55,35 @@ class PandasRow(TableRow):
     Row of a tabular Dataset backed by a Pandas DataFrame block.
     """
 
-    def __getitem__(self, key: str) -> Any:
+    def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
-        col = self._row[key]
+        is_single_item = isinstance(key, str)
+        keys = [key] if is_single_item else key
+
+        col = self._row[keys]
         if len(col) == 0:
             return None
-        item = col.iloc[0]
-        if isinstance(item, TensorArrayElement):
+
+        items = col.iloc[0]
+        if isinstance(items, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
             # which we have to convert to an ndarray.
-            item = item.to_numpy()
+            items = items.to_numpy()
+
         try:
             # Try to interpret this as a numpy-type value.
             # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-            return item.item()
+            if is_single_item:
+                return items[0].as_py()
+
+            return tuple([item.item() for item in items])
         except (AttributeError, ValueError):
             # Fallback to the original form.
-            return item
+            if is_single_item:
+                return items[0]
+
+            return items
 
     def __iter__(self) -> Iterator:
         for k in self._row.columns:
@@ -406,12 +417,6 @@ class PandasBlockAccessor(TableBlockAccessor):
                 f"got: {type(key)}."
             )
 
-        def equals(first, second) -> bool:
-            if isinstance(first, pd.Series):
-                return (first == second).all()
-
-            return first == second
-
         def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
             """Creates an iterator over zero-copy group views."""
             if key is None:
@@ -427,7 +432,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     if next_row is None:
                         next_row = next(iter)
                     next_key = next_row[key]
-                    while equals(next_row[key], next_key):
+                    while (next_row[key] == next_key).all():
                         end += 1
                         try:
                             next_row = next(iter)
