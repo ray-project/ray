@@ -345,14 +345,15 @@ class HTTPProxyStateManager:
     def _get_target_nodes(self, http_proxy_nodes) -> List[Tuple[str, str]]:
         """Return the list of (node_id, ip_address) to deploy HTTP servers on."""
         location = self._config.location
+
+        if location == DeploymentMode.NoServer:
+            return []
+
         target_nodes = [
             (node_id, ip_address)
             for node_id, ip_address in get_all_node_ids(self._gcs_client)
             if node_id in http_proxy_nodes
         ]
-
-        if location == DeploymentMode.NoServer:
-            return []
 
         if location == DeploymentMode.HeadOnly:
             nodes = [

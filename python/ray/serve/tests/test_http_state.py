@@ -29,7 +29,6 @@ def _make_http_proxy_state_manager(
         config=http_options,
         head_node_id=head_node_id,
         gcs_client=None,
-        _start_proxies_on_init=False,
     )
 
 
@@ -125,29 +124,30 @@ def _update_and_check_http_proxy_state_manager(
 
 
 def test_node_selection(all_nodes, mock_get_all_node_ids):
+    all_node_ids = {node_id for node_id, _ in all_nodes}
     # Test NoServer
     manager = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.NoServer)
     )
-    assert manager._get_target_nodes() == []
+    assert manager._get_target_nodes(all_node_ids) == []
 
     # Test HeadOnly
     manager = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.HeadOnly)
     )
-    assert manager._get_target_nodes() == all_nodes[:1]
+    assert manager._get_target_nodes(all_node_ids) == all_nodes[:1]
 
     # Test EveryNode
     manager = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.EveryNode)
     )
-    assert manager._get_target_nodes() == all_nodes
+    assert manager._get_target_nodes(all_node_ids) == all_nodes
 
     # Test FixedReplica
     manager = _make_http_proxy_state_manager(
         HTTPOptions(location=DeploymentMode.FixedNumber, fixed_number_replicas=5)
     )
-    selected_nodes = manager._get_target_nodes()
+    selected_nodes = manager._get_target_nodes(all_node_ids)
 
     # it should have selection a subset of 5 nodes.
     assert len(selected_nodes) == 5
@@ -155,7 +155,7 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
 
     for _ in range(5):
         # The selection should be deterministic.
-        assert selected_nodes == manager._get_target_nodes()
+        assert selected_nodes == manager._get_target_nodes(all_node_ids)
 
     another_seed = _make_http_proxy_state_manager(
         HTTPOptions(
@@ -163,10 +163,16 @@ def test_node_selection(all_nodes, mock_get_all_node_ids):
             fixed_number_replicas=5,
             fixed_number_selection_seed=42,
         )
-    )._get_target_nodes()
+    )._get_target_nodes(all_node_ids)
     assert len(another_seed) == 5
     assert set(all_nodes).issuperset(set(another_seed))
     assert set(another_seed) != set(selected_nodes)
+
+    # Test specific nodes
+    manager = _make_http_proxy_state_manager(
+        HTTPOptions(location=DeploymentMode.EveryNode)
+    )
+    assert manager._get_target_nodes({HEAD_NODE_ID}) == [(HEAD_NODE_ID, "fake-head-ip")]
 
 
 def test_http_state_update_restarts_unhealthy_proxies(mock_get_all_node_ids):
@@ -668,8 +674,8 @@ def test_update_draining(
         )
     node_ids = [node_id for node_id, _ in all_nodes]
 
-    # No active nodes
-    active_nodes = set()
+    # No target proxy nodes
+    http_proxy_nodes = set()
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn DRAINING.
@@ -680,11 +686,11 @@ def test_update_draining(
         node_ids=node_ids,
         statuses=[HTTPProxyStatus.HEALTHY]
         + [HTTPProxyStatus.DRAINING] * number_of_worker_nodes,
-        active_nodes=active_nodes,
+        http_proxy_nodes=http_proxy_nodes,
     )
 
-    # All nodes are active
-    active_nodes = set(node_ids)
+    # All nodes are target proxy nodes
+    http_proxy_nodes = set(node_ids)
 
     # Head node proxy should continue to be HEALTHY.
     # Worker node proxy should turn HEALTHY.
@@ -694,7 +700,7 @@ def test_update_draining(
         http_proxy_state_manager=manager,
         node_ids=node_ids,
         statuses=[HTTPProxyStatus.HEALTHY] * (number_of_worker_nodes + 1),
-        active_nodes=active_nodes,
+        http_proxy_nodes=http_proxy_nodes,
     )
 
 
