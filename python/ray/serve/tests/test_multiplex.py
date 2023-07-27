@@ -66,9 +66,13 @@ class TestMultiplexWrapper:
     def test_collect_model_ids(self):
         multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
         multiplexer.models = {"1": "1", "2": "2"}
-        assert sorted(multiplexer._get_model_ids()) == ["1", "2"]
+        assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
         multiplexer._model_load_tasks = {"3"}
-        assert sorted(multiplexer._get_model_ids()) == ["1", "2", "3"]
+        assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == [
+            "1",
+            "2",
+            "3",
+        ]
 
     @pytest.mark.asyncio
     async def test_multiplex_wrapper(self, start_serve_with_context):

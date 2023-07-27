@@ -90,8 +90,11 @@ class _ModelMultiplexWrapper:
         # Whether to push the multiplexed replica info to the controller.
         self._push_multiplexed_replica_info: bool = False
 
-        # Model cache lock
+        # Model cache lock to ensure that only one model is loading/unloading at a time.
         self._model_cache_lock = asyncio.Lock()
+        # The set of model IDs that are being loaded. This is used to early push model ids
+        # info to the controller. The tasks will be added when there is cache miss, and
+        # removed when the model is loaded or failed to load.
         self._model_load_tasks: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
@@ -101,8 +104,11 @@ class _ModelMultiplexWrapper:
         )
         self.metrics_pusher.start()
 
-    def _get_model_ids(self) -> List[str]:
-        """Get the model IDs of the loaded models & loading models in the replica."""
+    def _get_loading_and_loaded_model_ids(self) -> List[str]:
+        """Get the model IDs of the loaded models & loading models in the replica.
+        This is to push the model id information early to the controller, so that requests
+        can be routed to the replica.
+        """
         models_list = set(self.models.keys())
         models_list.update(self._model_load_tasks)
         return list(models_list)
@@ -115,7 +121,7 @@ class _ModelMultiplexWrapper:
                     MultiplexedReplicaInfo(
                         self._deployment_name,
                         self._replica_tag,
-                        self._get_model_ids(),
+                        self._get_loading_and_loaded_model_ids(),
                     )
                 )
                 self._push_multiplexed_replica_info = False
@@ -125,19 +131,15 @@ class _ModelMultiplexWrapper:
                 f"to the controller. Error: {e}"
             )
 
-    async def _unload_all_models(self):
-        """Unload all the models."""
+    async def shutdown(self):
+        """Unload all the models when the model multiplexer is deleted."""
         while len(self.models) > 0:
             try:
-                await self.unload_model()
+                await self.unload_model_lru()
             except Exception as e:
-                logger.error(
+                logger.exception(
                     f"Failed to unload model. Error: {e}",
                 )
-
-    async def __del__(self):
-        """Unload all the models when the model multiplexer is deleted."""
-        await self._unload_all_models()
 
     async def load_model(self, model_id: str) -> Any:
         """Load the model if it is not loaded yet, and return the user-constructed model object.
@@ -164,7 +166,9 @@ class _ModelMultiplexWrapper:
             return self.models[model_id]
         else:
             # Set the flag to push the multiplexed replica info to the controller
-            # before loading the model.
+            # before loading the model. This is to make sure we can push the model
+            # id info to the controller/router early, so that requests can be routed to
+            # the replica.
             self._push_multiplexed_replica_info = True
             self._model_load_tasks.add(model_id)
             async with self._model_cache_lock:
@@ -180,7 +184,7 @@ class _ModelMultiplexWrapper:
                         and len(self.models) >= self.max_num_models_per_replica
                     ):
                         # Unload the least recently used model.
-                        await self.unload_model()
+                        await self.unload_model_lru()
                         self._push_multiplexed_replica_info = True
 
                     # Load the model.
@@ -193,6 +197,10 @@ class _ModelMultiplexWrapper:
                         self.models[model_id] = await self._func(
                             self.self_arg, model_id
                         )
+                    loaded_time = time.time() - load_start_time
+                    logger.info(
+                        f"Successfully loaded model '{model_id}' in {loaded_time}s."
+                    )
                     self._model_load_tasks.discard(model_id)
                     self.model_load_latency_s.set(time.time() - load_start_time)
                     return self.models[model_id]
@@ -203,7 +211,7 @@ class _ModelMultiplexWrapper:
                     self._model_load_tasks.discard(model_id)
                     raise e
 
-    async def unload_model(self) -> None:
+    async def unload_model_lru(self) -> None:
         """Unload the least recently used model."""
 
         self.models_unload_counter.inc()
@@ -219,4 +227,6 @@ class _ModelMultiplexWrapper:
             else:
                 await sync_to_async(model.__del__)()
             setattr(model, "__del__", lambda _: None)
-        self.model_unload_latency_s.set(time.time() - unload_start_time)
+        unloaded_time = time.time() - unload_start_time
+        self.model_unload_latency_s.set(unloaded_time)
+        logger.info(f"Successfully unloaded model '{model_id}' in {unloaded_time}s.")
