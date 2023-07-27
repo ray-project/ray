@@ -46,29 +46,32 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
         default_shard_num = 2
 
     for file in files:
-        test_tags = tags
+        shard_num = default_shard_num
+        test_tags = list(tags)
+
         if type(file) != "string":
             file, extra_tags = file[0], list(file[1:])
             test_tags += extra_tags
+
         # remove .py
         name = paths.split_extension(file)[0] + name_suffix
 
-        shard_num = default_shard_num
-        extra_tags = []
-
-        if "exclusive" in tags:
+        if "exclusive" in test_tags:
             shard_num = 1
             test_tags += ["no-sandbox"]
-
-        env_items = env.items() + [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]
+        print(test_tags)
+        env_items = env.items()
+        if shard_num != 1:
+            env_items += [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]
         if name == file:
             basename = basename + "_test"
         for shard_id in range(shard_num):
             test_name = name
-            test_env = []
+            test_env = env_items
             if shard_num != 1:
                 test_name = name + "@" + str(shard_id + 1) + "_" + str(shard_num)
-                test_env = env_items + [("RAY_CI_PYTEST_SHARD_ID", str(shard_id))]
+                test_env += [("RAY_CI_PYTEST_SHARD_ID", str(shard_id))]
+
             native.py_test(
                 name = test_name,
                 size = size,
