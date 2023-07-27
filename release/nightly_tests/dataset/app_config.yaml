@@ -5,6 +5,9 @@ python:
     - boto3
     - tqdm
     - mosaicml-streaming
+      # Temporary fix to get around docker issue.
+    - typing-extensions<4.6.0
+
   conda_packages: []
 
 post_build_cmds:
@@ -14,6 +17,4 @@ post_build_cmds:
   # doesn't actually use tensorflow, but in the long term, but we should
   # consider upgrading to tensorflow 2.7 as a long term solution.
   - pip install -U numpy>=1.20
-  # Temporary fix to get around docker issue.
-  - pip install typing-extensions<4.6.0
   - {{ env["RAY_WHEELS_SANITY_CHECK"] | default("echo No Ray wheels sanity check") }}
