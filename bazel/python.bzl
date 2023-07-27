@@ -37,13 +37,13 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
     default_shard_num = 1
 
     if size == "large":
-        default_shard_num = 8
+        default_shard_num = 10
 
     if size == "medium":
-        default_shard_num = 4
+        default_shard_num = 5
 
     if size == "small":
-        default_shard_num = 2
+        default_shard_num = 3
 
     for file in files:
         shard_num = default_shard_num
@@ -57,8 +57,8 @@ def py_test_module_list(files, size, deps, tags = [], env = {}, extra_srcs=[], n
         name = paths.split_extension(file)[0] + name_suffix
 
         if "exclusive" in test_tags:
-            shard_num = 1
             test_tags += ["no-sandbox"]
+
         env_items = env.items()
         if shard_num != 1:
             env_items += [("RAY_CI_PYTEST_SHARD_NUM", str(shard_num))]

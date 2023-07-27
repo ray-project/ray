@@ -352,7 +352,7 @@ py_test_module_list(
     "test_basic_3.py",
     "test_output.py",
     "test_tqdm.py",
-    "test_out_of_disk_space.py",
+    ("test_out_of_disk_space.py", "exclusive"),
     "test_failure_4.py",
     "test_iter.py",
     "test_object_spilling.py",
