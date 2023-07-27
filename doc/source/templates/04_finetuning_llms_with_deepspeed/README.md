@@ -116,4 +116,4 @@ python finetune_hf_llm.py --as-test --lora
 ```
 
 When adapting `target_modules` in the LoRA config (at lora_configs/lora.json), be aware that different models have different names for the
-sub-models that can be tuned with LoRA. Have a look at the models themselves or [here](https://github.com/huggingface/peft/blob/main/src/peft/utils/other.py#L263-L288) for common ones.
+sub-models that can be tuned with LoRA. For example, LLaMa 2 requires {"target_modules": ["q_proj", "v_proj"]} and Falcon requires {"target_modules": ["query_key_value"]}. Running with `--as-test` will tell you what the submodules the model has.

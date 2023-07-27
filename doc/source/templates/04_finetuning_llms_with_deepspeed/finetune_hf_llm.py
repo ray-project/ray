@@ -204,13 +204,11 @@ def training_function(kwargs: dict):
 
         if config["as_test"]:
             # If we execute this as a test, be more verbose about what we attempt to lora-ify
-            print(f"Model has sub-models: {list(model.named_modules())}")
-            print(f"Attempting to apply LoRA to {lora_config.target_modules}")
+            print(f"Model has sub-models:\n {list(model.named_modules())}")
+            print(f"Attempting to apply LoRA to sub-models: {lora_config.target_modules}")
 
         model = get_peft_model(model, lora_config)
         print(f"LoRA-ification done in {time.time() - s} seconds.")
-
-    raise ValueError()
 
     model.resize_token_embeddings(len(tokenizer))
     print("Model initialized with pretrained weights. Training starting...")

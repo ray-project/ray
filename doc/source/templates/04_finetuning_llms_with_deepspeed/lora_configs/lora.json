@@ -2,7 +2,7 @@
     "r": 8,
     "lora_alpha": 16,
     "lora_dropout": 0.05,
-    "target_modules": ["query_key_value"],
+    "target_modules": ["q_proj", "v_proj"],
     "task_type": "CAUSAL_LM",
     "modules_to_save": [],
     "bias": "none",
