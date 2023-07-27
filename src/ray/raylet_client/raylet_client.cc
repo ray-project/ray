@@ -344,7 +344,7 @@ void raylet::RayletClient::RequestObjectSpillage(
     const ObjectID &object_id,
     const rpc::ClientCallback<rpc::RequestObjectSpillageReply> &callback) {
   rpc::RequestObjectSpillageRequest request;
-  request.set_object_id(object_id.Binary());
+  request.add_object_ids(object_id.Binary());
   grpc_client_->RequestObjectSpillage(request, callback);
 }
 

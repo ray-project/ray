@@ -703,18 +703,22 @@ void NodeManager::HandleRequestObjectSpillage(
     rpc::RequestObjectSpillageRequest request,
     rpc::RequestObjectSpillageReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  const auto &object_id = ObjectID::FromBinary(request.object_id());
-  RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_id;
+  std::vector<ObjectID> object_ids;
+  for(const auto &object_id : request.object_ids()) {
+    object_ids.push_back(ObjectID::FromBinary(object_id));
+    RAY_LOG(DEBUG) << "Received RequestObjectSpillage for object " << object_ids.back();
+  }
+
   local_object_manager_.SpillObjects(
-      {object_id}, [object_id, reply, send_reply_callback](const ray::Status &status) {
-        if (status.ok()) {
+      object_ids, [object_ids, reply, send_reply_callback](const ray::Status &status) {
+        for(const auto &object_id : object_ids) {
           RAY_LOG(DEBUG) << "Object " << object_id
-                         << " has been spilled, replying to owner";
-          reply->set_success(true);
-          // TODO(Clark): Add spilled URLs and spilled node ID to owner RPC reply here
-          // if OBOD is enabled, instead of relying on automatic raylet spilling path to
-          // send an extra RPC to the owner.
+                         << " has been spilled: " << status.ok();
+          reply->add_success(status.ok());
         }
+        // TODO(Clark): Add spilled URLs and spilled node ID to owner RPC reply here
+        // if OBOD is enabled, instead of relying on automatic raylet spilling path to
+        // send an extra RPC to the owner.
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
 }
