@@ -14,3 +14,17 @@ Ray has a variety of additional integrations with ecosystem libraries.
 - :ref:`spark-on-ray`
 - :ref:`mars-on-ray`
 - :ref:`modin-on-ray`
+
+.. _air-ecosystem-map:
+
+Ecosystem Map
+-------------
+
+The following map visualizes the landscape and maturity of Ray components and their integrations. Solid lines denote integrations between Ray components; dotted lines denote integrations with the broader ML ecosystem.
+
+* **Stable**: This component is stable.
+* **Beta**: This component is under development and APIs may be subject to change.
+* **Alpha**: This component is in early development.
+* **Community-Maintained**: These integrations are community-maintained and may vary in quality.
+
+.. image:: /images/air-ecosystem.svg

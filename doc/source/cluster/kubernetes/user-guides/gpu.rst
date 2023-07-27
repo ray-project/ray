@@ -17,8 +17,7 @@ ___________________________________________
 The `Ray Docker Hub <https://hub.docker.com/r/rayproject/>`_ hosts CUDA-based container images packaged
 with Ray and certain machine learning libraries.
 For example, the image ``rayproject/ray-ml:2.0.0-gpu`` is ideal for running GPU-based ML workloads with Ray 2.0.0.
-The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed to use the :ref:`Ray AI Runtime <air>`
-and the Ray Libraries covered in these docs.
+The Ray ML images are packaged with dependencies (such as TensorFlow and PyTorch) needed to use the Ray Libraries covered in these docs.
 To add custom dependencies, we recommend one, or both, of the following methods:
 
 * Building a docker image using one of the official :ref:`Ray docker images <docker-images>` as base.

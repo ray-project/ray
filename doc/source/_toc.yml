@@ -11,6 +11,10 @@ parts:
         title: "Installation"
       - file: ray-overview/use-cases
         title: "Use Cases"
+        sections:
+          - file: ray-air/getting-started
+          - file: ray-air/computer-vision
+
       - file: ray-overview/examples
         title: "Example Gallery"
       - file: ray-overview/ray-libraries
@@ -40,13 +44,6 @@ parts:
               - file: ray-core/examples/web-crawler
               - file: ray-core/examples/map_reduce
           - file: ray-core/api/index
-
-      - file: ray-air/getting-started
-        title: "Ray AI Runtime (AIR)"
-        sections:
-          - file: ray-air/key-concepts
-          - file: ray-air/api/api
-          - file: ray-air/benchmarks
 
       - file: data/data
         title: Ray Data
@@ -84,6 +81,7 @@ parts:
               - file: train/check-ingest
                 title: "Configuring Training Datasets"
               - file: train/predictors
+              - file: train/benchmarks
           - file: train/examples
             title: "Examples"
             sections:
