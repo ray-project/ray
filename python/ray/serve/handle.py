@@ -275,6 +275,10 @@ class RayServeHandle:
     def __getattr__(self, name):
         return self.options(method_name=name)
 
+    def shutdown(self):
+        if self._router:
+            self._router.shutdown()
+
 
 @PublicAPI(stability="beta")
 class RayServeSyncHandle(RayServeHandle):

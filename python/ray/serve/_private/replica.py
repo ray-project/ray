@@ -518,7 +518,7 @@ class RayServeReplica:
 
         self.restart_counter.inc()
 
-        self.metrics_pusher = self.metrics_pusher = MetricsPusher()
+        self.metrics_pusher = MetricsPusher()
         if autoscaling_config:
             process_remote_func = controller_handle.record_autoscaling_metrics.remote
             config = autoscaling_config
@@ -845,7 +845,8 @@ class RayServeReplica:
         # We set the del method to noop after successfully calling it so the
         # destructor is called only once.
         async with self.delete_lock:
-            self.metrics_pusher = None
+            if self.metrics_pusher:
+                self.metrics_pusher.shutdown()
 
             if not hasattr(self, "callable"):
                 return
