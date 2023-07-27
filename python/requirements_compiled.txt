@@ -141,7 +141,7 @@ fonttools==4.40.0
 fqdn==1.5.1
 freezegun==1.1.0
 frozenlist==1.3.3
-fsspec==2023.5.0
+fsspec==2023.5.0 ; python_version > "3.7"
 future==0.18.3
 gast==0.4.0
 gcs-oauth2-boto-plugin==3.0
@@ -440,7 +440,7 @@ s3fs==2023.5.0 ; python_version >= "3.8"
 s3transfer==0.6.1
 safetensors==0.3.1
 sarif-om==1.0.4
-scikit-image==0.19.3
+scikit-image==0.19.3 ; python_version < "3.11"
 scikit-learn==1.0.2 ; python_version < "3.11"
 scikit-optimize==0.9.0
 scipy==1.10.1
