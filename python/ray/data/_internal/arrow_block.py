@@ -415,7 +415,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
         self, boundaries: List[T], sort_key: "SortKey"
     ) -> List["Block"]:
         columns = sort_key.get_columns()
-        if len(columns) > 0:
+        if len(columns) > 1:
             raise NotImplementedError(
                 "Sorting by multiple columns is not supported yet"
             )
