@@ -1085,7 +1085,13 @@ class Algorithm(Trainable, AlgorithmBase):
                             for batch in ma_batch.policy_batches.values():
                                 if not batch.is_terminated_or_truncated():
                                     raise ValueError(
-                                        "In your evaluation config you have specified evaluation_duration_unit="episodes". However, the evaluation batch is neither terminated nor truncated."
+                                        "In your evaluation config you have specified "
+                                        "evaluation_duration_unit='episodes'. "
+                                        "However, the evaluation batch is neither "
+                                        "terminated nor truncated. Please make sure "
+                                        "that your environment terminates the "
+                                        "episode after each episode end or use "
+                                        "another evaluation_duration_unit."
                                     )
                     # n timesteps per returned batch.
                     else:
