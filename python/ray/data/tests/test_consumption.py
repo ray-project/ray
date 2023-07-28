@@ -1675,7 +1675,7 @@ def test_dataset_schema_after_read_stats(ray_start_cluster):
 
 
 def test_dataset_plan_as_string(ray_start_cluster):
-    ds = ray.data.read_parquet("example://iris.parquet")
+    ds = ray.data.read_parquet("example://iris.parquet", parallelism=8)
     assert ds._plan.get_plan_as_string("Dataset") == (
         "Dataset(\n"
         "   num_blocks=8,\n"
