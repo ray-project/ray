@@ -127,9 +127,6 @@ class TrainingIterator:
             storage.current_checkpoint_id = self._latest_checkpoint_id
             print(f"Setting next checkpoint path to: {storage.checkpoint_fs_path}")
 
-            # TODO(justinvyu): This checkpoint_path is NOT a URI anymore.
-            # It's just a path relative to the storage filesystem.
-            # `session.report` needs to be updated to upload using pyarrow.fs.copy_files
             self._backend_executor._set_checkpoint_uri(storage.current_checkpoint_id)
 
             self._latest_checkpoint_id += 1
