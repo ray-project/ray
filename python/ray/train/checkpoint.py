@@ -23,9 +23,26 @@ _CHECKPOINT_DIR_PREFIX = "checkpoint_tmp_"
 
 @PublicAPI(stability="beta")
 class Checkpoint:
-    """A reference to data persisted in local or remote storage.
+    """A reference to data persisted as a directory in local or remote storage.
 
     Access checkpoint contents locally using `checkpoint.to_directory()`.
+
+    Example creating a checkpoint using `Checkpoint.from_directory`:
+
+        >>> from ray.train.checkpoint import Checkpoint
+        >>> checkpoint = Checkpoint.from_directory("/tmp/example_checkpoint_dir")
+        >>> checkpoint.filesystem  # doctest: +ELLIPSIS
+        <pyarrow._fs.LocalFileSystem object...
+        >>> checkpoint.path
+        '/tmp/example_checkpoint_dir'
+
+    Example creating a checkpoint from a remote URI:
+
+        >>> checkpoint = Checkpoint("s3://bucket/path/to/checkpoint")
+        >>> checkpoint.filesystem  # doctest: +ELLIPSIS
+        <pyarrow._s3fs.S3FileSystem object...
+        >>> checkpoint.path
+        'bucket/path/to/checkpoint'
 
     Attributes:
         path: A path on the filesystem containing the checkpoint contents.
@@ -79,9 +96,10 @@ class Checkpoint:
         """Create checkpoint object from a local directory.
 
         Args:
-            path: Directory containing checkpoint data. The caller promises to
-                not delete the directory (gifts ownership of the directory to this
-                Checkpoint).
+            path: Local directory containing checkpoint data. The caller should not
+                modify the contents of this directory after creating the Checkpoint.
+                If passing this checkpoint to `train.report`, Ray will take control
+                of the checkpoint directory.
 
         Returns:
             Checkpoint: checkpoint object.
