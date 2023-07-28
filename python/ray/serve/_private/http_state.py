@@ -373,7 +373,7 @@ class HTTPProxyStateManager:
                 logger.warning(
                     "You specified fixed_number_replicas="
                     f"{num_replicas} but there are only "
-                    f"{len(target_nodes)} total nodes. Serve will start one "
+                    f"{len(target_nodes)} target nodes. Serve will start one "
                     "HTTP proxy per node."
                 )
                 num_replicas = len(target_nodes)
