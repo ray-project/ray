@@ -225,7 +225,7 @@ msgpack-numpy==0.4.8
 msrest==0.7.1
 msrestazure==0.6.4
 mujoco==2.2.0
-mujoco-py==2.1.2.14
+#mujoco-py==2.1.2.14
 multidict==6.0.4
 multipledispatch==0.6.0
 multiprocess==0.70.14
