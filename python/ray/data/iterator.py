@@ -5,6 +5,7 @@ from typing import (
     Any,
     Callable,
     Dict,
+    Iterable,
     Iterator,
     List,
     Optional,
@@ -101,8 +102,8 @@ class DataIterator(abc.ABC):
         _finalize_fn: Optional[Callable[[Any], Any]] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator[DataBatch]:
-        """Return a batched iterator over the dataset.
+    ) -> Iterable[DataBatch]:
+        """Return a batched iterable over the dataset.
 
         Examples:
             >>> import ray
@@ -160,7 +161,7 @@ class DataIterator(abc.ABC):
 
         batch_format = _apply_strict_mode_batch_format(batch_format)
 
-        class _BatchIterator:
+        class _BatchIterable:
             def __init__(
                 self,
                 block_iterator_fn: Callable[
@@ -235,34 +236,30 @@ class DataIterator(abc.ABC):
                 # This allows multiple iterations of the dataset without needing to
                 # explicitly call `iter_batches()` multiple times.
                 self.time_start = time.perf_counter()
-                self.iterator = self._create_iterator()
-                return self
+                iterator = self._create_iterator()
+
+                def _wrapped_iterator():
+                    for next_batch in iterator:
+                        if self.output_fn is not None:
+                            next_batch = self.output_fn(next_batch, **self.kwargs)
+                        yield next_batch
+                    if self.stats:
+                        self.stats.iter_total_s.add(
+                            time.perf_counter() - self.time_start
+                        )
+
+                return _wrapped_iterator()
 
             def set_output_fn(self, fn: Callable[[DataBatch], Any], **kwargs):
                 """Sets a fn to apply to each DataBatch before returning."""
                 self.output_fn = fn
                 self.kwargs = kwargs
 
-            def __next__(self):
-                if self.iterator is None:
-                    iter(self)
-                try:
-                    next_batch = next(self.iterator)
-                    if self.output_fn is not None:
-                        next_batch = self.output_fn(next_batch, **self.kwargs)
-                    return next_batch
-                except StopIteration as e:
-                    if self.stats:
-                        self.stats.iter_total_s.add(
-                            time.perf_counter() - self.time_start
-                        )
-                    raise e
-
         block_iterator_fn = self._to_block_iterator
-        return _BatchIterator(block_iterator_fn)
+        return _BatchIterable(block_iterator_fn)
 
-    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterator[Dict[str, Any]]:
-        """Return a local row iterator over the dataset.
+    def iter_rows(self, *, prefetch_blocks: int = 0) -> Iterable[Dict[str, Any]]:
+        """Return a local row iterable over the dataset.
 
         If the dataset is a tabular dataset (Arrow/Pandas blocks), dicts
         are yielded for each row by the iterator. If the dataset is not tabular,
@@ -292,10 +289,21 @@ class DataIterator(abc.ABC):
             # Since batch_size is None, 1 block is exactly 1 batch.
             iter_batch_args["prefetch_batches"] = prefetch_blocks
 
-        for batch in self.iter_batches(**iter_batch_args):
-            batch = BlockAccessor.for_block(BlockAccessor.batch_to_block(batch))
-            for row in batch.iter_rows(public_row_format=True):
-                yield row
+        batch_iterable = self.iter_batches(**iter_batch_args)
+
+        class _RowIterable:
+            def __iter__(self):
+                def _wrapped_iterator():
+                    for batch in batch_iterable:
+                        batch = BlockAccessor.for_block(
+                            BlockAccessor.batch_to_block(batch)
+                        )
+                        for row in batch.iter_rows(public_row_format=True):
+                            yield row
+
+                return _wrapped_iterator()
+
+        return _RowIterable()
 
     @abc.abstractmethod
     def stats(self) -> str:
@@ -320,8 +328,8 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator["TorchBatchType"]:
-        """Return a batched iterator of Torch Tensors over the dataset.
+    ) -> Iterable["TorchBatchType"]:
+        """Return a batched iterable of Torch Tensors over the dataset.
 
         This iterator yields a dictionary of column-tensors. If you are looking for
         more flexibility in the tensor conversion (e.g. casting dtypes) or the batch
@@ -468,8 +476,8 @@ class DataIterator(abc.ABC):
         local_shuffle_seed: Optional[int] = None,
         # Deprecated.
         prefetch_blocks: int = 0,
-    ) -> Iterator["TensorFlowTensorBatchType"]:
-        """Return a batched iterator of TensorFlow Tensors over the dataset.
+    ) -> Iterable["TensorFlowTensorBatchType"]:
+        """Return a batched iterable of TensorFlow Tensors over the dataset.
 
         This iterator will yield single-tensor batches of the underlying dataset
         consists of a single column; otherwise, it will yield a dictionary of
