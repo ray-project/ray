@@ -433,7 +433,10 @@ class _TrainSession:
         Args:
             uri: URI to the location where next checkpoint should be saved.
         """
-        self.legacy_checkpoint_uri = uri
+        if _use_storage_context():
+            self.storage.current_checkpoint_id = uri
+        else:
+            self.legacy_checkpoint_uri = uri
 
     def report(self, metrics: Dict, checkpoint: Optional[Checkpoint] = None) -> None:
         # TODO(xwjiang): tons of optimizations.
