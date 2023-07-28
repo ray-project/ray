@@ -250,20 +250,36 @@ class _StatusReporter:
         self._last_report_time = time.time()
 
     def report(self, metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+        from ray.train._internal.storage import _use_storage_context
+
         # TODO(xwjiang): Tons of optimizations.
         self._air_session_has_reported = True
-        if checkpoint:
-            training_iteration = self._get_training_iteration()
-            checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
-            self.set_checkpoint(checkpoint_dir)
-            checkpoint.to_directory(checkpoint_dir)
-            # TODO(krfricke): Remove this once support is added in Checkpoint.
-            open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
+
+        # TODO(justinvyu): With a unified session, we'll still run into this doubled
+        # report problem. This should be fixed by checking if the checkpoint has been
+        # uploaded already (via some marker), then skipping the repeat upload.
+        if _use_storage_context():
+            self._last_checkpoint = checkpoint
+        else:
+            if checkpoint:
+                training_iteration = self._get_training_iteration()
+                checkpoint_dir = self.make_checkpoint_dir(step=training_iteration)
+                self.set_checkpoint(checkpoint_dir)
+                checkpoint.to_directory(checkpoint_dir)
+                # TODO(krfricke): Remove this once support is added in Checkpoint.
+                open(os.path.join(checkpoint_dir, ".is_checkpoint"), "a").close()
         self.__call__(**metrics)
 
     @property
     def loaded_checkpoint(self) -> Optional[Checkpoint]:
         if self._last_checkpoint:
+            from ray.train._internal.storage import _use_storage_context
+            from ray.train.checkpoint import Checkpoint as NewCheckpoint
+
+            if _use_storage_context():
+                assert isinstance(self._last_checkpoint, NewCheckpoint)
+                return self._last_checkpoint
+
             assert isinstance(self._last_checkpoint, str)
             return Checkpoint.from_directory(self._last_checkpoint)
         return None
