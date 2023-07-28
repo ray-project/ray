@@ -8,6 +8,7 @@ import pytest
 
 import ray
 from ray.data._internal.push_based_shuffle import PushBasedShufflePlan
+from ray.data._internal.sort import SortKey
 from ray.data.block import BlockAccessor
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -112,20 +113,22 @@ def test_sort_arrow_with_empty_blocks(
         ctx.use_polars = use_polars
 
         assert (
-            BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows
+            BlockAccessor.for_block(pa.Table.from_pydict({}))
+            .sample(10, SortKey("A"))
+            .num_rows
             == 0
         )
 
         partitions = BlockAccessor.for_block(
             pa.Table.from_pydict({})
-        ).sort_and_partition([1, 5, 10], "A", descending=False)
+        ).sort_and_partition([1, 5, 10], SortKey("A"))
         assert len(partitions) == 4
         for partition in partitions:
             assert partition.num_rows == 0
 
         assert (
             BlockAccessor.for_block(pa.Table.from_pydict({}))
-            .merge_sorted_blocks([pa.Table.from_pydict({})], "A", False)[0]
+            .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
             .num_rows
             == 0
         )
@@ -141,7 +144,7 @@ def test_sort_arrow_with_empty_blocks(
         assert (
             len(
                 ray.data._internal.sort.sample_boundaries(
-                    ds._plan.execute().get_blocks(), "id", 3
+                    ds._plan.execute().get_blocks(), SortKey("id"), 3
                 )
             )
             == 2
@@ -183,11 +186,14 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
 
 def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle):
     assert (
-        BlockAccessor.for_block(pa.Table.from_pydict({})).sample(10, "A").num_rows == 0
+        BlockAccessor.for_block(pa.Table.from_pydict({}))
+        .sample(10, SortKey("A"))
+        .num_rows
+        == 0
     )
 
     partitions = BlockAccessor.for_block(pa.Table.from_pydict({})).sort_and_partition(
-        [1, 5, 10], "A", descending=False
+        [1, 5, 10], SortKey("A")
     )
     assert len(partitions) == 4
     for partition in partitions:
@@ -195,7 +201,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
 
     assert (
         BlockAccessor.for_block(pa.Table.from_pydict({}))
-        .merge_sorted_blocks([pa.Table.from_pydict({})], "A", False)[0]
+        .merge_sorted_blocks([pa.Table.from_pydict({})], SortKey("A"))[0]
         .num_rows
         == 0
     )
@@ -209,7 +215,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert (
         len(
             ray.data._internal.sort.sample_boundaries(
-                ds._plan.execute().get_blocks(), "id", 3
+                ds._plan.execute().get_blocks(), SortKey("id"), 3
             )
         )
         == 2
