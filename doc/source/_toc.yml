@@ -67,22 +67,19 @@ parts:
             sections:
               - file: train/distributed-pytorch/quickstart
               - file: train/distributed-pytorch/converting-existing-training-loop
-              - file: train/distributed-pytorch/hf_trainers
+              - file: train/distributed-pytorch/configuration
               - file: train/distributed-pytorch/data-loading-preprocessing
               - file: train/distributed-pytorch/using-gpus
               - file: train/distributed-pytorch/reporting-results
               - file: train/distributed-pytorch/checkpoints
-              - file: train/distributed-pytorch/experiment-tracking
-              - file: train/train-with-tune
+              - file: train/distributed-pytorch/experiment-tracking-callbacks
+              - file: train/distributed-pytorch/fault-tolerance
+              - file: train/distributed-pytorch/hyperparameter-optimization
                 title: Hyperparameter optimization
+              - file: train/distributed-pytorch/advanced
           - file: train/distributed-tensorflow-keras
           - file: train/distributed-xgboost-lightgbm
           - file: train/horovod
-          - file: train/configuration/index
-            title: "Common configuration"
-            sections:
-              - file: train/configuration/persistent-storage
-              - file: train/configuration/fault-tolerance
           - file: train/internals/index
             title: "Ray Train internals and advanced usage"
             sections:

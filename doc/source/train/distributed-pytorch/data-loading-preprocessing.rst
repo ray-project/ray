@@ -9,6 +9,40 @@ This guide covers how to leverage :ref:`Ray Data <data>` to load data for distri
 2. To make data loading agnostic of the underlying framework.
 3. Advanced Ray Data features such as global shuffles.
 
+Overview
+--------
+
+:ref:`Ray Data <data>` is the recommended way to work with large datasets in Ray Train. Ray Data provides automatic loading, sharding, and streamed ingest of Data across multiple Train workers.
+To get started, pass in one or more datasets under the ``datasets`` keyword argument for Trainer (e.g., ``Trainer(datasets={...})``).
+
+In a nutshell, datasets passed to your :class:`Trainer <ray.train.trainer.BaseTrainer>`
+can be accessed from the training function with :meth:`session.get_dataset_shard("train")
+<ray.air.session.get_dataset_shard>` like this:
+
+.. code-block:: python
+
+    from ray.air import session
+
+    # Datasets can be accessed in your train_func via ``get_dataset_shard``.
+    def train_func(config):
+        train_data_shard = session.get_dataset_shard("train")
+        validation_data_shard = session.get_dataset_shard("validation")
+        ...
+
+    # Random split the dataset into 80% training data and 20% validation data.
+    dataset = ray.data.read_csv("...")
+    train_dataset, validation_dataset = dataset.train_test_split(
+        test_size=0.2, shuffle=True,
+    )
+
+    trainer = TorchTrainer(
+        train_func,
+        datasets={"train": train_dataset, "validation": validation_dataset},
+        scaling_config=ScalingConfig(num_workers=8),
+    )
+    trainer.fit()
+
+
 Basics
 ------
 

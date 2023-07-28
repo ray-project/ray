@@ -42,7 +42,9 @@ There are three categories of built-in Trainers:
         For these trainers, you usually define your own training function that loads the model
         and executes single-worker training steps. Refer to the following guides for more details:
 
-        - :ref:`Deep learning user guide <train-dl-guide>`
+        - :doc:`Distributed PyTorch </train/distributed-pytorch>`
+        - :doc:`Distributed TensorFlow </train/distributed-tensorflow-keras>`
+        - :doc:`Horovod </train/horovod>`
 
     .. tab-item:: Tree-Based Trainers
 
@@ -55,7 +57,7 @@ There are three categories of built-in Trainers:
         For these trainers, you just pass a dataset and parameters. The training loop is configured
         automatically.
 
-        - :ref:`XGBoost/LightGBM user guide <train-gbdt-guide>`
+        - :doc:`Distributed XGBoost/LightGBM </train/distributed-xgboost-lightgbm>`
 
     .. tab-item:: Other Trainers
 

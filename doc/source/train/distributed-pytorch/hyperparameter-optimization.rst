@@ -9,7 +9,7 @@ with Ray Train.
 
 .. https://docs.google.com/drawings/d/1yMd12iMkyo6DGrFoET1TIlKfFnXX9dfh2u3GSdTz6W4/edit
 
-.. figure:: images/train-tuner.svg
+.. figure:: ../images/train-tuner.svg
     :align: center
 
     The `Tuner` will take in a `Trainer` and execute multiple training runs, each with different hyperparameter configurations.

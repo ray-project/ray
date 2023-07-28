@@ -115,3 +115,137 @@ ready to start training!
 Data loading and preprocessing
 ------------------------------
 
+Reporting results
+-----------------
+
+
+TensorFlow Keras automatically aggregates metrics from all workers. If you wish to have more
+control over that, consider implementing a `custom training loop <https://www.tensorflow.org/tutorials/distribute/custom_training>`_.
+
+
+Saving and loading checkpoints
+------------------------------
+
+
+:ref:`Checkpoints <checkpoint-api-ref>` can be saved by calling ``session.report(metrics, checkpoint=Checkpoint(...))`` in the
+training function. This will cause the checkpoint state from the distributed
+workers to be saved on the ``Trainer`` (where your python script is executed).
+
+The latest saved checkpoint can be accessed through the ``checkpoint`` attribute of
+the :py:class:`~ray.air.result.Result`, and the best saved checkpoints can be accessed by the ``best_checkpoints``
+attribute.
+
+Concrete examples are provided to demonstrate how checkpoints (model weights but not models) are saved
+appropriately in distributed training.
+
+
+.. code-block:: python
+    :emphasize-lines: 23
+
+    from ray.air import session, Checkpoint, ScalingConfig
+    from ray.train.tensorflow import TensorflowTrainer
+
+    import numpy as np
+
+    def train_func(config):
+        import tensorflow as tf
+        n = 100
+        # create a toy dataset
+        # data   : X - dim = (n, 4)
+        # target : Y - dim = (n, 1)
+        X = np.random.normal(0, 1, size=(n, 4))
+        Y = np.random.uniform(0, 1, size=(n, 1))
+
+        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+        with strategy.scope():
+            # toy neural network : 1-layer
+            model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+            model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+        for epoch in range(config["num_epochs"]):
+            model.fit(X, Y, batch_size=20)
+            checkpoint = Checkpoint.from_dict(
+                dict(epoch=epoch, model_weights=model.get_weights())
+            )
+            session.report({}, checkpoint=checkpoint)
+
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"num_epochs": 5},
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    result = trainer.fit()
+
+    print(result.checkpoint.to_dict())
+    # {'epoch': 4, 'model_weights': [array([[-0.31858477],
+    #    [ 0.03747174],
+    #    [ 0.28266194],
+    #    [ 0.8626015 ]], dtype=float32), array([0.02230084], dtype=float32)], '_timestamp': 1656107383, '_preprocessor': None, '_current_checkpoint_id': 4}
+
+By default, checkpoints will be persisted to local disk in the :ref:`log
+directory <train-log-dir>` of each run.
+
+Loading checkpoints
+~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: python
+    :emphasize-lines: 15, 21, 22, 25, 26, 27, 30
+
+    from ray.air import session, Checkpoint, ScalingConfig
+    from ray.train.tensorflow import TensorflowTrainer
+
+    import numpy as np
+
+    def train_func(config):
+        import tensorflow as tf
+        n = 100
+        # create a toy dataset
+        # data   : X - dim = (n, 4)
+        # target : Y - dim = (n, 1)
+        X = np.random.normal(0, 1, size=(n, 4))
+        Y = np.random.uniform(0, 1, size=(n, 1))
+
+        start_epoch = 0
+        strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy()
+
+        with strategy.scope():
+            # toy neural network : 1-layer
+            model = tf.keras.Sequential([tf.keras.layers.Dense(1, activation="linear", input_shape=(4,))])
+            checkpoint = session.get_checkpoint()
+            if checkpoint:
+                # assume that we have run the session.report() example
+                # and successfully save some model weights
+                checkpoint_dict = checkpoint.to_dict()
+                model.set_weights(checkpoint_dict.get("model_weights"))
+                start_epoch = checkpoint_dict.get("epoch", -1) + 1
+            model.compile(optimizer="Adam", loss="mean_squared_error", metrics=["mse"])
+
+        for epoch in range(start_epoch, config["num_epochs"]):
+            model.fit(X, Y, batch_size=20)
+            checkpoint = Checkpoint.from_dict(
+                dict(epoch=epoch, model_weights=model.get_weights())
+            )
+            session.report({}, checkpoint=checkpoint)
+
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"num_epochs": 2},
+        scaling_config=ScalingConfig(num_workers=2),
+    )
+    # save a checkpoint
+    result = trainer.fit()
+
+    # load a checkpoint
+    trainer = TensorflowTrainer(
+        train_func,
+        train_loop_config={"num_epochs": 5},
+        scaling_config=ScalingConfig(num_workers=2),
+        resume_from_checkpoint=result.checkpoint,
+    )
+    result = trainer.fit()
+
+    print(result.checkpoint.to_dict())
+    # {'epoch': 4, 'model_weights': [array([[-0.70056134],
+    #    [-0.8839263 ],
+    #    [-1.0043601 ],
+    #    [-0.61634773]], dtype=float32), array([0.01889327], dtype=float32)], '_timestamp': 1656108446, '_preprocessor': None, '_current_checkpoint_id': 3}

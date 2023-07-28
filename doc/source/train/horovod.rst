@@ -22,7 +22,7 @@ To onboard onto Horovod, please visit the `Horovod guide
 
 
 Creating a :class:`~ray.train.horovod.HorovodTrainer`
--------------------------------------------------
+-----------------------------------------------------
 
 ``Trainer``\s are the primary Ray Train classes that are used to manage state and
 execute training. For Horovod, we use a :class:`~ray.train.horovod.HorovodTrainer`
@@ -45,17 +45,18 @@ irrespective of the training framework (e.g. PyTorch or Tensorflow).
 To customize the backend setup, you can pass a
 :class:`~ray.train.horovod.HorovodConfig`:
 
-from ray.air import ScalingConfig
-from ray.train.horovod import HorovodTrainer, HorovodConfig
+.. code-block:: python
 
-trainer = HorovodTrainer(
-    train_func,
-    tensorflow_backend=HorovodConfig(...),
-    scaling_config=ScalingConfig(num_workers=2),
-)
+    from ray.air import ScalingConfig
+    from ray.train.horovod import HorovodTrainer, HorovodConfig
+
+    trainer = HorovodTrainer(
+        train_func,
+        tensorflow_backend=HorovodConfig(...),
+        scaling_config=ScalingConfig(num_workers=2),
+    )
 
 For more configurability, please reference the :py:class:`~ray.train.data_parallel_trainer.DataParallelTrainer` API.
-
 
 Running your training function
 ------------------------------

@@ -1,3 +1,3 @@
-Using GPUs and other resources
-==============================
+Scale, GPUs and other resources
+===============================
 

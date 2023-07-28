@@ -1,3 +1,5 @@
+.. _train-porting-code:
+
 Converting an existing training loop
 ====================================
 
@@ -56,7 +58,7 @@ training.
 
         Then, use the ``prepare_data_loader`` function to automatically add a ``DistributedSampler`` to your ``DataLoader``
         and move the batches to the right device. This step is not necessary if you are passing in Ray Data to your Trainer
-        (see :ref:`train-datasets`):
+        (see :ref:`data-ingest-torch`):
 
         .. code-block:: diff
 
@@ -137,3 +139,166 @@ ready to start training!
 .. code-block:: python
 
     trainer.fit()
+
+
+Configuring Training
+--------------------
+
+With Ray Train, you can execute a training function (``train_func``) in a
+distributed manner by calling ``Trainer.fit``. To pass arguments
+into the training function, you can expose a single ``config`` dictionary parameter:
+
+.. code-block:: diff
+
+    -def train_func():
+    +def train_func(config):
+
+Then, you can pass in the config dictionary as an argument to ``Trainer``:
+
+.. code-block:: diff
+
+    +config = {} # This should be populated.
+     trainer = TorchTrainer(
+         train_func,
+    +    train_loop_config=config,
+         scaling_config=ScalingConfig(num_workers=2)
+     )
+
+Putting this all together, you can run your training function with different
+configurations. As an example:
+
+.. code-block:: python
+
+    from ray.air import session, ScalingConfig
+    from ray.train.torch import TorchTrainer
+
+    def train_func(config):
+        for i in range(config["num_epochs"]):
+            session.report({"epoch": i})
+
+    trainer = TorchTrainer(
+        train_func,
+        train_loop_config={"num_epochs": 2},
+        scaling_config=ScalingConfig(num_workers=2)
+    )
+    result = trainer.fit()
+    print(result.metrics["num_epochs"])
+    # 1
+
+A primary use-case for ``config`` is to try different hyperparameters. To
+perform hyperparameter tuning with Ray Train, please refer to the
+:ref:`Ray Tune integration <train-tune>`.
+
+
+.. _train-result-object:
+
+Accessing Training Results
+--------------------------
+
+.. TODO(ml-team) Flesh this section out.
+
+The return of a ``Trainer.fit`` is a :py:class:`~ray.air.result.Result` object, containing
+information about the training run. You can access it to obtain saved checkpoints,
+metrics and other relevant data.
+
+For example, you can:
+
+* Print the metrics for the last training iteration:
+
+.. code-block:: python
+
+    from pprint import pprint
+
+    pprint(result.metrics)
+    # {'_time_this_iter_s': 0.001016855239868164,
+    #  '_timestamp': 1657829125,
+    #  '_training_iteration': 2,
+    #  'config': {},
+    #  'date': '2022-07-14_20-05-25',
+    #  'done': True,
+    #  'episodes_total': None,
+    #  'epoch': 1,
+    #  'experiment_id': '5a3f8b9bf875437881a8ddc7e4dd3340',
+    #  'experiment_tag': '0',
+    #  'hostname': 'ip-172-31-43-110',
+    #  'iterations_since_restore': 2,
+    #  'node_ip': '172.31.43.110',
+    #  'pid': 654068,
+    #  'time_since_restore': 3.4353830814361572,
+    #  'time_this_iter_s': 0.00809168815612793,
+    #  'time_total_s': 3.4353830814361572,
+    #  'timestamp': 1657829125,
+    #  'timesteps_since_restore': 0,
+    #  'timesteps_total': None,
+    #  'training_iteration': 2,
+    #  'trial_id': '4913f_00000',
+    #  'warmup_time': 0.003167867660522461}
+
+* View the dataframe containing the metrics from all iterations:
+
+.. code-block:: python
+
+    print(result.metrics_dataframe)
+
+* Obtain the :py:class:`~ray.air.checkpoint.Checkpoint`, used for resuming training, prediction and serving.
+
+.. code-block:: python
+
+    result.checkpoint  # last saved checkpoint
+    result.best_checkpoints  # N best saved checkpoints, as configured in run_config
+    result.error  # returns the Exception if training failed.
+
+
+See :class:`the Result docstring <ray.air.result.Result>` for more details.
+
+Hugging Face
+------------
+
+TransformersTrainer
+~~~~~~~~~~~~~~~~~~~
+
+:class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>` further extends :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, built
+for interoperability with the HuggingFace Transformers library.
+
+Users are required to provide a ``trainer_init_per_worker`` function which returns a
+``transformers.Trainer`` object. The ``trainer_init_per_worker`` function
+will have access to preprocessed train and evaluation datasets.
+
+Upon calling `TransformersTrainer.fit()`, multiple workers (ray actors) will be spawned,
+and each worker will create its own copy of a ``transformers.Trainer``.
+
+Each worker will then invoke ``transformers.Trainer.train()``, which will perform distributed
+training via Pytorch DDP.
+
+
+.. dropdown:: Code example
+
+    .. literalinclude:: ../doc_code/hf_trainer.py
+        :language: python
+        :start-after: __hf_trainer_start__
+        :end-before: __hf_trainer_end__
+
+AccelerateTrainer
+~~~~~~~~~~~~~~~~~
+
+If you prefer a more fine-grained Hugging Face API than what Transformers provides, you can use :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>`
+to run training functions making use of Hugging Face Accelerate. Similarly to :class:`TransformersTrainer <ray.train.huggingface.TransformersTrainer>`, :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>`
+is also an extension of :class:`TorchTrainer <ray.train.torch.TorchTrainer>`.
+
+:class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>` allows you to pass an Accelerate configuration file generated with ``accelerate config`` to be applied on all training workers.
+This ensures that the worker environments are set up correctly for Accelerate, allowing you to take advantage of Accelerate APIs and integrations such as DeepSpeed and FSDP
+just as you would if you were running Accelerate without Ray.
+
+.. note::
+    ``AccelerateTrainer`` will override some settings set with ``accelerate config``, mainly related to
+    the topology and networking. See the :class:`AccelerateTrainer <ray.train.huggingface.AccelerateTrainer>`
+    API reference for more details.
+
+Aside from Accelerate support, the usage is identical to :class:`TorchTrainer <ray.train.torch.TorchTrainer>`, meaning you define your own training function
+and use the :ref:`Session <air-session-ref>` API to report metrics, save checkpoints etc.
+
+
+.. dropdown:: Code example
+
+    .. literalinclude:: ../doc_code/accelerate_trainer.py
+        :language: python
