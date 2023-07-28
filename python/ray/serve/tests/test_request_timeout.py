@@ -7,9 +7,12 @@ import pytest
 import requests
 
 import ray
-from ray._private.test_utils import SignalActor
+from ray._private.test_utils import SignalActor, wait_for_condition
+from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 
 from ray import serve
+from ray.serve.schema import ServeInstanceDetails
+from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING
 
 
@@ -100,6 +103,66 @@ def test_request_hangs_in_execution(ray_instance, shutdown_serve):
         assert len(ray.get(pid_tracker.get_pids.remote())) == 2
 
     ray.get(signal_actor.send.remote())
+
+
+@serve.deployment(graceful_shutdown_timeout_s=0)
+class HangsOnFirstRequest:
+    def __init__(self):
+        self._saw_first_request = False
+        self.signal_actor = SignalActor.remote()
+
+    async def __call__(self):
+        if not self._saw_first_request:
+            self._saw_first_request = True
+            await self.signal_actor.wait.remote()
+        else:
+            ray.get(self.signal_actor.send.remote())
+        return "Success!"
+
+
+hangs_on_first_request_app = HangsOnFirstRequest.bind()
+
+
+def test_with_rest_api(ray_start_stop):
+    """Verify the REST API can configure the request timeout."""
+    config = {
+        "proxy_location": "EveryNode",
+        "http_options": {"request_timeout_s": 1},
+        "applications": [
+            {
+                "name": "app",
+                "route_prefix": "/",
+                "import_path": (
+                    "ray.serve.tests." "test_request_timeout:hangs_on_first_request_app"
+                ),
+            }
+        ],
+    }
+    ServeSubmissionClient("http://localhost:52365").deploy_applications(config)
+
+    def application_running():
+        response = requests.get(
+            "http://localhost:52365/api/serve/applications/", timeout=15
+        )
+        assert response.status_code == 200
+
+        serve_details = ServeInstanceDetails(**response.json())
+        return serve_details.applications["app"].status == ApplicationStatus.RUNNING
+
+    wait_for_condition(application_running, timeout=15)
+    print("Application has started running. Testing requests...")
+
+    response = requests.get("http://localhost:8000")
+    if RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING:
+        assert response.status_code == 500
+    else:
+        assert response.status_code == 200
+        assert response.text == "Success!"
+
+    response = requests.get("http://localhost:8000")
+    assert response.status_code == 200
+    print("Requests succeeded! Deleting application.")
+    ServeSubmissionClient("http://localhost:52365").delete_applications()
 
 
 @pytest.mark.parametrize(
