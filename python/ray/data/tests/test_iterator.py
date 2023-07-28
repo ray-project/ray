@@ -39,6 +39,19 @@ def test_basic_dataset(ray_start_regular_shared):
     # assert it.stats() == ds.stats()
 
 
+def test_basic_dataset_multi_use_iterator(ray_start_regular_shared):
+    """Tests that the iterator outputted by `iter_batches` can be used
+    multiple times."""
+    ds = ray.data.range(100)
+    it = ds.iterator().iter_batches()
+    for _ in range(2):
+        result = []
+        for batch in it:
+            batch = batch["id"]
+            result += batch.tolist()
+        assert result == list(range(100))
+
+
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
     ds = ray.data.range(100)
     it = ds.iterator()
@@ -158,6 +171,18 @@ def test_torch_conversion(ray_start_regular_shared):
     ), iter_batches_calls_kwargs
 
 
+def test_torch_multi_use_iterator(ray_start_regular_shared):
+    """Tests that the iterator outputted by `iter_torch_batches` can be used
+    multiple times."""
+    ds = ray.data.range(5)
+    it = ds.iterator().iter_torch_batches()
+    it.iter_batches = MagicMock()
+
+    for batch in it:
+        assert isinstance(batch["id"], torch.Tensor)
+        assert batch["id"].tolist() == list(range(5))
+
+
 def test_torch_conversion_pipeline(ray_start_regular_shared):
     ds = ray.data.range(5).repeat(2)
     it = ds.iterator()
@@ -173,7 +198,7 @@ def test_torch_conversion_pipeline(ray_start_regular_shared):
         assert batch["id"].tolist() == list(range(5))
 
     # Fails on third iteration.
-    with pytest.raises(Exception, match=r"generator raised StopIteration"):
+    with pytest.raises(StopIteration):
         for batch in it.iter_torch_batches():
             pass
 
