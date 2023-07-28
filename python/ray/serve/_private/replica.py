@@ -856,6 +856,10 @@ class RayServeReplica:
                     # Make sure to accept `async def __del__(self)` as well.
                     await sync_to_async(self.callable.__del__)()
                     setattr(self.callable, "__del__", lambda _: None)
+
+                if hasattr(self.callable, "__serve_multiplex_wrapper"):
+                    await getattr(self.callable, "__serve_multiplex_wrapper").shutdown()
+
             except Exception as e:
                 logger.exception(f"Exception during graceful shutdown of replica: {e}")
             finally:
