@@ -247,15 +247,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "pytorch_pbt_failure",
-    size = "small",
-    srcs = ["tests/pytorch_pbt_failure.py"],
-    tags = ["team:ml", "exlusive", "no_main"],
-    deps = [":train_lib"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "test_accelerate_trainer_gpu",
     size = "large",
     srcs = ["tests/test_accelerate_trainer_gpu.py"],
@@ -453,6 +444,14 @@ py_test(
     srcs = ["tests/test_minimal.py"],
     tags = ["team:ml", "exclusive", "minimal"],
     deps = [":train_lib"]
+)
+
+py_test(
+    name = "test_new_persistence",
+    size = "small",
+    srcs = ["tests/test_new_persistence.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
 )
 
 py_test(

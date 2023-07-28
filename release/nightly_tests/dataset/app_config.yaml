@@ -4,6 +4,9 @@ python:
   pip_packages:
     - boto3
     - tqdm
+    - mosaicml-streaming
+      # Temporary fix to get around docker issue.
+    - typing-extensions<4.6.0
   conda_packages: []
 
 post_build_cmds:

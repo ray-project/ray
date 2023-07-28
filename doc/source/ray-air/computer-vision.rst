@@ -1,3 +1,5 @@
+:orphan:
+
 .. _computer-vision:
 
 Computer Vision
@@ -183,8 +185,7 @@ Training vision models
             :end-before: __torch_trainer_stop__
             :dedent:
 
-        For more in-depth examples, see
-        :ref:`Using Trainers <air-trainers>`.
+        For more in-depth examples, see :ref:`Using Trainers <train-getting-started>`.
 
     .. tab-item:: TensorFlow
 
@@ -203,7 +204,7 @@ Training vision models
             :end-before: __tensorflow_trainer_stop__
             :dedent:
 
-        For more information, read :ref:`Using Trainers <air-trainers>`.
+        For more information, check out :ref:`the Ray Train documentation <train-getting-started>`.
 
 Creating checkpoints
 --------------------
@@ -315,7 +316,7 @@ To NumPy ndarrays like this:
             :end-before: __torch_online_predict_stop__
             :dedent:
 
-        For more in-depth examples, see :doc:`/ray-air/examples/serving_guide`.
+        For more in-depth examples, read about :ref:`Ray Serve <serve-getting-started>`.
 
     .. tab-item:: TensorFlow
 
@@ -335,4 +336,4 @@ To NumPy ndarrays like this:
             :end-before: __tensorflow_online_predict_stop__
             :dedent:
 
-        For more information, read :doc:`/ray-air/examples/serving_guide`.
+        For more information, see :ref:`Ray Serve <serve-getting-started>`.
