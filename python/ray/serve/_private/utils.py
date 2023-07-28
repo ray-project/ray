@@ -659,8 +659,18 @@ class MetricsPusher:
         self.pusher_thread.start()
 
     def __del__(self):
-        self.stop_event.set()
-        self.pusher_thread.join()
+        self.shutdown()
+
+    def shutdown(self):
+        """Shutdown metrics pusher gracefully.
+
+        This method will ensure idempotency of shutdown call.
+        """
+        if not self.stop_event.is_set():
+            self.stop_event.set()
+
+        if self.pusher_thread:
+            self.pusher_thread.join()
 
 
 def call_function_from_import_path(import_path: str) -> Any:
