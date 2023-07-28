@@ -118,11 +118,9 @@ PROXY_READY_CHECK_TIMEOUT_S = (
 #: being marked unhealthy.
 PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD = 3
 
-# The proxy must be in the draining status for
-# at least this amount of time before it can be marked as drained.
-# This gives time for the ALB to stop sending traffic to this proxy.
-PROXY_DRAINING_MIN_PERIOD_S = (
-    float(os.environ.get("RAY_SERVE_PROXY_DRAINING_MIN_PERIOD_S", "30")) or 30
+# The minimum drain period for a HTTP proxy.
+PROXY_MIN_DRAINING_PERIOD_S = (
+    float(os.environ.get("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "30")) or 30
 )
 
 #: Number of times in a row that a replica must fail the health check before

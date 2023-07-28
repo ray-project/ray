@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 import os
@@ -28,7 +27,7 @@ from ray.serve._private.utils import (
     format_actor_name,
     get_all_node_ids,
 )
-from ray.serve._private.common import EndpointTag, NodeId, HTTPProxyStatus
+from ray.serve._private.common import NodeId, HTTPProxyStatus
 from ray.serve.schema import HTTPProxyDetails
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -480,17 +479,3 @@ class HTTPProxyStateManager:
         for node_id in to_stop:
             proxy_state = self._proxy_states.pop(node_id)
             proxy_state.shutdown()
-
-    async def ensure_http_route_exists(self, endpoint: EndpointTag, timeout_s: float):
-        """Block until the route has been propagated to all HTTP proxies.
-        When the timeout occur in any of the http proxy, the whole method will
-        re-throw the TimeoutError.
-        """
-        await asyncio.gather(
-            *[
-                proxy.actor_handle.block_until_endpoint_exists.remote(
-                    endpoint, timeout_s=timeout_s
-                )
-                for proxy in self._proxy_states.values()
-            ]
-        )

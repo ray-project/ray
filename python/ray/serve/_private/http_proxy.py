@@ -44,7 +44,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
     DEFAULT_LATENCY_BUCKET_MS,
-    PROXY_DRAINING_MIN_PERIOD_S,
+    PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_EXPERIMENTAL_STREAMING,
     RAY_SERVE_REQUEST_ID_HEADER,
     RAY_SERVE_HTTP_PROXY_CALLBACK_IMPORT_PATH,
@@ -295,14 +295,11 @@ class HTTPProxy:
         # `self._ongoing_requests` is used to count the number of ongoing requests
         self._ongoing_requests = 0
         # The time when the node starts to drain.
-        # The node is not draining if it's 0.0.
-        self._draining_start_time: float = 0.0
-        # The timer that will be fired
-        # when the draining time exceeds `PROXY_DRAINING_MIN_PERIOD_S`.
-        self._draining_timer = None
+        # The node is not draining if it's None.
+        self._draining_start_time: Optional[float] = None
 
     def _is_draining(self) -> bool:
-        return self._draining_start_time != 0
+        return self._draining_start_time is not None
 
     def _update_routes(self, endpoints: Dict[EndpointTag, EndpointInfo]) -> None:
         self.route_info: Dict[str, Tuple[EndpointTag, List[str]]] = dict()
@@ -316,7 +313,9 @@ class HTTPProxy:
         if not self._is_draining():
             return False
 
-        return (not self._ongoing_requests) and (not self._draining_timer)
+        return (not self._ongoing_requests) and (
+            (time.time() - self._draining_start_time) > PROXY_MIN_DRAINING_PERIOD_S
+        )
 
     def _update_draining(self, http_proxy_nodes: Set[str]):
         """Update draining flag on http proxy.
@@ -327,35 +326,13 @@ class HTTPProxy:
         changed.
         """
 
-        def draining_timer_callback():
-            self._draining_timer = None
-
         draining = self._node_id not in http_proxy_nodes
         if draining and (not self._is_draining()):
             logger.info(f"Start to drain the proxy actor on node {self._node_id}")
             self._draining_start_time = time.time()
-            assert not self._draining_timer
-            self._draining_timer = get_or_create_event_loop().call_later(
-                PROXY_DRAINING_MIN_PERIOD_S, draining_timer_callback
-            )
         if (not draining) and self._is_draining():
             logger.info(f"Stop draining the proxy actor on node {self._node_id}")
-            self._draining_start_time = 0.0
-            if self._draining_timer:
-                self._draining_timer.cancel()
-                self._draining_timer = None
-
-    async def block_until_endpoint_exists(
-        self, endpoint: EndpointTag, timeout_s: float
-    ):
-        start = time.time()
-        while True:
-            if time.time() - start > timeout_s:
-                raise TimeoutError(f"Waited {timeout_s} for {endpoint} to propagate.")
-            for existing_endpoint in self.route_info.values():
-                if existing_endpoint == endpoint:
-                    return
-            await asyncio.sleep(0.2)
+            self._draining_start_time = None
 
     async def _not_found(self, scope, receive, send):
         current_path = scope["path"]
@@ -949,11 +926,6 @@ class HTTPProxyActor:
             )
 
         return await done_set.pop()
-
-    async def block_until_endpoint_exists(
-        self, endpoint: EndpointTag, timeout_s: float
-    ):
-        await self.app.block_until_endpoint_exists(endpoint, timeout_s)
 
     async def run(self):
         sock = socket.socket()

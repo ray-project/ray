@@ -405,6 +405,9 @@ class HTTPProxyStatus(str, Enum):
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
     DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
     DRAINED = "DRAINED"
 
 

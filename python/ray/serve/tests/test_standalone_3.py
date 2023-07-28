@@ -293,7 +293,7 @@ def test_handle_early_detect_failure(shutdown_ray):
 def test_autoscaler_shutdown_node_http_everynode(
     monkeypatch, shutdown_ray, call_ray_stop_only  # noqa: F811
 ):
-    monkeypatch.setenv("RAY_SERVE_PROXY_DRAINING_MIN_PERIOD_S", "1")
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = AutoscalingCluster(
         head_resources={"CPU": 4},
         worker_node_types={
@@ -347,7 +347,9 @@ def test_autoscaler_shutdown_node_http_everynode(
         **ray.get(client._controller.get_serve_instance_details.remote())
     )
     assert len(serve_details.http_proxies) == 1
-    assert serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
+    assert (
+        serve_details.http_proxies[get_head_node_id()].status == HTTPProxyStatus.HEALTHY
+    )
 
     # Only head node should exist now.
     wait_for_condition(

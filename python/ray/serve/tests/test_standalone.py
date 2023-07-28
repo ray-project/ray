@@ -602,7 +602,7 @@ def test_http_head_only(ray_cluster):
     ),
 )
 def test_fixed_number_proxies(monkeypatch, ray_cluster):
-    monkeypatch.setenv("RAY_SERVE_PROXY_DRAINING_MIN_PERIOD_S", "1")
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "1")
     cluster = ray_cluster
     head_node = cluster.add_node(num_cpus=4)
     cluster.add_node(num_cpus=4)
@@ -631,7 +631,7 @@ def test_fixed_number_proxies(monkeypatch, ray_cluster):
     )
 
     @serve.deployment(
-        num_replicas=3,
+        num_replicas=2,
         ray_actor_options={"num_cpus": 3},
     )
     class A:

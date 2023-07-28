@@ -14,7 +14,6 @@ const SERVE_HTTP_PROXY_STATUS_SORT_ORDER: Record<
   [ServeSystemActorStatus.STARTING]: 1,
   [ServeSystemActorStatus.HEALTHY]: 2,
   [ServeSystemActorStatus.DRAINING]: 3,
-  [ServeSystemActorStatus.DRAINED]: 4,
 };
 
 export const useServeApplications = () => {
