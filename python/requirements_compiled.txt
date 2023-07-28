@@ -64,10 +64,10 @@ blessed==1.20.0
 bokeh==2.4.3
 boto==2.49.0
 boto3==1.24.59 ; python_version < "3.8"
-boto3==1.26.76 ; python_version < "3.8"
+boto3==1.26.76 ; python_version >= "3.8"
 botocore==1.29.76
 botorch==0.6.6 ; python_version < "3.8"
-botorch==0.8.5 ; python_version < "3.8"
+botorch==0.8.5 ; python_version >= "3.8"
 cached-property==1.5.2
 cachetools==5.3.1
 catboost==1.2
