@@ -13,3 +13,11 @@ transformers
 torch
 torchtext
 torchvision
+bitsandbytes
+wandb
+pytorch-lightning
+protobuf<3.21.0
+torchmetrics
+lm_eval
+tiktoken
+sentencepiece

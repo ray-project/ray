@@ -37,7 +37,7 @@ if __name__ == "__main__":
     parser.add_argument("args", nargs="*", type=str, help="string args to function")
     args = parser.parse_args()
 
-    ray.init()
+    ray.init(runtime_env={"working_dir": "."})
     if args.function not in globals():
         raise ValueError(f"{args.function} doesn't exist")
     fn = globals()[args.function]
