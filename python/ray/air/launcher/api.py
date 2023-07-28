@@ -77,8 +77,11 @@ class elastic_launch:
         #return launch_agent(self._config, self._entrypoint, list(args))
         # Define your train worker loop
         def train_loop_per_worker():
-            subprocess.run(["python", "train.py"], check=True, capture_output=True)
-            # subprocess.run(["python", "-c", "'print(1)'"], check=True, capture_output=True)
+            if isinstance(self._entrypoint, Callable):
+                self._entrypoint(*args)
+            else:
+                commands = [self._entrypoint] + list(args)
+                subprocess.run([commands], check=True, capture_output=True)
             session.report({"msg:": "Finished training!"})
 
         # Define scaling and run configs
