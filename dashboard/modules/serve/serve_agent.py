@@ -258,37 +258,28 @@ class ServeAgent(dashboard_utils.DashboardAgentModule):
                 text=repr(e),
             )
 
-        config_http_options = {
-            "host": config.http_options.host,
-            "port": config.http_options.port,
-            "root_path": config.http_options.root_path,
-            "request_timeout_s": config.http_options.request_timeout_s,
-        }
+        config_http_options = config.http_options.dict()
+        full_http_options = dict(
+            {"location": config.proxy_location}, **config_http_options
+        )
 
         async with self._controller_start_lock:
             client = await serve_start_async(
                 detached=True,
-                http_options=dict(
-                    {"location": config.proxy_location}, **config_http_options
-                ),
+                http_options=full_http_options,
             )
 
-        for option in config_http_options:
+        # Serve ignores HTTP options if it was already running when
+        # serve_start_async() is called. We explicitly return an error response
+        # here if Serve's HTTP options don't match the config's options.
+        for option, requested_value in full_http_options:
             conflict_response = self.check_http_options(
                 option,
                 getattr(client.http_config, option),
-                getattr(config.http_options, option),
+                requested_value,
             )
             if conflict_response:
                 return conflict_response
-
-        # Handle location conflict separately since proxy_location isn't stored
-        # inside config.http_options
-        location_conflict_response = self.check_http_options(
-            "location", client.http_config.location, config.proxy_location
-        )
-        if location_conflict_response is not None:
-            return location_conflict_response
 
         try:
             client.deploy_apps(config)
