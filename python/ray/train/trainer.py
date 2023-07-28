@@ -127,12 +127,12 @@ class TrainingIterator:
             storage.current_checkpoint_id = self._latest_checkpoint_id
             print(f"Setting next checkpoint path to: {storage.checkpoint_fs_path}")
 
-            self._backend_executor._set_checkpoint_uri(storage.current_checkpoint_id)
+            self._backend_executor._set_checkpoint_id(storage.current_checkpoint_id)
 
             self._latest_checkpoint_id += 1
 
         elif self._checkpoint_strategy._checkpoint_upload_from_workers:
-            self._backend_executor._set_checkpoint_uri(
+            self._backend_executor._set_legacy_checkpoint_uri(
                 self.__get_cloud_checkpoint_dir()
             )
 

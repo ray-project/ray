@@ -428,17 +428,13 @@ class _TrainSession:
         # checkpoint has been processed.
         self.continue_lock.acquire()
 
-    def _set_checkpoint_uri(self, uri: str):
+    def _set_legacy_checkpoint_uri(self, uri: str):
         """Tell session where to save the next directory checkpoint on the cloud.
 
         Args:
             uri: URI to the location where next checkpoint should be saved.
         """
-        if _use_storage_context():
-            # TODO(justinvyu): Fix up the name.
-            self.storage.current_checkpoint_id = uri
-        else:
-            self.legacy_checkpoint_uri = uri
+        self.legacy_checkpoint_uri = uri
 
     def new_checkpoint(self, checkpoint: NewCheckpoint):
         import pyarrow.fs
