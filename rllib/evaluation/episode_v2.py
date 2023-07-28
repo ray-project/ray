@@ -12,7 +12,7 @@ from ray.rllib.evaluation.collectors.agent_collector import AgentCollector
 from ray.rllib.policy.policy_map import PolicyMap
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import DeveloperAPI
-from ray.rllib.utils.typing import AgentID, EnvID, PolicyID, TensorType
+from ray.rllib.utils.typing import AgentID, EnvID, EnvInfoDict, PolicyID, TensorType
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -369,6 +369,11 @@ class EpisodeV2:
 
     def set_last_info(self, agent_id: AgentID, info: Dict):
         self._last_infos[agent_id] = info
+
+    def last_info_for(
+        self, agent_id: AgentID = _DUMMY_AGENT_ID
+    ) -> Optional[EnvInfoDict]:
+        return self._last_infos.get(agent_id)
 
     @property
     def length(self):
